@@ -96,6 +96,7 @@ KIND_MAP = {
     "decision": "fact",
     "procedure": "rule",
     "identity": "identity",
+    "state": "state",
 }
 
 # The folders the workspace serves files from. Notes are read through entries; the inbox,
@@ -950,11 +951,15 @@ class BrainKitAdapter:
         revises: str | None = None,
         summary: str | None = None,
         origin: str | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> BrainProposal:
         source = f"{WORKSPACE_SOURCE}{proposer}"
         if sources:
             source += "; sources: " + ", ".join(sources)
         area, _, topic_name = (topic or "").partition("/")
+        if kind == "decision" and not revises:
+            # A decision is a fact the capture policy knows as a decision.
+            extra = dict(extra or {}, type="decision")
         with self._lock:
             result = self.brain.propose(
                 title=title,
@@ -975,6 +980,7 @@ class BrainKitAdapter:
                 topic=topic_name or None,
                 target_id=revises or None,
                 origin=origin,
+                extra=extra or None,
             )
         data = result.data
         status = str(data.get("status") or ("refused" if result.is_error else "pending"))
@@ -986,6 +992,61 @@ class BrainKitAdapter:
             proposal_id=data.get("proposal_id"),
             entry_id=data.get("id"),
         )
+
+    def propose_many(self, items: list[dict[str, Any]], *, proposer: str) -> list[BrainProposal]:
+        """Many proposals as one change: the index is rebuilt after each, the startup files
+        and the commit once at the end."""
+        out = []
+        with self.brain.deferring() as deferred:
+            deferred.message = f"{len(items)} proposal(s) from the workspace"
+            for item in items:
+                out.append(self.propose(proposer=proposer, **item))
+        return out
+
+    # ---------------------------------------------------------------- keeping up
+
+    def recap(self, since: str) -> dict[str, Any]:
+        st = self.brain.state()
+        seen = self._seen(st)
+        data: dict[str, Any] = dict(self.brain.recap(since).data)
+        data["went_in"] = [
+            row
+            for row in data.get("went_in") or []
+            if row.get("kind") == "file.add" or row.get("id") in seen
+        ]
+        data["projects"] = [p for p in data.get("projects") or [] if p.get("id") in seen]
+        return data
+
+    def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
+        return list(self.brain.weekly(weeks).data.get("weeks") or [])
+
+    def goals(self) -> dict[str, Any]:
+        return dict(self.brain.goals().data)
+
+    def set_goals(self, answers: dict[str, str]) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.set_goals(answers)
+        if result.is_error:
+            if result.data.get("status") == "forbidden":
+                raise Conflict(result.text)
+            raise ValidationFailed(result.text, field=result.data.get("field"))
+        return dict(result.data)
+
+    def builtin_skills(self) -> dict[str, Any]:
+        return dict(self.brain.builtin_skills().data)
+
+    def add_builtin_skills(self, names: list[str] | None = None) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.add_builtin_skills(names)
+        if result.is_error:
+            raise Conflict(result.text)
+        return dict(result.data)
+
+    def move_in(self, sources: list[dict[str, Any]], *, name: str = "") -> dict[str, Any]:
+        result = self.brain.move_in(sources, name=name)
+        if result.is_error:
+            raise ValidationFailed(result.text)
+        return dict(result.data)
 
     def proposals(self) -> list[dict[str, Any]]:
         """Waiting proposals. For ones made in the workspace, `proposer` names the real actor

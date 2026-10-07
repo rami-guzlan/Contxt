@@ -27,7 +27,7 @@ from .actors import actor_can_claim
 from .runtime import Runtime
 
 REVIEW_POLICIES = ("required", "auto")
-PIN_TYPES = ("context_item", "artifact", "brain_entry")
+PIN_TYPES = ("context_item", "artifact", "brain_entry", "brain_project", "brain_file")
 # The tools a task can name as the way its results come back, instead of artifacts.
 RESULT_TOOLS = ("propose_brain_entry", "save_digest", "save_skill_result", "propose_brain_skill")
 DEFINITION_FIELDS = (
@@ -576,5 +576,11 @@ class Tasks:
                     f"That artifact has versions 1 to {artifact['current_version']}.",
                     field="version",
                 )
+        elif ref_type == "brain_project":
+            if self.rt.brain.project(ref_id) is None:
+                raise NotFound(f"The Brain follows no project {ref_id}.")
+        elif ref_type == "brain_file":
+            if self.rt.brain.reference(ref_id) is None:
+                raise NotFound(f"The Brain holds no document {ref_id}.")
         elif self.rt.brain.entry(ref_id) is None:
             raise NotFound(f"No Brain entry {ref_id}.")

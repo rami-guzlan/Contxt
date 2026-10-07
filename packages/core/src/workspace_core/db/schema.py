@@ -161,7 +161,8 @@ task_pins = sa.Table(
     metadata,
     _id(),
     sa.Column("task_id", ID, sa.ForeignKey("tasks.id"), nullable=False, index=True),
-    sa.Column("ref_type", sa.String(32), nullable=False),  # context_item | brain_entry | artifact
+    # context_item | artifact | brain_entry | brain_project | brain_file
+    sa.Column("ref_type", sa.String(32), nullable=False),
     sa.Column("ref_id", sa.String(200), nullable=False),
     sa.Column("pinned_version", sa.Integer),  # null: the latest version when a run starts
     sa.Column("note", sa.Text),

@@ -247,7 +247,7 @@ class Actors:
         if not token.startswith(TOKEN_PREFIX) or len(token) < 24:
             raise ValidationFailed(
                 f"Tokens start with {TOKEN_PREFIX} and are at least 24 "
-                "characters long; generate one with `workspace token`."
+                "characters long; generate one with `contxt token --new`."
             )
         digest = hash_token(token)
         with self.rt.write() as tx:

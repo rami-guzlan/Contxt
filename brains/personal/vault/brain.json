@@ -2,6 +2,7 @@
   "schema": 1,
   "name": "Taylor's Life",
   "description": "Demo: the personal Brain of Taylor Brooks, a made-up parent in Denver: family, home, money, health, travel and food.",
+  "starter": "personal",
   "owner": "person:taylor",
   "structure": {
     "scope_levels": [

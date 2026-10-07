@@ -75,7 +75,7 @@ def get_principal(request: Request) -> Principal:
     # Its own cookie, or the shared one a session from before still carries.
     cookie = request.cookies.get(cookie_name(ws)) or request.cookies.get(COOKIE)
     if not cookie:
-        raise Unauthenticated("Sign in with your workspace token.")
+        raise Unauthenticated("Sign in with the link `contxt serve` printed, or your owner token.")
     principal = ws.actors.authenticate(cookie)
     if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get(CSRF_HEADER) != "1":
         raise PermissionDenied("Missing the X-Workspace-CSRF header.")

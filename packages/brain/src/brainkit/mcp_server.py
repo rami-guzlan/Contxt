@@ -90,7 +90,8 @@ AGENT_TOOLS = [
                     "words in `evidence`. Also proposes a change to a note (target_id). File it "
                     "in an existing area/topic when one fits; the reply names the closest "
                     "topics when yours is new. Your own scope applies at once; shared knowledge "
-                    "waits for the owner. The same text twice returns the waiting proposal.",
+                    "applies or waits for the owner as their policy says (the reply tells you "
+                    "which). The same text twice returns the waiting proposal.",
      "inputSchema": {"type": "object", "properties": {
          "area": {"type": "string", "description": "Where it is filed, for example brand, "
                   "customers, sales, operations, people, projects."},
@@ -227,7 +228,7 @@ HANDLERS = {
         evidence=a.get("evidence") or "", source=a.get("source") or "",
         supersedes=a.get("supersedes"), target_id=a.get("target_id"),
         title=a.get("title"), summary=a.get("summary") or a.get("index_line"),
-        note_kind=a.get("kind"), session_id=a.get("session_id")),
+        note_kind=a.get("kind"), session_id=a.get("session_id"), capture_origin="chat"),
     "propose_skill": lambda b, a: b.propose_skill(
         name=a.get("name"), category=a.get("category"), description=a.get("description"),
         when_to_use=a.get("when_to_use"), triggers=a.get("triggers"), loads=a.get("loads"),
@@ -258,7 +259,7 @@ HANDLERS = {
     "get_topic": lambda b, a: b.topic(a.get("route_key")),
     "list_focuses": lambda b, a: b.focus_list(status=a.get("status")),
     "get_focus": lambda b, a: b.focus_get(a.get("name")),
-    "remember": lambda b, a: b.remember(a.get("text")),
+    "remember": lambda b, a: b.remember(a.get("text"), capture_origin="chat"),
     "list_inbox": lambda b, a: b.inbox(),
 }
 

@@ -287,6 +287,9 @@ def create_home(
         ignore=shutil.ignore_patterns(".gitkeep", ".brain", "__pycache__"),
         dirs_exist_ok=True,
     )
+    from brainkit import builtin
+
+    builtin.copy_into(os.path.join(brain, "vault"))  # the skills every Brain comes with
     for folder in ("data", "outputs"):
         os.makedirs(os.path.join(home, folder), exist_ok=True)
     write_startup_files(brain)

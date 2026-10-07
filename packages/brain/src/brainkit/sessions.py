@@ -340,6 +340,30 @@ class Ledger:
                 "packet_tokens": packets["t"], "entries": items["n"],
                 "entry_tokens": items["t"], "work_runs": items["w"], "empty": empty}
 
+    def weekly(self, weeks: int = 8) -> list[dict]:
+        """Conversations the brain served in each of the last `weeks` weeks, oldest first:
+        [{"start", "end", "conversations", "packets"}], a week ending today last. Packets are
+        kept for the retention window, so weeks before it count none."""
+        weeks = max(1, min(int(weeks), 26))
+        today = util.now().date()
+        start = today - _dt.timedelta(days=7 * weeks - 1)
+        buckets = [{"start": (start + _dt.timedelta(days=7 * i)).isoformat(),
+                    "end": (start + _dt.timedelta(days=7 * i + 6)).isoformat(),
+                    "sessions": set(), "packets": 0} for i in range(weeks)]
+        with self._connect() as conn:
+            rows = conn.execute("SELECT session_id, substr(at, 1, 10) AS day FROM packets "
+                                "WHERE at >= ?", (start.isoformat(),)).fetchall()
+        for row in rows:
+            try:
+                offset = (_dt.date.fromisoformat(row["day"]) - start).days // 7
+            except ValueError:
+                continue
+            if 0 <= offset < weeks:
+                buckets[offset]["sessions"].add(row["session_id"])
+                buckets[offset]["packets"] += 1
+        return [{"start": b["start"], "end": b["end"], "conversations": len(b["sessions"]),
+                 "packets": b["packets"]} for b in buckets]
+
     # ------------------------------------------------------------------ gaps
     def gaps(self, since: str, *, limit: int = 200) -> list[dict]:
         """Requests the brain served poorly since an ISO moment, newest first:

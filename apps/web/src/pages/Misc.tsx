@@ -165,7 +165,8 @@ function WorkspaceSettings() {
       <Section title="Backups and data">
         <p>
           Your data lives in the data directory on this machine, and your Brain in its own folder with its history in git. Back
-          both up with <code>workspace backup --with-brain</code>; restore into an empty folder with <code>workspace restore</code>.
+          both up with <code>uv run contxt backup --with-brain</code>; restore into an empty folder with{" "}
+          <code>uv run contxt restore</code> and the backup's file.
         </p>
       </Section>
     </>

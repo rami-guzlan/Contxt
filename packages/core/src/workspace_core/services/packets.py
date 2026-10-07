@@ -126,6 +126,57 @@ def _brain_input(rt: Runtime, pin: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _project_input(rt: Runtime, pin: dict[str, Any]) -> dict[str, Any]:
+    """A project the Brain follows: what it is for, and where it stands now."""
+    ref = f"brain_project:{pin['ref_id']}"
+    found = rt.brain.project(pin["ref_id"])
+    if found is None:
+        return {"ref": ref, "missing": True, "note": pin["note"]}
+    state = found.get("state") or {}
+    parts = [str(found.get("summary") or "").strip()]
+    for key, label in (
+        ("status", "Status"),
+        ("current", "Where it stands"),
+        ("next", "Next"),
+        ("blockers", "Blocked by"),
+    ):
+        value = " ".join(str(state.get(key) or "").split())
+        if value:
+            parts.append(f"{label}: {value}")
+    if found.get("aliases"):
+        parts.append("Also called: " + ", ".join(str(a) for a in found["aliases"]))
+    text, clipped = _clip("\n".join(p for p in parts if p), rt.max_input_chars)
+    out = {
+        "ref": ref,
+        "type": "brain:project",
+        "title": str(found.get("title") or pin["ref_id"]),
+        "text": text,
+        "note": pin["note"],
+    }
+    if clipped:
+        out["truncated"] = True
+    return out
+
+
+def _file_input(rt: Runtime, pin: dict[str, Any]) -> dict[str, Any]:
+    """A document filed in the Brain, in full (as far as a run may read)."""
+    ref = f"brain_file:{pin['ref_id']}"
+    document = rt.brain.reference(pin["ref_id"])
+    if document is None:
+        return {"ref": ref, "missing": True, "note": pin["note"]}
+    text, clipped = _clip(document.text, rt.max_input_chars)
+    out = {
+        "ref": ref,
+        "type": "brain:file",
+        "title": str(pin["ref_id"]).rsplit("/", 1)[-1],
+        "text": text,
+        "note": pin["note"],
+    }
+    if clipped:
+        out["truncated"] = True
+    return out
+
+
 def resolve_inputs(tx: Tx, rt: Runtime, task_id: str) -> list[dict[str, Any]]:
     pins = tx.rows(
         sa.select(schema.task_pins)
@@ -140,6 +191,10 @@ def resolve_inputs(tx: Tx, rt: Runtime, task_id: str) -> list[dict[str, Any]]:
             inputs.append(_artifact_input(tx, rt, pin))
         elif pin["ref_type"] == "brain_entry":
             inputs.append(_brain_input(rt, pin))
+        elif pin["ref_type"] == "brain_project":
+            inputs.append(_project_input(rt, pin))
+        elif pin["ref_type"] == "brain_file":
+            inputs.append(_file_input(rt, pin))
     return inputs
 
 

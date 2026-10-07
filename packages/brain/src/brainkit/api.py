@@ -896,6 +896,55 @@ class Brain:
                 "standing_tokens": sum(n.tokens for n in live if n.standing),
             }})
 
+    def weekly(self, weeks=8) -> Result:
+        """Conversations served in each of the last `weeks` weeks, oldest first."""
+        try:
+            rows = self.ledger.weekly(weeks)
+        except Exception:  # an unreadable ledger costs the bars, not the page
+            rows = []
+        total = sum(r["conversations"] for r in rows)
+        return Result(f"{total} conversation(s) in {len(rows)} week(s).", {"weeks": rows})
+
+    def recap(self, since) -> Result:
+        """What happened since an ISO moment: what went in on its own (with the undo point
+        that takes each back), what people decided, what came in by source, the projects that
+        moved, and the questions the brain could not answer (recap.py)."""
+        from . import recap
+        return recap.since(self, since)
+
+    def builtin_skills(self) -> Result:
+        """The skills every brain comes with, and whether this one has each (builtin.py)."""
+        from . import builtin
+        have = set(self.state().index.skills)
+        rows = [{"name": s["name"], "category": s["category"], "description": s["description"],
+                 "installed": s["name"] in have} for s in builtin.available()]
+        missing = [r["name"] for r in rows if not r["installed"]]
+        return Result(f"{len(rows) - len(missing)} of {len(rows)} built-in skills.",
+                      {"skills": rows, "missing": missing})
+
+    def add_builtin_skills(self, names=None, **kwargs) -> Result:
+        """Add the built-in skills this brain is missing, as one undo point (builtin.py)."""
+        from . import builtin
+        return self._write(lambda: builtin.install(self, names=names, **kwargs))
+
+    def goals(self) -> Result:
+        """The questions about what this brain is for, and the owner's answers (goals.py)."""
+        from . import goals
+        found = goals.read(self)
+        return Result(found["text"] or "No goals yet.", found)
+
+    def set_goals(self, answers, **kwargs) -> Result:
+        """The owner sets the brain's goals: the purpose (standing) and every answer, one undo
+        point (goals.py)."""
+        from . import goals
+        return self._write(lambda: goals.write(self, answers, **kwargs))
+
+    def move_in(self, sources, *, name="", principal=None) -> Result:
+        """Read what an AI app already knows (a memory list, an instruction file, pasted text)
+        into ideas checked against the brain. Writes nothing (movein.py)."""
+        from . import movein
+        return movein.analyze(self, sources, name=name, principal=principal)
+
     # ------------------------------------------------------------------ after writes
     def after_write(self, paths, message) -> dict:
         """Refresh derived files and record the change in git, per brain.json policy. Inside

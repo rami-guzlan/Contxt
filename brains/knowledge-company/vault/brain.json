@@ -2,6 +2,7 @@
   "schema": 1,
   "name": "Brightmill Marketing",
   "description": "Demo: the marketing Brain of Brightmill, a made-up knowledge company for manufacturing operations leaders.",
+  "starter": "knowledge-company",
   "owner": "person:jordan",
   "structure": {
     "scope_levels": [

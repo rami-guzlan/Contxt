@@ -2,6 +2,7 @@
   "schema": 1,
   "name": "Kai's Dev Brain",
   "description": "Demo: the Brain of Kai Tanaka, a made-up backend engineer, for the coding assistants Kai works with.",
+  "starter": "programmer",
   "owner": "person:kai",
   "structure": {
     "scope_levels": [

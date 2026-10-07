@@ -408,6 +408,48 @@ class BrainPort(Protocol):
 
     def set_policies(self, changes: dict[str, Any]) -> dict[str, Any]: ...
 
+    # ---- keeping up: what happened, what the Brain is for, what it comes with
+
+    def propose_many(self, items: list[dict[str, Any]], *, proposer: str) -> list[BrainProposal]:
+        """Many proposals as one change; each item takes `propose`'s keyword arguments (and
+        `extra`, details the Brain keeps on the proposal)."""
+        ...
+
+    def recap(self, since: str) -> dict[str, Any]:
+        """What happened since an ISO moment: what went in on its own (each with the undo point
+        that takes it back), what people decided, what came in by source, the projects that
+        moved, and how many requests the Brain could not answer."""
+        ...
+
+    def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
+        """Conversations the Brain served in each of the last `weeks` weeks, oldest first:
+        [{"start", "end", "conversations", "packets"}]."""
+        ...
+
+    def goals(self) -> dict[str, Any]:
+        """The questions about what the Brain is for, and the owner's answers: {"questions",
+        "answers", "exists", "updated", "text"}."""
+        ...
+
+    def set_goals(self, answers: dict[str, str]) -> dict[str, Any]:
+        """Set the Brain's goals as its owner, as one undo point."""
+        ...
+
+    def builtin_skills(self) -> dict[str, Any]:
+        """The skills every Brain comes with: {"skills": [{"name", "installed", ...}],
+        "missing"}."""
+        ...
+
+    def add_builtin_skills(self, names: list[str] | None = None) -> dict[str, Any]:
+        """Add the built-in skills the Brain is missing, as one undo point."""
+        ...
+
+    def move_in(self, sources: list[dict[str, Any]], *, name: str = "") -> dict[str, Any]:
+        """Read what an AI app already knows (memories, instruction files, pasted text) into
+        ideas checked against the Brain: {"sources", "ideas", "stages", "examples"}. Writes
+        nothing."""
+        ...
+
 
 class NoBrain:
     """The workspace without long-term context. Nothing breaks; nothing is remembered."""
@@ -544,6 +586,38 @@ class NoBrain:
 
     def set_policies(self, changes: dict[str, Any]) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain.")
+
+    def propose_many(self, items: list[dict[str, Any]], *, proposer: str) -> list[BrainProposal]:
+        raise Conflict("This workspace has no Brain to propose long-term context to.")
+
+    def recap(self, since: str) -> dict[str, Any]:
+        return {
+            "since": since,
+            "went_in": [],
+            "went_in_total": 0,
+            "decided": {},
+            "came_in": {"total": 0, "by_source": {}, "waiting": 0},
+            "projects": [],
+            "gaps": 0,
+        }
+
+    def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
+        return []
+
+    def goals(self) -> dict[str, Any]:
+        return {"questions": [], "answers": {}, "exists": False, "updated": None, "text": ""}
+
+    def set_goals(self, answers: dict[str, str]) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep goals in.")
+
+    def builtin_skills(self) -> dict[str, Any]:
+        return {"skills": [], "missing": []}
+
+    def add_builtin_skills(self, names: list[str] | None = None) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep skills in.")
+
+    def move_in(self, sources: list[dict[str, Any]], *, name: str = "") -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to move into.")
 
 
 class TextExtractor(Protocol):

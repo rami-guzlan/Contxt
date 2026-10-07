@@ -524,9 +524,11 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(app.data["status"], "applied")
 
     def test_defaults_and_refusals(self):
+        # Without a preset a Brain is careful: only files go in at once (test_presets.py).
         policy = self.brain.policies().data["capture"]
         self.assertEqual(policy["rule"]["chat"], "wait")
-        self.assertEqual(policy["decision"]["chat"], "apply")
+        self.assertEqual(policy["decision"]["chat"], "wait")
+        self.assertEqual(policy["file"]["chat"], "apply")
         bad = self.brain.set_policies({"capture": {"gossip": {"chat": "apply"}}},
                                       actor="person:alex")
         self.assertTrue(bad.is_error)

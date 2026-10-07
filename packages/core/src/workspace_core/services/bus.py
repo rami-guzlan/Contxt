@@ -62,6 +62,23 @@ def active_run(tx: Tx, who: Principal, run_id: str) -> dict[str, Any]:
     return run
 
 
+def _left_out(value: Any) -> list[dict[str, str]]:
+    """What a run left out, checked: [{statement, why}], at most 50."""
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ValidationFailed("left_out is a list of {statement, why}.", field="left_out")
+    out = []
+    for item in value[:50]:
+        data = item if isinstance(item, dict) else {"statement": item}
+        statement = " ".join(str(data.get("statement") or "").split())[:400]
+        if statement:
+            out.append(
+                {"statement": statement, "why": " ".join(str(data.get("why") or "").split())[:200]}
+            )
+    return out
+
+
 class Bus:
     def __init__(self, rt: Runtime, system_actor_id: str) -> None:
         self.rt = rt
@@ -333,10 +350,14 @@ class Bus:
         summary: str = "",
         outcome: str = "succeeded",
         idempotency_key: str | None = None,
+        left_out: list[dict[str, Any]] | None = None,
     ) -> Run:
-        """Close the run and release the lease; the task moves to review, done or failed."""
+        """Close the run and release the lease; the task moves to review, done or failed.
+        `left_out` is what a run that pulls context considered and did not keep, each with
+        why, so the person can still pull it."""
         if outcome not in OUTCOMES:
             raise ValidationFailed("Outcome is 'succeeded' or 'failed'.", field="outcome")
+        skipped = _left_out(left_out)
         request = {"run_id": run_id, "summary": summary, "outcome": outcome}
         with self.rt.write() as tx:
             prior = recall(tx, who, idempotency_key, "runs.complete", request)
@@ -353,7 +374,8 @@ class Bus:
                 {
                     "status": final,
                     "finished_at": tx.now,
-                    "outcome": {"result": outcome, "summary": summary},
+                    "outcome": {"result": outcome, "summary": summary}
+                    | ({"left_out": skipped} if skipped else {}),
                 },
             )
             tx.emit(

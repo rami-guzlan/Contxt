@@ -33,7 +33,10 @@ def test_setup_follows_the_workspace_and_keeps_its_moments(owner, model):
         )
     )
     assert renamed["name"] == "Sam Lee"
-    assert [s["id"] for s in start["steps"]] == ["you", "ai", "brain", "project", "file"]
+    assert [s["id"] for s in start["steps"]] == ["you", "goals", "ai", "brain", "project", "file"]
+    assert done(start)["goals"] is False
+    owner.ok(owner.put("/api/brain/goals", json={"answers": {"purpose": "Run the studio."}}))
+    assert done(owner.ok(owner.get("/api/onboarding")))["goals"] is True
     made = owner.ok(
         owner.post(
             "/api/brain/projects",

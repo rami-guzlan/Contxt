@@ -2,7 +2,7 @@
 
 faster-whisper (CTranslate2) with an English Whisper model kept in the Brain's model folder,
 beside the embedding model. The server never downloads a model on its own: the owner asks for it
-(Settings, AI apps, or `workspace speech --download`), and until then spoken captures wait. No
+(Settings, AI apps, or `contxt speech --download`), and until then spoken captures wait. No
 audio leaves this computer.
 
 A talk (a few seconds to a few minutes) is transcribed greedily, for speed; a recording with a

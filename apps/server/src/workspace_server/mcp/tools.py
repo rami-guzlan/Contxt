@@ -122,6 +122,7 @@ def complete_task(
         summary=str(args.get("summary") or ""),
         outcome=str(args.get("outcome") or "succeeded"),
         idempotency_key=_str(args, "idempotency_key"),
+        left_out=args.get("left_out") if isinstance(args.get("left_out"), list) else None,
     )
     task = ws.tasks.get(who, run.task_id)
     after = {
@@ -259,6 +260,8 @@ def propose_brain_entry(
         topic=_str(args, "topic"),
         revises=_str(args, "revises"),
         summary=_str(args, "summary"),
+        goal=_str(args, "goal"),
+        project=_str(args, "project"),
     )
     return result.message, {"proposal": asdict(result)}
 
@@ -274,6 +277,9 @@ def save_digest(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[st
         actions=list(args.get("actions") or []),
         questions=list(args.get("questions") or []),
         people=list(args.get("people") or []),
+        about=str(args.get("about") or ""),
+        new_project=str(args.get("new_project") or ""),
+        off_goal=str(args.get("off_goal") or ""),
     )
     return (
         f"Saved the digest ({len(digest['points'])} key points). It is shown beside the item; "
@@ -423,6 +429,19 @@ TOOLS: dict[str, Tool] = {
                     "run_id": RUN,
                     "summary": {"type": "string"},
                     "outcome": {"type": "string", "enum": ["succeeded", "failed"]},
+                    "left_out": {
+                        "type": "array",
+                        "description": "When the task pulls context: what you considered and "
+                        "did not propose, each with why, so the person can still pull it.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "statement": {"type": "string"},
+                                "why": {"type": "string"},
+                            },
+                            "required": ["statement"],
+                        },
+                    },
                     "idempotency_key": KEY,
                 },
                 ["run_id"],
@@ -542,6 +561,16 @@ TOOLS: dict[str, Tool] = {
                         "(a change to that entry, not a new one). The statement is the entry's "
                         "whole new text.",
                     },
+                    "goal": {
+                        "type": "string",
+                        "description": "The owner's goal it serves, in a few words, from their "
+                        "goals for the Brain.",
+                    },
+                    "project": {
+                        "type": "string",
+                        "description": "The id of the active project it belongs to: it is kept "
+                        "with that project.",
+                    },
                     "run_id": {
                         "type": "string",
                         "description": "The run_id from claim_task, when proposing as part of "
@@ -590,6 +619,11 @@ TOOLS: dict[str, Tool] = {
                                     "clashes with.",
                                 },
                                 "why": {"type": "string"},
+                                "serves": {
+                                    "type": "string",
+                                    "description": "The project it moves forward, or "
+                                    '"goals" when it serves what the Brain is for without one.',
+                                },
                             },
                             "required": ["text", "fit"],
                         },
