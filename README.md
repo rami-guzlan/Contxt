@@ -36,21 +36,31 @@ MCP client) reads the part each request needs and saves what it learns, for your
 
 ## Quick start
 
-You need [git](https://git-scm.com/), [uv](https://docs.astral.sh/uv/) and
-[Node.js](https://nodejs.org/) 20+.
+You need [git](https://git-scm.com/) and [uv](https://docs.astral.sh/uv/), which brings its
+own Python. To install uv:
+
+- macOS and Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Windows (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+
+Then, in a terminal:
 
 ```bash
 git clone https://github.com/rami-guzlan/Contxt.git
 cd Contxt
 uv sync
-npm install
-npm run build
+uv run contxt web --download
 uv run contxt setup
+uv run contxt check
 uv run contxt serve
 ```
 
-`setup` makes your Brain (from the empty starter) and the folders beside it. `serve` starts
-the app on `http://127.0.0.1:8787` and prints your sign-in link. Then connect your AI:
+- `web --download` fetches this version's built web app and checks it. Building it yourself
+  instead takes [Node.js](https://nodejs.org/) 20+: `npm install`, then `npm run build`.
+- `setup` makes your Brain (from the empty starter) and the folders beside it.
+- `check` confirms everything works, and says what to fix when something does not.
+- `serve` starts the app on `http://127.0.0.1:8787` and prints your sign-in link.
+
+Then connect your AI:
 
 ```bash
 uv run contxt connect claude-code
@@ -62,7 +72,8 @@ apps**:
 
 ![Connecting an AI app to the Brain](docs/images/connect.png)
 
-The full walkthrough, including Windows notes and Docker, is in [docs/setup.md](docs/setup.md).
+The full walkthrough, with Docker and what to do when something goes wrong, is in
+[docs/setup.md](docs/setup.md).
 
 ## Try a demo Brain
 

@@ -237,6 +237,18 @@ def start_history(brain: str, message: str) -> None:
         raise HomeError(f"git commit failed in {brain}: {done.stderr.strip()}")
 
 
+def write_startup_files(brain: str) -> None:
+    """The Brain's own CLAUDE.md and AGENTS.md (what an agent working in its folder reads
+    first), so a new Brain starts with none missing."""
+    from brainkit.api import Brain
+
+    engine = Brain(os.path.join(brain, "vault"), embeddings=False, repo_root=brain)
+    try:
+        engine.write_kernel()
+    finally:
+        engine.close()
+
+
 def env_text(*, name: str, port: int, timezone: str | None) -> str:
     lines = [
         "# Contxt settings for this folder. Paths are relative to this file's folder.",
@@ -277,6 +289,7 @@ def create_home(
     )
     for folder in ("data", "outputs"):
         os.makedirs(os.path.join(home, folder), exist_ok=True)
+    write_startup_files(brain)
     start_history(brain, f"A new Brain from the {starter.id} starter")
     env = os.path.join(home, ".env")
     if not os.path.isfile(env):

@@ -1,0 +1,52 @@
+name: Release
+
+# A version tag (v0.1.0) publishes a GitHub release carrying the built web app, so running
+# Contxt needs no Node.js: `uv run contxt web --download` fetches it and checks its checksum.
+# Run by hand, it builds the same files as an artifact without releasing anything.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    name: Built web app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches the app's version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' packages/core/src/workspace_core/__init__.py)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || {
+            echo "Tag $GITHUB_REF_NAME does not match the app's version $version."; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Package it with its checksum
+        run: |
+          (cd apps/web/dist && zip -qr ../../../web-dist.zip .)
+          sha256sum web-dist.zip > web-dist.zip.sha256
+          cat web-dist.zip.sha256
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" web-dist.zip web-dist.zip.sha256
+          --title "Contxt $GITHUB_REF_NAME" --generate-notes
+      - name: Keep the files (run by hand)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: |
+            web-dist.zip
+            web-dist.zip.sha256

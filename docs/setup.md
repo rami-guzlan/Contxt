@@ -5,20 +5,23 @@ gets you there in about ten minutes.
 
 ## 1. Install
 
-You need [git](https://git-scm.com/), [uv](https://docs.astral.sh/uv/) (it brings Python
-3.12+), and [Node.js](https://nodejs.org/) 20 or newer to build the web app once.
+You need [git](https://git-scm.com/) and [uv](https://docs.astral.sh/uv/), which brings Python
+3.12+. To install uv:
+
+- macOS and Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Windows (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
 ```bash
 git clone https://github.com/rami-guzlan/Contxt.git
 cd Contxt
 uv sync
-npm install
-npm run build
+uv run contxt web --download
 ```
 
-On Windows, run the same commands in PowerShell, one per line. If `uv sync` stops with
-"Failed to update Windows PE resources", antivirus is scanning a file uv just wrote: run it
-again until it finishes (each try gets further).
+`web --download` fetches this version's built web app from its GitHub release and checks it
+against its checksum. To build it yourself instead, you need [Node.js](https://nodejs.org/)
+20+: `npm install`, then `npm run build`. On Windows, run the commands in PowerShell, one per
+line.
 
 ## 2. Make your Brain
 
@@ -44,6 +47,16 @@ that is already there.
 
 To keep a Brain somewhere else (a synced folder, say), give setup another home:
 `uv run contxt --home D:\MyContxt setup`, then pass the same `--home` to the other commands.
+
+Then see that everything works:
+
+```bash
+uv run contxt check
+```
+
+It checks git, your Brain's health, that an AI app can connect to it (it starts the Brain's
+MCP server and asks for its tools, as Claude would), the web app, the local models and the
+port, and gives the one command that fixes anything missing.
 
 ## 3. Start the app
 
@@ -149,3 +162,22 @@ An install from before the app became Contxt keeps everything it held (goals, to
 meetings, project memory, sheets, canvases). **Settings, Workspace, Your earlier workspace**
 copies it all out as files and brings its context into the Brain. `uv run contxt
 export-legacy` makes the same copy from the command line.
+
+## When something goes wrong
+
+Start with `uv run contxt check`: it names what is missing and how to fix it.
+
+- **`uv sync` stops with "Failed to update Windows PE resources"** (Windows): antivirus is
+  scanning a launcher uv just wrote. Run it again; each try gets further. If it keeps failing,
+  point uv's temporary folder inside the repository first:
+  `$env:TMP = "$PWD\.tmp"; $env:TEMP = $env:TMP` (PowerShell), then `uv sync` again.
+- **"invalid peer certificate" or CERTIFICATE_VERIFY_FAILED** (a company network that
+  inspects TLS): run `uv sync --native-tls` so uv trusts your system's certificates. Contxt's
+  own downloads (the web app, the models) already use them.
+- **"The web app is not built yet"**: `uv run contxt web --download`, or build it with
+  Node.js (`npm install`, then `npm run build`), then reload the page.
+- **The port is taken**: set `CONTXT_PORT` in `.env` to a free port, or stop what uses it.
+- **An AI app does not show the Brain**: run `uv run contxt connect <app>` again and compare
+  with what you added; then restart the app fully (Claude Desktop: quit it from the tray or
+  menu bar, not just the window). `contxt check` tells you whether the Brain's server answers.
+- **`pytest` is not found** (Windows, after an interrupted install): `uv run python -m pytest`.

@@ -3,7 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays: the install check on every system
 
 permissions:
   contents: read
@@ -88,3 +92,49 @@ jobs:
         run: scripts/docker-smoke.sh
       - if: always()
         run: docker compose down -v
+
+  install:
+    # What a new user does, on each system: install, make a Brain, check it, connect, serve.
+    # Windows and macOS minutes cost more on a private repository, so this runs for pull
+    # requests, version tags, by hand and weekly, not on every push to main.
+    name: Install and connect (${{ matrix.os }})
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Make a Brain from a demo starter
+        run: uv run contxt setup --brain personal
+      - name: Check it, including an MCP handshake with the Brain
+        run: uv run contxt check
+      - name: Print how each AI app connects
+        run: uv run contxt connect
+      - name: Serve, and answer on the network
+        # The server runs from the environment directly, not through `uv run`: a uv process
+        # left running holds uv's cache lock, and the cache step after the job then waits
+        # for it until it times out. The server stops when this step ends, pass or fail.
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then bin=.venv/Scripts; else bin=.venv/bin; fi
+          "$bin/contxt" serve --port 8799 --no-worker > serve.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:8799/api/health; then exit 0; fi
+            sleep 2
+          done
+          tail -n 40 serve.log
+          exit 1
+      - name: Every Python test on this system
+        if: runner.os != 'Linux' # Linux runs them in the Python job
+        run: uv run python -m pytest -q

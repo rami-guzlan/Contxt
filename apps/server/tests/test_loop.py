@@ -227,7 +227,7 @@ def test_search_covers_the_brain_its_projects_and_your_notes(owner, note):
 
 def test_without_a_web_build_the_root_explains_itself(client):
     page = client.get("/")
-    assert page.status_code == 200 and "web app is not built" in page.text
+    assert page.status_code == 200 and "The web app is not here yet" in page.text
     assert client.get("/api/nope").status_code == 404
 
 

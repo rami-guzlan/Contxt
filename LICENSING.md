@@ -25,8 +25,8 @@ discussion are welcome.
 ## Before the public release
 
 1. Legal review of the license and its notice.
-2. Third-party notices generated from the locked dependencies (`uv.lock`, `package-lock.json`)
-   and checked against this license.
+2. Third-party notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), generated from the
+   locked dependencies by `scripts/third_party_notices.py`, with its "For review" list checked.
 3. The product's public name chosen and checked, and a trademark policy so forks do not imply
    they are the official product.
 4. Copyright registered at publication.
