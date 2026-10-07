@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python (lint, types, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check apps packages/core packages/connectors
+      - run: uv run mypy
+      - run: uv run pytest
+
+  postgres:
+    name: Core on PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      CONTXT_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run pytest packages/core/tests
+
+  web:
+    name: Web (types, tests, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    needs: [python, web]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build app
+      - name: Start and check health
+        run: |
+          cp .env.example .env
+          docker compose up -d app
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/api/health; then exit 0; fi
+            sleep 2
+          done
+          docker compose logs app
+          exit 1
+      # Linux enforces ownership on bind mounts: prove an export, a committed Brain change and a
+      # restore work with folders the runner's user owns, the containers running as that user.
+      - name: Run as the runner's user with folders it owns
+        run: scripts/docker-smoke.sh
+      - if: always()
+        run: docker compose down -v

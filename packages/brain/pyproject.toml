@@ -1,0 +1,23 @@
+[project]
+name = "ai-brain"
+version = "2.1.0"
+description = "Governed long-term context for AI work: scoped knowledge, Focus state, capture, and context packets over MCP, a CLI, HTTP or Python."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+tokens = ["tiktoken>=0.7"]
+embeddings = ["fastembed>=0.3"]
+documents = ["pypdf>=4.0"]
+full = ["tiktoken>=0.7", "fastembed>=0.3", "pypdf>=4.0"]
+
+[project.scripts]
+brain = "brainkit.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/brainkit"]

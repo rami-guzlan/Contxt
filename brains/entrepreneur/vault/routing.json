@@ -1,0 +1,33 @@
+{
+  "house_style_notes": [
+    "assistant-working-style"
+  ],
+  "house_style_topics": [
+    "assistant/working-style"
+  ],
+  "permission_topics": [
+    "me/principles"
+  ],
+  "topics": {
+    "ventures/brewbox": {
+      "requires_any": [
+        "brewbox",
+        "coffee",
+        "shut",
+        "postmortem",
+        "lessons",
+        "last company",
+        "past"
+      ]
+    },
+    "investing/portfolio": {
+      "requires_any": [
+        "portfolio",
+        "angel",
+        "invested",
+        "backed",
+        "checks"
+      ]
+    }
+  }
+}

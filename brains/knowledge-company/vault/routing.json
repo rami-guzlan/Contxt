@@ -1,0 +1,37 @@
+{
+  "house_style_notes": [
+    "brand-voice-plant-manager",
+    "brand-style-punctuation",
+    "brand-claims-sourced"
+  ],
+  "house_style_topics": [
+    "brand/voice",
+    "brand/style",
+    "brand/claims"
+  ],
+  "permission_topics": [
+    "marketing/approvals"
+  ],
+  "topics": {
+    "sales/handoff": {
+      "requires_any": [
+        "lead",
+        "leads",
+        "sales",
+        "crm",
+        "handoff",
+        "sam"
+      ]
+    },
+    "brand/visuals": {
+      "fit_terms": [
+        "color",
+        "colors",
+        "font",
+        "logo",
+        "photo",
+        "design"
+      ]
+    }
+  }
+}

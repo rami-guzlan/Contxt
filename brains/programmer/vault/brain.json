@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "name": "Kai's Dev Brain",
+  "description": "Demo: the Brain of Kai Tanaka, a made-up backend engineer, for the coding assistants Kai works with.",
+  "owner": "person:kai",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "assistant": {
+        "label": "Assistant",
+        "order": 1,
+        "description": "how the coding assistant works with Kai"
+      },
+      "me": {
+        "label": "Me",
+        "order": 2,
+        "description": "Kai's machine, tools and preferences"
+      },
+      "stack": {
+        "label": "Stack",
+        "order": 3,
+        "description": "languages, frameworks, databases and tools Kai uses"
+      },
+      "practices": {
+        "label": "Practices",
+        "order": 4,
+        "description": "code style, testing, git, reviews and secrets"
+      },
+      "work": {
+        "label": "Work",
+        "order": 5,
+        "description": "the day job: Parcelwise, its services, deploys, on-call"
+      },
+      "people": {
+        "label": "People",
+        "order": 6,
+        "description": "who is who"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "side projects and learning notes"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:kai": {
+      "parent": "company",
+      "label": "Kai Tanaka"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:kai",
+    "auto_apply_own_scope": true
+  },
+  "kernel": {
+    "action_policy": "Ask before anything that is hard to undo: deleting files or branches, force pushes, migrations, deploys, publishing a release. Local edits and tests may proceed."
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

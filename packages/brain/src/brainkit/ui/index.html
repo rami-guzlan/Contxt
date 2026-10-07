@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brain</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e3e0;
+  --accent: #3d5afe; --ok: #1b8a4b; --warn: #b26a00; --bad: #c62828; --code: #f1f1ee;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151517; --panel: #1f1f22; --ink: #ececef; --muted: #9a9aa2; --line: #2e2e33;
+          --accent: #7c8cff; --ok: #4cc281; --warn: #f0a93b; --bad: #ff6b6b; --code: #26262a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+       background: var(--bg); color: var(--ink); }
+header { display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+         border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+header .meta { color: var(--muted); font-size: 12px; }
+nav { display: flex; gap: 4px; margin-left: auto; }
+nav button { border: 0; background: transparent; color: var(--muted); padding: 6px 12px;
+             border-radius: 6px; cursor: pointer; font: inherit; }
+nav button.active { background: var(--bg); color: var(--ink); font-weight: 600; }
+nav .badge { background: var(--accent); color: #fff; border-radius: 10px; padding: 0 6px;
+             font-size: 11px; margin-left: 4px; }
+main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+        padding: 16px; margin-bottom: 14px; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.pill { display: inline-block; border: 1px solid var(--line); border-radius: 999px;
+        padding: 0 8px; font-size: 12px; color: var(--muted); }
+.pill.ok { color: var(--ok); border-color: var(--ok); }
+.pill.warn { color: var(--warn); border-color: var(--warn); }
+.pill.bad { color: var(--bad); border-color: var(--bad); }
+h2 { font-size: 16px; margin: 0 0 8px; }
+h3 { font-size: 14px; margin: 0 0 6px; }
+textarea, input, select { width: 100%; font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+textarea { min-height: 110px; resize: vertical; }
+button.primary, button.secondary, button.danger { border-radius: 6px; padding: 6px 14px;
+  font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--panel);
+  color: var(--ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { color: var(--bad); border-color: var(--bad); }
+pre { background: var(--code); padding: 12px; border-radius: 8px; overflow: auto;
+      white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
+.cols { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+.list { max-height: 70vh; overflow: auto; }
+.list a { display: block; padding: 6px 8px; border-radius: 6px; color: var(--ink);
+          text-decoration: none; }
+.list a:hover, .list a.sel { background: var(--bg); }
+.diff { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--ink); color: var(--bg);
+         padding: 10px 14px; border-radius: 8px; max-width: 420px; display: none; }
+@media (max-width: 760px) { .cols, .diff { grid-template-columns: 1fr; } nav { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="name">Brain</h1>
+    <div class="meta" id="line">connecting...</div>
+  </div>
+  <nav id="tabs">
+    <button data-tab="inbox">Inbox<span class="badge" id="pending" hidden></span></button>
+    <button data-tab="focus">Focus</button>
+    <button data-tab="knowledge">Knowledge</button>
+    <button data-tab="context">Context</button>
+    <button data-tab="health">Health</button>
+  </nav>
+</header>
+<main id="view"></main>
+<div class="toast" id="toast"></div>
+<script>
+const params = new URLSearchParams(location.hash.slice(1));
+if (params.get("token")) {
+  sessionStorage.setItem("brain-token", params.get("token"));
+  history.replaceState(null, "", location.pathname);
+}
+const TOKEN = sessionStorage.getItem("brain-token") || "";
+const view = document.getElementById("view");
+const statusClass = (s) => ({active: "ok", blocked: "bad", paused: "warn", waiting: "warn"}[String(s || "").toLowerCase()] || "");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;",
+  ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+
+async function api(path, body) {
+  const options = {headers: {"X-Brain-Token": TOKEN}};
+  if (body !== undefined) {
+    options.method = "POST";
+    options.headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const res = await fetch("/api/" + path, options);
+  const data = await res.json().catch(() => ({error: "bad response"}));
+  if (res.status === 401) throw new Error("Not authorized: reopen the URL printed by brain.py serve.");
+  return data;
+}
+function toast(message) {
+  const el = document.getElementById("toast");
+  el.textContent = message; el.style.display = "block";
+  clearTimeout(el._t); el._t = setTimeout(() => (el.style.display = "none"), 4000);
+}
+
+async function refreshStatus() {
+  const s = await api("status");
+  document.getElementById("name").textContent = s.name || "Brain";
+  document.getElementById("line").textContent = `${s.notes} notes, ${s.skills} skills, ` +
+    `${s.focuses} Focus items, kernel ${s.kernel}, ` +
+    (s.ok ? "healthy" : `${s.problems} problem(s)`);
+  const badge = document.getElementById("pending");
+  badge.hidden = !s.pending; badge.textContent = s.pending;
+  document.title = s.pending ? `(${s.pending}) ${s.name}` : s.name;
+}
+
+// ------------------------------------------------------------------ inbox
+let _layout = null;   // {areas: [{key, label}], topics: [{key, area, ...}]}
+async function layout() {
+  if (!_layout) {
+    const res = await api("topics");
+    _layout = {areas: (res.data && res.data.areas) || [], topics: (res.data && res.data.topics) || []};
+  }
+  return _layout;
+}
+function placementFields(prefix, area, topic, title, withTitle) {
+  const areas = (_layout && _layout.areas) || [];
+  const topics = ((_layout && _layout.topics) || []).map((t) => t.key.split("/")[1]);
+  return `<div class="row" style="margin-top:8px">
+      <select id="${prefix}-area" style="width:auto">${areas.map((a) => `<option value="${esc(a.key)}" ${a.key === area ? "selected" : ""}>${esc(a.label)}</option>`).join("")}</select>
+      <input id="${prefix}-topic" list="topic-names" value="${esc(topic || "")}" placeholder="topic" style="width:200px">
+      ${withTitle ? `<input id="${prefix}-title" class="grow" value="${esc(title || "")}" placeholder="Title: what the note is for">` : ""}
+    </div><datalist id="topic-names">${[...new Set(topics)].map((t) => `<option value="${esc(t)}">`).join("")}</datalist>`;
+}
+
+async function showInbox() {
+  const res = await api("inbox");
+  const rows = (res.data && res.data.proposals) || [];
+  if (!rows.length) { view.innerHTML = `<div class="card"><h2>Inbox</h2><p class="muted">Nothing waiting.</p></div>`; return; }
+  await layout();
+  view.innerHTML = rows.map((p, i) => {
+    const [area, topic] = String(p.route_key || "/").split("/");
+    return `
+    <div class="card" data-id="${esc(p.id)}">
+      <div class="row">
+        <h3 class="grow">${esc(p.title || p.id)}</h3>
+        <span class="pill">${esc(p.kind)}</span><span class="pill">${esc(p.route_key)}</span>
+        <span class="pill">${esc(p.scope)}</span>
+      </div>
+      <div class="small muted"><code>${esc(p.id)}</code> proposed ${esc(p.created)} by ${esc(p.proposer)}${p.reason ? " | " + esc(p.reason) : ""}</div>
+      ${p.note_summary ? `<div class="small">${esc(p.note_summary)}</div>` : ""}
+      ${p.suggested ? `<div class="small" style="color:var(--warn)">New topic. Closest existing: ${esc(p.suggested)}</div>` : ""}
+      ${(p.files || []).length ? `<div class="small" style="margin-top:6px"><b>${p.kind === "file.add" ? "File" : "Files"}:</b> ${p.files.map((f) => `<code>${esc(f.path)}</code> <span class="muted">${Number(f.size).toLocaleString()} bytes</span>`).join(", ")}${p.files.some((f) => /\.(py|js|mjs|cjs|ts|sh|ps1)$/i.test(f.path)) ? ' <span class="pill warn">contains scripts: review before approving</span>' : ""}</div>` : ""}
+      ${p.preview ? `<details style="margin-top:6px"><summary class="small">Document text (opening)</summary><pre>${esc(p.preview)}</pre></details>` : ""}
+      ${p.similar ? `<div class="small muted">Similar notes: ${esc(p.similar)}</div>` : ""}
+      ${p.kind === "note.create" || p.kind === "file.add" ? placementFields("place-" + i, area, topic, p.title, true) : ""}
+      ${p.current_body ? `<div class="diff" style="margin-top:10px"><div><div class="small muted">Current</div><pre>${esc(p.current_body)}</pre></div><div><div class="small muted">Proposed (editable)</div><textarea id="body-${i}">${esc(p.body)}</textarea></div></div>`
+        : `<div style="margin-top:10px"><textarea id="body-${i}">${esc(p.body)}</textarea></div>`}
+      <div class="row" style="margin-top:10px">
+        <input id="reason-${i}" class="grow" placeholder="Reason (for a rejection)">
+        <button class="danger" onclick="decide(${i}, 'reject')">Reject</button>
+        <button class="primary" onclick="decide(${i}, 'approve')">Approve</button>
+      </div>
+    </div>`;}).join("");
+  window._inbox = rows;
+}
+async function decide(i, action) {
+  const p = window._inbox[i];
+  const body = document.getElementById("body-" + i).value;
+  const item = {id: p.id, action};
+  if (action === "approve" && body.trim() !== p.body.trim()) item.body = body;
+  const areaEl = document.getElementById(`place-${i}-area`);
+  if (action === "approve" && areaEl) {
+    const [area, topic] = String(p.route_key || "/").split("/");
+    const edits = {};
+    const newArea = areaEl.value, newTopic = document.getElementById(`place-${i}-topic`).value.trim();
+    const newTitle = document.getElementById(`place-${i}-title`).value.trim();
+    if (newArea !== area) edits[p.target && p.target.layer && !p.target.area ? "layer" : "area"] = newArea;
+    if (newTopic && newTopic !== topic) edits.topic = newTopic;
+    if (newTitle && newTitle !== (p.title || "")) edits.title = newTitle;
+    if (Object.keys(edits).length) item.edits = edits;
+  }
+  if (action === "reject") item.reason = document.getElementById("reason-" + i).value;
+  const res = await api("inbox/decide", {decisions: [item]});
+  toast(res.data && res.data.results ? res.data.results[0].message : (res.text || res.error));
+  await refreshStatus(); showInbox();
+}
+
+// ------------------------------------------------------------------ focus
+async function showFocus(selected) {
+  const res = await api("focus");
+  const rows = (res.data && res.data.focuses) || [];
+  view.innerHTML = `<div class="cols"><div class="card list" id="flist">${rows.map((f) => `
+      <a href="#" data-id="${esc(f.id)}" class="${f.id === selected ? "sel" : ""}">
+        <div>${esc(f.title)}</div>
+        <div class="small muted"><span class="pill ${statusClass(f.status)}">${esc(f.status)}</span> ${esc((f.updated || "").slice(0, 10))}</div>
+      </a>`).join("")}
+      <div style="margin-top:12px"><button class="secondary" onclick="newFocus()">New Focus</button></div>
+    </div><div id="fdetail"><div class="card muted">Select a Focus.</div></div></div>`;
+  document.querySelectorAll("#flist a").forEach((a) => a.onclick = (e) => {
+    e.preventDefault(); showFocus(a.dataset.id); });
+  if (selected) focusDetail(selected);
+}
+async function focusDetail(id) {
+  const res = await api("focus/" + encodeURIComponent(id));
+  const d = res.data || {}; const f = d.focus || {};
+  document.getElementById("fdetail").innerHTML = `
+    <div class="card"><div class="row"><h2 class="grow">${esc(f.title)}</h2><span class="pill ${statusClass(f.status)}">${esc(f.status)}</span></div>
+      <p><b>Current:</b> ${esc(f.current || "")}</p><p><b>Blockers:</b> ${esc(f.blockers || "none")}</p>
+      <p><b>Next:</b> ${esc(f.next || "")}</p></div>
+    <div class="card"><h3>Record an update</h3>
+      <input id="u-summary" placeholder="One-line summary (required)">
+      <div class="row" style="margin-top:8px">
+        <select id="u-status" style="width:auto"><option value="">status unchanged</option><option>active</option><option>blocked</option><option>paused</option><option>done</option></select>
+        <input id="u-next" class="grow" placeholder="Next (optional)">
+      </div>
+      <textarea id="u-current" style="min-height:60px;margin-top:8px" placeholder="Current state (optional)"></textarea>
+      <input id="u-blockers" style="margin-top:8px" placeholder="Blockers (optional)">
+      <div class="row" style="margin-top:8px"><span class="grow"></span><button class="primary" onclick="saveUpdate('${esc(id)}')">Append update</button></div></div>
+    <div class="card"><h3>Journal</h3>${(d.updates || []).slice().reverse().map((u) => `
+      <div style="margin-bottom:8px"><div class="small muted">${esc(u.at)} #${u.seq}</div><div>${esc(u.summary)}</div></div>`).join("") || '<p class="muted">No updates yet.</p>'}</div>
+    <div class="card"><h3>Baseline</h3><pre>${esc(d.baseline)}</pre></div>`;
+}
+async function saveUpdate(id) {
+  const summary = document.getElementById("u-summary").value.trim();
+  if (!summary) return toast("A summary is required.");
+  const changes = {};
+  for (const key of ["status", "next", "current", "blockers"]) {
+    const v = document.getElementById("u-" + key).value.trim(); if (v) changes[key] = v; }
+  const res = await api(`focus/${encodeURIComponent(id)}/update`, {summary, changes});
+  toast(res.text || res.error); showFocus(id);
+}
+async function newFocus() {
+  const name = prompt("Focus name"); if (!name) return;
+  const summary = prompt("One-line summary of the work"); if (!summary) return;
+  const res = await api("focus", {name, summary});
+  toast(res.text || res.error); await refreshStatus(); showFocus();
+}
+
+// ------------------------------------------------------------------ knowledge
+async function showKnowledge() {
+  _layout = null;
+  const {areas, topics} = await layout();
+  const byArea = {};
+  topics.filter((t) => t.notes).forEach((t) => (byArea[t.area] = byArea[t.area] || []).push(t));
+  const groups = areas.filter((a) => byArea[a.key]).map((a) => `
+      <div class="small muted" style="margin:10px 0 2px;text-transform:uppercase;letter-spacing:.04em">${esc(a.label)}</div>
+      ${byArea[a.key].map((t) => `<a href="#" data-topic="${esc(t.key)}" title="${esc(t.description)}">${esc(t.key.split("/")[1])} <span class="muted small">${t.notes}</span></a>`).join("")}`).join("");
+  view.innerHTML = `<div class="cols"><div class="card list"><input id="q" placeholder="Search notes">
+      <div id="tlist" style="margin-top:4px">${groups}</div>
+      <div style="margin-top:12px" class="row"><button class="secondary" onclick="editNote()">New note</button>
+        <button class="secondary" onclick="addFile()">Add file</button>
+        <button class="secondary" onclick="runSync()">Sweep drop folder</button></div></div>
+    <div id="kdetail"><div class="card muted">Pick a topic or search.</div></div></div>`;
+  document.querySelectorAll("#tlist a").forEach((a) => a.onclick = (e) => { e.preventDefault(); listTopic(a.dataset.topic); });
+  document.getElementById("q").onkeydown = (e) => { if (e.key === "Enter") search(e.target.value); };
+}
+async function listTopic(key) {
+  const res = await api("notes?topic=" + encodeURIComponent(key));
+  const notes = (res.data && res.data.notes) || ((res.data && res.data.ids) || []).map((id) => ({id, title: id}));
+  const topic = ((_layout && _layout.topics) || []).find((t) => t.key === key);
+  document.getElementById("kdetail").innerHTML = `<div class="card"><h2>${esc(key)}</h2>
+    ${topic && topic.description ? `<p class="small muted">${esc(topic.description)}</p>` : ""}
+    ${notes.map((n) => `<div style="margin-bottom:10px"><a href="#" onclick="openNote('${esc(n.id)}');return false">${esc(n.title)}</a>
+      <span class="small muted">${esc(n.added || "")}${n.kind ? " | " + esc(n.kind) : ""}${n.load === "standing" ? " | standing" : ""}</span>
+      <div class="small muted">${esc(n.summary || "")}</div></div>`).join("")}</div>`;
+}
+async function search(q) {
+  const res = await api("notes?q=" + encodeURIComponent(q));
+  const hits = (res.data && res.data.hits) || [];
+  document.getElementById("kdetail").innerHTML = `<div class="card"><h2>Results</h2>${hits.map((h) =>
+    `<div style="margin-bottom:8px"><a href="#" onclick="openNote('${esc(h.id)}');return false">${esc(h.title || h.id)}</a> <span class="pill">${esc(h.route_key)}</span> <span class="small muted">${h.score.toFixed(2)}</span><div class="small muted">${esc(h.summary)}</div></div>`).join("") || '<p class="muted">No matches.</p>'}</div>`;
+}
+async function openNote(id) {
+  const res = await api("notes/" + encodeURIComponent(id));
+  const d = res.data || {}; const m = d.meta || {};
+  document.getElementById("kdetail").innerHTML = `<div class="card">
+    <div class="row"><h2 class="grow">${esc(d.title || id)}</h2><span class="pill">${esc(d.route_key)}</span><span class="pill">${esc(m.scope)}</span><span class="pill">${esc(m.status)}</span><span class="pill">${esc(m.load)}</span></div>
+    <div class="small muted" style="margin-bottom:8px"><code>${esc(id)}</code> | ${esc(d.kind || "")} | added ${esc(d.added || "")} | ${esc(d.path || "")}</div>
+    ${d.summary ? `<p class="small">${esc(d.summary)}</p>` : ""}
+    <textarea id="nbody" style="min-height:180px">${esc(d.body)}</textarea>
+    <input id="nreason" style="margin-top:8px" placeholder="Why change it (recorded)">
+    <div class="row" style="margin-top:8px"><span class="small muted grow">${esc(m.source || "")}</span>
+      <button class="danger" onclick="archiveNote('${esc(id)}')">Archive</button>
+      <button class="secondary" onclick="saveNote('${esc(id)}', false)">Propose change</button>
+      <button class="primary" onclick="saveNote('${esc(id)}', true)">Save and approve</button></div></div>`;
+}
+async function saveNote(id, apply) {
+  const res = await api("notes", {target_id: id, text: document.getElementById("nbody").value,
+    reason: document.getElementById("nreason").value, apply});
+  toast(res.text || res.error); await refreshStatus();
+}
+async function archiveNote(id) {
+  if (!confirm("Archive " + id + "? It stops being delivered; history keeps it.")) return;
+  const res = await api("notes", {target_id: id, archive: true, apply: true,
+    reason: document.getElementById("nreason").value});
+  toast(res.text || res.error); await refreshStatus();
+}
+async function editNote() {
+  await layout();
+  document.getElementById("kdetail").innerHTML = `<div class="card"><h2>New note</h2>
+    <p class="small muted">Leave the topic blank to have one suggested. A title says what the note is for.</p>
+    ${placementFields("new", "", "", "", true)}
+    <div class="row" style="margin-top:8px"><select id="nk" style="width:auto"><option value="">kind: guess</option><option>fact</option><option>rule</option></select>
+      <input id="ns" placeholder="scope (blank = where the topic lives)" class="grow"></div>
+    <textarea id="nx" style="margin-top:8px" placeholder="One durable idea"></textarea>
+    <div class="row" style="margin-top:8px"><span class="grow"></span><button class="secondary" onclick="createNote(false)">Propose</button><button class="primary" onclick="createNote(true)">Save and approve</button></div></div>`;
+}
+function addFile() {
+  document.getElementById("kdetail").innerHTML = `<div class="card"><h2>Add a file</h2>
+    <p class="small muted">A document becomes a reference with a pointer note; an image, font or data file becomes an asset. It waits in the inbox for review.</p>
+    <input type="file" id="ff">
+    <input id="ftitle" style="margin-top:8px" placeholder="Title: what it is">
+    <input id="fdesc" style="margin-top:8px" placeholder="What it covers and when to use it">
+    <div class="row" style="margin-top:8px"><span class="grow"></span><button class="primary" onclick="uploadFile()">Propose</button></div></div>`;
+}
+async function uploadFile() {
+  const file = document.getElementById("ff").files[0];
+  if (!file) return toast("Choose a file first.");
+  const data = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] || "");
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const res = await api("files", {filename: file.name, content_base64: data,
+    title: document.getElementById("ftitle").value.trim() || undefined,
+    description: document.getElementById("fdesc").value.trim()});
+  toast(res.text || res.error); await refreshStatus();
+}
+async function runSync() {
+  const res = await api("sync", {});
+  toast(res.text ? res.text.split("\n")[0] : res.error); await refreshStatus();
+}
+async function createNote(apply) {
+  const topic = document.getElementById("new-topic").value.trim();
+  const res = await api("notes", {area: topic ? document.getElementById("new-area").value : undefined,
+    topic: topic || undefined, title: document.getElementById("new-title").value.trim() || undefined,
+    kind: document.getElementById("nk").value || undefined,
+    scope: document.getElementById("ns").value || undefined, text: document.getElementById("nx").value, apply});
+  toast(res.text || res.error); _layout = null; await refreshStatus();
+}
+
+// ------------------------------------------------------------------ context preview
+function showContext() {
+  view.innerHTML = `<div class="card"><h2>Context preview</h2>
+    <p class="small muted">Runs the same routing as get_task_context without recording anything.</p>
+    <textarea id="req" style="min-height:70px" placeholder="Type a request, e.g. Write a LinkedIn post about AI leadership"></textarea>
+    <div class="row" style="margin-top:8px"><span class="grow"></span><button class="primary" onclick="preview()">Preview packet</button></div></div><div id="pout"></div>`;
+}
+async function preview() {
+  const res = await api("context", {request: document.getElementById("req").value, explain: true});
+  const d = res.data || {}; const t = d.trace || {};
+  document.getElementById("pout").innerHTML = `<div class="card"><div class="row">
+      <span class="pill">${esc(d.mode)}</span><span class="pill">${esc(d.task_type)}</span><span class="pill">${esc(d.scale)}</span>
+      <span class="pill">procedure ${esc(d.procedure)}</span><span class="pill">${d.token_count} tokens</span>${d.focus_id ? `<span class="pill ok">${esc(d.focus_id)}</span>` : ""}</div>
+      <p class="small"><b>Topics:</b> ${esc((d.topics || []).join(", ") || "none")}<br><b>Notes:</b> ${esc((d.note_ids || []).join(", ") || "none")}<br>
+      <b>Skills:</b> ${esc([d.skill_id, ...(d.candidates || [])].filter(Boolean).join(", ") || "none")}<br><b>Why:</b> ${esc((t.route_log || []).join(" | "))}</p></div>
+    <div class="card"><h3>Packet</h3><pre>${esc(res.text)}</pre></div>
+    <div class="card"><h3>Trace</h3><pre>${esc(JSON.stringify(t, null, 1))}</pre></div>`;
+}
+
+// ------------------------------------------------------------------ health
+async function showHealth() {
+  const [h, dec, ses] = await Promise.all([api("health"), api("decisions"), api("sessions")]);
+  view.innerHTML = `<div class="card"><pre>${esc(h.text)}</pre></div>
+    <div class="card"><h3>Recent decisions</h3>${(dec.decisions || []).slice(0, 25).map((d) =>
+      `<div class="small"><span class="pill">${esc(d.action)}</span> ${esc(d.at)} ${esc(d.note || d.proposal)} <span class="muted">${esc(d.by || "")}${d.reason ? " | " + esc(d.reason) : ""}</span></div>`).join("") || '<p class="muted">None yet.</p>'}</div>
+    <div class="card"><h3>Recent sessions</h3>${(ses.sessions || []).map((s) =>
+      `<div class="small">${esc(s.id)} <span class="muted">${esc(s.principal)} | ${esc(s.seen)} | ${s.packets} packet(s)</span></div>`).join("") || '<p class="muted">None.</p>'}</div>`;
+}
+
+const TABS = {inbox: showInbox, focus: () => showFocus(), knowledge: showKnowledge, context: showContext, health: showHealth};
+document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("active", x === b));
+  TABS[b.dataset.tab]().catch((e) => toast(e.message));
+});
+refreshStatus().then(() => document.querySelector('#tabs button[data-tab="inbox"]').click())
+  .catch((e) => { document.getElementById("line").textContent = e.message; });
+</script>
+</body>
+</html>

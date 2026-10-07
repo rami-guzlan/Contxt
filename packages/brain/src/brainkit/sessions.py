@@ -1,0 +1,420 @@
+"""The session ledger: what each conversation has already been handed, and what each entry
+has been used for.
+
+One SQLite file under the vault's `.brain/` folder, shared by every process (MCP server,
+CLI, local API). It is operational memory, not knowledge: deleting it loses deduplication
+history and usage counts, nothing else.
+
+DEDUPLICATION RULE. A note body is withheld from a later packet only when the SAME session
+already received the SAME body hash. A caller that lost its context (a compacted or new
+conversation) passes `fresh=true` or a new session id and receives everything again.
+Over-delivery costs tokens; silent omission costs correctness, so the rule errs toward
+sending.
+
+USAGE. Every handout is counted by day in `usage_daily` (how many conversations got the
+item, and how: in a packet, opened afterwards, or in AI work the workspace ran), which is
+never pruned, so an entry's use is known for good. The detail behind it (each delivery, with
+the version and why routing picked it, and each packet's request) is kept for
+`sessions.retention_days` (90 by default), then pruned.
+"""
+from __future__ import annotations
+
+import contextlib
+import datetime as _dt
+import json
+import os
+import secrets
+import sqlite3
+import threading
+
+from . import util
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY, principal TEXT, created TEXT, seen TEXT, label TEXT);
+CREATE TABLE IF NOT EXISTS packets (
+    id TEXT PRIMARY KEY, session_id TEXT, at TEXT, request TEXT, mode TEXT,
+    tokens INTEGER, text TEXT, data TEXT);
+CREATE TABLE IF NOT EXISTS deliveries (
+    session_id TEXT, packet_id TEXT, kind TEXT, item TEXT, hash TEXT, tokens INTEGER, at TEXT);
+CREATE INDEX IF NOT EXISTS deliveries_session ON deliveries(session_id);
+CREATE INDEX IF NOT EXISTS deliveries_item ON deliveries(kind, item);
+CREATE INDEX IF NOT EXISTS packets_session ON packets(session_id);
+CREATE TABLE IF NOT EXISTS usage_daily (
+    day TEXT NOT NULL, kind TEXT NOT NULL, item TEXT NOT NULL,
+    conversations INTEGER NOT NULL DEFAULT 0, in_packets INTEGER NOT NULL DEFAULT 0,
+    opened INTEGER NOT NULL DEFAULT 0, in_work INTEGER NOT NULL DEFAULT 0,
+    tokens INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, kind, item));
+CREATE TABLE IF NOT EXISTS ledger_meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS dismissed (key TEXT PRIMARY KEY, at TEXT);
+"""
+
+# How an item reached a conversation: the usage_daily column each way counts in.
+VIA = {"packet": "in_packets", "opened": "opened", "work": "in_work"}
+FOLLOWUP = "followup"  # the packet id of items opened after a packet (get_note and the like)
+WORK = "work"          # the packet id of items handed to AI work the workspace ran
+
+
+class Ledger:
+    def __init__(self, path: str, retention_days: int = 90):
+        self.path = path
+        self.retention_days = int(retention_days or 90)
+        self._lock = threading.Lock()
+        self._conn_lock = threading.RLock()
+        self._conn = None
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with self._connect() as conn:
+            conn.executescript(SCHEMA)
+            self._migrate(conn)
+        self._pruned = False
+
+    @staticmethod
+    def _migrate(conn) -> None:
+        """Bring an older ledger up to date: deliveries say why an item was picked, and the
+        daily counts start from the deliveries already kept (once, whichever process is
+        first)."""
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(deliveries)")}
+        if "reason" not in columns:
+            with contextlib.suppress(sqlite3.OperationalError):  # another process added it
+                conn.execute("ALTER TABLE deliveries ADD COLUMN reason TEXT")
+        claimed = conn.execute("INSERT OR IGNORE INTO ledger_meta (key, value) VALUES "
+                               "('usage_backfill', ?)", (util.now_iso(),)).rowcount
+        if claimed:
+            conn.execute(
+                "INSERT INTO usage_daily (day, kind, item, conversations, in_packets, opened, "
+                "in_work, tokens) "
+                "SELECT substr(at, 1, 10), kind, item, COUNT(DISTINCT session_id), "
+                f"SUM(packet_id NOT IN ('{FOLLOWUP}', '{WORK}')), "
+                f"SUM(packet_id = '{FOLLOWUP}'), SUM(packet_id = '{WORK}'), "
+                "COALESCE(SUM(tokens), 0) FROM deliveries WHERE at IS NOT NULL "
+                "GROUP BY 1, 2, 3 ON CONFLICT(day, kind, item) DO NOTHING")
+
+    @contextlib.contextmanager
+    def _connect(self):
+        """The process's one connection, serialized by a lock; commits on success.
+
+        One connection per process (MCP server, CLI, UI) rather than one per operation: a
+        packet touches the ledger four times, and reconnecting each time cost more than
+        routing the request. WAL mode lets the processes share the file.
+        """
+        with self._conn_lock:
+            if self._conn is None:
+                self._conn = sqlite3.connect(self.path, timeout=15, check_same_thread=False)
+                self._conn.row_factory = sqlite3.Row
+                try:
+                    self._conn.execute("PRAGMA journal_mode=WAL")
+                except sqlite3.DatabaseError:
+                    pass
+            try:
+                yield self._conn
+                self._conn.commit()
+            except BaseException:
+                self._conn.rollback()
+                raise
+
+    def close(self):
+        with self._conn_lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------ sessions
+    @staticmethod
+    def mint() -> str:
+        return "sess-" + secrets.token_hex(6)
+
+    @staticmethod
+    def valid(session_id) -> bool:
+        text = str(session_id or "").strip()
+        return 3 <= len(text) <= 120 and all(c.isalnum() or c in "-_.:" for c in text)
+
+    def touch(self, session_id: str, principal: str = "") -> None:
+        now = util.now_iso()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO sessions (id, principal, created, seen) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET seen = excluded.seen",
+                (session_id, principal, now, now))
+        self.prune()
+
+    def exists(self, session_id: str) -> bool:
+        with self._connect() as conn:
+            return conn.execute("SELECT 1 FROM sessions WHERE id = ?",
+                                (session_id,)).fetchone() is not None
+
+    # ------------------------------------------------------------------ deliveries
+    def delivered(self, session_id: str) -> dict:
+        """{(kind, item): {"hash", "packet_id", "at"}} for everything this session holds."""
+        out = {}
+        if not session_id:
+            return out
+        with self._connect() as conn:
+            for row in conn.execute(
+                    "SELECT kind, item, hash, packet_id, at FROM deliveries "
+                    "WHERE session_id = ? ORDER BY at", (session_id,)):
+                out[(row["kind"], row["item"])] = {
+                    "hash": row["hash"], "packet_id": row["packet_id"], "at": row["at"]}
+        return out
+
+    def record(self, session_id: str, packet_id: str, request: str, mode: str, text: str,
+               data: dict, items) -> None:
+        """Store one packet and the items it delivered: [(kind, item, hash, tokens)], each
+        optionally with a fifth element, why routing picked it."""
+        now = util.now_iso()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO packets (id, session_id, at, request, mode, tokens, "
+                "text, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (packet_id, session_id, now, request, mode, util.tokens(text), text,
+                 json.dumps(data, ensure_ascii=False, default=str)))
+            self._deliver(conn, session_id, packet_id, items, "packet", now)
+
+    def record_items(self, session_id: str, packet_id: str, items) -> None:
+        """Items opened after a packet (`packet_id` "followup"), or handed out some other
+        way; counted as opened."""
+        self._record(session_id, packet_id, items, "opened" if packet_id == FOLLOWUP
+                     else "packet")
+
+    def record_use(self, ref: str, items, *, principal: str = "workspace") -> str:
+        """Items handed to AI work run outside a conversation (the workspace's task runs):
+        recorded under the session `work:<ref>`, so an entry's use names the run. Returns
+        that session id."""
+        session_id = f"{WORK}:{ref}"
+        if not self.valid(session_id):
+            raise ValueError(f"{ref!r} cannot name a session")
+        self.touch(session_id, principal)
+        self._record(session_id, WORK, items, "work")
+        return session_id
+
+    def _record(self, session_id, packet_id, items, via) -> None:
+        with self._connect() as conn:
+            self._deliver(conn, session_id, packet_id, items, via, util.now_iso())
+
+    def _deliver(self, conn, session_id, packet_id, items, via, now) -> None:
+        rows = [tuple(item) + (None,) * (5 - len(item)) for item in items]
+        day = now[:10]
+        held = {(r["kind"], r["item"]) for r in conn.execute(
+            "SELECT kind, item FROM deliveries WHERE session_id = ? AND at >= ?",
+            (session_id, day))}
+        conn.executemany(
+            "INSERT INTO deliveries (session_id, packet_id, kind, item, hash, tokens, at, "
+            "reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(session_id, packet_id, kind, item, digest, int(tokens or 0), now, reason)
+             for kind, item, digest, tokens, reason in rows])
+        column = VIA[via]
+        for kind, item, _digest, tokens, _reason in rows:
+            first = (kind, item) not in held
+            held.add((kind, item))
+            conn.execute(
+                f"INSERT INTO usage_daily (day, kind, item, conversations, {column}, tokens) "
+                "VALUES (?, ?, ?, ?, 1, ?) ON CONFLICT(day, kind, item) DO UPDATE SET "
+                f"conversations = conversations + excluded.conversations, "
+                f"{column} = {column} + 1, tokens = tokens + excluded.tokens",
+                (day, kind, item, 1 if first else 0, int(tokens or 0)))
+
+    def packet(self, packet_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM packets WHERE id = ?", (packet_id,)).fetchone()
+        if row is None:
+            return None
+        out = dict(row)
+        try:
+            out["data"] = json.loads(out.get("data") or "{}")
+        except ValueError:
+            out["data"] = {}
+        return out
+
+    def last_packet(self, session_id: str) -> dict | None:
+        """The most recent packet in this session, for follow-up continuity: its data, plus
+        the request it answered (`request`)."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT request, data FROM packets WHERE session_id = ? "
+                               "ORDER BY at DESC, rowid DESC LIMIT 1", (session_id,)).fetchone()
+        if row is None:
+            return None
+        try:
+            data = json.loads(row["data"] or "{}")
+        except ValueError:
+            return None
+        data.setdefault("request", row["request"] or "")
+        return data
+
+    def session_summary(self, session_id: str) -> dict:
+        with self._connect() as conn:
+            packets = conn.execute(
+                "SELECT COUNT(*) AS n, COALESCE(SUM(tokens), 0) AS t FROM packets "
+                "WHERE session_id = ?", (session_id,)).fetchone()
+            items = conn.execute(
+                "SELECT kind, COUNT(DISTINCT item) AS n FROM deliveries WHERE session_id = ? "
+                "GROUP BY kind", (session_id,)).fetchall()
+        return {"packets": packets["n"], "packet_tokens": packets["t"],
+                "items": {row["kind"]: row["n"] for row in items}}
+
+    # ------------------------------------------------------------------ usage
+    def usage(self, since: str, kind: str = "note") -> dict[str, int]:
+        """{item: how many conversations (and AI work runs) it went to} since an ISO moment,
+        counted by day."""
+        with self._connect() as conn:
+            return {row["item"]: int(row["n"]) for row in conn.execute(
+                "SELECT item, SUM(conversations) AS n FROM usage_daily "
+                "WHERE kind = ? AND day >= ? GROUP BY item", (kind, str(since)[:10]))}
+
+    def usage_table(self, kind: str | None = None) -> dict[tuple[str, str], dict]:
+        """{(kind, item): {"total", "d7", "d30", "last", "tokens", "in_packets", "opened",
+        "in_work"}} for every item ever handed out: uses in all, in the last 7 and 30 days,
+        and the last day it was used."""
+        today = util.now().date()
+        d7 = (today - _dt.timedelta(days=6)).isoformat()
+        d30 = (today - _dt.timedelta(days=29)).isoformat()
+        query = ("SELECT kind, item, SUM(conversations) AS total, "
+                 "SUM(CASE WHEN day >= ? THEN conversations ELSE 0 END) AS d7, "
+                 "SUM(CASE WHEN day >= ? THEN conversations ELSE 0 END) AS d30, "
+                 "MAX(day) AS last, SUM(tokens) AS tokens, SUM(in_packets) AS in_packets, "
+                 "SUM(opened) AS opened, SUM(in_work) AS in_work FROM usage_daily")
+        params: list = [d7, d30]
+        if kind:
+            query += " WHERE kind = ?"
+            params.append(kind)
+        query += " GROUP BY kind, item"
+        with self._connect() as conn:
+            return {(row["kind"], row["item"]): {
+                "total": int(row["total"] or 0), "d7": int(row["d7"] or 0),
+                "d30": int(row["d30"] or 0), "last": row["last"],
+                "tokens": int(row["tokens"] or 0), "in_packets": int(row["in_packets"] or 0),
+                "opened": int(row["opened"] or 0), "in_work": int(row["in_work"] or 0)}
+                for row in conn.execute(query, params)}
+
+    def first_day(self) -> str | None:
+        """The first day any use was recorded: counts say nothing about the time before."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT MIN(day) AS d FROM usage_daily").fetchone()
+        return row["d"] if row and row["d"] else None
+
+    def item_usage(self, kind: str, item: str, *, days: int = 90, limit: int = 50) -> dict:
+        """One item's use: `daily` counts for the last `days` days, and `recent` handouts
+        still in the detail window (when, to which conversation or AI work, the version,
+        why it was picked, and the request the packet answered)."""
+        since = (util.now().date() - _dt.timedelta(days=max(1, int(days)) - 1)).isoformat()
+        with self._connect() as conn:
+            daily = [dict(r) for r in conn.execute(
+                "SELECT day, conversations, in_packets, opened, in_work, tokens "
+                "FROM usage_daily WHERE kind = ? AND item = ? AND day >= ? ORDER BY day",
+                (kind, item, since))]
+            recent = [dict(r) for r in conn.execute(
+                "SELECT d.session_id, d.packet_id, d.at, d.hash, d.reason, d.tokens, "
+                "p.request, p.mode FROM deliveries d LEFT JOIN packets p ON p.id = d.packet_id "
+                "WHERE d.kind = ? AND d.item = ? ORDER BY d.at DESC, d.rowid DESC LIMIT ?",
+                (kind, item, int(limit)))]
+        for row in recent:
+            row["via"] = ("work" if row["packet_id"] == WORK else
+                          "opened" if row["packet_id"] == FOLLOWUP else "packet")
+        return {"daily": daily, "recent": recent}
+
+    def handouts(self, kind: str, item: str) -> list[dict]:
+        """Every delivery of one item still in the detail window, oldest first: session,
+        version (`hash`) and when. Recall reads it: who got an older version."""
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT session_id, packet_id, hash, at FROM deliveries "
+                "WHERE kind = ? AND item = ? ORDER BY at", (kind, item))]
+
+    def flow(self, since: str) -> dict:
+        """Delivery since an ISO moment: conversations served, packets, AI work runs,
+        entries handed out (distinct), tokens handed out, and packets that brought nothing."""
+        with self._connect() as conn:
+            packets = conn.execute(
+                "SELECT COUNT(*) AS n, COUNT(DISTINCT session_id) AS s, "
+                "COALESCE(SUM(tokens), 0) AS t FROM packets WHERE at >= ?", (since,)).fetchone()
+            items = conn.execute(
+                "SELECT COUNT(DISTINCT item) AS n, COALESCE(SUM(tokens), 0) AS t, "
+                f"COUNT(DISTINCT CASE WHEN packet_id = '{WORK}' THEN session_id END) AS w "
+                "FROM deliveries WHERE kind = 'note' AND at >= ?", (since,)).fetchone()
+        empty = sum(1 for g in self.gaps(since) if g["kind"] == "nothing")
+        return {"packets": packets["n"], "conversations": packets["s"],
+                "packet_tokens": packets["t"], "entries": items["n"],
+                "entry_tokens": items["t"], "work_runs": items["w"], "empty": empty}
+
+    # ------------------------------------------------------------------ gaps
+    def gaps(self, since: str, *, limit: int = 200) -> list[dict]:
+        """Requests the brain served poorly since an ISO moment, newest first:
+
+        - `nothing`: a packet that brought no entry (`close` lists the entries it named as
+          the closest, when any came near);
+        - `searched`: an entry a conversation opened that none of its packets brought or
+          listed, so the AI found it some other way (search_notes): routing missed it.
+
+        Dismissed gaps (`dismiss`) stay out."""
+        hidden = self.dismissed()
+        out = []
+        with self._connect() as conn:
+            packets = [dict(r) for r in conn.execute(
+                "SELECT id, session_id, at, request, mode, data FROM packets WHERE at >= ? "
+                "ORDER BY at", (since,))]
+            opened = [dict(r) for r in conn.execute(
+                "SELECT session_id, item, at FROM deliveries WHERE kind = 'note' AND "
+                "packet_id = ? AND at >= ? ORDER BY at", (FOLLOWUP, since))]
+        listed: dict[str, list] = {}
+        for packet in packets:
+            try:
+                data = json.loads(packet.get("data") or "{}")
+            except ValueError:
+                data = {}
+            listed.setdefault(packet["session_id"], []).append((packet, data))
+            chosen = data.get("note_ids") or data.get("standing_ids") or data.get("held_ids")
+            if packet["mode"] == "lean" and not chosen:
+                key = f"packet:{packet['id']}"
+                if key not in hidden:
+                    out.append({"key": key, "kind": "nothing", "at": packet["at"],
+                                "session_id": packet["session_id"],
+                                "request": packet["request"] or "", "entry": None,
+                                "close": list(data.get("related_ids") or [])})
+        seen = set()
+        for row in opened:
+            before = [(p, d) for p, d in listed.get(row["session_id"], []) if p["at"] <= row["at"]]
+            brought = {i for _p, d in before for key in ("note_ids", "related_ids",
+                                                          "standing_ids", "held_ids")
+                       for i in (d.get(key) or [])}
+            key = f"opened:{row['session_id']}:{row['item']}"
+            if not before or row["item"] in brought or key in hidden or key in seen:
+                continue
+            seen.add(key)
+            out.append({"key": key, "kind": "searched", "at": row["at"],
+                        "session_id": row["session_id"], "request": before[-1][0]["request"]
+                        or "", "entry": row["item"], "close": []})
+        out.sort(key=lambda g: g["at"], reverse=True)
+        return out[:int(limit)]
+
+    def dismiss(self, key: str) -> None:
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO dismissed (key, at) VALUES (?, ?)",
+                         (str(key), util.now_iso()))
+
+    def dismissed(self) -> set[str]:
+        with self._connect() as conn:
+            return {row["key"] for row in conn.execute("SELECT key FROM dismissed")}
+
+    # ------------------------------------------------------------------ housekeeping
+    def recent_sessions(self, limit: int = 20) -> list[dict]:
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT s.id, s.principal, s.created, s.seen, "
+                "(SELECT COUNT(*) FROM packets p WHERE p.session_id = s.id) AS packets "
+                "FROM sessions s ORDER BY s.seen DESC LIMIT ?", (limit,))]
+
+    def prune(self) -> None:
+        """Drop the detail older than the retention window; daily counts stay."""
+        if self._pruned:
+            return
+        self._pruned = True
+        cutoff = (util.now() - _dt.timedelta(days=self.retention_days)
+                  ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._connect() as conn:
+            conn.execute("DELETE FROM deliveries WHERE at < ?", (cutoff,))
+            conn.execute("DELETE FROM packets WHERE at < ?", (cutoff,))
+            conn.execute("DELETE FROM sessions WHERE seen < ?", (cutoff,))

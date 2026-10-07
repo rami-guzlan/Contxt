@@ -1,0 +1,17 @@
+{
+  "name": "contxt",
+  "private": true,
+  "description": "Workspace root for the web app; the Python packages are managed by uv.",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/web",
+    "test": "npm test --workspace apps/web",
+    "typecheck": "npm run typecheck --workspace apps/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

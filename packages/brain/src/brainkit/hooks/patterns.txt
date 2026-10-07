@@ -1,0 +1,11 @@
+# One regex per line. A matching shell command is blocked pending human approval.
+\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b
+\bRemove-Item\b.*-Recurse
+\bgit\s+push\s+.*--force
+\bgit\s+reset\s+--hard
+\bgit\s+clean\s+-[a-zA-Z]*f
+\bcurl\b.*(-X\s*(POST|PUT|DELETE)|--data|-d\s)
+\b(mail|sendmail|mutt)\b
+\b(shutdown|reboot)\b
+# The vault's governed history: journals and the decision log are append-only.
+(rm|del|Remove-Item)\b.*vault[/\\](journal|knowledge)

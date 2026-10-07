@@ -1,0 +1,14 @@
+[project]
+name = "workspace-connectors"
+version = "0.1.0"
+description = "Provider and destination adapters for the Local AI Workspace: model connection setups and artifact destinations."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["workspace-core"]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/workspace_connectors"]

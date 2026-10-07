@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "name": "Brightmill Marketing",
+  "description": "Demo: the marketing Brain of Brightmill, a made-up knowledge company for manufacturing operations leaders.",
+  "owner": "person:jordan",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Company",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "department",
+        "label": "Department",
+        "prefix": "dept:",
+        "container": "departments"
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "assistant": {
+        "label": "Assistant",
+        "order": 1,
+        "description": "how the assistant works with Jordan"
+      },
+      "company": {
+        "label": "Company",
+        "order": 2,
+        "description": "who Brightmill is, what it offers, the numbers"
+      },
+      "customers": {
+        "label": "Customers",
+        "order": 3,
+        "description": "who we serve, what they struggle with, how they buy"
+      },
+      "brand": {
+        "label": "Brand",
+        "order": 4,
+        "description": "how we sound and look, and what we may claim"
+      },
+      "marketing": {
+        "label": "Marketing",
+        "order": 5,
+        "description": "channels, formats and approvals"
+      },
+      "sales": {
+        "label": "Sales",
+        "order": 6,
+        "description": "how leads reach sales"
+      },
+      "people": {
+        "label": "People",
+        "order": 7,
+        "description": "who is who"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 8,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 9,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Brightmill"
+    },
+    "dept:marketing": {
+      "parent": "company",
+      "label": "Marketing"
+    },
+    "person:jordan": {
+      "parent": "dept:marketing",
+      "label": "Jordan Avery",
+      "role": "Marketing lead"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:jordan",
+    "auto_apply_own_scope": true,
+    "review_days": {
+      "state": 30
+    }
+  },
+  "kernel": {
+    "action_policy": "Nothing leaves Brightmill without Morgan Hale's approval: stage drafts, show them, wait. Drafts and local work may proceed."
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

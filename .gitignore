@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Web
+node_modules/
+apps/web/dist/
+apps/web/coverage/
+
+# Your Contxt: never commit secrets, a Brain or what the app holds. brain/ is a git
+# repository of its own; data/ and outputs/ keep only their READMEs here.
+.env
+.env.*
+!.env.example
+/brain/
+/demos/
+/data/*
+!/data/README.md
+*/**/data/
+/outputs/*
+!/outputs/README.md
+*.sqlite
+*.sqlite-*
+*.db
+
+# Exports from the Docker local profile
+docker/exports/*
+!docker/exports/README.md
+
+# Brain runtime state
+.brain/
+
+# Scratch space for tools that need a writable temp folder
+.tmp/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

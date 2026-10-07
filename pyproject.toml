@@ -1,0 +1,68 @@
+[project]
+name = "contxt"
+version = "0.1.0"
+description = "Contxt: one Brain for every AI tool you use. Local, private, and governed by you."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["workspace-server"]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["apps/server", "packages/core", "packages/brain", "packages/connectors"]
+
+[tool.uv.sources]
+workspace-server = { workspace = true }
+workspace-core = { workspace = true }
+workspace-connectors = { workspace = true }
+ai-brain = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "workspace-core[postgres]",
+    "pytest>=8.3",
+    "httpx2>=2.13",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "packages/core/tests",
+    "packages/connectors/tests",
+    "packages/brain/tests",
+    "apps/server/tests",
+]
+addopts = ["--import-mode=importlib", "-ra"]
+filterwarnings = ["error::ResourceWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["apps/web"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "BLE", "RUF100"]
+ignore = ["SIM105", "SIM108"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["workspace_core", "workspace_server", "workspace_connectors", "brainkit"]
+
+[tool.ruff.lint.per-file-ignores]
+"packages/brain/**" = ["UP", "SIM", "B", "I", "BLE", "E501"]
+"**/migrations/versions/*.py" = ["E501"]
+"**/tests/**" = ["B011"]
+
+[tool.ruff.format]
+exclude = ["packages/brain/**"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["workspace_core", "workspace_server", "workspace_connectors"]
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+ignore_missing_imports = true

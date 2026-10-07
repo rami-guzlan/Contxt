@@ -1,0 +1,79 @@
+# Local profile:  cp .env.example .env && docker compose up -d
+# Then open the sign-in link:  docker compose exec app contxt token
+#
+# Everything stays on this machine: the port is published on 127.0.0.1 only, the database
+# and files live in the named volume, and the Brain is mounted from a folder you choose.
+# On Linux, first set CONTXT_UID and CONTXT_GID in .env to the owner of the folders you
+# mount, usually yourself (id -u, id -g); see docs/setup.md.
+
+name: contxt
+
+x-image: &image
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: contxt:latest
+
+x-app: &app
+  <<: *image
+  # Who the containers run as: the host folders mounted below must be writable by this user.
+  user: "${CONTXT_UID:-10001}:${CONTXT_GID:-10001}"
+  env_file:
+    - path: .env
+      required: false
+  environment: &env
+    CONTXT_DATA_DIR: /data
+    CONTXT_HOST: 0.0.0.0
+    CONTXT_PORT: "8787"
+    CONTXT_PUBLIC_URL: ${CONTXT_PUBLIC_URL:-http://127.0.0.1:${CONTXT_PORT:-8787}}
+    # Set only when BRAIN_HOST_DIR points at a Brain repository (the folder holding vault/).
+    CONTXT_BRAIN_VAULT: ${BRAIN_HOST_DIR:+/brain/vault}
+  volumes:
+    # nocopy: while the volume is still empty, creating a container would otherwise reset its
+    # owner to the image's /data owner, undoing data-init (as `docker compose run` does).
+    - type: volume
+      source: contxt-data
+      target: /data
+      volume:
+        nocopy: true
+    - ${BRAIN_HOST_DIR:-./docker/no-brain}:/brain
+    - ${EXPORTS_HOST_DIR:-./docker/exports}:/data/exports
+  restart: unless-stopped
+
+services:
+  # Before every start, hands the data volume to the user above (docker/data-init.sh). It runs
+  # as root but mounts only that volume, then exits; the app and the worker run as that user.
+  data-init:
+    <<: *image
+    user: "0:0"
+    command: ["data-init"]
+    environment:
+      CONTXT_UID: ${CONTXT_UID:-10001}
+      CONTXT_GID: ${CONTXT_GID:-10001}
+    volumes:
+      - contxt-data:/data
+    healthcheck:
+      disable: true
+
+  app:
+    <<: *app
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${CONTXT_PORT:-8787}:8787"
+    command: ["contxt", "--env-file", "", "serve", "--no-worker"]
+
+  worker:
+    <<: *app
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+      app:
+        condition: service_healthy
+    command: ["contxt", "--env-file", "", "worker"]
+    healthcheck:
+      disable: true
+
+volumes:
+  contxt-data:

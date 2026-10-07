@@ -1,0 +1,2 @@
+{"actor": "person:kai", "at": "2026-09-08T19:00:00Z", "changes": {"current": "Exponential backoff with jitter merged; API frozen for 1.0", "next": "Windows support: file locking in the SQLite store"}, "evidence": "recorded by the owner", "seq": 1, "summary": "Retry policies merged"}
+{"actor": "person:kai", "at": "2026-09-27T18:30:00Z", "changes": {"current": "Windows passes CI after switching to a lock table", "next": "Documentation site and the migration guide from 0.9"}, "evidence": "recorded by the owner", "seq": 2, "summary": "Windows CI green"}

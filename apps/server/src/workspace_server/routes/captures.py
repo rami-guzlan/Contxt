@@ -1,0 +1,108 @@
+"""Captures over REST: what a person brings in (a talk, a recording, a transcript, a document),
+its original back for playing or downloading, and speech to text on this computer."""
+
+from __future__ import annotations
+
+from dataclasses import asdict
+from typing import Annotated, Any
+
+from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi.responses import FileResponse
+
+from workspace_core.domain.records import Task
+from workspace_core.errors import PermissionDenied, ValidationFailed
+from workspace_core.services.captures import MAX_ORIGINAL
+
+from ..deps import WS, Who
+from ..files import served
+from ..schemas import CaptureSettingsIn, SummarizeIn
+
+router = APIRouter()
+
+
+async def _read(upload: UploadFile) -> bytes:
+    data = await upload.read(MAX_ORIGINAL + 1)  # enough to know it is too large
+    if len(data) > MAX_ORIGINAL:
+        raise ValidationFailed(
+            f"Keep a file under {MAX_ORIGINAL // (1024 * 1024)} MB; split a long recording."
+        )
+    return data
+
+
+@router.post("/api/captures", status_code=201)
+async def bring_in(
+    who: Who,
+    ws: WS,
+    file: Annotated[UploadFile, File()],
+    title: Annotated[str, Form()] = "",
+) -> dict[str, Any]:
+    """Audio (transcribed on this computer), a transcript or a document: private until the
+    person pulls from it or files it."""
+    data = await _read(file)
+    note = ws.captures.bring_in(
+        who, data=data, filename=file.filename or "", mime=file.content_type, title=title
+    )
+    return asdict(note)
+
+
+@router.post("/api/captures/talk", status_code=201)
+async def talk(who: Who, ws: WS, audio: Annotated[UploadFile, File()]) -> dict[str, Any]:
+    """What the person just said, recorded in the browser: its text follows in seconds."""
+    data = await _read(audio)
+    note = ws.captures.bring_in(
+        who, data=data, filename=audio.filename or "talk.webm", mime=audio.content_type, talk=True
+    )
+    return asdict(note)
+
+
+@router.get("/api/captures/{capture_id}/original")
+def original(capture_id: str, who: Who, ws: WS, download: bool = False) -> FileResponse:
+    """What was brought in: played in place (audio), or downloaded."""
+    filename, mime, path = ws.captures.original(who, capture_id)
+    return served(path, media=mime, filename=filename, download=download)
+
+
+@router.post("/api/captures/{capture_id}/retry")
+def retry(capture_id: str, who: Who, ws: WS) -> dict[str, Any]:
+    return asdict(ws.captures.retry(who, capture_id))
+
+
+@router.post("/api/captures/{capture_id}/summarize", status_code=201)
+def summarize(capture_id: str, body: SummarizeIn, who: Who, ws: WS) -> Task:
+    """Ask a model for the capture's digest: its summary and key points, each marked by how
+    it fits what the Brain holds now."""
+    return ws.captures.summarize(who, capture_id, guidance=body.guidance)
+
+
+@router.get("/api/captures/{capture_id}/related")
+def related(capture_id: str, who: Who, ws: WS) -> list[dict[str, Any]]:
+    """What the Brain already holds that the capture touches, found by meaning."""
+    return ws.captures.related(who, capture_id)
+
+
+@router.get("/api/captures/settings")
+def capture_settings(who: Who, ws: WS) -> dict[str, Any]:
+    return ws.captures.settings(who)
+
+
+@router.put("/api/captures/settings")
+def configure_captures(body: CaptureSettingsIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Whether what is brought in is summarized as it arrives."""
+    return ws.captures.configure(who, summarize=body.summarize)
+
+
+@router.get("/api/speech")
+def speech_status(request: Request, who: Who) -> dict[str, Any]:
+    """Whether this computer can turn speech into text: the library, the model, a download."""
+    del who  # signed in is enough to see it
+    status: dict[str, Any] = request.app.state.runtime.speech.status()
+    return status
+
+
+@router.post("/api/speech/download", status_code=202)
+def speech_download(request: Request, who: Who) -> dict[str, Any]:
+    """Fetch the speech model (about 480 MB, once): the owner's call, never automatic."""
+    if not who.is_human:
+        raise PermissionDenied("Only a person downloads the speech model.")
+    status: dict[str, Any] = request.app.state.runtime.speech.start_download()
+    return status

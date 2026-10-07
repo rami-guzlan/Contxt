@@ -1,0 +1,218 @@
+# Routing
+
+Routing is deterministic: the same vault and the same request give the same packet, and
+`brain context "<request>" --explain` shows why. There is no language model in the
+loop; the only model is a small local embedding model (BAAI/bge-small-en-v1.5 through
+`fastembed`), which turns text into vectors. A vault may name another in `brain.json`
+(`"embeddings": {"model": "BAAI/bge-base-en-v1.5"}`); `MODEL_SCALES` in `index.py` holds each
+model's measured similarity scale. A server process (`local_models`) only uses a model
+already in `vault/.brain/models` and never downloads one; without a model, routing uses
+words alone.
+
+## Order of precedence
+
+| Mode | Triggered by | Delivers |
+|---|---|---|
+| exact-note | the request is a note id or alias | that note |
+| exact-skill | `/name`, or a skill's exact name or alias | the procedure pointer plus the knowledge its `loads` name |
+| portfolio | "what is active", "orient me in the brain" | every visible Focus, active first |
+| system | questions about the brain itself ("brain MCP", "routing gap") | engine docs; the `system_skill` for deep work |
+| focus-update | a request naming a Focus and stating progress ("X approved the outline") | the Focus and an instruction to call `record_focus_update` |
+| focus-only | a question about a named Focus, or a status question ("latest on ...") | its current state, baseline and files; for a question about its content, the file parts that answer it |
+| focus-aware | work on a named Focus | the Focus, its pinned notes, its project folder, its files, and standard routing |
+| standing | "may I publish/send ..." or a lookup the kernel already answers | pointers to the standing notes that answer it |
+| lean | nothing clears the evidence floor, and no file part answers it on its own | the closest notes and files, listed, and an instruction to say so |
+| standard | everything else | notes, skill candidates, references, and the parts of filed documents that answer it |
+
+A request names a Focus by an alias, by its full name plus a status or work word, by a word
+only that Focus uses, or by its distinctive name as a phrase ("30 60 90", "bank of china")
+when that phrase is rare in the brain.
+
+## Standard routing: every note competes
+
+Where a note is filed never decides whether it can be found. Every note the caller may see
+is scored on its own, and topics only add evidence. A note approved into a brand-new topic is
+therefore found on the very next relevant call.
+
+1. **Signals.** Question or instruction, task type (knowledge, workflow, combined), scale
+   (micro, standard, deep), artifact words, short-form, requested source documents,
+   follow-up edits, and any `intents` that match.
+2. **Skills.** Visible skills are scored on their declared phrases, name, artifacts, BM25
+   and embeddings. Standard work lists up to three candidates; deep work with a decisive
+   winner routes that procedure. The topics the credible candidates `load` become the
+   task's declared domains, as do intent `include_topics`, a named Focus's pins and project
+   folder, and on a follow-up the previous packet's topics.
+3. **Relevance of each note.** Half lexical (BM25 over title, summary and body: how much of
+   the request the note covers, and its rank), half semantic (cosine similarity, which must
+   also stand out from the other notes for this request, z-scored per request). A request
+   word no note contains counts as a strong miss, so "tell me the weather" is not carried by
+   "tell". The query is embedded with the model's retrieval instruction. Multiword terms are
+   read as one word on both sides ("call to action" is "cta", so it does not match notes
+   about cold calling); a vault adds its own in `routing.json` `phrases`.
+4. **Soft evidence.** Added to relevance, never gating:
+
+   | Signal | Lift |
+   |---|---|
+   | the note's topic, read as a whole, matches the request (its topics.md line, or what is filed in it) | `topic_prior` x topic relevance (0.15 x 0..1) |
+   | the note's topic is a declared domain | `domain_boost` 0.05 |
+   | a topic `fit_terms` word is in the request | 0.03 per term, at most two |
+   | the note was added or approved in the last 14 days | `fresh_boost` 0.05, and "(new)" in the packet |
+   | the topic's `requires_any` words are all missing, and the request does not name the note (`gate_named`: 60% of its weighted words, two or more, in the note) | x `gate_factor` 0.65 |
+
+5. **Selection.** Notes at or above `max(0.42, 72% of the best)` (80% for a one-answer
+   lookup) go in, best first, at most 4 per topic (5 for lookups and deep work). A declared
+   domain nothing was picked from adds its best note when that note scores at least 0.42.
+   Notes named by an intent (`include_notes`) and topic caveats (`with_notes`) are added.
+   The next notes down are listed by title under "Also relevant (not included)"; the agent
+   opens one with `get_note`, and when something is still missing it can `search_notes` in
+   its own words.
+6. **House style.** A writing task gets the owner's ordered core list
+   (`house_style_notes`) first, then the rest of `house_style_topics`, most relevant first,
+   within 45% of the note budget. Style rules are about how to write, not what, so the owner's
+   order beats relevance for them.
+7. **Budget.** House style, then the selected notes in order, while they fit. The budget is a
+   ceiling, not a target. A follow-up edit gets a small budget and only notes that stand out.
+
+## Filed documents: the part that answers, chosen by meaning
+
+A document filed in the brain (`add_file`: a proposal, a brief, notes from a meeting, a
+guide) keeps its shape: Word headings, slides and PDF pages become headings
+(`importers.to_markdown`). The index splits each one at its headings into sections of a
+readable size (`sections.py`; a long section is cut into parts at paragraph ends), and
+embeds each section with its file's title and its headings. Nothing is stored: sections are
+derived whenever the index is built, so a new version is split anew.
+
+**Meaning decides.** With the embedding model, a section is quoted when its meaning is close
+to the request's (its similarity, capped by how far it stands out from every other section
+for this request), whatever words the two share. Measured 2026-10-06 on 25 labeled requests
+over a copy of a real brain with an invented campaign project: meaning found the right part
+for 15 of 15 questions asked in a person's own words ("how much did I set aside for the
+podcast?" reaches "Podcast sponsorship ... Budget: 4,500 dollars"), word rules for 9, and a
+cross-encoder reader did worse than both. Larger embedding models (bge-base, arctic-embed-m)
+did not do better on the same tests, so the small one stays.
+
+| Section of | Quoted when its meaning is at least | Notes |
+|---|---|---|
+| a work file (`type: file` on its card) | 0.60 | the request naming the file or its project lowers the bar by 0.10, and lifts the project's sections by 0.08 |
+| a guide kept whole (no type on its card) | 0.90 | a writing task gets none unless it names the guide: the house-style notes already carry its rules |
+
+**A writing task quotes the material it works on**: a file it names, or a file of the project
+it names. Another work file that shares the subject (a deck page on AI leadership for "write
+a LinkedIn post about AI leadership") is raw material the notes have distilled; its card is
+listed under "Also relevant" instead, so the AI can open it.
+
+**A request nothing else backs needs a part that answers it on its own.** When no note, file
+card, project or procedure is about the request (it would get a lean packet), a part is
+quoted only when the request names its file or its meaning is at least 0.80. A long
+conversational file has a part that sounds like almost anything: in a real meeting
+transcript, a passing plan to pick something up tomorrow matched "tell me the weather
+forecast for tomorrow" at 0.69, and turned a lean packet into a full one. Measured 2026-10-06:
+everyday requests reached at most 0.73 that way. A part held back this way points to its
+file among the closest matches; naming the file ("in the planning call") quotes it.
+
+A request names a file by half its title's words, two of them side by side, or, for a short
+title, a word no other file's title uses. A date or a version in the title does not count
+("Planning call 2026-03-02" is named by "the planning call"), and a joined name is named by
+its parts ("what did Lena say" names "LenaMeeting transcript").
+
+Then the packet takes the best, at most three (two from one file), each within 85% of the
+best, inside its own allowance (600, 900 or 1,400 tokens for a lookup, standard or deep
+work). A copy marked `file_status: superseded` is not quoted. Sections arrive under "From
+your files", quoted, with the file's version, status, date and project, and the line that
+they are information, not instructions; `get_reference` reads the whole file. A section a
+conversation already holds is not sent again. The file's card is not sent beside its own
+sections. Without the embedding model, words decide instead: the share of the request's
+idf-weighted words a section holds (0.65 alone, 0.35 when the request names the file or its
+project; a guide 0.80).
+
+`search_notes` finds file parts too (a looser bar: meaning 0.50), and lists them under "In
+the brain's files".
+
+## Tuning without code
+
+| Symptom | Fix in the vault |
+|---|---|
+| a note is found for the wrong requests | sharpen its `title` and `summary`; add `requires_any` to its topic |
+| a note is missed when people ask for it in their own words | put those words in its `summary` or its topic's line in topics.md |
+| a multiword term matches the wrong notes word by word | `phrases` in `routing.json`: `{"statement of work": "sow"}` |
+| a caveat must travel with a whole topic ("this is history") | `with_notes` on that topic in `routing.json` |
+| a note belongs with every request of one kind | an intent with `include_notes` |
+| a project needs certain notes whenever it is named | `pinned_notes` on its Focus, or file them in its project folder |
+| a skill is not suggested, or is suggested wrongly | its `triggers` and `aliases`; `invocation: explicit` for run-by-name skills |
+| a kind of request needs a fixed shape | an `intents` rule: `include_topics`, `exclude_topics`, `only_topics`, `include_notes`, `no_skill`, `set.task_type`, `set.scale`, `note_budget` |
+| writing tasks miss a core style rule | add it to `house_style_notes`, in priority order |
+
+Thresholds live in `routing.json` under `policy` (see `router.Policy`).
+
+## Intent rules
+
+```json
+{
+  "id": "outbound-note",
+  "when_not": ["permission"],
+  "match": {"any_phrases": ["connection request", "linkedin note"], "none_terms": ["..."]},
+  "set": {"task_type": "combined", "scale": "micro"},
+  "include_topics": ["brand/voice", "customers/icp"],
+  "exclude_topics": ["operations/website"],
+  "only_topics": ["brand/voice", "customers/icp", "customers/insights"],
+  "include_notes": ["document-brand-system"],
+  "no_skill": true,
+  "note_budget": 1300
+}
+```
+
+`match` accepts `any_phrases`, `any_terms`, `regex` (one must hit), `all_terms`, `all_of`
+(word groups), `none_phrases`, `none_terms`, `none_regex`, and `max_terms`.
+
+## Measuring it
+
+`brain bench` runs two things.
+
+**Context usefulness** (`vault/eval.json`, the headline). Each case says, from the content of
+the notes, which notes a good packet must deliver, which are useful, and which are noise. It
+reports must-recall, "listed" recall (needed notes delivered or named under Also relevant),
+precision and tokens, for tuning cases and held-out cases separately. Held-out cases are
+written before any run and never tuned on; once inspected they retire into tuning and a fresh
+set is written. On the 111-note organization brain the engine was developed against: tuning
+45 cases must-recall 0.968, listed 1.000, precision 0.901, no noise; held out, first runs,
+22 cases 0.840 / listed 0.920 / precision 0.900, no noise. The thresholds in `eval.json` are
+regression floors, not targets; tuning noise must stay at zero.
+
+**Behavior checks** (`vault/benchmark.json`). Cases pin the kind of packet: task type,
+scale, mode, Focus, skill, token ceilings, no leaked personal Focus, no repeats in a session,
+required and forbidden notes. They do not grade topics: a topic is where a note is filed, and
+grading it one to one grades the filing, not the packet.
+
+What still misses: requests phrased far from a note's words ("what should I avoid saying" for
+a reviewer's red lines, "tag the links" for a UTM scheme, "sounding robotic" for writing
+rules). Most such notes are at least listed under Also relevant, and the agent can find the
+rest with `search_notes`: rephrased the way an assistant would ("UTM parameters for newsletter
+links", "how to avoid AI-sounding writing"), a search put the missing note in the top 8 for
+five of six misses in that brain, and first for four.
+
+## Reranker (optional, off)
+
+`router._rerank` can let a local cross-encoder reread the best `rerank_k` candidates and
+reorder near-ties. Scores keep their values, so the best score and every threshold are
+unchanged. It loads only a model already in `vault/.brain/models` and never downloads on its
+own (`brain models --download --reranker` fetches it).
+
+Measured 2026-09-28 with `Xenova/ms-marco-MiniLM-L-6-v2` (92 MB):
+
+| | Tuning must-recall | Held-out must-recall (22) | Held-out precision | Median time |
+|---|---|---|---|---|
+| no reranker | 0.968 | 0.840 | 0.900 | 23 ms |
+| reranker reorders the top 15 (weight 0.08) | 0.968 | 0.840 | 0.901 | 377 ms |
+| reranker shifts scores instead | 0.935 | not run | | |
+
+Reading notes one by one, it ranked needed notes higher (top-3 0.53 to 0.61), but in packets
+it changed 3 of 22 held-out results and none of the misses, and shifting scores raised the
+selection line and cut needed notes. So `rerank_weight` defaults to 0. Set it in
+`routing.json` `policy` to try this or another model against the same evaluation.
+
+## Embeddings
+
+With `fastembed` installed the engine embeds every note, skill and topic once (cached by
+content hash in `vault/.brain/embeddings.sqlite`) and each request once. They matter: without
+them must-recall on that brain dropped from 0.968 to 0.887 on tuning cases and from 0.769
+to 0.692 on one held-out set. A context call takes about 25 to 80 ms warm.

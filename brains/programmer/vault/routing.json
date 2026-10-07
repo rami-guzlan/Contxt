@@ -1,0 +1,36 @@
+{
+  "house_style_notes": [
+    "practices-code-style-types"
+  ],
+  "house_style_topics": [
+    "practices/code-style"
+  ],
+  "permission_topics": [
+    "practices/git",
+    "work/deploys"
+  ],
+  "topics": {
+    "work/on-call": {
+      "requires_any": [
+        "on-call",
+        "oncall",
+        "incident",
+        "page",
+        "pager",
+        "outage",
+        "sev1",
+        "sev2",
+        "runbook"
+      ]
+    },
+    "topics/rust": {
+      "requires_any": [
+        "rust",
+        "cargo",
+        "borrow",
+        "ownership",
+        "lifetime"
+      ]
+    }
+  }
+}

@@ -1,0 +1,2 @@
+{"actor": "person:kai", "at": "2026-09-15T15:00:00Z", "changes": {"current": "The planner writes to both databases behind a flag", "next": "Backfill historical routes and compare row counts"}, "evidence": "recorded by the owner", "seq": 1, "summary": "Dual writes live"}
+{"actor": "person:kai", "at": "2026-10-02T14:00:00Z", "changes": {"current": "All routes since 2023 backfilled; counts match", "next": "Switch reads to the new database for 10% of carriers"}, "evidence": "recorded by the owner", "seq": 2, "summary": "Backfill done"}

@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "name": "My Brain",
+  "description": "Your Brain: who you are, how you like work done, what you are working on, and what your AI should know.",
+  "owner": "person:me",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "assistant": {
+        "label": "Assistant",
+        "order": 1,
+        "description": "how your AI works with you"
+      },
+      "me": {
+        "label": "Me",
+        "order": 2,
+        "description": "who you are, what you do, what you care about"
+      },
+      "work": {
+        "label": "Work",
+        "order": 3,
+        "description": "your work: what you make, for whom, and how"
+      },
+      "people": {
+        "label": "People",
+        "order": 4,
+        "description": "who is who"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 5,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 6,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:me": {
+      "parent": "company",
+      "label": "Me"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:me",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

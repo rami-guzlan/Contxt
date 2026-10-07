@@ -1,0 +1,57 @@
+# Private-server profile: the same images, PostgreSQL, and a TLS reverse proxy.
+#
+#   docker compose -f compose.yaml -f docker/compose.server.yaml up -d
+#
+# Needs in .env: CONTXT_DOMAIN (a name that resolves to this server, for example on a
+# private network or Tailscale), POSTGRES_PASSWORD, and CONTXT_OWNER_TOKEN. On Linux, also
+# CONTXT_UID and CONTXT_GID as in compose.yaml: the app, the worker and data-init come
+# from there, and PostgreSQL keeps its own volume.
+
+services:
+  app:
+    environment:
+      CONTXT_DATABASE_URL: postgresql+psycopg://contxt:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/contxt
+      CONTXT_PUBLIC_URL: https://${CONTXT_DOMAIN:?set CONTXT_DOMAIN}
+      CONTXT_ALLOWED_ORIGINS: https://${CONTXT_DOMAIN}
+      CONTXT_TRUST_PROXY: "1"
+    ports: !reset []
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    environment:
+      CONTXT_DATABASE_URL: postgresql+psycopg://contxt:${POSTGRES_PASSWORD}@db:5432/contxt
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: contxt
+      POSTGRES_DB: contxt
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contxt -d contxt"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2
+    environment:
+      CONTXT_DOMAIN: ${CONTXT_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  caddy-data:

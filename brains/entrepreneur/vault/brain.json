@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "name": "Riley's Ventures",
+  "description": "Demo: the Brain of Riley Chen, a made-up serial entrepreneur running one startup, advising another and writing small angel checks.",
+  "owner": "person:riley",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "assistant": {
+        "label": "Assistant",
+        "order": 1,
+        "description": "how the assistant works with Riley"
+      },
+      "me": {
+        "label": "Me",
+        "order": 2,
+        "description": "Riley's principles, schedule and way of deciding"
+      },
+      "ventures": {
+        "label": "Ventures",
+        "order": 3,
+        "description": "each company: Loopline now, Brewbox before, ideas next"
+      },
+      "fundraising": {
+        "label": "Fundraising",
+        "order": 4,
+        "description": "rounds, investors and investor updates"
+      },
+      "investing": {
+        "label": "Investing",
+        "order": 5,
+        "description": "Riley's angel checks and how Riley picks them"
+      },
+      "people": {
+        "label": "People",
+        "order": 6,
+        "description": "cofounders, advisors, investors, who is who"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "playbooks: hiring, pricing, board meetings"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:riley": {
+      "parent": "company",
+      "label": "Riley Chen"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:riley",
+    "auto_apply_own_scope": true,
+    "review_days": {
+      "state": 30
+    }
+  },
+  "kernel": {
+    "action_policy": "Draft, never send: emails to investors, offers to candidates and anything with money or a signature wait for Riley's yes."
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

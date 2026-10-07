@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "name": "Taylor's Life",
+  "description": "Demo: the personal Brain of Taylor Brooks, a made-up parent in Denver: family, home, money, health, travel and food.",
+  "owner": "person:taylor",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Household",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "assistant": {
+        "label": "Assistant",
+        "order": 1,
+        "description": "how the assistant works with Taylor"
+      },
+      "me": {
+        "label": "Me",
+        "order": 2,
+        "description": "who Taylor is and likes"
+      },
+      "family": {
+        "label": "Family",
+        "order": 3,
+        "description": "Jamie, Ollie, schedules, school, allergies"
+      },
+      "home": {
+        "label": "Home",
+        "order": 4,
+        "description": "the house: maintenance, appliances, rules"
+      },
+      "money": {
+        "label": "Money",
+        "order": 5,
+        "description": "budget, savings goals, subscriptions"
+      },
+      "health": {
+        "label": "Health",
+        "order": 6,
+        "description": "running, sleep and routines"
+      },
+      "travel": {
+        "label": "Travel",
+        "order": 7,
+        "description": "preferences, documents, loyalty programs"
+      },
+      "food": {
+        "label": "Food",
+        "order": 8,
+        "description": "what the family eats, favorites, meal plans"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 9,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 10,
+        "description": "learning notes and everything else"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Brooks household"
+    },
+    "person:taylor": {
+      "parent": "company",
+      "label": "Taylor Brooks"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:taylor",
+    "auto_apply_own_scope": true
+  },
+  "kernel": {
+    "action_policy": "Plan and draft freely. Bookings, purchases, payments and messages to other people wait for Taylor's yes, every time."
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

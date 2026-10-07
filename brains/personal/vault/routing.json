@@ -1,0 +1,32 @@
+{
+  "house_style_notes": [
+    "me-preferences"
+  ],
+  "house_style_topics": [
+    "me/preferences"
+  ],
+  "permission_topics": [
+    "assistant/privacy"
+  ],
+  "topics": {
+    "travel/documents": {
+      "requires_any": [
+        "passport",
+        "passports",
+        "visa",
+        "documents",
+        "expire",
+        "expiry",
+        "renew"
+      ]
+    },
+    "home/maintenance": {
+      "fit_terms": [
+        "filter",
+        "gutters",
+        "furnace",
+        "detector"
+      ]
+    }
+  }
+}
