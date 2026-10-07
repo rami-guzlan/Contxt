@@ -95,8 +95,11 @@ class Brain:
         self.default_principal = principal or os.environ.get("BRAIN_PRINCIPAL") or None
         if embeddings is None:
             embeddings = os.environ.get("BRAIN_EMBEDDINGS", "1") not in ("0", "false", "off")
+        # No Brain fetches a model on its own, its MCP server included: it uses one already in
+        # vault/.brain/models, or matches by words until the owner downloads one (`models
+        # --download`, or the app's Settings). BRAIN_LOCAL_MODELS=0 lets it fetch on first use.
         if local_models is None:
-            local_models = os.environ.get("BRAIN_LOCAL_MODELS", "0") in ("1", "true", "on")
+            local_models = os.environ.get("BRAIN_LOCAL_MODELS", "1") not in ("0", "false", "off")
         self.embedder = (Embedder(self.vault.runtime_dir, configured_model(self.vault.root),
                                   local_only=local_models)
                          if embeddings else None)

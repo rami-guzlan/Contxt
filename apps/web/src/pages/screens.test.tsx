@@ -143,6 +143,7 @@ describe("home", () => {
     ],
     "GET /api/runners": [],
     "GET /api/brain/examples": [],
+    "GET /api/brain/models": { matching: { enabled: true, present: false, downloading: false, about_mb: 70 } },
   };
 
   it("says in one line how you are doing, with the plan and the health behind it", async () => {
@@ -158,6 +159,8 @@ describe("home", () => {
     const steps = await screen.findByRole("region", { name: "Next steps" });
     expect(within(steps).getByRole("link", { name: "Add its files" })).toHaveAttribute("href", "/projects/q4-campaigns");
     expect(within(steps).queryByRole("link", { name: "Connect an AI app" })).not.toBeInTheDocument();
+    // nothing downloads on its own: matching by meaning waits for the person's word
+    expect(within(steps).getByRole("link", { name: "Match by meaning" })).toHaveAttribute("href", "/settings?tab=computer");
     // three pictures and the apps, calm
     expect(await screen.findByLabelText("What your AIs asked")).toHaveTextContent("9");
     expect(screen.getByLabelText("What came in")).toHaveTextContent("Your AI's chats 3");

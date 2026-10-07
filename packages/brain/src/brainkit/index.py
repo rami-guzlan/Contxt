@@ -172,7 +172,7 @@ class Embedder:
             return False
         if self.local_only and not self.present():
             self._failed = (f"{self.model_name} is not in {self.model_dir}; matching by words "
-                            "until it is downloaded")
+                            "until it is downloaded (contxt models --download)")
             return False
         try:
             import fastembed  # noqa: F401
@@ -209,7 +209,7 @@ class Embedder:
     def _load(self):
         if self._model is None and not self._failed and self.local_only and not self.present():
             self._failed = (f"{self.model_name} is not in {self.model_dir}; matching by words "
-                            "until it is downloaded")
+                            "until it is downloaded (contxt models --download)")
         if self._model is None and not self._failed:
             try:
                 from fastembed import TextEmbedding

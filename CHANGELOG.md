@@ -39,5 +39,7 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
 - A change whose git save fails says so, and Home and `brain_health` show it until the next
   change saves it. Windows Brains allow long paths.
 - Local models for matching by meaning and for speech to text, downloaded on request (in
-  Settings, On this computer, too).
+  Settings, On this computer, too). Nothing downloads on its own: a Brain, its MCP server
+  included, matches by words until you ask (`BRAIN_LOCAL_MODELS=0` lets it fetch on first
+  use).
 - Source-available under the PolyForm Shield License 1.0.0.

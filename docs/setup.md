@@ -110,7 +110,9 @@ fetches two local models into `brain/vault/.brain/models`, once:
 - a speech model (faster-whisper `small.en`, about 480 MB), so talk and recordings turn into
   text on this computer. On a 12-thread laptop CPU, 15 seconds of talk takes about 2 seconds.
 
-Nothing downloads on its own. Without them the Brain matches by words, and talking is off.
+Nothing downloads on its own, not even when an AI app starts the Brain: without them the
+Brain matches by words, and talking is off. Settings, On this computer, has the same
+downloads. (`BRAIN_LOCAL_MODELS=0` lets the Brain fetch its embedding model on first use.)
 
 ## 6. Start a project and add its files
 

@@ -8,7 +8,7 @@
 import { ArrowRight, Check, MoveRight, Sparkles } from "lucide-react";
 import { Link, Navigate } from "react-router";
 
-import { useAiApps, useBrainProjects, useCatchUp, useGoals, useHome, useNotes, useOnboarding, useWeekly } from "../api/hooks";
+import { useAiApps, useBrainProjects, useCatchUp, useGoals, useHome, useModels, useNotes, useOnboarding, useWeekly } from "../api/hooks";
 import type { BrainHealth, CatchUpPlan, Goals } from "../api/types";
 import { BringIn } from "../components/BringIn";
 import { ContextPreview } from "../components/ContextPreview";
@@ -183,12 +183,20 @@ function NextSteps({ goals }: { goals: Goals | undefined }) {
   const { data: apps } = useAiApps();
   const { data: projects } = useBrainProjects();
   const { data: notes } = useNotes();
+  const { data: models } = useModels();
   if (!setup) return null;
   const asked = (apps ?? []).some((a) => a.last_request);
   const first = (projects ?? []).find((p) => p.active);
   const steps = [
     { done: !!goals?.exists, to: "/settings?tab=goals", label: "Say what your Brain is for", why: "Everything you bring in is sifted against it." },
     { done: asked, to: "/settings?tab=apps", label: "Connect an AI app", why: "Claude Code, Claude Desktop, Cursor or Codex: one step each." },
+    {
+      // nothing downloads on its own: until the person asks, the Brain matches by words
+      done: !models || !models.matching.enabled || models.matching.present,
+      to: "/settings?tab=computer",
+      label: "Match by meaning",
+      why: `Download the small model once (about ${models?.matching.about_mb ?? 70} MB). Until then your Brain matches by words.`,
+    },
     { done: setup.brain.projects > 0, to: "/projects", label: "Start a project", why: "Your AI then knows where it stands." },
     {
       done: setup.brain.projects === 0 || setup.brain.files > 0,
