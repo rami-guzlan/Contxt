@@ -766,6 +766,52 @@ class Skills:
             self.tasks.pin(who, task.id, ref_type=ref_type, ref_id=ref_id, version=version)
         return self.tasks.mark_ready(who, task.id) if assignee else task
 
+    def made_in(self, who: Principal, folder: str) -> dict[str, Any] | None:
+        """The skill run that worked in one folder of the outputs folder: what was asked of
+        which skill, for which project, with which files, and its runs (each run's id is how
+        to read what the Brain handed it)."""
+        wanted = os.path.normcase(os.path.abspath(folder))
+        for task in self._tasks(who, RUN):
+            about = dict(task.provenance.get("skill") or {})
+            there = str(about.get("folder") or "")
+            if not there or os.path.normcase(os.path.abspath(there)) != wanted:
+                continue
+            runs = schema.task_runs
+            with self.rt.read() as tx:
+                rows = tx.rows(
+                    sa.select(runs.c.id, runs.c.actor_id, runs.c.claimed_at, runs.c.status)
+                    .where(runs.c.task_id == task.id)
+                    .order_by(runs.c.claimed_at)
+                )
+                names = {
+                    r["id"]: r["name"]
+                    for r in tx.rows(
+                        sa.select(schema.actors.c.id, schema.actors.c.name).where(
+                            schema.actors.c.id.in_({r["actor_id"] for r in rows})
+                        )
+                    )
+                }
+            return {
+                "task_id": task.id,
+                "skill": self._skill_of(task),
+                "ask": about.get("ask") or "",
+                "project": about.get("project"),
+                "attached": list(about.get("attached") or []),
+                "capture": about.get("capture"),
+                "status": task.status,
+                "created_at": task.created_at,
+                "runs": [
+                    {
+                        "id": r["id"],
+                        "at": r["claimed_at"],
+                        "status": r["status"],
+                        "by": names.get(r["actor_id"], "a model"),
+                    }
+                    for r in rows
+                ],
+            }
+        return None
+
     def _tasks(self, who: Principal, *templates: str) -> builtins.list[Task]:
         who.require("tasks.read")
         table = schema.tasks

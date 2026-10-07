@@ -426,6 +426,27 @@ class BrainPort(Protocol):
         [{"start", "end", "conversations", "packets"}]."""
         ...
 
+    def kernel(self) -> dict[str, Any]:
+        """The startup context every conversation gets once: {"text", "tokens"}."""
+        ...
+
+    def made_from(self, path: str) -> dict[str, Any] | None:
+        """What a file an AI saved for the person was made from, when it said so: the
+        conversation's requests and what each got; None when nothing was recorded."""
+        ...
+
+    def work_given(self, run_id: str) -> list[dict[str, Any]]:
+        """What one run of the app's AI work was handed from the Brain."""
+        ...
+
+    def requests(
+        self, *, limit: int = 50, before: str | None = None, client: str | None = None
+    ) -> dict[str, Any]:
+        """What each AI asked and what it got, newest first: {"requests", "brain_tokens",
+        "apps"}; each request with its app, what it got and why, what it opened after, and
+        what its conversation saved or suggested."""
+        ...
+
     def goals(self) -> dict[str, Any]:
         """The questions about what the Brain is for, and the owner's answers: {"questions",
         "answers", "exists", "updated", "text"}."""
@@ -603,6 +624,20 @@ class NoBrain:
 
     def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
         return []
+
+    def kernel(self) -> dict[str, Any]:
+        return {"text": "", "tokens": 0}
+
+    def made_from(self, path: str) -> dict[str, Any] | None:
+        return None
+
+    def work_given(self, run_id: str) -> list[dict[str, Any]]:
+        return []
+
+    def requests(
+        self, *, limit: int = 50, before: str | None = None, client: str | None = None
+    ) -> dict[str, Any]:
+        return {"requests": [], "brain_tokens": 0, "apps": []}
 
     def goals(self) -> dict[str, Any]:
         return {"questions": [], "answers": {}, "exists": False, "updated": None, "text": ""}

@@ -189,6 +189,16 @@ AGENT_TOOLS = [
          "pinned_notes": {"type": "array", "items": _STR},
          "pinned_skills": {"type": "array", "items": _STR}, "session_id": _STR},
          "required": ["name", "summary"]}},
+    {"name": "record_output",
+     "description": "After you save a file the person asked for (a draft, a deck, a report) in "
+                    "their outputs folder, say so: its full path, a few words on what it is, "
+                    "and your session_id. The app then shows the person what this "
+                    "conversation was given when the file was made.",
+     "inputSchema": {"type": "object", "properties": {
+         "path": {"type": "string", "description": "The saved file's full path."},
+         "title": {"type": "string", "description": "What it is, in a few words."},
+         "session_id": _STR},
+         "required": ["path"]}},
     {"name": "brain_health",
      "description": "Run the read-only brain health report.",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -252,6 +262,8 @@ HANDLERS = {
         pinned_skills=a.get("pinned_skills"), aliases=a.get("aliases"),
         session_id=a.get("session_id")),
     "brain_health": lambda b, a: b.health(),
+    "record_output": lambda b, a: b.record_output(
+        a.get("path"), title=a.get("title") or "", session_id=a.get("session_id")),
     "search_notes": lambda b, a: b.search(a.get("query"), limit=a.get("limit") or 8,
                                           include_archived=bool(a.get("include_archived")),
                                           session_id=a.get("session_id")),
@@ -298,6 +310,11 @@ class Server:
         method, msg_id = message.get("method"), message.get("id")
         if method == "initialize":
             params = message.get("params") or {}
+            client = params.get("clientInfo") or {}
+            if isinstance(client, dict) and self.brain is not None:
+                # Which app this is, for the record of what each AI asked.
+                self.brain.client = " ".join(
+                    str(client.get(k) or "") for k in ("name", "version")).strip()[:80]
             self.reply(msg_id, {
                 "protocolVersion": params.get("protocolVersion", PROTOCOL_DEFAULT),
                 "capabilities": {"tools": {}},

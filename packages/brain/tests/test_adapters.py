@@ -58,7 +58,8 @@ class MCPServerTests(unittest.TestCase):
         names = {t["name"] for t in self.rpc("tools/list")["result"]["tools"]}
         self.assertEqual(names, {"get_task_context", "get_skill", "get_reference", "get_note",
                                  "search_notes", "propose_note", "propose_skill", "add_file",
-                                 "record_focus_update", "create_focus", "brain_health"})
+                                 "record_focus_update", "create_focus", "record_output",
+                                 "brain_health"})
         first = self.call("get_task_context", {"request": "How long do web design projects run?"})
         self.assertFalse(first["isError"], first)
         text = first["content"][0]["text"]

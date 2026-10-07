@@ -1017,6 +1017,41 @@ class BrainKitAdapter:
         data["projects"] = [p for p in data.get("projects") or [] if p.get("id") in seen]
         return data
 
+    def requests(
+        self, *, limit: int = 50, before: str | None = None, client: str | None = None
+    ) -> dict[str, Any]:
+        st = self.brain.state()
+        seen = self._seen(st)
+        data: dict[str, Any] = dict(
+            self.brain.requests(limit=limit, before=before, client=client).data
+        )
+        for row in data.get("requests") or []:
+            # Only what the owner may see, and its use too.
+            for key in ("got", "opened"):
+                row[key] = [p for p in row[key] if p["kind"] != "note" or p["id"] in seen]
+        return data
+
+    def made_from(self, path: str) -> dict[str, Any] | None:
+        found = self.brain.made_from(path).data.get("found")
+        if found is None:
+            return None
+        st = self.brain.state()
+        seen = self._seen(st)
+        for row in found.get("requests") or []:
+            for key in ("got", "opened"):
+                row[key] = [p for p in row[key] if p["kind"] != "note" or p["id"] in seen]
+        return dict(found)
+
+    def work_given(self, run_id: str) -> list[dict[str, Any]]:
+        st = self.brain.state()
+        seen = self._seen(st)
+        pieces = self.brain.work_given(run_id).data.get("pieces") or []
+        return [p for p in pieces if p["kind"] != "note" or p["id"] in seen]
+
+    def kernel(self) -> dict[str, Any]:
+        found = self.brain.kernel()
+        return {"text": found.text, "tokens": int(found.data.get("tokens") or 0)}
+
     def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
         return list(self.brain.weekly(weeks).data.get("weeks") or [])
 

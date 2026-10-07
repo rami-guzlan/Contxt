@@ -1002,7 +1002,9 @@ class Router:
         """`previous` is the conversation's last packet."""
         sig = analyze(request, self.config.routing, {"task_type": task_type_override})
         previous = previous or {}
-        notes = self.admitted_notes(chain, partitions)
+        # A note loaded "manual" is opened by its id or found by a search, never routed into
+        # a packet (the owner's goals, which steer what is kept, not what a request gets).
+        notes = [n for n in self.admitted_notes(chain, partitions) if n.load != "manual"]
         if previous and not (sig.portfolio or sig.system or sig.permission or sig.focus_update
                              or sig.deep or sig.orientation) and len(sig.words) <= 20:
             leans = _refers_back(sig)

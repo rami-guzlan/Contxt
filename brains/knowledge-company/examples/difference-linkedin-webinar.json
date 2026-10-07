@@ -1,0 +1,28 @@
+{
+  "request": "Write a LinkedIn post announcing our October 22 webinar",
+  "illustrative": true,
+  "note": "Written for this demo from what its Brain hands over for this request. Brightmill, its people and its numbers are made up.",
+  "without": "🚀 Exciting news! Join us for our upcoming webinar on October 22!\n\nIn today's fast-paced world, staying ahead of the curve matters more than ever. Our expert panel will share actionable insights and proven strategies to help you unlock your team's full potential.\n\n📅 Date: October 22\n⏰ Time: [Insert time]\n🔗 Register here: [link]\n\nDon't miss this chance to learn, connect and grow. Spots are limited, so save your seat today!\n\n#Webinar #Leadership #Growth #Innovation #ProfessionalDevelopment #Learning",
+  "with_context": "57% of new supervisors got under 8 hours of formal training.\n\nThat number is from our Plant Leaders Survey: 412 plant leaders, fielded this June. Getting new supervisors ready fast is one of the 5 problems you tell us about most, along with hiring operators and unplanned downtime.\n\nSo our Q4 webinar series is about exactly that. 3 sessions, October to December, each with a guest plant manager.\n\nThe first one is October 22.\n\nHow many hours of training did you get before your first shift as a supervisor?\n\n#Manufacturing #Operations #Supervisors\n\nDraft for Morgan's approval. Sources: 57%, 8 hours and 412 from the Plant Leaders Survey 2026 (research library); the 5 problems from \"What our audience struggles with\". First comment: the registration link, which is not in the Brain yet. Also not in the Brain: the October 22 guest's name and the start time, so I left them out instead of guessing. Post it Tuesday, Wednesday or Thursday at 8:30 AM Eastern.",
+  "differences": [
+    {"what": "It is about getting new supervisors ready; the first post never learns the topic", "item": "q4-webinar-series"},
+    {"what": "It opens with a sourced number, in 11 words", "item": "marketing-linkedin-rules"},
+    {"what": "Plain and calm: no exclamation marks, no hype words", "item": "brand-voice-plant-manager"},
+    {"what": "It speaks to plant leaders and ends with a question they can answer", "item": "customers-pains"},
+    {"what": "The link goes in the first comment, with 3 hashtags", "item": "marketing-linkedin-rules"},
+    {"what": "It comes back as a draft for Morgan, with its sources", "item": "marketing-approvals-morgan"},
+    {"what": "It leaves out the guest and the time instead of inventing them", "item": "brand-claims-sourced"}
+  ],
+  "pieces": [
+    {"kind": "project", "id": "q4-webinar-series", "title": "Q4 webinar series"},
+    {"kind": "note", "id": "marketing-linkedin-rules", "title": "LinkedIn posting rules"},
+    {"kind": "note", "id": "customers-pains", "title": "What our audience struggles with"},
+    {"kind": "note", "id": "marketing-channels", "title": "Where we show up"},
+    {"kind": "startup", "id": "brand-voice-plant-manager", "title": "Write like a plant manager talking to a peer"},
+    {"kind": "startup", "id": "brand-claims-sourced", "title": "Every number needs a source"},
+    {"kind": "startup", "id": "marketing-approvals-morgan", "title": "Morgan approves everything external"}
+  ],
+  "tokens": 682,
+  "kernel_tokens": 780,
+  "brain_tokens": 3036
+}

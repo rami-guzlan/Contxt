@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS usage_daily (
     opened INTEGER NOT NULL DEFAULT 0, in_work INTEGER NOT NULL DEFAULT 0,
     tokens INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, kind, item));
 CREATE TABLE IF NOT EXISTS ledger_meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS outputs (
+    path TEXT PRIMARY KEY, session_id TEXT, at TEXT, title TEXT, client TEXT);
 CREATE TABLE IF NOT EXISTS dismissed (key TEXT PRIMARY KEY, at TEXT);
 """
 
@@ -134,13 +136,16 @@ class Ledger:
         text = str(session_id or "").strip()
         return 3 <= len(text) <= 120 and all(c.isalnum() or c in "-_.:" for c in text)
 
-    def touch(self, session_id: str, principal: str = "") -> None:
+    def touch(self, session_id: str, principal: str = "", label: str = "") -> None:
+        """Note a session as seen now; `label` names the app it came from (the MCP client),
+        kept from the first time it is known."""
         now = util.now_iso()
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO sessions (id, principal, created, seen) VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(id) DO UPDATE SET seen = excluded.seen",
-                (session_id, principal, now, now))
+                "INSERT INTO sessions (id, principal, created, seen, label) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET seen = excluded.seen, "
+                "label = COALESCE(NULLIF(sessions.label, ''), excluded.label)",
+                (session_id, principal, now, now, str(label or "") or None))
         self.prune()
 
     def exists(self, session_id: str) -> bool:
@@ -363,6 +368,94 @@ class Ledger:
                 buckets[offset]["packets"] += 1
         return [{"start": b["start"], "end": b["end"], "conversations": len(b["sessions"]),
                  "packets": b["packets"]} for b in buckets]
+
+    # ------------------------------------------------------------------ outputs
+    def record_output(self, path: str, session_id: str, *, title: str = "",
+                      client: str = "") -> None:
+        """A file an AI saved for the person, and the conversation it was made in."""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO outputs (path, session_id, at, title, client) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(path) DO UPDATE SET session_id = excluded.session_id, "
+                "at = excluded.at, title = excluded.title, "
+                "client = COALESCE(NULLIF(excluded.client, ''), outputs.client)",
+                (path, session_id, util.now_iso(), title, client))
+
+    def output(self, path: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM outputs WHERE path = ?", (path,)).fetchone()
+        return dict(row) if row else None
+
+    def session_items(self, session_id: str) -> list[tuple]:
+        """Everything one session was handed (an AI work run's `work:<run>`), oldest first."""
+        with self._connect() as conn:
+            return [(r["kind"], r["item"], r["tokens"], r["reason"]) for r in conn.execute(
+                "SELECT kind, item, tokens, reason FROM deliveries WHERE session_id = ? "
+                "ORDER BY at, rowid", (session_id,))]
+
+    def requests(self, *, limit: int = 50, before: str | None = None,
+                 session: str | None = None) -> list[dict]:
+        """Packets newest first (older than the packet `before` names, for the next page):
+        the request, its tokens, its session's app (`client`), each piece it delivered with
+        why, and what the conversation opened after it (until its next packet)."""
+        query = ("SELECT p.id, p.session_id, p.at, p.request, p.mode, p.tokens, p.data, "
+                 "s.label AS client FROM packets p LEFT JOIN sessions s ON s.id = p.session_id")
+        params: list = []
+        where = []
+        if before:
+            where.append("(p.at, p.rowid) < (SELECT at, rowid FROM packets WHERE id = ?)")
+            params.append(str(before))
+        if session:
+            where.append("p.session_id = ?")
+            params.append(str(session))
+        if where:
+            query += " WHERE " + " AND ".join(where)
+        query += " ORDER BY p.at DESC, p.rowid DESC LIMIT ?"
+        params.append(max(1, min(int(limit), 500)))
+        with self._connect() as conn:
+            rows = [dict(r) for r in conn.execute(query, params)]
+            if not rows:
+                return []
+            ids = [r["id"] for r in rows]
+            marks = ",".join("?" * len(ids))
+            pieces: dict[str, list] = {}
+            for d in conn.execute(
+                    f"SELECT packet_id, kind, item, tokens, reason FROM deliveries "
+                    f"WHERE packet_id IN ({marks}) ORDER BY rowid", ids):
+                pieces.setdefault(d["packet_id"], []).append(
+                    (d["kind"], d["item"], d["tokens"], d["reason"]))
+            sessions = sorted({r["session_id"] for r in rows})
+            smarks = ",".join("?" * len(sessions))
+            opened = [dict(d) for d in conn.execute(
+                f"SELECT session_id, kind, item, tokens, reason, at FROM deliveries WHERE "
+                f"packet_id = ? AND session_id IN ({smarks}) ORDER BY at",
+                [FOLLOWUP, *sessions])]
+            starts = {}
+            for p in conn.execute(
+                    f"SELECT session_id, id, at FROM packets WHERE session_id IN ({smarks}) "
+                    f"ORDER BY at, rowid", sessions):
+                starts.setdefault(p["session_id"], []).append((p["at"], p["id"]))
+        after: dict[str, list] = {}
+        for d in opened:
+            owner = None
+            for at, packet_id in starts.get(d["session_id"], []):
+                if at <= d["at"]:
+                    owner = packet_id
+            if owner:
+                after.setdefault(owner, []).append(
+                    (d["kind"], d["item"], d["tokens"], d["reason"]))
+        newest = {}
+        for session, packets in starts.items():
+            newest[session] = packets[-1][1] if packets else None
+        for row in rows:
+            try:
+                row["data"] = json.loads(row.get("data") or "{}")
+            except ValueError:
+                row["data"] = {}
+            row["items"] = pieces.get(row["id"], [])
+            row["opened"] = after.get(row["id"], [])
+            row["last_in_session"] = newest.get(row["session_id"]) == row["id"]
+        return rows
 
     # ------------------------------------------------------------------ gaps
     def gaps(self, since: str, *, limit: int = 200) -> list[dict]:

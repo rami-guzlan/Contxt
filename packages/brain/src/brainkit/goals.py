@@ -7,8 +7,8 @@ under its question, with the interview as its evidence.
 WHAT THE GOALS STEER. What gets pulled into the brain, not what an AI receives for a request.
 When something is brought in (a transcript, a file, a note) and summarized, and context is
 pulled out of it, the work weighs every piece against these answers and the active projects.
-Routing stays as it is, so answers stay predictable: the note is on demand like any other,
-and no part of it rides in every conversation.
+Routing stays as it is, so answers stay predictable: the note is loaded `manual`: opened by its
+id or found by a search, never routed into a request's packet.
 
 Writing them is the owner's own act: the note changes as one undo point, whatever the
 governance preset (the owner is the approver, and these are their words). Nothing from the
@@ -230,7 +230,7 @@ def write(brain, answers, *, actor=None):
             else:
                 area, topic = _home(brain, who, clean["purpose"])
                 made = governance.propose_note(
-                    brain, area=area, topic=topic, text=text, scope=who, load="on-demand",
+                    brain, area=area, topic=topic, text=text, scope=who, load="manual",
                     principal=who, title=TITLE, summary=summary, note_kind="identity",
                     note_id=GOALS_ID, evidence=f"The owner's answers in the goals interview, "
                                                f"{day}.",

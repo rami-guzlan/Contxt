@@ -39,7 +39,7 @@ class GoalsTests(unittest.TestCase):
         self.assertFalse(saved.is_error, saved.text)
         note = self.brain.state().index.note(goals.GOALS_ID)
         self.assertEqual((note.scope, note.load, note.classification),
-                         ("person:alex", "on-demand", "confidential"))
+                         ("person:alex", "manual", "confidential"))
         self.assertTrue(note.body.startswith("# What this Brain is for"))
         self.assertIn("goals interview", note.meta["evidence"])
         found = self.brain.goals().data
@@ -53,6 +53,10 @@ class GoalsTests(unittest.TestCase):
         kernel = self.brain.kernel().text
         self.assertNotIn(ANSWERS["purpose"], kernel)
         self.assertNotIn(goals.GOALS_ID, kernel)
+        packet = self.brain.preview("What should the studio's assistant help me run?").data
+        self.assertNotIn(goals.GOALS_ID, [n["id"] for n in packet["notes"]])
+        found = self.brain.search("run the studio without dropping client details").data
+        self.assertIn(goals.GOALS_ID, [h["id"] for h in found["hits"]])
 
     def test_changing_them_is_one_undo_point(self):
         self.brain.set_goals(ANSWERS, actor="person:alex")

@@ -108,6 +108,9 @@ class Brain:
         self._lock = threading.RLock()
         self._ledger: Ledger | None = None
         self._deferred: Deferred | None = None  # a batch of writes in progress
+        # The app this process serves (an MCP client's name from its handshake), recorded
+        # on each conversation it starts.
+        self.client = ""
         # Shared with every other process that writes this vault (locking.py).
         self._writes = WriteLock(os.path.join(self.vault.runtime_dir, "write.lock"))
 
@@ -284,7 +287,7 @@ class Brain:
                 # fingerprint the client presented. Later calls need not repeat either.
                 items.append(("kernel", kernel_fp, kernel_fp,
                               0 if kernel_held else util.tokens(kernel_text)))
-            self.ledger.touch(session, chain[-1])
+            self.ledger.touch(session, chain[-1], label=self.client)
             self.ledger.record(session, packet.id, str(request), route.mode, packet.text,
                                data, items)
         return Result("\n\n".join(parts), data)
@@ -895,6 +898,29 @@ class Brain:
                 "unused_60_days": len(idle),
                 "standing_tokens": sum(n.tokens for n in live if n.standing),
             }})
+
+    def requests(self, *, limit=50, before=None, client=None, session=None) -> Result:
+        """What each AI asked and what it got, newest first (activity.py)."""
+        from . import activity
+        return activity.requests(self, limit=limit, before=before, client=client,
+                                 session=session)
+
+    def record_output(self, path, *, title="", session_id=None) -> Result:
+        """Note a file an AI saved for the person, with the conversation it was made in."""
+        from . import activity
+        return activity.record_output(self, path, title=title, session_id=session_id)
+
+    def made_from(self, path) -> Result:
+        """What a saved file was made from, when an AI recorded it (activity.py)."""
+        from . import activity
+        found = activity.made_from(self, path)
+        return Result("Nothing was recorded for that file." if found is None else
+                      f"Made in {found['app']}.", {"found": found})
+
+    def work_given(self, run_id) -> Result:
+        """What one run of the app's AI work was handed from the brain."""
+        from . import activity
+        return Result("Handed to the run.", {"pieces": activity.work_given(self, run_id)})
 
     def weekly(self, weeks=8) -> Result:
         """Conversations served in each of the last `weeks` weeks, oldest first."""

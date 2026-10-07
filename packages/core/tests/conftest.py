@@ -614,6 +614,18 @@ class FakeBrain:
             "gaps": 0,
         }
 
+    def made_from(self, path):
+        return None
+
+    def work_given(self, run_id):
+        return [{"kind": "note", "id": "voice-guide", "title": "Voice guide", "tokens": 5}]
+
+    def kernel(self):
+        return {"text": "# Startup\nWrite plainly.", "tokens": 6}
+
+    def requests(self, *, limit=50, before=None, client=None):
+        return {"requests": [], "brain_tokens": 100, "apps": []}
+
     def weekly(self, weeks=8):
         return [{"start": "2026-09-22", "end": "2026-09-28", "conversations": 3, "packets": 5}]
 

@@ -351,6 +351,15 @@ def catch_up_dismiss(body: CatchUpItemIn, who: Who, ws: WS) -> dict[str, Any]:
     return ws.catch_up.dismiss(who, body.key, days=body.days)
 
 
+@router.get("/requests")
+def requests(
+    who: Who, ws: WS, limit: int = 50, before: str | None = None, app: str | None = None
+) -> dict[str, Any]:
+    """What each AI asked, what it got and why, and what it saved, newest first; `before`
+    names the last request shown, for the next page."""
+    return ws.brain.requests(who, limit=limit, before=before, client=app)
+
+
 @router.get("/weekly")
 def weekly(who: Who, ws: WS, weeks: int = 8) -> list[dict[str, Any]]:
     """Conversations the Brain served in each of the last weeks, oldest first."""

@@ -526,6 +526,22 @@ class Brain:
                 )
         return result
 
+    def requests(
+        self,
+        who: Principal,
+        *,
+        limit: int = 50,
+        before: str | None = None,
+        client: str | None = None,
+    ) -> dict[str, Any]:
+        """What each AI asked and what it got, newest first, with the app that asked."""
+        who.require("brain.read")
+        return self.rt.brain.requests(
+            limit=max(1, min(int(limit), 200)),
+            before=str(before or "").strip() or None,
+            client=str(client or "").strip() or None,
+        )
+
     def weekly(self, who: Principal, *, weeks: int = 8) -> list[dict[str, Any]]:
         """Conversations the Brain served in each of the last weeks, oldest first."""
         who.require("brain.read")

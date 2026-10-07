@@ -699,7 +699,7 @@ class CatchUp:
         for row in inventory:
             if row.get("type") != "note" or not row.get("live") or row.get("kind") == "focus":
                 continue
-            if row.get("load") == "standing" or row.get("id") == GOALS_ID:
+            if row.get("load") in ("standing", "manual") or row.get("id") == GOALS_ID:
                 continue
             last = str((row.get("uses") or {}).get("last") or "")
             if last >= cutoff or str(row.get("added") or "9999") >= cutoff:

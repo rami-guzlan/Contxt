@@ -150,6 +150,29 @@ class MoveInIn(Body):
     ids: list[str] | None = None  # the ideas to keep; none: every one worth keeping
 
 
+class DifferenceIn(Body):
+    request: str = Field(min_length=1, max_length=2000)
+    project: str | None = None
+
+
+class FollowupIn(Body):
+    question: str = Field(min_length=1, max_length=400)
+    answer: str = Field(min_length=1, max_length=6000)
+
+
+class AppConnectIn(Body):
+    confirm: bool = False  # the person said yes: this changes the app's own settings
+
+
+class OutputFolderIn(Body):
+    path: str = Field(min_length=1, max_length=500)
+
+
+class OutputMoveIn(Body):
+    source: str = Field(min_length=1, max_length=500)
+    target: str = Field(min_length=1, max_length=500)
+
+
 class MergeIn(Body):
     keep_id: str
     other_id: str

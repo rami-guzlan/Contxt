@@ -296,8 +296,9 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         problems.append(f"partition {partition!r} is not declared in brain.json")
     if kind != "note.archive" and not text:
         problems.append("text is required")
-    if load is not None and str(load).strip().lower() not in ("standing", "on-demand"):
-        problems.append("load must be standing or on-demand")
+    if load is not None and str(load).strip().lower() not in ("standing", "on-demand",
+                                                              "manual"):
+        problems.append("load must be standing, on-demand or manual")
     for key in (extra or {}):
         if key in RESERVED:
             problems.append(f"{key} is set by governance, not by a proposal")
