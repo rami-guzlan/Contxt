@@ -1,9 +1,10 @@
 [project]
 name = "workspace-connectors"
 version = "0.1.0"
-description = "Provider and destination adapters for the Local AI Workspace: model connection setups and artifact destinations."
+description = "Provider and destination adapters for Contxt: how each AI app connects, and artifact destinations."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "LicenseRef-PolyForm-Shield-1.0.0"
 dependencies = ["workspace-core"]
 
 [build-system]

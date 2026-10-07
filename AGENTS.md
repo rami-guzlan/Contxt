@@ -63,6 +63,9 @@ All of them pass before a change is done. CI runs the same, plus the core on Pos
 
 ## Rules
 
+- The code is source-available under PolyForm Shield 1.0.0 ([LICENSE](LICENSE)). Keep the
+  `Required Notice:` line at the top of LICENSE, and accept no outside contributions until a
+  contributor agreement exists ([LICENSING.md](LICENSING.md)).
 - Never commit `brain/`, `data/`, `outputs/`, `demos/` or `.env`. They hold a person's
   context and their sign-in key.
 - Tests never read a person's real settings: the server tests clear every `CONTXT_` and

@@ -9,7 +9,8 @@ MCP client) reads the part each request needs and saves what it learns, for your
 
 ![Contxt home, with a demo Brain](docs/images/home.png)
 
-> Pre-release. The code is not yet licensed for use by others: see [LICENSING.md](LICENSING.md).
+> Pre-release. Source-available under the [PolyForm Shield License 1.0.0](LICENSE): use it and
+> change it freely, but not to compete with it. See [LICENSING.md](LICENSING.md).
 
 ## How it works
 
@@ -158,3 +159,9 @@ npm run typecheck
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY.md).
+
+## License
+
+Copyright 2026 Rami Guzlan. Source-available under the
+[PolyForm Shield License 1.0.0](LICENSE): you may use, change and share Contxt for any purpose
+except competing with it. [LICENSING.md](LICENSING.md) says what that means in plain words.

@@ -1,9 +1,10 @@
 [project]
 name = "workspace-core"
 version = "0.1.0"
-description = "Domain model, policies and application services of the Local AI Workspace: goals, projects, tasks, runs, context, artifacts, approvals and events."
+description = "Domain model, policies and application services of Contxt: projects, tasks, runs, context, approvals and events."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "LicenseRef-PolyForm-Shield-1.0.0"
 dependencies = [
     "sqlalchemy>=2.0",
     "alembic>=1.13",

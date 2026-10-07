@@ -4,6 +4,7 @@ version = "2.1.0"
 description = "Governed long-term context for AI work: scoped knowledge, Focus state, capture, and context packets over MCP, a CLI, HTTP or Python."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "LicenseRef-PolyForm-Shield-1.0.0"
 dependencies = []
 
 [project.optional-dependencies]

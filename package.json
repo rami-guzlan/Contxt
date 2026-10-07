@@ -1,6 +1,7 @@
 {
   "name": "contxt",
   "private": true,
+  "license": "LicenseRef-PolyForm-Shield-1.0.0",
   "description": "Workspace root for the web app; the Python packages are managed by uv.",
   "workspaces": [
     "apps/web"

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Contxt: one Brain for every AI tool you use. Local, private, and governed by you."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "LicenseRef-PolyForm-Shield-1.0.0"
 dependencies = ["workspace-server"]
 
 [tool.uv]

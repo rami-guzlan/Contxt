@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "The Contxt server: the web app's API, the MCP endpoint for the app's AI work, the worker and the contxt command."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "LicenseRef-PolyForm-Shield-1.0.0"
 dependencies = [
     "workspace-core",
     "workspace-connectors",

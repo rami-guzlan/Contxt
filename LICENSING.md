@@ -1,24 +1,32 @@
 # Licensing
 
-This repository is private and not yet licensed for use by others.
+Contxt is **source-available** under the [PolyForm Shield License 1.0.0](LICENSE)
+(<https://polyformproject.org/licenses/shield/1.0.0>). Copyright 2026 Rami Guzlan.
 
-The intended structure for the public release, from the product specification (section 19):
+## In plain words
 
-- **Code license: AGPL-3.0.** People may run and modify the product; modified versions offered
-  as a hosted service must remain available under the same terms.
-- **Contributor agreement.** Contributors grant the project the rights it needs to keep future
-  licensing options open. Until it exists, outside contributions are not accepted.
-- **Trademark policy.** Forks may use the code but not imply they are the official product.
-- **Extension contract.** Connectors and templates use documented interfaces, so community
-  contributions do not fork the core.
+This summary is not the license: the text in [LICENSE](LICENSE) is what applies.
 
-Before the first public release:
+- You may read, run, change and share the code, for yourself or your organization, for any
+  purpose except competing with it.
+- Competing means providing a product or service that competes with the software, or with any
+  product its licensor provides using the software (a hosted Contxt, say, or a service that
+  sets Contxt up for others).
+- Anyone you share a copy with gets the license and the `Required Notice:` line at the top of
+  [LICENSE](LICENSE) too.
+- Because it limits competing use, it is not an "open source" license in the OSI sense.
 
-1. Qualified counsel reviews the license choice, the contributor agreement and the trademark
-   policy against the final legal entity and contribution model.
-2. `LICENSE` is added with the full, unmodified license text, and each package's
-   `pyproject.toml` and `package.json` declares the license.
-3. Third-party notices are generated from the locked dependencies (`uv.lock`,
-   `package-lock.json`) and checked for compatibility.
-4. The public repository starts from a fresh history (this repository has one): no private
-   content or real Brain is ever part of it. The demo Brains in `brains/` are invented.
+## Contributions
+
+Outside contributions are not accepted yet. A contributor agreement comes first, so the project
+can keep licensing its work as it needs to, including editions built on this code. Issues and
+discussion are welcome.
+
+## Before the public release
+
+1. Legal review of the license and its notice.
+2. Third-party notices generated from the locked dependencies (`uv.lock`, `package-lock.json`)
+   and checked against this license.
+3. The product's public name chosen and checked, and a trademark policy so forks do not imply
+   they are the official product.
+4. Copyright registered at publication.
