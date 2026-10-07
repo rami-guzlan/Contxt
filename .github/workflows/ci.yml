@@ -121,8 +121,14 @@ jobs:
       - name: Print how each AI app connects
         run: uv run contxt connect
       - name: Serve, and answer on the network
+        # The server runs from the environment directly, not through `uv run`: a uv process
+        # left running holds uv's cache lock, and the cache step after the job then waits
+        # for it until it times out. The server stops when this step ends, pass or fail.
         run: |
-          uv run contxt serve --port 8799 --no-worker > serve.log 2>&1 &
+          if [ "$RUNNER_OS" = "Windows" ]; then bin=.venv/Scripts; else bin=.venv/bin; fi
+          "$bin/contxt" serve --port 8799 --no-worker > serve.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
           for i in $(seq 1 45); do
             if curl -fsS http://127.0.0.1:8799/api/health; then exit 0; fi
             sleep 2
