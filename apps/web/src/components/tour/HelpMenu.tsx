@@ -1,11 +1,11 @@
-// The help button at the top right: the guided tour from the start or from any chapter, back to
-// where it was closed, and the first-time setup with how far it has come.
+// The help button at the top right: the short tour of the places, back to where it was closed,
+// the first run again, and the first-visit tips again.
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router";
 
 import { useOnboarding } from "../../api/hooks";
-import { CHAPTERS } from "./steps";
+import { resetTips } from "../Tips";
 import { useTour } from "./Tour";
 
 export function HelpMenu() {
@@ -64,26 +64,20 @@ export function HelpMenu() {
       {open ? (
         <div className="help-popover" role="menu" aria-label="Help">
           <button type="button" role="menuitem" className="help-item lead" onClick={() => choose(() => tour.start())}>
-            Take the guided tour{" "}
-            <span className="muted small">How everything fits together, in about five minutes</span>
+            Take the short tour <span className="muted small">The places, in about a minute</span>
           </button>
           {tour.saved !== null && tour.saved > 0 ? (
             <button type="button" role="menuitem" className="help-item" onClick={() => choose(tour.resume)}>
               Resume the tour <span className="muted small">at step {tour.saved + 1} of {tour.total}</span>
             </button>
           ) : null}
-          <p className="help-heading">Or one chapter</p>
-          {CHAPTERS.map((chapter) => (
-            <button key={chapter.id} type="button" role="menuitem" className="help-item" onClick={() => choose(() => tour.start(chapter.id))}>
-              {chapter.label}
-            </button>
-          ))}
           <hr />
-          <button type="button" role="menuitem" className="help-item" onClick={() => choose(() => navigate("/settings?tab=start"))}>
-            First-time setup{" "}
-            {setup ? (
-              <span className="muted small">{setup.completed_at ? "finished" : `${setup.done} of ${setup.total} done`}</span>
-            ) : null}
+          <button type="button" role="menuitem" className="help-item" onClick={() => choose(() => navigate("/welcome"))}>
+            The first run{" "}
+            {setup ? <span className="muted small">{setup.completed_at ? "finished: go through it again" : "not finished yet"}</span> : null}
+          </button>
+          <button type="button" role="menuitem" className="help-item" onClick={() => choose(resetTips)}>
+            Show the tips again
           </button>
         </div>
       ) : null}

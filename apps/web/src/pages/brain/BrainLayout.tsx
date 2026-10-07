@@ -45,9 +45,9 @@ function Frame({ title, lede, tabs, stats, tour }: { title: string; lede: string
   );
 }
 
-// The Brain: what every AI you use can know, as a map you can zoom into, its entries and files,
-// and its history: what came in and what was decided, each batch with its undo point, and what
-// your AI asked that it could not answer.
+// The Brain: what every AI you use can know, in the words it receives; its notes in full; its
+// files; and the questions it could not answer, each one a thing to teach it. Its history lives
+// in Activity, Changes.
 export function BrainLayout() {
   const { data: catalog } = useBrainCatalog();
   const { data: files } = useBrainFiles();
@@ -59,15 +59,14 @@ export function BrainLayout() {
       lede="What every AI you use can know. Nothing changes without you."
       tour="brain-tabs"
       tabs={[
-        { to: "/brain", label: "Map", end: true },
-        { to: "/brain/entries", label: "Entries" },
+        { to: "/brain", label: "What it knows", end: true },
+        { to: "/brain/entries", label: "Notes" },
         { to: "/brain/files", label: "Files" },
-        { to: "/brain/history", label: "History" },
-        { to: "/brain/gaps", label: "Gaps", badge: gaps?.length ?? 0 },
+        { to: "/brain/questions", label: "Questions", badge: gaps?.length ?? 0 },
       ]}
       stats={
         <dl className="stats">
-          <Stat label="Entries" value={catalog?.entries.length} />
+          <Stat label="Notes" value={catalog?.entries.length} />
           <Stat label="Files" value={fileCount} />
           <Stat label="Skills" value={files?.skills.length} />
         </dl>

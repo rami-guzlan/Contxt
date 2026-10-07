@@ -6,7 +6,8 @@ Two MCP servers, for two jobs:
   engine; `uv run contxt connect` prints the setup for each AI app): what your AI apps use in
   every chat. It hands each request its context (`get_task_context`), opens entries,
   files and procedures, and saves what the conversation learns (`propose_note`, `add_file`,
-  `create_focus`, `record_focus_update`). Every Claude Desktop or Claude Code window starts one;
+  `create_focus`, `record_focus_update`); `record_output` says what a file it saved for you was
+  made from, so the app's Outputs page can show it. Every Claude Desktop or Claude Code window starts one;
   they all read and write the same Brain. See [the Brain's architecture](brain/ARCHITECTURE.md).
 - **The app's endpoint** (`POST /mcp` on the server): how a model does the AI work the app
   starts (finding what to remember in a note, reconciling a clash). This page is about it.
@@ -31,7 +32,7 @@ queue.
 | `save_digest` | Saves the digest a `digest` task asks for: a summary, key points each marked by how it fits what the Brain holds now (`new`, `repeats`, `updates`, `clashes`, with the entry), decisions, actions, open questions and people. Shown beside the item; nothing reaches the Brain from it | the run must be yours, its task a digest, and the item pinned to it |
 | `save_skill_result` | Saves what a `skill` run made: a title and the whole result as Markdown (for a run that made files, each file and what it is). Shown on the skill's page; saved again in the same run, it is a new version of the same result | the run must be yours and its task a skill run |
 | `propose_brain_skill` | Proposes a skill from a `skill-draft` task: a new version of one (`target`) or a new skill (`name`, `category`, `description`, `triggers`, `artifacts`, `loads`, `body`). It waits in Review beside the version it replaces; nothing changes until a person approves it | proposal only; the run must be yours and its task a draft; an improvement names the skill its task is about |
-| `propose_brain_entry` | Proposes durable context; it waits for a person. Pass the `run_id` during a task and the proposal names that task. `replaces` names entries it supersedes (archived when approved), `contradicts` entries it disagrees with when the sources do not settle which is current, `topic` the area/topic it belongs in, and `revises` one entry it is a new text for (a reconcile task asks for this) | proposal only; the run must be yours; named entries must exist |
+| `propose_brain_entry` | Proposes durable context; it waits for a person. Pass the `run_id` during a task and the proposal names that task. `replaces` names entries it supersedes (archived when approved), `contradicts` entries it disagrees with when the sources do not settle which is current, `topic` the area/topic it belongs in, and `revises` one entry it is a new text for (a reconcile task asks for this). `goal` and `project` say which of the owner's goals it serves and which project it belongs to (a pull task asks for them) | proposal only; the run must be yours; named entries must exist |
 
 Every write accepts an `idempotency_key`: a retried call returns the first result; a key
 reused for a different request is refused.
@@ -71,4 +72,7 @@ Code on the same computer needs none of this to run the app's work at once: see
 - Requests carrying an `Origin` header from a page other than the app are refused
   (DNS-rebinding protection). Add trusted origins with `CONTXT_ALLOWED_ORIGINS`.
 - Tool failures come back as results with `isError: true` and a message the model can act
-  on (`conflict: This task is not available to claim: it is claimed.`).
+  on (`conflict: This task is not available to claim: it is claimed.`). A proposal the Brain
+  refuses (`propose_brain_entry` or `propose_brain_skill` with status `refused`) is a failure
+  too, with the proposal in `structuredContent`; a retry with the same `idempotency_key`
+  (status `duplicate`) is not.

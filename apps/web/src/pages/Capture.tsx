@@ -4,12 +4,13 @@
 
 import { AudioLines, NotebookPen, Square } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 
-import { useBringIn, useCreateNote, useDownloadSpeech, useNotes, useSpeech } from "../api/hooks";
-import type { CaptureKind, Note } from "../api/types";
+import { useBringIn, useCreateNote, useDistillRequests, useDownloadSpeech, useNotes, useSpeech } from "../api/hooks";
+import type { CaptureKind, DistillRequest, Note } from "../api/types";
 import { CAPTURE_NAMES, KindIcon, TranscriptionState, UploadButton, duration } from "../components/CaptureParts";
 import { TalkButton, canRecord, useRecorder } from "../components/Talk";
+import { FirstVisitTip } from "../components/Tips";
 import { Empty, ErrorNote, Loading, Section } from "../components/ui";
 import { when } from "../lib/format";
 
@@ -28,6 +29,7 @@ export function CapturePage() {
   const [kind, setKind] = useState<CaptureKind | "all">("all");
   const [over, setOver] = useState(false);
   const { data: notes, isLoading, error } = useNotes(archived);
+  const { data: pulls } = useDistillRequests();
   const bring = useBringIn();
   const [failures, setFailures] = useState<string[]>([]);
   const create = useCreateNote();
@@ -68,6 +70,10 @@ export function CapturePage() {
       }}
     >
       <h1>Capture</h1>
+      <FirstVisitTip id="capture">
+        What you bring in waits here, private to you. Your Brain summarizes each one and pulls out what serves your goals and projects; you
+        keep what you want in Catch up.
+      </FirstVisitTip>
       <p className="lede">
         What you bring in waits here, private to you, until you pull from it or file it in the Brain. Talk, record a meeting, drop in audio, a
         transcript or a document, or write.
@@ -114,7 +120,7 @@ export function CapturePage() {
         ) : shown.length ? (
           <ul className="capture-list">
             {shown.map((note) => (
-              <CaptureRow key={note.id} note={note} />
+              <CaptureRow key={note.id} note={note} pulls={(pulls ?? []).filter((p) => p.items.includes(note.id))} />
             ))}
           </ul>
         ) : (
@@ -131,7 +137,19 @@ export function CapturePage() {
   );
 }
 
-function CaptureRow({ note }: { note: Note }) {
+/** Where an item stands, in a word: not read yet, summarized, kept (how many), or set aside. */
+export function captureStatus(note: Note, pulls: DistillRequest[]): string {
+  if (note.archived_at) return "Set aside";
+  const kept = pulls.flatMap((p) => p.proposals).filter((p) => p.status === "approved").length;
+  if (kept) return `Kept ${kept}`;
+  const waiting = pulls.flatMap((p) => p.proposals).filter((p) => p.status === "pending").length;
+  if (waiting) return `${waiting} to keep`;
+  if (note.digest?.state === "ready") return "Summarized";
+  return "Not read yet";
+}
+
+function CaptureRow({ note, pulls }: { note: Note; pulls: DistillRequest[] }) {
+  const status = captureStatus(note, pulls);
   const kind = note.capture ?? "note";
   const facts = [
     CAPTURE_NAMES[kind],
@@ -148,6 +166,7 @@ function CaptureRow({ note }: { note: Note }) {
         {note.digest?.summary ? <span className="capture-gist">{gist(note.digest.summary)}</span> : null}
         <span className="muted small">{facts.join(" · ")}</span>
       </span>
+      <span className={`chip small status-chip status-${status.split(" ")[0]?.toLowerCase()}`}>{status}</span>
       <TranscriptionState note={note} compact />
     </li>
   );
@@ -189,6 +208,12 @@ function RecordButton() {
   const { begin, end } = useRecorder();
   const bring = useBringIn();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const button = useRef<HTMLButtonElement>(null);
+  // "+ Add, Record a meeting" lands here with the button ready to press.
+  useEffect(() => {
+    if (params.get("record")) button.current?.focus();
+  }, [params]);
   const [on, setOn] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -227,7 +252,7 @@ function RecordButton() {
   }
   return (
     <>
-      <button type="button" className={on ? "record live" : "record"} aria-pressed={on} disabled={bring.isPending} onClick={() => void toggle()}>
+      <button ref={button} type="button" className={on ? "record live" : "record"} aria-pressed={on} disabled={bring.isPending} onClick={() => void toggle()}>
         {on ? <Square className="button-icon" aria-hidden="true" /> : <AudioLines className="button-icon" aria-hidden="true" />}
         {on ? `Stop recording ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}` : "Record"}
       </button>

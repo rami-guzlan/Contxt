@@ -92,9 +92,9 @@ export function PoliciesPage() {
         How the Brain is governed. Saving is one undo point; every change is in the Brain's <Link to="/brain/history">history</Link>.
         Approvals are yours: {ownerName(policy.approver, policy.approver)} ({policy.approver}).
       </p>
-      <Section title="How often entries are checked">
+      <Section title="How often notes are checked">
         <p className="muted small">
-          An entry is due for a check this many days after it was last confirmed, and ranks lower until it is. Between an entry's
+          A note is due for a check this many days after it was last confirmed, and ranks lower until it is. Between a note's
           area and its kind, the shorter cadence wins; an entry's own cadence wins over both. Empty: no cadence.
         </p>
         <table className="table cadence-table">
@@ -123,8 +123,8 @@ export function PoliciesPage() {
           </tbody>
         </table>
       </Section>
-      <Section title="Who answers for entries">
-        <Field label="Default owner" hint="For entries that name no owner of their own.">
+      <Section title="Who answers for notes">
+        <Field label="Default owner" hint="For notes that name no owner of their own.">
           <select value={form.default_owner} onChange={(event) => set("default_owner", event.target.value)}>
             <option value="">You ({policy.approver})</option>
             {policy.scopes
@@ -149,7 +149,7 @@ export function PoliciesPage() {
         <Field label="Other scopes that apply at once" hint="Comma-separated patterns, like person:*. Empty: everything else waits for you.">
           <input value={form.auto_apply_scopes} onChange={(event) => set("auto_apply_scopes", event.target.value)} />
         </Field>
-        <Field label="Proposals one conversation may make" hint="Keeps the review a place you can get through.">
+        <Field label="Suggestions one conversation may make" hint="Keeps the review a place you can get through.">
           <input inputMode="numeric" value={form.max_proposals_per_session} onChange={(event) => set("max_proposals_per_session", event.target.value)} />
         </Field>
       </Section>

@@ -70,6 +70,19 @@ class FakeBrain:
         self.voice_hash = "h1"  # the version of voice-guide the Brain holds now
         self.dismissed: list[str] = []
         self.policy: dict = {"review_days": {}, "retention_days": 90}
+        self.went_in: list[dict] = []  # what went in on its own, for recaps
+        self.goal_answers: dict[str, str] = {}
+        self.moved: list[tuple] = []  # what move_in was asked to read
+        self.watch: dict = {
+            "clashes": [],
+            "twins": [],
+            "flagged": [],
+            "recheck": [],
+            "usage": {},
+            "days": 7,
+        }
+        self.events: list[dict] = []  # journal records activity() adds, newest first
+        self.builtin: dict[str, bool] = {"knowledge-check": False, "wrap-up": True}
         self.entries = {
             "voice-guide": BrainEntry(
                 id="voice-guide",
@@ -83,7 +96,7 @@ class FakeBrain:
         }
 
     def status(self):
-        return {"available": True, "name": "Fake brain"}
+        return {"available": True, "name": "Fake brain", "principal": "person:owner"}
 
     def context(self, request, *, session_id=None):
         self.requests.append(request)
@@ -134,7 +147,16 @@ class FakeBrain:
     def proposals(self):
         # Shaped like the real inbox rows: the text is the proposal's `body`.
         return [
-            {"id": f"proposal-{i + 1}", "body": p.get("statement", ""), **p}
+            {
+                "id": f"proposal-{i + 1}",
+                "body": p.get("statement", ""),
+                "target": {
+                    "kind": p.get("kind"),
+                    "title": p.get("title"),
+                    **(p.get("extra") or {}),
+                },
+                **p,
+            }
             for i, p in enumerate(self.proposed)
             if f"proposal-{i + 1}" not in self.decided
         ]
@@ -198,8 +220,10 @@ class FakeBrain:
         if done:
             point = {
                 "id": f"cp-{len(self.points) + 1}",
+                "at": "2026-09-28T12:00:00Z",
                 "label": label or "Decisions",
                 "decisions": done,
+                "source": source or {},
                 "undone_by": None,
             }
             self.points.insert(0, point)
@@ -368,7 +392,7 @@ class FakeBrain:
         )
 
     def attention(self):
-        return {"clashes": [], "twins": [], "flagged": [], "recheck": [], "usage": {}, "days": 7}
+        return dict(self.watch)
 
     def history(self, entry_id):
         if entry_id not in self.entries:
@@ -391,6 +415,7 @@ class FakeBrain:
         project=None,
         status=None,
         origin="app",
+        wait=False,
     ):
         self.uploaded.append(
             {
@@ -403,9 +428,10 @@ class FakeBrain:
                 "project": project,
                 "status": status,
                 "origin": origin,
+                "wait": wait,
             }
         )
-        if self.file_policy == "apply":
+        if self.file_policy == "apply" and not wait:
             return BrainProposal(
                 status="applied",
                 message="Filed it. Your AI can use it now.",
@@ -536,7 +562,10 @@ class FakeBrain:
         )
 
     def activity(self, *, entry_id=None, since=None, until=None, actions=None, by=None, limit=200):
-        return [{"at": "2026-09-01T10:00:00Z", "action": "approved", "note": "voice-guide"}]
+        return [
+            *self.events,
+            {"at": "2026-09-01T10:00:00Z", "action": "approved", "note": "voice-guide"},
+        ]
 
     def use(self, entry_id, *, days=90):
         if entry_id not in self.entries:
@@ -568,6 +597,139 @@ class FakeBrain:
     def set_policies(self, changes):
         self.policy.update(changes)
         return {"status": "updated", "policy": dict(self.policy), "checkpoint": {"id": "cp-policy"}}
+
+    def propose_many(self, items, *, proposer):
+        return [self.propose(proposer=proposer, **item) for item in items]
+
+    def recap(self, since):
+        return {
+            "since": since,
+            "went_in": list(self.went_in),
+            "went_in_total": len(self.went_in),
+            "decided": {},
+            "came_in": {
+                "total": len(self.proposed),
+                "by_source": {},
+                "waiting": len(self.proposals()),
+            },
+            "projects": [],
+            "gaps": 0,
+        }
+
+    def unsaved(self):
+        return list(getattr(self, "unsaved_paths", []))
+
+    def models(self):
+        return {"matching": {"enabled": True, "present": False, "downloading": False}}
+
+    def download_models(self):
+        return {"matching": {"enabled": True, "present": False, "downloading": True}}
+
+    def made_from(self, path):
+        return None
+
+    def work_given(self, run_id):
+        return [{"kind": "note", "id": "voice-guide", "title": "Voice guide", "tokens": 5}]
+
+    def kernel(self):
+        return {"text": "# Startup\nWrite plainly.", "tokens": 6}
+
+    def requests(self, *, limit=50, before=None, client=None):
+        return {"requests": [], "brain_tokens": 100, "apps": []}
+
+    def weekly(self, weeks=8):
+        return [{"start": "2026-09-22", "end": "2026-09-28", "conversations": 3, "packets": 5}]
+
+    def goals(self):
+        exists = bool(self.goal_answers.get("purpose"))
+        return {
+            "questions": [{"id": "purpose", "question": "What should this Brain help you do?"}],
+            "answers": dict(self.goal_answers),
+            "exists": exists,
+            "id": "you-goals",
+            "purpose": self.goal_answers.get("purpose", ""),
+            "updated": None,
+            "text": "\n\n".join(self.goal_answers.values()) if exists else "",
+        }
+
+    def set_goals(self, answers):
+        if not answers.get("purpose"):
+            from workspace_core.errors import ValidationFailed
+
+            raise ValidationFailed("Say what this Brain should help you do.", field="purpose")
+        self.goal_answers = dict(answers)
+        self.entries["you-goals"] = BrainEntry(
+            id="you-goals",
+            title="Your goals for this Brain",
+            text="\n\n".join(answers.values()),
+            scope="person:owner",
+            kind="identity",
+            status="approved",
+            revision="r1",
+        )
+        return dict(self.goals(), status="saved", checkpoint={"id": "cp-goals"})
+
+    def builtin_skills(self):
+        rows = [{"name": n, "category": "brain", "installed": on} for n, on in self.builtin.items()]
+        return {"skills": rows, "missing": [r["name"] for r in rows if not r["installed"]]}
+
+    def add_builtin_skills(self, names=None):
+        added = [n for n, on in self.builtin.items() if not on and (names is None or n in names)]
+        for name in added:
+            self.builtin[name] = True
+        return {"added": added, "checkpoint": {"id": "cp-skills"} if added else None}
+
+    def move_in(self, sources, *, name=""):
+        """Each line of each source is one idea; "known:" lines are known, "clash:" ones
+        disagree with voice-guide, "secret:" ones hold a password."""
+        self.moved.append((sources, name))
+        ideas = []
+        for number, source in enumerate(sources, start=1):
+            for line in source["text"].splitlines():
+                text = line.strip()
+                if not text:
+                    continue
+                status, _, rest = text.partition(":") if ":" in text else ("new", "", text)
+                off = status == "off"  # an idea the sift left out
+                project = status == "project"  # one that serves a goal and a project
+                ideas.append(
+                    {
+                        "id": f"i{len(ideas) + 1}",
+                        "source": f"s{number}",
+                        "source_kind": source["kind"],
+                        "text": rest.strip() or text,
+                        "original": rest.strip() or text,
+                        "kind": "rule" if status == "rule" else "fact",
+                        "personal": status == "rule",
+                        "topic": "brand/voice",
+                        "status": {"known": "known", "clash": "disagree", "secret": "private"}.get(
+                            status, "new"
+                        ),
+                        "match": {"id": "voice-guide", "title": "Voice guide"}
+                        if status in ("known", "clash")
+                        else None,
+                        "private": "a password or key" if status == "secret" else None,
+                        "secret": status == "secret",
+                        "fits": not off,
+                        "serves": {
+                            "goal": "what your Brain is for" if project else None,
+                            "project": {"id": "q4-webinars", "title": "Q4 webinars"}
+                            if project
+                            else None,
+                            "about_you": status == "rule",
+                        },
+                        **({"left_out": "none of your goals or projects covers it"} if off else {}),
+                    }
+                )
+        return {
+            "sources": [
+                {"id": f"s{i}", "kind": s["kind"], "label": s.get("label") or s["kind"]}
+                for i, s in enumerate(sources, start=1)
+            ],
+            "ideas": ideas,
+            "stages": {"ideas": len(ideas)},
+            "examples": {},
+        }
 
     def mark(self, entry_id, state, *, reason):
         entry = self.entries[entry_id]

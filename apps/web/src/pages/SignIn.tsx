@@ -15,7 +15,8 @@ export function SignInPage() {
       >
         <h1>Sign in</h1>
         <p className="muted">
-          Open the sign-in link <code>workspace serve</code> printed, or paste your owner token here. It stays on this machine.
+          Open the sign-in link <code>uv run contxt serve</code> printed (<code>uv run contxt token</code> shows it again), or paste
+          your owner token here. It stays on this machine.
         </p>
         <Field label="Token">
           <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} />

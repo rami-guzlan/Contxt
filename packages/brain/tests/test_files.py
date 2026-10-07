@@ -522,11 +522,17 @@ class PolicyTests(unittest.TestCase):
         app = self.brain.add_file(content="# B\n\nBeta.", filename="b.md",
                                   principal="person:alex", origin="app")
         self.assertEqual(app.data["status"], "applied")
+        # a bulk import the owner did not pick file by file waits whatever the policy says
+        held = self.brain.add_file(content="# C\n\nGamma.", filename="c.md",
+                                   principal="person:alex", origin="app", wait=True)
+        self.assertEqual(held.data["status"], "pending")
 
     def test_defaults_and_refusals(self):
+        # Without a preset a Brain is careful: only files go in at once (test_presets.py).
         policy = self.brain.policies().data["capture"]
         self.assertEqual(policy["rule"]["chat"], "wait")
-        self.assertEqual(policy["decision"]["chat"], "apply")
+        self.assertEqual(policy["decision"]["chat"], "wait")
+        self.assertEqual(policy["file"]["chat"], "apply")
         bad = self.brain.set_policies({"capture": {"gossip": {"chat": "apply"}}},
                                       actor="person:alex")
         self.assertTrue(bad.is_error)

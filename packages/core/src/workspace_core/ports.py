@@ -321,10 +321,12 @@ class BrainPort(Protocol):
         project: str | None = None,
         status: str | None = None,
         origin: str = "app",
+        wait: bool = False,
     ) -> BrainProposal:
         """File a document or asset (in a project, as a new version of one already there
         when its name says so). The Brain's capture policy decides whether it is filed at
-        once, with an undo point (`status` applied), or waits for review (pending)."""
+        once, with an undo point (`status` applied), or waits for review (pending); `wait`
+        makes it wait whatever the policy says."""
         ...
 
     def projects(self) -> list[BrainProject]:
@@ -407,6 +409,81 @@ class BrainPort(Protocol):
         ...
 
     def set_policies(self, changes: dict[str, Any]) -> dict[str, Any]: ...
+
+    # ---- keeping up: what happened, what the Brain is for, what it comes with
+
+    def propose_many(self, items: list[dict[str, Any]], *, proposer: str) -> list[BrainProposal]:
+        """Many proposals as one change; each item takes `propose`'s keyword arguments (and
+        `extra`, details the Brain keeps on the proposal)."""
+        ...
+
+    def recap(self, since: str) -> dict[str, Any]:
+        """What happened since an ISO moment: what went in on its own (each with the undo point
+        that takes it back), what people decided, what came in by source, the projects that
+        moved, and how many requests the Brain could not answer."""
+        ...
+
+    def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
+        """Conversations the Brain served in each of the last `weeks` weeks, oldest first:
+        [{"start", "end", "conversations", "packets"}]."""
+        ...
+
+    def kernel(self) -> dict[str, Any]:
+        """The startup context every conversation gets once: {"text", "tokens"}."""
+        ...
+
+    def unsaved(self) -> list[str]:
+        """Governed files whose changes are live but not saved to git (a commit failed)."""
+        ...
+
+    def models(self) -> dict[str, Any]:
+        """The local model that matches by meaning: whether it is here or being fetched."""
+        ...
+
+    def download_models(self) -> dict[str, Any]:
+        """Fetch the matching model in the background (the owner's call, never automatic)."""
+        ...
+
+    def made_from(self, path: str) -> dict[str, Any] | None:
+        """What a file an AI saved for the person was made from, when it said so: the
+        conversation's requests and what each got; None when nothing was recorded."""
+        ...
+
+    def work_given(self, run_id: str) -> list[dict[str, Any]]:
+        """What one run of the app's AI work was handed from the Brain."""
+        ...
+
+    def requests(
+        self, *, limit: int = 50, before: str | None = None, client: str | None = None
+    ) -> dict[str, Any]:
+        """What each AI asked and what it got, newest first: {"requests", "brain_tokens",
+        "apps"}; each request with its app, what it got and why, what it opened after, and
+        what its conversation saved or suggested."""
+        ...
+
+    def goals(self) -> dict[str, Any]:
+        """The questions about what the Brain is for, and the owner's answers: {"questions",
+        "answers", "exists", "updated", "text"}."""
+        ...
+
+    def set_goals(self, answers: dict[str, str]) -> dict[str, Any]:
+        """Set the Brain's goals as its owner, as one undo point."""
+        ...
+
+    def builtin_skills(self) -> dict[str, Any]:
+        """The skills every Brain comes with: {"skills": [{"name", "installed", ...}],
+        "missing"}."""
+        ...
+
+    def add_builtin_skills(self, names: list[str] | None = None) -> dict[str, Any]:
+        """Add the built-in skills the Brain is missing, as one undo point."""
+        ...
+
+    def move_in(self, sources: list[dict[str, Any]], *, name: str = "") -> dict[str, Any]:
+        """Read what an AI app already knows (memories, instruction files, pasted text) into
+        ideas checked against the Brain: {"sources", "ideas", "stages", "examples"}. Writes
+        nothing."""
+        ...
 
 
 class NoBrain:
@@ -544,6 +621,61 @@ class NoBrain:
 
     def set_policies(self, changes: dict[str, Any]) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain.")
+
+    def propose_many(self, items: list[dict[str, Any]], *, proposer: str) -> list[BrainProposal]:
+        raise Conflict("This workspace has no Brain to propose long-term context to.")
+
+    def recap(self, since: str) -> dict[str, Any]:
+        return {
+            "since": since,
+            "went_in": [],
+            "went_in_total": 0,
+            "decided": {},
+            "came_in": {"total": 0, "by_source": {}, "waiting": 0},
+            "projects": [],
+            "gaps": 0,
+        }
+
+    def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
+        return []
+
+    def kernel(self) -> dict[str, Any]:
+        return {"text": "", "tokens": 0}
+
+    def unsaved(self) -> list[str]:
+        return []
+
+    def models(self) -> dict[str, Any]:
+        return {"matching": {"enabled": False, "present": False, "downloading": False}}
+
+    def download_models(self) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to download a model for.")
+
+    def made_from(self, path: str) -> dict[str, Any] | None:
+        return None
+
+    def work_given(self, run_id: str) -> list[dict[str, Any]]:
+        return []
+
+    def requests(
+        self, *, limit: int = 50, before: str | None = None, client: str | None = None
+    ) -> dict[str, Any]:
+        return {"requests": [], "brain_tokens": 0, "apps": []}
+
+    def goals(self) -> dict[str, Any]:
+        return {"questions": [], "answers": {}, "exists": False, "updated": None, "text": ""}
+
+    def set_goals(self, answers: dict[str, str]) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep goals in.")
+
+    def builtin_skills(self) -> dict[str, Any]:
+        return {"skills": [], "missing": []}
+
+    def add_builtin_skills(self, names: list[str] | None = None) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep skills in.")
+
+    def move_in(self, sources: list[dict[str, Any]], *, name: str = "") -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to move into.")
 
 
 class TextExtractor(Protocol):

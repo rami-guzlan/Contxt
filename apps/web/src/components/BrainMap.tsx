@@ -92,10 +92,10 @@ export function BrainMap({ compact = false }: { compact?: boolean }) {
           to={tile.to}
           className={`map-tile heat-${heat(tile.used, most)}${tile.checks ? " flagged" : ""}`}
           style={{ flexGrow: tile.entries.length, flexBasis: width(tile.entries.length, compact) }}
-          aria-label={`${tile.label}: ${plural(tile.entries.length, "entry", "entries")}${tile.used ? `, used ${plural(tile.used, "time")} this week` : ""}${tile.checks ? `, ${tile.checks} to check` : ""}`}
+          aria-label={`${tile.label}: ${plural(tile.entries.length, "note")}${tile.used ? `, used ${plural(tile.used, "time")} this week` : ""}${tile.checks ? `, ${tile.checks} to check` : ""}`}
         >
           <span className="map-name">{tile.label}</span>
-          <span className="map-count">{plural(tile.entries.length, "entry", "entries")}</span>
+          <span className="map-count">{plural(tile.entries.length, "note")}</span>
           {!compact && tile.used ? <span className="map-use">used {plural(tile.used, "time")} this week</span> : null}
           {tile.checks ? <span className="map-flag">{tile.checks} to check</span> : null}
         </Link>

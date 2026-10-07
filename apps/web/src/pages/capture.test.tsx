@@ -222,7 +222,7 @@ describe("summaries", () => {
     const says = await screen.findByRole("region", { name: "What it says" });
     expect(within(says).getByText("Dana keeps the videos and drops the podcast.")).toBeInTheDocument();
     expect(within(says).getByText("Clashes")).toBeInTheDocument();
-    expect(within(says).getByRole("link", { name: "the entry it clashes with" })).toHaveAttribute("href", "/brain/entries/media-plan");
+    expect(within(says).getByRole("link", { name: "the note it clashes with" })).toHaveAttribute("href", "/brain/entries/media-plan");
     expect(within(says).getByText("Drop the podcast.")).toBeInTheDocument();
     expect(within(says).getByText("People: Dana, Sam")).toBeInTheDocument();
     const already = await screen.findByRole("region", { name: "In your Brain already" });

@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 import { ApiError } from "./api/client";
 import { useMe } from "./api/hooks";
 import { Layout } from "./components/Layout";
+import { TalkProvider } from "./components/Talk";
 import { ErrorNote, Loading } from "./components/ui";
 import { HomePage } from "./pages/Home";
 import { SignInPage } from "./pages/SignIn";
@@ -13,9 +14,13 @@ function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, n
   return lazy(() => load().then((module) => ({ default: module[name] })));
 }
 
-const ActivityPage = page(() => import("./pages/brain/Activity"), "ActivityPage");
+const AiActivityPage = page(() => import("./pages/Activity"), "AiActivityPage");
 const BrainLayout = page(() => import("./pages/brain/BrainLayout"), "BrainLayout");
-const BrainMapPage = page(() => import("./pages/brain/Map"), "BrainMapPage");
+const KnowsPage = page(() => import("./pages/brain/Knows"), "KnowsPage");
+const CatchUpPage = page(() => import("./pages/CatchUp"), "CatchUpPage");
+const FirstRunPage = page(() => import("./pages/FirstRun"), "FirstRunPage");
+const MoveInPage = page(() => import("./pages/MoveIn"), "MoveInPage");
+const OutputsPage = page(() => import("./pages/Outputs"), "OutputsPage");
 const EntryPage = page(() => import("./pages/brain/Entry"), "EntryPage");
 const FilesPage = page(() => import("./pages/brain/Files"), "FilesPage");
 const FileViewPage = page(() => import("./pages/brain/Files"), "FileViewPage");
@@ -27,7 +32,7 @@ const ProjectPage = page(() => import("./pages/Projects"), "ProjectPage");
 const ProjectsPage = page(() => import("./pages/Projects"), "ProjectsPage");
 const ReviewPage = page(() => import("./pages/brain/Review"), "ReviewPage");
 const SearchPage = page(() => import("./pages/Misc"), "SearchPage");
-const SettingsPage = page(() => import("./pages/Misc"), "SettingsPage");
+const SettingsPage = page(() => import("./pages/Settings"), "SettingsPage");
 const SkillPage = page(() => import("./pages/Skills"), "SkillPage");
 const SkillsPage = page(() => import("./pages/Skills"), "SkillsPage");
 
@@ -45,6 +50,14 @@ function Retired() {
   return <Navigate to={workId ? `/capture/${workId}` : "/"} replace />;
 }
 
+/** The Brain's history moved to Activity, Changes; its filters come along. */
+function HistoryMoved() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set("tab", "changes");
+  return <Navigate to={`/activity?${params.toString()}`} replace />;
+}
+
 /** A skill's page from when skills were part of the Library's files. */
 function SkillMoved() {
   const { name = "" } = useParams();
@@ -53,27 +66,43 @@ function SkillMoved() {
 
 export function App() {
   const { isLoading, error } = useMe();
+  const location = useLocation();
   if (isLoading) return <Loading />;
   if (error instanceof ApiError && error.status === 401) return <SignInPage />;
   if (error) return <ErrorNote error={error} />;
+  // The first run is full screen: no navigation, nothing else to look at.
+  if (location.pathname.startsWith("/welcome")) {
+    return (
+      <TalkProvider>
+        <Suspense fallback={<Loading />}>
+          <FirstRunPage />
+        </Suspense>
+      </TalkProvider>
+    );
+  }
   return (
     <Layout>
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/catch-up" element={<CatchUpPage />} />
+          <Route path="/move-in" element={<MoveInPage />} />
+          <Route path="/activity" element={<AiActivityPage />} />
+          <Route path="/outputs" element={<OutputsPage />} />
           <Route path="/capture" element={<CapturePage />} />
           <Route path="/capture/:noteId" element={<NotePage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:projectId" element={<ProjectPage />} />
           <Route path="/brain" element={<BrainLayout />}>
-            <Route index element={<BrainMapPage />} />
+            <Route index element={<KnowsPage />} />
             <Route path="entries" element={<InventoryPage />} />
             <Route path="entries/:entryId" element={<EntryPage />} />
             <Route path="files" element={<FilesPage />} />
             <Route path="files/view" element={<FileViewPage />} />
-            <Route path="history" element={<ActivityPage />} />
-            <Route path="gaps" element={<GapsPage />} />
+            <Route path="questions" element={<GapsPage />} />
           </Route>
+          <Route path="/brain/history" element={<HistoryMoved />} />
+          <Route path="/brain/gaps" element={<Navigate to="/brain/questions" replace />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/skills/:name" element={<SkillPage />} />
           <Route path="/review" element={<ReviewPage />} />
@@ -83,22 +112,20 @@ export function App() {
               Capture, skills got their own place, and some pages went. */}
           <Route path="/library/skills/:name" element={<SkillMoved />} />
           <Route path="/library/*" element={<Moved from="/library" to="/brain" />} />
-          <Route path="/activity/gaps" element={<Navigate to="/brain/gaps" replace />} />
-          <Route path="/activity/policies" element={<Navigate to="/settings?tab=policies" replace />} />
-          <Route path="/activity/*" element={<Moved from="/activity" to="/brain/history" />} />
+          <Route path="/activity/gaps" element={<Navigate to="/brain/questions" replace />} />
+          <Route path="/activity/policies" element={<Navigate to="/settings?tab=approval" replace />} />
           <Route path="/notes/*" element={<Moved from="/notes" to="/capture" />} />
           <Route path="/brain/review" element={<Navigate to="/review" replace />} />
-          <Route path="/brain/activity" element={<Moved from="/brain/activity" to="/brain/history" />} />
-          <Route path="/brain/policies" element={<Navigate to="/settings?tab=policies" replace />} />
+          <Route path="/brain/activity" element={<Navigate to="/activity?tab=changes" replace />} />
+          <Route path="/brain/policies" element={<Navigate to="/settings?tab=approval" replace />} />
           <Route path="/suggestions" element={<Navigate to="/review" replace />} />
           <Route path="/approvals" element={<Navigate to="/review" replace />} />
-          <Route path="/connections" element={<Navigate to="/settings?tab=connections" replace />} />
+          <Route path="/connections" element={<Navigate to="/settings?tab=apps" replace />} />
           <Route path="/work" element={<Navigate to="/capture" replace />} />
           <Route path="/work/:workId" element={<Retired />} />
           <Route path="/goals/*" element={<Retired />} />
           <Route path="/todos" element={<Retired />} />
           <Route path="/tasks/*" element={<Retired />} />
-          <Route path="/outputs/*" element={<Retired />} />
           <Route path="/meetings/*" element={<Retired />} />
           <Route path="/inspect" element={<Retired />} />
           <Route path="*" element={<p>Not found.</p>} />

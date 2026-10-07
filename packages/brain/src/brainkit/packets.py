@@ -488,6 +488,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         # What the next turn needs to read this conversation: its subject, whether it is a
         # writing task, and how this request related to the one before.
         "subject": route.subject,
+        "draft": route.draft,
         "composing": bool(route.signals.composing),
         "followup": route.signals.followup_kind,
         "capture": [{"kind": c.kind, "cue": c.cue, "sentence": c.sentence}

@@ -6,7 +6,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { useCaptureRelated, useSummarize, useTask } from "../api/hooks";
+import { useBrainProjects, useCaptureRelated, useCreateBrainProject, useSummarize, useTask } from "../api/hooks";
 import type { Digest, DigestPoint, Fit, Note } from "../api/types";
 import { when } from "../lib/format";
 import { entryUrl } from "../pages/brain/shared";
@@ -42,6 +42,11 @@ function Written({ digest, note }: { digest: Digest; note: Note }) {
   const points = digest.points ?? [];
   return (
     <>
+      {digest.about ? (
+        <p className="about">
+          <strong>Mostly about:</strong> {digest.about}
+        </p>
+      ) : null}
       {digest.summary ? <p>{digest.summary}</p> : null}
       {points.length ? (
         <>
@@ -57,6 +62,7 @@ function Written({ digest, note }: { digest: Digest; note: Note }) {
       <List title="To do" items={digest.actions} />
       <List title="Still open" items={digest.questions} />
       {digest.people?.length ? <p className="small muted">People: {digest.people.join(", ")}</p> : null}
+      {digest.new_project ? <StartProject name={digest.new_project} from={note.title} /> : null}
       <p className="small muted">
         Summarized by {digest.by ?? "your AI"}
         {digest.at ? ` ${when(digest.at)}` : ""}. <Again note={note} />
@@ -74,12 +80,45 @@ function Point({ point }: { point: DigestPoint }) {
         <>
           {" "}
           <Link className="small" to={entryUrl(point.entry)}>
-            {point.fit === "repeats" ? "already in the Brain" : point.fit === "clashes" ? "the entry it clashes with" : "the entry it changes"}
+            {point.fit === "repeats" ? "already in the Brain" : point.fit === "clashes" ? "the note it clashes with" : "the note it changes"}
           </Link>
         </>
       ) : null}
       {point.why ? <span className="muted small"> · {point.why}</span> : null}
+      {point.serves ? <span className="chip small serves-chip">For {point.serves === "goals" ? "your goals" : point.serves}</span> : null}
     </li>
+  );
+}
+
+/** Work it is mostly about that is not a project yet: start one, and your AI knows where it
+ * stands from then on. */
+function StartProject({ name, from }: { name: string; from: string }) {
+  const { data: projects } = useBrainProjects();
+  const start = useCreateBrainProject();
+  const exists = (projects ?? []).some((p) => [p.title, ...p.aliases].some((n) => n.toLowerCase() === name.toLowerCase()));
+  if (exists) return null;
+  if (start.isSuccess) {
+    return (
+      <p className="small" role="status">
+        Started the project {name}.
+      </p>
+    );
+  }
+  return (
+    <div className="nudge">
+      <p className="small">
+        This is about <strong>{name}</strong>, which is not a project yet. Start one?
+      </p>
+      <button
+        type="button"
+        className="small"
+        disabled={start.isPending}
+        onClick={() => start.mutate({ name, summary: `${name}, started from “${from}”.`, aliases: [] })}
+      >
+        Start “{name}”
+      </button>
+      <ErrorNote error={start.error} />
+    </div>
   );
 }
 

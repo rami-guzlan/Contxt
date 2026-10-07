@@ -118,6 +118,65 @@ class PoliciesIn(Body):
     retention_days: int | None = None
     # What the owner's own captures do, by type and origin: {"file": {"chat": "wait"}}.
     capture: dict[str, dict[str, str]] | None = None
+    preset: str | None = None  # personal, careful or regulated: a fresh start
+
+
+class CatchUpItemIn(Body):
+    """One item in the catch-up: proposal:<id>, recheck:<id>, twin:<a>|<b>, tidy:<id>,
+    offer:<type>:<origin> or unused."""
+
+    key: str
+    days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class GoalsIn(Body):
+    """The owner's answers about what the Brain is for, by question id."""
+
+    answers: dict[str, str]
+
+
+class BuiltinSkillsIn(Body):
+    names: list[str] | None = None  # none: every one the Brain is missing
+
+
+class MoveInSource(Body):
+    kind: str = "paste"  # chatgpt, claude, cursor, instructions or paste
+    text: str = Field(max_length=200_000)
+    label: str = ""
+
+
+class MoveInIn(Body):
+    sources: list[MoveInSource] = Field(min_length=1, max_length=8)
+    ids: list[str] | None = None  # the ideas to keep; none: every one worth keeping
+
+
+class DifferenceIn(Body):
+    request: str = Field(min_length=1, max_length=2000)
+    project: str | None = None
+
+
+class FollowupIn(Body):
+    question: str = Field(min_length=1, max_length=400)
+    answer: str = Field(min_length=1, max_length=6000)
+
+
+class AppConnectIn(Body):
+    confirm: bool = False  # the person said yes: this changes the app's own settings
+
+
+class OutputFolderIn(Body):
+    path: str = Field(min_length=1, max_length=500)
+
+
+class OutputMoveIn(Body):
+    source: str = Field(min_length=1, max_length=500)
+    target: str = Field(min_length=1, max_length=500)
+
+
+class MergeIn(Body):
+    keep_id: str
+    other_id: str
+    assignee_id: str | None = None  # none: waits for a model, or for a run from this computer
 
 
 class BrainProjectIn(Body):
@@ -155,16 +214,17 @@ class MarkIn(Body):
 
 
 class DistillRequestIn(Body):
-    """Find what to remember in these notes."""
+    """Pull what matters out of these notes and captures, or documents filed in the Brain."""
 
-    item_ids: list[str] = Field(min_length=1, max_length=20)
+    item_ids: list[str] = Field(default_factory=list, max_length=20)
+    paths: list[str] = Field(default_factory=list, max_length=20)  # documents in the Brain
     assignee_id: str | None = None
     guidance: str = Field(default="", max_length=2000)
     wait: bool = True  # with no model to take it yet, keep it for the first one that connects
 
 
 class RememberIn(Body):
-    """Find what to remember in one note (the note is in the address)."""
+    """Pull what matters out of one note (the note is in the address)."""
 
     assignee_id: str | None = None
     guidance: str = Field(default="", max_length=2000)

@@ -93,6 +93,51 @@ class Legacy:
             row = tx.one(schema.workspaces, self.rt.workspace_id, "workspace")
             tx.update(schema.workspaces, row, {"settings": {**row["settings"], "legacy": state}})
 
+    def offer(self, who: Principal) -> dict[str, Any] | None:
+        """The one-time offer to bring the earlier workspace's context in: what it holds that
+        the Brain does not, with a time estimate. None once it is in, or when nothing it holds
+        would move."""
+        if not who.can("workspace.admin") or not who.can("brain.govern"):
+            return None
+        summary = self.summary(who)
+        if summary.get("moved_at"):
+            return None
+        counts = summary["counts"]
+        parts = [
+            (counts["memories"], "note", "notes"),
+            (counts["transcripts"], "transcript", "transcripts"),
+            (counts["documents"], "document", "documents"),
+            (counts["todos_open"], "open to-do", "open to-dos"),
+            (counts["projects_without_brain"], "project", "projects"),
+        ]
+        named = [f"{n} {one if n == 1 else many}" for n, one, many in parts if n]
+        if not named:
+            return None
+        files = counts["transcripts"] + counts["documents"]
+        seconds = 30 + 8 * counts["memories"] + 15 * files
+        preset = str(self.rt.brain.policies().get("preset") or "careful")
+        lead = named[0]
+        verb = "is" if lead.startswith("1 ") else "are"
+        said = [f"It holds {_and(named)}."] if len(named) > 1 else []
+        if counts["memories"]:
+            said.append("Notes come in as suggestions you keep or not.")
+        if files:
+            said.append(
+                "Transcripts and documents wait in Review, each with its name."
+                if preset in ("careful", "regulated")
+                else "Transcripts and documents are filed at once."
+            )
+        if counts["todos_open"] or counts["projects_without_brain"]:
+            said.append("Projects start at once, and open to-dos become their next steps.")
+        return {
+            "key": "legacy:workspace",
+            "title": f"{lead} from your earlier workspace {verb} not in your Brain yet",
+            "detail": " ".join(said),
+            "counts": counts,
+            "seconds": seconds,
+            "minutes": max(1, -(-seconds // 60)),
+        }
+
     def summary(self, who: Principal) -> dict[str, Any]:
         """How much the earlier workspace holds, and what has been done with it."""
         who.require("workspace.admin")
@@ -248,7 +293,9 @@ class Legacy:
             "projects_matched": 0,
             "projects_left": [],  # could not be started, with why
             "notes_proposed": 0,
-            "files_filed": 0,
+            "files_filed": 0,  # in the Brain at once
+            "files_waiting": 0,  # waiting in Review (Careful and Regulated)
+            "waiting_files": [],  # their names
             "next_steps": 0,
             "todos_noted": 0,  # open to-dos listed in the note
             "todo_note": None,  # that note's id
@@ -368,6 +415,10 @@ class Legacy:
                 fed.setdefault(str(meeting_id), Counter())[item["scope_id"]] += 1
         done = set(moved.get("transcripts", [])) | set(moved.get("documents", []))
         filed: dict[str, list[str]] = {"transcripts": [], "documents": []}
+        # A whole workspace's files were never picked one by one: under Careful and Regulated
+        # each waits in Review with its name, so nothing confidential becomes quotable unseen.
+        preset = str(self.rt.brain.policies().get("preset") or "careful")
+        wait = preset in ("careful", "regulated")
         for item in self._items("transcript", *MATERIAL):
             if item["id"] in done:
                 report["skipped"] += 1
@@ -406,9 +457,14 @@ class Legacy:
                 proposer=_proposer(who),
                 project=home.id if home is not None else None,
                 origin="app",
+                wait=wait,
             )
             if made.status in ("applied", "pending", "duplicate"):
-                report["files_filed"] += made.status != "duplicate"
+                if made.status == "applied":
+                    report["files_filed"] += 1
+                elif made.status == "pending":
+                    report["files_waiting"] += 1
+                    report["waiting_files"].append(title or filename)
                 filed["transcripts" if item["kind"] == "transcript" else "documents"].append(
                     item["id"]
                 )
@@ -498,6 +554,12 @@ class Legacy:
             lines += [f"- [ ] {_todo_line(t)}" for t in groups[project_id]]
             lines.append("")
         return "\n".join(lines)
+
+
+def _and(items: list[str]) -> str:
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " and " + items[-1]
 
 
 def _todo_line(todo: dict[str, Any]) -> str:

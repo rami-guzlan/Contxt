@@ -84,19 +84,29 @@ DIGEST_INSTRUCTIONS = """\
 Read the pinned item: something the person said, recorded or brought in (a talk, a meeting's \
 transcript, a document). Write its digest for someone who was not there and wants the gist in a \
 minute. Use only what the item says: no guesses and nothing from outside it. Leave out small \
-talk.
+talk. The person's goals for this Brain and their active projects are pinned too: they say \
+what matters to this person.
+
+- about: one line saying what it is mostly about, naming the goal or project it serves, for \
+example "Mostly about: Q4 webinar series; the goal to stop dropping follow-ups".
 
 - summary: two or three plain sentences: what it is and what came of it.
-- points: its key points, at most ten, each one short plain sentence that stands on its own. \
+- points: its key points, at most ten, each one short plain sentence that stands on its own, \
+the ones that matter to the Brain's goals and projects (quoted below, when it has them) first. \
 For each, say how it fits what the Brain holds now. The Relevant context section shows some of \
 it; search_context in your own words finds the rest, and get_brain_entry opens an entry. Mark \
 it new (the Brain has nothing on it), repeats (an entry says the same; give its id as entry), \
 updates (it changes or adds to an entry; give its id) or clashes (it contradicts an entry; give \
-its id, and say what differs in why).
+its id, and say what differs in why). In serves, name the project it moves forward, or "goals" \
+when it serves what the Brain is for without one; leave it empty when it serves neither.
 - decisions: what was decided, each in a sentence.
 - actions: who will do what, by when, as said.
 - questions: what was left open.
 - people: who spoke or was named.
+- new_project: when it is mostly about work that is not one of the active projects yet, a \
+short name for that work; otherwise leave it out.
+- off_goal: when it is mostly about a subject none of the goals or projects covers, that \
+subject in two or three words; otherwise leave it out.
 
 Call save_digest once with this run's run_id, the item's id and the digest, then complete the \
 task. Do not propose Brain entries: the person chooses what to pull in."""
@@ -148,6 +158,9 @@ def _point(value: Any) -> dict[str, Any]:
     why = _line(data.get("why"), 300)
     if why:
         point["why"] = why
+    serves = _line(data.get("serves"), 80)
+    if serves:
+        point["serves"] = serves  # the project it moves forward, or "goals"
     return point
 
 
@@ -375,6 +388,7 @@ class Captures:
         self.tasks.pin(
             who, task.id, ref_type="context_item", ref_id=row["id"], version=row["revision"]
         )
+        self.distill.pin_lens(who, task.id)
         with self.rt.write() as tx:
             row = self._row(tx, capture_id)
             provenance = dict(row["provenance"] or {})
@@ -395,10 +409,19 @@ class Captures:
         actions: list[str] | None = None,
         questions: list[str] | None = None,
         people: list[str] | None = None,
+        about: str = "",
+        new_project: str = "",
+        off_goal: str = "",
     ) -> dict[str, Any]:
-        """A model's digest of a capture its run reads, shown beside the capture."""
+        """A model's digest of a capture its run reads, shown beside the capture: what it is
+        mostly about (and which goal or project that serves), its key points (each with how it
+        fits the Brain and what it serves), and two nudges: work that is not a project yet,
+        and a subject none of the goals covers."""
         who.require("runs.write")
         digest = {
+            "about": _line(about, 240),
+            "new_project": _line(new_project, 80),
+            "off_goal": _line(off_goal, 60),
             "summary": _line(summary, 1200),
             "points": [_point(p) for p in (points or [])[:12]],
             "decisions": _lines(decisions, 12),

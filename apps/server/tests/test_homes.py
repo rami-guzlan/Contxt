@@ -72,6 +72,12 @@ def test_a_home_is_made_from_a_starter_with_its_own_history(tmp_path):
     assert "CONTXT_NAME=Kai's Dev Brain" in env
 
 
+@pytest.mark.skipif(os.name != "nt", reason="long paths are a Windows limit")
+def test_a_new_home_enables_long_paths_on_windows(tmp_path):
+    made = homes.create_home(str(tmp_path), homes.find_starter("personal"), port=8801)
+    assert git(made["brain"], "config", "--local", "core.longpaths") == "true"
+
+
 def test_a_home_that_holds_a_brain_is_never_overwritten(tmp_path):
     homes.create_home(str(tmp_path), homes.find_starter("empty"))
     before = (tmp_path / ".env").read_text(encoding="utf-8")

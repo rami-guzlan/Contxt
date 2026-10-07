@@ -63,6 +63,21 @@ def _cosine(left: dict, right: dict) -> float:
 NEGATION = re.compile(r"\b(?:never|not|no|don't|do not|doesn't|does not|avoid|stop|without|"
                       r"cannot|can't|mustn't|must not|shouldn't|should not|won't)\b")
 NUMBER = re.compile(r"\b\d[\d,.]*\b")
+# Figures written as words count as figures ("twelve weeks" against "six to eight weeks");
+# "one" stays out, it is as often a pronoun ("the one we chose").
+NUMBER_WORDS = {word: str(value) for value, word in enumerate(
+    "zero . two three four five six seven eight nine ten eleven twelve thirteen fourteen "
+    "fifteen sixteen seventeen eighteen nineteen twenty".split()) if word != "."}
+NUMBER_WORDS.update({"thirty": "30", "forty": "40", "fifty": "50", "sixty": "60",
+                     "seventy": "70", "eighty": "80", "ninety": "90", "hundred": "100",
+                     "dozen": "12"})
+
+
+def _figures(text: str) -> set[str]:
+    """The figures a sentence gives, written as digits or as words."""
+    found = {f.replace(",", "") for f in NUMBER.findall(text)}
+    found |= {NUMBER_WORDS[w] for w in re.findall(r"[a-z]+", text.lower()) if w in NUMBER_WORDS}
+    return found
 
 
 def _sentences(text) -> list[str]:
@@ -85,7 +100,7 @@ def contradiction(proposed: str, existing: str) -> str | None:
     _, left, right = best
     if bool(NEGATION.search(left.lower())) != bool(NEGATION.search(right.lower())):
         return f"one says \u201c{util.excerpt(left, 90)}\u201d, the other \u201c{util.excerpt(right, 90)}\u201d"
-    figures_left, figures_right = set(NUMBER.findall(left)), set(NUMBER.findall(right))
+    figures_left, figures_right = _figures(left), _figures(right)
     if figures_left and figures_right and figures_left != figures_right:
         return (f"different figures: \u201c{util.excerpt(left, 90)}\u201d against "
                 f"\u201c{util.excerpt(right, 90)}\u201d")

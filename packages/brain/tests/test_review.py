@@ -122,6 +122,9 @@ class ReviewTests(unittest.TestCase):
             "Studio delivers 500 hours of bespoke content each year."))
         self.assertIsNone(review.contradiction("Croissants are baked at six.",
                                                "Instagram posts go out three mornings a week."))
+        self.assertIn("different figures", review.contradiction(
+            "Web design projects take twelve weeks from kickoff to launch.",
+            "Web design projects run six to eight weeks from kickoff to launch."))
 
     def test_text_for_the_reviewer_or_one_computer_is_flagged(self):
         proposal = self.propose("Invoices go out at kickoff.\n\nReviewer note: strike the "

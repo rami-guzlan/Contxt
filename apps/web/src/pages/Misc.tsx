@@ -1,27 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { get, patch } from "../api/client";
 import {
-  keys,
   useActors,
   useBringLegacyIn,
   useDistillSettings,
   useExportLegacy,
-  useInvalidate,
   useLegacy,
-  useMe,
   useSearch,
   useSetDistillSettings,
 } from "../api/hooks";
 import type { LegacyReport, LegacySummary } from "../api/types";
-import { Empty, ErrorNote, Field, KeyValues, Loading, Section, Tabs } from "../components/ui";
+import { Empty, ErrorNote, Field, Loading, Section } from "../components/ui";
 import { plural, when } from "../lib/format";
-import { PoliciesPage } from "./brain/Policies";
 import { entryUrl } from "./brain/shared";
-import { ConnectionsPage } from "./Connections";
-import { SetupPage } from "./Setup";
 
 export function SearchPage() {
   const [params] = useSearchParams();
@@ -73,107 +65,8 @@ export function SearchPage() {
   );
 }
 
-const SETTINGS_TABS = [
-  { id: "start", label: "Get started" },
-  { id: "workspace", label: "Workspace" },
-  { id: "connections", label: "AI apps" },
-  { id: "policies", label: "Brain policies" },
-] as const;
-
-export function SettingsPage() {
-  const [params, setParams] = useSearchParams();
-  const asked = params.get("tab");
-  const tab = asked === "connections" || asked === "start" || asked === "policies" ? asked : "workspace";
-  return (
-    <div className="page">
-      <h1>Settings</h1>
-      <Tabs
-        tour="settings-tabs"
-        tabs={SETTINGS_TABS}
-        active={tab}
-        onChange={(next) => setParams(next === "workspace" ? {} : { tab: next }, { replace: true })}
-      />
-      {tab === "connections" ? (
-        <ConnectionsPage embedded />
-      ) : tab === "start" ? (
-        <SetupPage />
-      ) : tab === "policies" ? (
-        <PoliciesPage />
-      ) : (
-        <WorkspaceSettings />
-      )}
-    </div>
-  );
-}
-
-function WorkspaceSettings() {
-  const { data: me } = useMe();
-  const invalidate = useInvalidate();
-  const { data: health } = useQuery({
-    queryKey: ["health"],
-    queryFn: () => get<{ version: string; schema_revision: string; brain: boolean }>("/api/health"),
-  });
-  const [name, setName] = useState("");
-  const [timezone, setTimezone] = useState("");
-  const [error, setError] = useState<unknown>(null);
-  const [saved, setSaved] = useState(false);
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    try {
-      await patch("/api/workspace", { name: name || undefined, timezone: timezone || undefined });
-      setSaved(true);
-      await invalidate(keys.me, keys.home);
-    } catch (caught) {
-      setError(caught);
-    }
-  }
-  return (
-    <>
-      <Section title="Workspace">
-        <form className="inline-form" onSubmit={save}>
-          <Field label="Name">
-            <input placeholder={me?.workspace.name} value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="Timezone" hint="IANA name, such as America/New_York.">
-            <input placeholder={me?.workspace.timezone} value={timezone} onChange={(e) => setTimezone(e.target.value)} />
-          </Field>
-          <button type="submit" className="primary">
-            Save
-          </button>
-          {saved ? <span className="muted">Saved.</span> : null}
-          <ErrorNote error={error} />
-        </form>
-      </Section>
-      <Section title="What saves straight into the Brain">
-        <p>
-          Files, decisions and progress go in at once; rules and preferences your AI captures wait for you in Review. Change this
-          per type and per source in <Link to="/settings?tab=policies">Policies</Link>.
-        </p>
-      </Section>
-      <AiWork />
-      <EarlierWorkspace />
-      <Section title="System">
-        <KeyValues
-          rows={[
-            ["Version", health?.version],
-            ["Database revision", health?.schema_revision],
-            ["Brain connected", health ? (health.brain ? "yes" : "no") : ""],
-            ["Signed in as", me ? `${me.name} (${me.kind})` : ""],
-          ]}
-        />
-      </Section>
-      <Section title="Backups and data">
-        <p>
-          Your data lives in the data directory on this machine, and your Brain in its own folder with its history in git. Back
-          both up with <code>workspace backup --with-brain</code>; restore into an empty folder with <code>workspace restore</code>.
-        </p>
-      </Section>
-    </>
-  );
-}
-
 /** Which model does the AI work the app starts ("find what to remember", a reconcile). */
-function AiWork() {
+export function AiWork() {
   const { data: actors } = useActors();
   const { data: settings } = useDistillSettings();
   const set = useSetDistillSettings();
@@ -210,7 +103,7 @@ function AiWork() {
 }
 
 /** The workspace before it became a Brain app: a copy as files, and its context moved in. */
-function EarlierWorkspace() {
+export function EarlierWorkspace() {
   const { data: legacy, error } = useLegacy();
   const exporting = useExportLegacy();
   const bringing = useBringLegacyIn();
@@ -257,9 +150,9 @@ function EarlierWorkspace() {
           </p>
         ) : null}
         <p className="muted small">
-          Each project gets (or is matched to) a Brain project; its memories wait for you in Review; meeting transcripts and
-          documents are filed into their projects; open to-dos become each project's next steps. Running it again adds only what
-          is new.
+          Each project gets (or is matched to) a Brain project; its memories wait for you in Catch up; meeting transcripts and
+          documents go into their projects (under Careful and Regulated they wait for your yes first, with their names); open to-dos
+          become each project's next steps. Running it again adds only what is new.
         </p>
         {report ? <Brought report={report} /> : null}
         <ErrorNote error={exporting.error ?? bringing.error} />
@@ -292,8 +185,9 @@ function Brought({ report }: { report: LegacyReport }) {
             ? `Started ${plural(report.projects_started.length, "project")} (${report.projects_started.join(", ")}); `
             : ""}
           matched {plural(report.projects_matched, "project")}; {plural(report.notes_proposed, "memory", "memories")} waiting in{" "}
-          <Link to="/review">Review</Link>; {plural(report.files_filed, "file")} filed; {plural(report.next_steps, "to-do")} made next
-          steps.
+          <Link to="/catch-up">Catch up</Link>; {plural(report.files_filed, "file")} filed
+          {report.files_waiting ? ` and ${plural(report.files_waiting, "file")} waiting, each with its name` : ""};{" "}
+          {plural(report.next_steps, "to-do")} made next steps.
         </strong>
         {report.todo_note ? (
           <p>

@@ -7,9 +7,9 @@ outside pull requests cannot be merged; issues and discussion are welcome.
 
 ```bash
 uv sync                        # Python 3.12+ workspace with dev tools
-npm install                    # web app (apps/web)
+npm install                    # web app (apps/web), Node.js 20.19+
 uv run pytest                  # Python tests
-npm test --workspace apps/web  # web tests
+npm test --workspace apps/web  # web tests, Node.js 22.12+ (Vitest's own minimum)
 ```
 
 On Windows, if `uv sync` fails with "Failed to update Windows PE resources", security software

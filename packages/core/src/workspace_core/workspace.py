@@ -30,10 +30,12 @@ from .services.artifacts import Artifacts, Destination
 from .services.brain import Brain
 from .services.bus import Bus
 from .services.captures import Captures
+from .services.catchup import CatchUp
 from .services.context import Context
 from .services.distill import Distillation
 from .services.events import Events
 from .services.legacy import Legacy
+from .services.movein import MovingIn
 from .services.notes import Note, Notes
 from .services.onboarding import Onboarding
 from .services.projects import Projects
@@ -70,6 +72,8 @@ class Workspace:
         self.skills = Skills(rt, self.tasks, self.distill, self.brain, self.artifacts)
         self.onboarding = Onboarding(rt)
         self.legacy = Legacy(rt)
+        self.catch_up = CatchUp(rt, self.brain, self.legacy)
+        self.move_in = MovingIn(rt)
 
     # ---------------------------------------------------------------- lifecycle
 

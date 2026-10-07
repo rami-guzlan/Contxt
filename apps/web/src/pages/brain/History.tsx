@@ -24,9 +24,9 @@ export function HistoryPage() {
   return (
     <div className="history-page">
       <p className="section-lede">
-        Every batch of decisions is saved as an undo point. Undo takes the Brain back to how it was before that batch: entries
-        it added leave, entries it replaced or archived come back, and its proposals return to{" "}
-        <Link to="/review">Review</Link>. Nothing is lost; an undo can be redone.
+        Every batch of decisions is saved as an undo point. Undo takes the Brain back to how it was before that batch: notes it
+        added leave, notes it replaced or archived come back, and its suggestions wait again in <Link to="/catch-up">Catch up</Link>.
+        Nothing is lost; an undo can be redone.
       </p>
       {points.length ? (
         <ol className="timeline">

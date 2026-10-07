@@ -28,10 +28,11 @@ import type { BrainFiled, DistillRequest, Note } from "../api/types";
 import { Compare } from "../components/Diff";
 import type { RichEditorHandle } from "../components/RichEditor";
 import { DigestPanel } from "../components/Digest";
+import { KnowledgeCheck } from "../components/Pull";
 import { RunButtons, RunConsole, RunnerNote, canRun } from "../components/RunNow";
 import { CaptureSource, TranscriptionState } from "../components/CaptureParts";
 import { ErrorNote, Field, Loading, Tabs } from "../components/ui";
-import { label, plural, when } from "../lib/format";
+import { label, when } from "../lib/format";
 
 const RichEditor = lazy(() => import("../components/RichEditor"));
 
@@ -265,8 +266,13 @@ function Side({ note, saver, selection }: { note: Note; saver: Saver; selection:
       ) : side === "brain" ? (
         <div className="stack">
           {selection ? <RememberSelection note={note} selection={selection} revision={saver.revision} /> : null}
-          <AddToBrain note={note} saver={saver} />
           <FindWhatToRemember note={note} saver={saver} />
+          <section className="side-part" aria-label="Knowledge check">
+            <h3>Knowledge check</h3>
+            <p className="muted small">What your Brain already knows of it, what is new, what disagrees, and what is off your goals.</p>
+            <KnowledgeCheck title={note.title} captureId={note.id} />
+          </section>
+          <AddToBrain note={note} saver={saver} />
           <TeachSkill note={note} />
         </div>
       ) : (
@@ -365,7 +371,8 @@ function AddToBrain({ note, saver }: { note: Note; saver: Saver }) {
   );
 }
 
-/** Ask a model to find what in the note should last; its suggestions wait in Review. */
+/** The knowledge agent: what in it serves your goals and active projects, as suggestions that
+ * wait in Catch up, each with the goal or project it is for, and what it left out. */
 function FindWhatToRemember({ note, saver }: { note: Note; saver: Saver }) {
   const { data: requests } = useDistillRequests(note.id);
   const remember = useRememberNote();
@@ -373,11 +380,12 @@ function FindWhatToRemember({ note, saver }: { note: Note; saver: Saver }) {
   const [guidance, setGuidance] = useState("");
   const open = (requests ?? []).find((r) => WORKING.includes(r.status));
   return (
-    <section className="side-part" aria-label="Pull into the Brain">
-      <h3>Pull into the Brain</h3>
+    <section className="side-part" aria-label="Pull what matters">
+      <h3>Pull what matters</h3>
       <p className="muted small">
-        Your AI suggests what in it is worth keeping: facts, decisions, preferences. Say what to pull, or leave it to find what
-        lasts. Nothing goes in until you approve it in Review.
+        Your AI reads it against your goals and active projects and suggests what serves them, each with the goal or project it is for.
+        What it leaves out is listed, so you can still pull it. Your words below win over the goals. Nothing goes in until you keep it in
+        Catch up.
       </p>
       {open ? (
         <OpenRequest request={open} onStarted={setRunId} />
@@ -395,7 +403,7 @@ function FindWhatToRemember({ note, saver }: { note: Note; saver: Saver }) {
             disabled={remember.isPending || !saver.body.trim()}
             onClick={() => void saver.flush().then((ok) => ok && remember.mutate({ id: note.id, guidance: guidance.trim() || undefined }))}
           >
-            Suggest what to keep
+            Pull what matters
           </button>
         </>
       )}
@@ -427,28 +435,80 @@ function OpenRequest({ request, onStarted }: { request: DistillRequest; onStarte
 }
 
 function PastRequests({ requests }: { requests: DistillRequest[] }) {
+  const { data: projects } = useBrainProjects();
   if (!requests.length) return null;
+  const titles = new Map((projects ?? []).map((p) => [p.id, p.title]));
   return (
-    <ul className="compact-list">
+    <ul className="compact-list pulls">
       {requests.slice(0, 5).map((r) => {
         const waiting = r.proposals.filter((p) => p.status === "pending").length;
+        const groups = new Map<string, number>();
+        for (const p of r.proposals) {
+          const key = p.project_id ? `for ${titles.get(p.project_id) ?? p.project_id}` : p.goal ? `for ${p.goal}` : "about you";
+          groups.set(key, (groups.get(key) ?? 0) + 1);
+        }
         return (
           <li key={r.task_id}>
             <span className="small">
               {when(r.updated_at)}: {label(r.status)}
-              {r.proposals.length ? `, ${plural(r.proposals.length, "suggestion")}` : r.status === "done" ? ", nothing to keep" : ""}
+              {r.proposals.length
+                ? `, pulled ${r.proposals.length}: ${[...groups.entries()].map(([k, n]) => `${n} ${k}`).join(", ")}`
+                : r.status === "done"
+                  ? ", nothing to keep"
+                  : ""}
               {waiting ? (
                 <>
                   {" · "}
-                  <Link to="/review">{waiting} waiting in Review</Link>
+                  <Link to="/catch-up">{waiting} waiting in Catch up</Link>
                 </>
               ) : null}
             </span>
             {r.summary ? <span className="muted small"> · {r.summary}</span> : null}
+            {r.left_out?.length ? <LeftOut items={r.left_out} source={r.title} /> : null}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** What the knowledge agent left out, and why: each one tap from being pulled anyway. */
+function LeftOut({ items, source }: { items: { statement: string; why: string }[]; source: string }) {
+  const propose = useProposeEntry();
+  const [pulled, setPulled] = useState<string[]>([]);
+  return (
+    <details className="left-out">
+      <summary className="small">Left out {items.length}: see why</summary>
+      <ul className="compact-list">
+        {items.map((item) => (
+          <li key={item.statement} className="small">
+            {item.statement} <span className="muted">· {item.why}</span>{" "}
+            {pulled.includes(item.statement) ? (
+              <span className="muted">· pulled, waiting in Catch up</span>
+            ) : (
+              <button
+                type="button"
+                className="link small"
+                disabled={propose.isPending}
+                onClick={() =>
+                  propose.mutate(
+                    {
+                      title: (item.statement.split(/[.!?]\s/)[0] ?? item.statement).slice(0, 80),
+                      statement: item.statement,
+                      evidence: `Pulled anyway from “${source}”; the knowledge agent had left it out: ${item.why}`,
+                    },
+                    { onSuccess: () => setPulled((p) => [...p, item.statement]) },
+                  )
+                }
+              >
+                Pull anyway
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <ErrorNote error={propose.error} />
+    </details>
   );
 }
 
@@ -480,7 +540,7 @@ function RememberSelection({ note, selection, revision }: { note: Note; selectio
         <p className="small">Suggested to the Brain. It waits in Review for your approval.</p>
       ) : (
         <form className="stack" onSubmit={submit}>
-          <Field label="Entry title" hint="What it is for, in a few words.">
+          <Field label="Note title" hint="What it is for, in a few words.">
             <input value={title} placeholder={first.slice(0, 80)} onChange={(event) => setTitle(event.target.value)} />
           </Field>
           <button type="submit" disabled={propose.isPending}>

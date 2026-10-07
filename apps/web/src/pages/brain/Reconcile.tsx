@@ -119,7 +119,7 @@ function Chooser({
         <legend>Or keep both, reconciled: which one is current?</legend>
         <label className="checkbox">
           <input type="radio" name={group} checked={current === "proposal"} onChange={() => setCurrent("proposal")} />
-          The proposal
+          The suggestion
         </label>
         <label className="checkbox">
           <input type="radio" name={group} checked={current === "entry"} onChange={() => setCurrent("entry")} />
@@ -128,8 +128,8 @@ function Chooser({
       </fieldset>
       <p className="muted small">
         {current === "proposal"
-          ? `A model rewrites “${entry.title}” so it no longer steps on the proposal.`
-          : "A model rewrites the proposal so it no longer steps on the entry."}{" "}
+          ? `A model rewrites “${entry.title}” so it no longer steps on the suggestion.`
+          : "A model rewrites the suggestion so it no longer steps on the note."}{" "}
         You review the rewrite here before anything changes.
         {finishedEmpty && lastTask ? (
           <>
@@ -251,7 +251,7 @@ function Suggested({
       <p className="relation-head">
         {changesEntry
           ? `Suggested change to “${entry.title}” so both can stand:`
-          : "Suggested version of the proposal, so it no longer steps on the entry:"}
+          : "A new version of the suggestion, so it no longer steps on the note:"}
       </p>
       <Compare
         before={

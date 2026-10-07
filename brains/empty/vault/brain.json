@@ -2,6 +2,7 @@
   "schema": 1,
   "name": "My Brain",
   "description": "Your Brain: who you are, how you like work done, what you are working on, and what your AI should know.",
+  "starter": "empty",
   "owner": "person:me",
   "structure": {
     "scope_levels": [

@@ -67,6 +67,36 @@ def test_round_trip(tmp_path, ws, owner, connect, make_task, project, clock, bra
     assert (tmp_path / "vault-restored" / "knowledge" / "voice.md").read_text() == "Write plainly."
 
 
+def test_a_brain_backup_keeps_original_files(tmp_path, ws, owner):
+    vault = tmp_path / "vault"
+    (vault / "references").mkdir(parents=True)
+    (vault / "references" / "deck.md").write_text("Converted text.", encoding="utf-8")
+    runtime = vault / ".brain"
+    (runtime / "library").mkdir(parents=True)
+    (runtime / "library" / "abc123.pdf").write_bytes(b"%PDF original bytes")
+    (runtime / "staging" / "prop-1").mkdir(parents=True)
+    (runtime / "staging" / "prop-1" / "original.docx").write_bytes(b"waiting for review")
+    (runtime / "staging" / ".probe-abc.pdf").write_bytes(b"a check in progress")
+    (runtime / "models").mkdir()
+    (runtime / "models" / "weights.bin").write_bytes(b"downloaded again")
+    (runtime / "embeddings.sqlite").write_bytes(b"rebuilt")
+    (runtime / "sessions.sqlite").write_bytes(b"local history")
+
+    archive = tmp_path / "backup.zip"
+    manifest = backup(ws, str(archive), brain_vault=str(vault))
+    assert (manifest["brain"]["files"], manifest["brain"]["originals"]) == (3, 1)
+    names = set(zipfile.ZipFile(archive).namelist())
+    assert "brain/.brain/library/abc123.pdf" in names
+    assert "brain/.brain/staging/prop-1/original.docx" in names
+    assert not any("models" in n or n.endswith(".sqlite") or "probe" in n for n in names)
+
+    restored = tmp_path / "vault-restored"
+    report = restore(str(archive), str(tmp_path / "data-restored"), brain_dir=str(restored))
+    assert report["brain_files"] == 3
+    assert (restored / ".brain" / "library" / "abc123.pdf").read_bytes() == b"%PDF original bytes"
+    assert (restored / ".brain" / "staging" / "prop-1" / "original.docx").exists()
+
+
 def test_restore_refuses_to_overwrite(tmp_path, ws, owner, connect, make_task, project):
     _populate(ws, owner, connect, make_task, project)
     archive = tmp_path / "backup.zip"

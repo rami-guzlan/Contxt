@@ -217,6 +217,20 @@ def test_edits_land_only_where_they_are_quoted():
         apply_edits(text, [{"find": " ", "replace": "x"}])
 
 
+def test_an_edit_that_quotes_the_header_says_so():
+    from workspace_core.services.skills import apply_edits
+
+    body = "1. Read the calendar.\n2. Draft."
+    shown = (
+        "# /weekly-posts\n\nLoads: rules/voice\nFolder: vault/skills/social/weekly-posts "
+        "(scripts and assets are resolved from here)\n\n" + body + "\n"
+    )
+    with pytest.raises(ValidationFailed, match="in the header shown above the procedure"):
+        apply_edits(body, [{"find": "Loads: rules/voice", "replace": "Loads: x"}], shown=shown)
+    with pytest.raises(ValidationFailed, match="occurs 0 times"):
+        apply_edits(body, [{"find": "3. Publish.", "replace": "x"}], shown=shown)
+
+
 def test_a_new_skill_is_drafted_from_a_description_or_from_a_capture(ws, owner, connect, brain):
     claude = connect()
     kickoff = ws.captures.bring_in(owner, data=KICKOFF, filename="Kickoff.txt", mime="text/plain")

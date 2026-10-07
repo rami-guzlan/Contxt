@@ -21,8 +21,8 @@ def steps(status):
 def test_a_new_workspace_starts_with_nothing_done(ws, owner, brain):
     empty(brain)
     status = ws.onboarding.status(owner)
-    assert [s["id"] for s in status["steps"]] == ["you", "ai", "brain", "project", "file"]
-    assert (status["done"], status["total"], status["owner_name"]) == (0, 5, "Owner")
+    assert [s["id"] for s in status["steps"]] == ["you", "goals", "ai", "brain", "project", "file"]
+    assert (status["done"], status["total"], status["owner_name"]) == (0, 6, "Owner")
     assert status["completed_at"] is None and status["tour_seen_at"] is None
 
 
@@ -32,7 +32,14 @@ def test_steps_follow_what_the_brain_holds(ws, owner, connect, brain):
     ws.brain.create_project(owner, name="Webinars", summary="Monthly webinars for CLOs")
     connect()
     done = steps(ws.onboarding.status(owner))
-    assert done == {"you": True, "ai": True, "brain": False, "project": True, "file": False}
+    assert done == {
+        "you": True,
+        "goals": False,
+        "ai": True,
+        "brain": False,
+        "project": True,
+        "file": False,
+    }
     (started,) = brain.started
     brain.started[0] = replace(started, files=2)
     status = ws.onboarding.status(owner)

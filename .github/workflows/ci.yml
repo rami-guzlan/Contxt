@@ -55,6 +55,25 @@ jobs:
       - run: uv sync --frozen
       - run: uv run pytest packages/core/tests
 
+  models:
+    name: Model tests (meaning and speech)
+    runs-on: ubuntu-latest
+    env:
+      BRAIN_TEST_MODELS: ${{ github.workspace }}/.test-models
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --frozen
+      - uses: actions/cache@v4
+        with:
+          path: .test-models
+          key: test-models-bge-small-en-v1.5-whisper-small.en-1
+      - run: uv run python scripts/fetch_test_models.py .test-models
+      - run: uv run pytest packages/brain/tests/test_semantic.py apps/server/tests/test_captures.py
+
   web:
     name: Web (types, tests, build)
     runs-on: ubuntu-latest

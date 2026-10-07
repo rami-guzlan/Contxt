@@ -120,8 +120,13 @@ class McpHandler:
             return _error(msg_id, INVALID_PARAMS, "arguments must be an object.")
         structured = (protocol_version or VERSIONS[0]) >= "2025-06-18"
         try:
-            text, data = tool.handler(self.ws, who, arguments)
-            result: dict[str, Any] = {"content": [{"type": "text", "text": text}], "isError": False}
+            answer = tool.handler(self.ws, who, arguments)
+            text, data = answer[0], answer[1]
+            failed = bool(answer[2]) if len(answer) > 2 else False
+            result: dict[str, Any] = {
+                "content": [{"type": "text", "text": text}],
+                "isError": failed,
+            }
             if structured:
                 result["structuredContent"] = data
         except WorkspaceError as exc:

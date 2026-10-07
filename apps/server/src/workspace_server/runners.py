@@ -576,6 +576,73 @@ class Runners:
         timer.start()
         return run
 
+    def ask(self, who: Principal, prompt: str, *, timeout: float = 180.0) -> str:
+        """One answer from Claude Code on this computer, with no tools and no MCP server at
+        all, so it knows only what the prompt says: one side of a comparison with and without
+        the Brain, or a follow-up question in the goals interview. In an empty temporary
+        folder, restricted, with no saved session."""
+        who.require("workspace.admin")
+        spec = RUNNERS["claude"]
+        status = self.status(spec)
+        command = self.resolve(spec)
+        if not status.installed or not command:
+            raise Conflict(f"{spec.label} is not installed on this computer: {spec.install}")
+        if status.signed_in is False:
+            raise Conflict(f"{spec.label} is not signed in. Sign in first: {status.sign_in}")
+        folder = tempfile.mkdtemp(prefix="workspace-ask-")
+        config = os.path.join(folder, "mcp.json")
+        with open(config, "w", encoding="utf-8") as handle:
+            json.dump({"mcpServers": {}}, handle)
+        argv = [
+            *command,
+            "-p",
+            "--output-format",
+            "json",
+            "--restricted",
+            "--tools",
+            "",
+            "--mcp-config",
+            config,
+            "--strict-mcp-config",
+            "--permission-mode",
+            "dontAsk",
+            "--no-session-persistence",
+        ]
+        try:
+            try:
+                proc = self.popen(
+                    argv,
+                    cwd=folder,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    **_quiet(),
+                )
+            except OSError as exc:
+                raise Conflict(f"Could not start {spec.label}: {exc}") from exc
+            try:
+                out, _err = proc.communicate(prompt, timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                _kill(proc)
+                raise Conflict(f"{spec.label} took too long to answer.") from exc
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+        try:
+            found = json.loads(out or "{}")
+        except ValueError as exc:
+            raise Conflict(f"{spec.label} gave an answer that could not be read.") from exc
+        if not isinstance(found, dict) or found.get("is_error"):
+            reason = (
+                str((found or {}).get("result") or "it stopped")
+                if isinstance(found, dict)
+                else "it stopped"
+            )
+            raise Conflict(f"{spec.label} could not answer: {reason[:200]}")
+        return str(found.get("result") or "").strip()
+
     def get(self, who: Principal, run_id: str) -> LocalRun:
         who.require("workspace.admin")
         run = self.runs.get(run_id)

@@ -2,6 +2,7 @@
   "schema": 1,
   "name": "Riley's Ventures",
   "description": "Demo: the Brain of Riley Chen, a made-up serial entrepreneur running one startup, advising another and writing small angel checks.",
+  "starter": "entrepreneur",
   "owner": "person:riley",
   "structure": {
     "scope_levels": [

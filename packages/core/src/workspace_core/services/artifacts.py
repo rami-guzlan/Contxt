@@ -12,6 +12,7 @@ import builtins
 import hashlib
 import io
 import json
+import os
 import re
 import zipfile
 from dataclasses import dataclass
@@ -361,6 +362,40 @@ class Artifacts:
                 },
             )
         return ExportRecord.from_row(record)
+
+    def exported_to(self, who: Principal, location: str) -> dict[str, Any] | None:
+        """The artifact (and version) an export wrote to a file, with the work that made it."""
+        wanted = os.path.normcase(os.path.abspath(location))
+        exports, artifacts = schema.exports, schema.artifacts
+        with self.rt.read() as tx:
+            for row in tx.rows(
+                sa.select(
+                    exports,
+                    artifacts.c.title,
+                    artifacts.c.task_id,
+                    artifacts.c.run_id,
+                    artifacts.c.project_id,
+                    artifacts.c.type,
+                )
+                .join(artifacts, artifacts.c.id == exports.c.artifact_id)
+                .where(artifacts.c.workspace_id == self.rt.workspace_id)
+                .order_by(exports.c.created_at.desc())
+            ):
+                place = str((row["result"] or {}).get("location") or "")
+                if not place or os.path.normcase(os.path.abspath(place)) != wanted:
+                    continue
+                if not who.sees_project(row["project_id"]):
+                    return None
+                return {
+                    "artifact_id": row["artifact_id"],
+                    "version": row["artifact_version"],
+                    "title": row["title"],
+                    "type": row["type"],
+                    "task_id": row["task_id"],
+                    "run_id": row["run_id"],
+                    "exported_at": row["created_at"],
+                }
+        return None
 
     def bundle(
         self,

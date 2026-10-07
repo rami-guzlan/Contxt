@@ -8,6 +8,7 @@ no proposal changes long-term context on its own (V1 acceptance).
 from __future__ import annotations
 
 import base64
+import logging
 import mimetypes
 import os
 import re
@@ -37,6 +38,9 @@ from workspace_core.ports import (
     BrainSkill,
     BrainTopic,
 )
+
+log = logging.getLogger(__name__)
+MATCHING_MB = 70  # the model that matches by meaning (bge-small, quantized), about this size
 
 # Sections of a Brain packet that serve a chat session rather than a workspace task: how to
 # call the Brain's own tools, session continuity, capture nudges, and an echo of the request.
@@ -96,6 +100,7 @@ KIND_MAP = {
     "decision": "fact",
     "procedure": "rule",
     "identity": "identity",
+    "state": "state",
 }
 
 # The folders the workspace serves files from. Notes are read through entries; the inbox,
@@ -187,9 +192,67 @@ class BrainKitAdapter:
             self.vault, principal=principal, embeddings=embeddings, local_models=True
         )
         self._lock = threading.Lock()
+        self._fetching = False  # the matching model is being downloaded
+        self._fetch_error: str | None = None
 
     def close(self) -> None:
         self.brain.close()
+
+    # ---------------------------------------------------------------- local models
+
+    def models(self) -> dict[str, Any]:
+        """The model that matches by meaning: here, being fetched, or not yet (the owner
+        downloads it; a server never does on its own)."""
+        embedder = self.brain.embedder
+        if embedder is None:
+            return {
+                "matching": {
+                    "enabled": False,
+                    "present": False,
+                    "downloading": False,
+                    "error": None,
+                    "model": None,
+                    "about_mb": MATCHING_MB,
+                }
+            }
+        return {
+            "matching": {
+                "enabled": True,
+                "model": embedder.model_name,
+                "present": embedder.present(),
+                "downloading": self._fetching,
+                "error": self._fetch_error,
+                "about_mb": MATCHING_MB,
+            }
+        }
+
+    def download_models(self) -> dict[str, Any]:
+        """Fetch the matching model into the Brain's model folder, in the background, with
+        the certificates the operating system trusts (a company network's TLS inspection)."""
+        embedder = self.brain.embedder
+        if embedder is None or self._fetching or embedder.present():
+            return self.models()
+        self._fetching, self._fetch_error = True, None
+
+        def fetch() -> None:
+            try:
+                try:
+                    import truststore
+
+                    truststore.inject_into_ssl()
+                except ImportError:
+                    pass
+                status = embedder.download()
+                if not status.get("available"):
+                    self._fetch_error = str(status.get("reason") or "The download failed.")
+            except Exception as exc:  # the network, the disk: say what went wrong
+                self._fetch_error = f"The model could not be downloaded: {exc}"
+                log.warning(self._fetch_error, exc_info=True)
+            finally:
+                self._fetching = False
+
+        threading.Thread(target=fetch, name="matching-model", daemon=True).start()
+        return self.models()
 
     # ---------------------------------------------------------------- reads
 
@@ -823,6 +886,7 @@ class BrainKitAdapter:
         project: str | None = None,
         status: str | None = None,
         origin: str = "app",
+        wait: bool = False,
     ) -> BrainProposal:
         with self._lock:
             result = self.brain.add_file(
@@ -834,6 +898,7 @@ class BrainKitAdapter:
                 project=project or None,
                 status=status or None,
                 origin=origin,
+                wait=wait,
                 source=f"{WORKSPACE_SOURCE}{proposer}",
             )
         found = result.data
@@ -950,11 +1015,15 @@ class BrainKitAdapter:
         revises: str | None = None,
         summary: str | None = None,
         origin: str | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> BrainProposal:
         source = f"{WORKSPACE_SOURCE}{proposer}"
         if sources:
             source += "; sources: " + ", ".join(sources)
         area, _, topic_name = (topic or "").partition("/")
+        if kind == "decision" and not revises:
+            # A decision is a fact the capture policy knows as a decision.
+            extra = dict(extra or {}, type="decision")
         with self._lock:
             result = self.brain.propose(
                 title=title,
@@ -975,6 +1044,7 @@ class BrainKitAdapter:
                 topic=topic_name or None,
                 target_id=revises or None,
                 origin=origin,
+                extra=extra or None,
             )
         data = result.data
         status = str(data.get("status") or ("refused" if result.is_error else "pending"))
@@ -986,6 +1056,99 @@ class BrainKitAdapter:
             proposal_id=data.get("proposal_id"),
             entry_id=data.get("id"),
         )
+
+    def propose_many(self, items: list[dict[str, Any]], *, proposer: str) -> list[BrainProposal]:
+        """Many proposals as one change: the index is rebuilt after each, the startup files
+        and the commit once at the end."""
+        out = []
+        with self.brain.deferring() as deferred:
+            deferred.message = f"{len(items)} proposal(s) from the workspace"
+            for item in items:
+                out.append(self.propose(proposer=proposer, **item))
+        return out
+
+    # ---------------------------------------------------------------- keeping up
+
+    def recap(self, since: str) -> dict[str, Any]:
+        st = self.brain.state()
+        seen = self._seen(st)
+        data: dict[str, Any] = dict(self.brain.recap(since).data)
+        data["went_in"] = [
+            row
+            for row in data.get("went_in") or []
+            if row.get("kind") == "file.add" or row.get("id") in seen
+        ]
+        data["projects"] = [p for p in data.get("projects") or [] if p.get("id") in seen]
+        return data
+
+    def requests(
+        self, *, limit: int = 50, before: str | None = None, client: str | None = None
+    ) -> dict[str, Any]:
+        st = self.brain.state()
+        seen = self._seen(st)
+        data: dict[str, Any] = dict(
+            self.brain.requests(limit=limit, before=before, client=client).data
+        )
+        for row in data.get("requests") or []:
+            # Only what the owner may see, and its use too.
+            for key in ("got", "opened"):
+                row[key] = [p for p in row[key] if p["kind"] != "note" or p["id"] in seen]
+        return data
+
+    def unsaved(self) -> list[str]:
+        return list(self.brain.unsaved())
+
+    def made_from(self, path: str) -> dict[str, Any] | None:
+        found = self.brain.made_from(path).data.get("found")
+        if found is None:
+            return None
+        st = self.brain.state()
+        seen = self._seen(st)
+        for row in found.get("requests") or []:
+            for key in ("got", "opened"):
+                row[key] = [p for p in row[key] if p["kind"] != "note" or p["id"] in seen]
+        return dict(found)
+
+    def work_given(self, run_id: str) -> list[dict[str, Any]]:
+        st = self.brain.state()
+        seen = self._seen(st)
+        pieces = self.brain.work_given(run_id).data.get("pieces") or []
+        return [p for p in pieces if p["kind"] != "note" or p["id"] in seen]
+
+    def kernel(self) -> dict[str, Any]:
+        found = self.brain.kernel()
+        return {"text": found.text, "tokens": int(found.data.get("tokens") or 0)}
+
+    def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
+        return list(self.brain.weekly(weeks).data.get("weeks") or [])
+
+    def goals(self) -> dict[str, Any]:
+        return dict(self.brain.goals().data)
+
+    def set_goals(self, answers: dict[str, str]) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.set_goals(answers)
+        if result.is_error:
+            if result.data.get("status") == "forbidden":
+                raise Conflict(result.text)
+            raise ValidationFailed(result.text, field=result.data.get("field"))
+        return dict(result.data)
+
+    def builtin_skills(self) -> dict[str, Any]:
+        return dict(self.brain.builtin_skills().data)
+
+    def add_builtin_skills(self, names: list[str] | None = None) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.add_builtin_skills(names)
+        if result.is_error:
+            raise Conflict(result.text)
+        return dict(result.data)
+
+    def move_in(self, sources: list[dict[str, Any]], *, name: str = "") -> dict[str, Any]:
+        result = self.brain.move_in(sources, name=name)
+        if result.is_error:
+            raise ValidationFailed(result.text)
+        return dict(result.data)
 
     def proposals(self) -> list[dict[str, Any]]:
         """Waiting proposals. For ones made in the workspace, `proposer` names the real actor
@@ -1091,7 +1254,11 @@ class BrainKitAdapter:
             result = self.brain.decide(items, label=label, source=source)
         if "results" not in result.data:
             raise Conflict(result.text)
-        return {"results": result.data["results"], "checkpoint": result.data.get("checkpoint")}
+        out = {"results": result.data["results"], "checkpoint": result.data.get("checkpoint")}
+        if result.data.get("commit_error"):
+            # live, but not saved to git: the page says so
+            out["commit_error"] = result.data["commit_error"]
+        return out
 
     def checkpoints(self, limit: int = 50) -> list[dict[str, Any]]:
         scopes = self.brain.state().scopes

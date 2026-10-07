@@ -274,7 +274,7 @@ def test_finding_what_to_remember_runs_from_notes_to_the_brain(owner, model, wor
         201,
     )
     assert task["assignee_id"] == model.actor_id and task["template"] == "distill"
-    assert task["title"] == "Find what to remember in 2 notes"
+    assert task["title"] == "Pull what matters from 2 items"
 
     claimed = model.tool("claim_task", task_id=task["id"])
     brief = claimed["content"][0]["text"]
@@ -295,7 +295,15 @@ def test_finding_what_to_remember_runs_from_notes_to_the_brain(owner, model, wor
 
     (request,) = owner.ok(owner.get("/api/brain/distill/requests"))
     assert (request["status"], request["items"]) == ("done", [n["id"] for n in working_notes])
-    assert request["proposals"] == [{"id": proposal_id, "title": "Launch day", "status": "pending"}]
+    assert request["proposals"] == [
+        {
+            "id": proposal_id,
+            "title": "Launch day",
+            "status": "pending",
+            "goal": None,
+            "project_id": None,
+        }
+    ]
     (waiting,) = owner.ok(owner.get("/api/brain/proposals"))
     assert waiting["task_id"] == task["id"]
     owner.ok(owner.post(f"/api/brain/proposals/{proposal_id}/decide", json={"approve": True}))
@@ -367,7 +375,7 @@ def test_a_request_waits_for_the_first_model(owner, runtime, working_notes):
         201,
     )
     assert (made["status"], made["assignee_id"]) == ("draft", None)
-    assert made["title"] == "Find what to remember in Launch timing"
+    assert made["title"] == "Pull what matters from Launch timing"
     (request,) = owner.ok(owner.get("/api/brain/distill/requests"))
     assert request["waiting"] is True
     assert Worker(runtime.ws).tick().assigned == 0  # no model yet

@@ -58,7 +58,8 @@ class MCPServerTests(unittest.TestCase):
         names = {t["name"] for t in self.rpc("tools/list")["result"]["tools"]}
         self.assertEqual(names, {"get_task_context", "get_skill", "get_reference", "get_note",
                                  "search_notes", "propose_note", "propose_skill", "add_file",
-                                 "record_focus_update", "create_focus", "brain_health"})
+                                 "record_focus_update", "create_focus", "record_output",
+                                 "brain_health"})
         first = self.call("get_task_context", {"request": "How long do web design projects run?"})
         self.assertFalse(first["isError"], first)
         text = first["content"][0]["text"]
@@ -110,6 +111,15 @@ class MCPServerTests(unittest.TestCase):
         packet = self.call("get_task_context", {"request": "How long do web design projects run?",
                                                 "session_id": session})
         self.assertIn("Already in this conversation", packet["content"][0]["text"])
+
+    def test_a_search_says_when_nothing_is_a_close_match(self):
+        # "clients" reaches two notes, both far below what a request would be handed
+        far = self.call("search_notes", {"query": "quantum pastry for clients next winter abroad"})
+        text = far["content"][0]["text"]
+        self.assertIn("No close match", text)
+        self.assertIn("rules-delivery-001", text)  # the nearest are still listed
+        near = self.call("search_notes", {"query": "how long web design projects take"})
+        self.assertNotIn("No close match", near["content"][0]["text"])
 
     def test_writes_and_refusals(self):
         proposal = self.call("propose_note", {"layer": "facts", "topic": "services",

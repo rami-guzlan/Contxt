@@ -12,7 +12,7 @@ import { GapsPage } from "./Gaps";
 import { HistoryPage } from "./History";
 import { InventoryPage } from "./Inventory";
 import { SkillPage, SkillsPage } from "../Skills";
-import { BrainMapPage } from "./Map";
+import { KnowsPage } from "./Knows";
 import { PoliciesPage } from "./Policies";
 import { ReviewPage, proposerName } from "./Review";
 
@@ -153,7 +153,7 @@ const proposal = {
 };
 
 describe("the Brain's frame", () => {
-  it("frames the Brain with its map, entries, files, history and gaps", async () => {
+  it("frames the Brain with what it knows, its notes, files and the questions it could not answer", async () => {
     mockApi({
       "GET /api/brain/status": { available: true, name: "Northwind Studio Brain" },
       "GET /api/brain/catalog": catalog,
@@ -163,12 +163,12 @@ describe("the Brain's frame", () => {
     renderAt(<BrainLayout />, { path: "/brain", route: "/brain" });
     expect(await screen.findByRole("heading", { level: 1, name: "Brain" })).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Brain sections" });
-    expect(within(nav).getByRole("link", { name: "Map" })).toHaveAttribute("href", "/brain");
-    expect(within(nav).getByRole("link", { name: "Entries" })).toHaveAttribute("href", "/brain/entries");
+    expect(within(nav).getByRole("link", { name: "What it knows" })).toHaveAttribute("href", "/brain");
+    expect(within(nav).getByRole("link", { name: "Notes" })).toHaveAttribute("href", "/brain/entries");
     expect(within(nav).getByRole("link", { name: "Files" })).toHaveAttribute("href", "/brain/files");
-    expect(within(nav).getByRole("link", { name: "History" })).toHaveAttribute("href", "/brain/history");
-    expect(await within(nav).findByRole("link", { name: /Gaps/ })).toHaveTextContent("1");
-    expect(screen.getByText("Entries", { selector: "dt" }).nextElementSibling).toHaveTextContent("3");
+    expect(within(nav).queryByRole("link", { name: "History" })).not.toBeInTheDocument(); // in Activity now
+    expect(await within(nav).findByRole("link", { name: /Questions/ })).toHaveTextContent("1");
+    expect(screen.getByText("Notes", { selector: "dt" }).nextElementSibling).toHaveTextContent("3");
   });
 
   it("explains how to connect a Brain when there is none", async () => {
@@ -370,10 +370,10 @@ describe("brain inventory", () => {
     });
     const user = userEvent.setup();
     renderAt(<InventoryPage />, { path: "/brain/entries", route: "/brain/entries?area=brand" });
-    await user.click(await screen.findByRole("checkbox", { name: "Select every entry shown" }));
-    expect(screen.getByRole("form", { name: "Change the selected entries" })).toHaveTextContent("2 entries selected");
+    await user.click(await screen.findByRole("checkbox", { name: "Select every note shown" }));
+    expect(screen.getByRole("form", { name: "Change the selected notes" })).toHaveTextContent("2 notes selected");
     await user.selectOptions(screen.getByRole("combobox", { name: "What to do" }), "verify");
-    await user.click(screen.getByRole("button", { name: "Apply to 2 entries" }));
+    await user.click(screen.getByRole("button", { name: "Apply to 2 notes" }));
     await waitFor(() =>
       expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toEqual({
         decisions: [
@@ -388,7 +388,7 @@ describe("brain inventory", () => {
     await user.click(screen.getByRole("checkbox", { name: "Select Old tagline" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "What to do" }), "mark");
     await user.type(screen.getByLabelText("Why"), "Say it for CLOs");
-    await user.click(screen.getByRole("button", { name: "Apply to 2 entries" }));
+    await user.click(screen.getByRole("button", { name: "Apply to 2 notes" }));
     await waitFor(() => expect(calls.filter((c) => c.path === "/api/brain/decisions")).toHaveLength(2));
     expect(calls.filter((c) => c.path === "/api/brain/decisions").at(-1)?.body).toEqual({
       decisions: [
@@ -409,13 +409,13 @@ describe("brain inventory", () => {
     renderAt(<InventoryPage />, { path: "/brain/entries", route: "/brain/entries" });
     await user.click(await screen.findByRole("checkbox", { name: "Select Plain words" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "What to do" }), "mark");
-    await user.click(screen.getByRole("button", { name: "Apply to 1 entry" }));
+    await user.click(screen.getByRole("button", { name: "Apply to 1 note" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Say why");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
     await user.click(screen.getByRole("button", { name: /^Archived/ }));
     await user.click(screen.getByRole("checkbox", { name: "Select First tagline" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "What to do" }), "unarchive");
-    await user.click(screen.getByRole("button", { name: "Apply to 1 entry" }));
+    await user.click(screen.getByRole("button", { name: "Apply to 1 note" }));
     await waitFor(() =>
       expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toEqual({
         decisions: [{ action: "unarchive", entry_id: "rules-first-tagline", reason: "" }],
@@ -1051,7 +1051,7 @@ describe("changing an entry on its page", () => {
     const text = screen.getByLabelText("Text");
     await user.clear(text);
     await user.type(text, "No hype, no jargon, no exclamation marks.");
-    await user.click(screen.getByRole("button", { name: "Save the entry" }));
+    await user.click(screen.getByRole("button", { name: "Save the note" }));
     await waitFor(() =>
       expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toEqual({
         decisions: [
@@ -1551,23 +1551,34 @@ describe("brain activity, gaps and policies", () => {
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
 
-  it("maps what the Brain knows by area, and opens an area to its topics", async () => {
+  it("opens on what your AI knows, in the words it receives, with the map on top", async () => {
     const attention = { clashes: [], twins: [], flagged: [], recheck: [{ id: "rules-old-tagline", title: "Old tagline", why: "due" }], usage: { "rules-voice": 4 }, days: 7 };
     mockApi({
       "GET /api/brain/catalog": catalog,
       "GET /api/brain/attention": attention,
-      "GET /api/brain/projects": [{ id: "spring", title: "Spring launch", summary: "", status: "active", active: true, current: "", next: "Film the videos", blockers: "", updated: null, aliases: [], files: 2 }],
+      "GET /api/brain/projects": [{ id: "spring", title: "Spring launch", summary: "", status: "active", active: true, current: "Filming", next: "Film the videos", blockers: "", updated: null, aliases: [], files: 2 }],
+      "GET /api/brain/goals": { questions: [], answers: {}, exists: true, id: "you-goals", starter: null, updated: null, purpose: "Launch the spring line without dropping anything.", projects: [], text: "" },
+      "GET /api/brain/inventory": [
+        { ...row, id: "rules-voice", title: "Plain words", summary: "Write in plain words, short sentences.", kind: "rule", area: "brand", area_label: "Brand", topic: "brand/voice", topic_label: "Voice", uses: uses(4, 6, 10) },
+        { ...row, id: "facts-team", title: "The team", summary: "Six people in one studio.", kind: "fact", area: "company", area_label: "Company", topic: "company/about", topic_label: "About", uses: uses(0, 0, 0) },
+        { ...row, id: "you-goals", title: "Goals", summary: "", kind: "identity", load: "manual", uses: uses(0, 0, 0) },
+      ],
     });
-    const { unmount } = renderAt(<BrainMapPage />, { path: "/brain", route: "/brain" });
-    // Each area a tile: what it holds, how much your AI used it, and what wants a look.
-    const brand = await screen.findByRole("link", { name: "Brand: 2 entries, used 4 times this week, 1 to check" });
+    const { unmount } = renderAt(<KnowsPage />, { path: "/brain", route: "/brain" });
+    // The map on top: each area a tile, what it holds, how much your AI used it, what wants a look.
+    const brand = await screen.findByRole("link", { name: "Brand: 2 notes, used 4 times this week, 1 to check" });
     expect(brand).toHaveAttribute("href", "/brain?area=brand");
     expect(brand).toHaveClass("heat-3", "flagged");
-    expect(screen.getByRole("link", { name: "Company: 1 entry" })).toHaveClass("heat-0");
+    // Then the sentences an AI receives, grouped the way a person thinks of them.
+    expect(screen.getByText("Launch the spring line without dropping anything.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "How you like work done" })).toBeInTheDocument();
+    expect(screen.getByText("Write in plain words, short sentences.")).toBeInTheDocument();
+    expect(screen.getByText(/used in 6 chats this month/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Company" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Goals" })).not.toBeInTheDocument(); // the goals note is shown as goals
     expect(screen.getByRole("link", { name: "Spring launch" })).toHaveAttribute("href", "/projects/spring");
-    expect(screen.getByRole("link", { name: "Start a project" })).toHaveAttribute("href", "/projects");
     unmount();
-    renderAt(<BrainMapPage />, { path: "/brain", route: "/brain?area=brand" });
+    renderAt(<KnowsPage />, { path: "/brain", route: "/brain?area=brand" });
     expect(await screen.findByRole("link", { name: "Voice" })).toHaveAttribute("href", "/brain/entries?area=brand&topic=brand%2Fvoice");
     expect(screen.getByRole("link", { name: "Plain words" })).toHaveAttribute("href", "/brain/entries/rules-voice");
     expect(screen.getByRole("link", { name: "Map" })).toHaveAttribute("href", "/brain");

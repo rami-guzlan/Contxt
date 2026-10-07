@@ -3,6 +3,9 @@ its original back for playing or downloading, and speech to text on this compute
 
 from __future__ import annotations
 
+import contextlib
+import os
+import tempfile
 from dataclasses import asdict
 from typing import Annotated, Any
 
@@ -10,7 +13,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from workspace_core.domain.records import Task
-from workspace_core.errors import PermissionDenied, ValidationFailed
+from workspace_core.errors import Conflict, PermissionDenied, ValidationFailed
 from workspace_core.services.captures import MAX_ORIGINAL
 
 from ..deps import WS, Who
@@ -18,6 +21,7 @@ from ..files import served
 from ..schemas import CaptureSettingsIn, SummarizeIn
 
 router = APIRouter()
+MAX_DICTATION = 25 * 1024 * 1024  # a few minutes of talk
 
 
 async def _read(upload: UploadFile) -> bytes:
@@ -97,6 +101,35 @@ def speech_status(request: Request, who: Who) -> dict[str, Any]:
     del who  # signed in is enough to see it
     status: dict[str, Any] = request.app.state.runtime.speech.status()
     return status
+
+
+@router.post("/api/speech/transcribe")
+def transcribe(request: Request, who: Who, audio: Annotated[UploadFile, File()]) -> dict[str, Any]:
+    """What the person just said, as text, for the field they are filling in (an answer about
+    what the Brain is for, say). Nothing is kept: the audio is read here, then deleted."""
+    if not who.is_human:
+        raise PermissionDenied("Only a person dictates.")
+    speech = request.app.state.runtime.speech
+    if not speech.ready():
+        raise Conflict(
+            "Speech to text is not set up on this computer yet: download the speech model in "
+            "Settings first, or type your answer."
+        )
+    data = audio.file.read(MAX_DICTATION + 1)
+    if len(data) > MAX_DICTATION:
+        raise ValidationFailed("Keep one dictation to a few minutes.")
+    if not data:
+        raise ValidationFailed("Nothing was recorded.")
+    suffix = os.path.splitext(audio.filename or "")[1] or ".webm"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
+        handle.write(data)
+        path = handle.name
+    try:
+        text, seconds = speech.transcribe(path, careful=False)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+    return {"text": text.strip(), "seconds": round(seconds, 1)}
 
 
 @router.post("/api/speech/download", status_code=202)

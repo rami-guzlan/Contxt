@@ -29,7 +29,7 @@ const isEntry = (i: InventoryItem) => i.type === "note";
 const live = (i: InventoryItem) => isEntry(i) && i.live;
 
 export const VIEWS: View[] = [
-  { key: "live", label: "Everything live", hint: "Every entry models can receive", test: live },
+  { key: "live", label: "Everything live", hint: "Every note your AIs can receive", test: live },
   {
     key: "due",
     label: "Due for a check",
@@ -66,11 +66,11 @@ export const VIEWS: View[] = [
   {
     key: "heavy",
     label: "Heaviest",
-    hint: "The entries that cost the most tokens each time they are sent",
+    hint: "The notes that cost the most tokens each time they are sent",
     test: live,
     sort: (a, b) => b.tokens - a.tokens,
   },
-  { key: "archived", label: "Archived", hint: "Retired entries, kept as history", test: (i) => isEntry(i) && !i.live },
+  { key: "archived", label: "Archived", hint: "Retired notes, kept as history", test: (i) => isEntry(i) && !i.live },
   { key: "other", label: "Skills and documents", hint: "Procedures and filed documents", test: (i) => !isEntry(i) },
 ];
 
@@ -114,7 +114,7 @@ const COLUMNS: Column[] = [
 ];
 
 // The entry's own column, sorted by title.
-const TITLE: Column = { key: "title", label: "Entry", shown: true, cell: () => null, sort: (i) => i.title.toLowerCase() };
+const TITLE: Column = { key: "title", label: "Note", shown: true, cell: () => null, sort: (i) => i.title.toLowerCase() };
 
 const STORE = "brain.inventory.columns";
 
@@ -222,7 +222,7 @@ export function InventoryPage() {
   if (isLoading) return <Loading />;
   if (!items) return <ErrorNote error={error} />;
   if (!items.length) {
-    return <Empty why="The Brain holds nothing yet. Approved proposals, distilled context and filed documents appear here." />;
+    return <Empty why="The Brain holds nothing yet. Kept suggestions, pulled context and filed documents appear here." />;
   }
 
   const approver = policies?.approver ?? "";
@@ -330,14 +330,14 @@ export function InventoryPage() {
               <th className="pick">
                 <input
                   type="checkbox"
-                  aria-label="Select every entry shown"
+                  aria-label="Select every note shown"
                   checked={!!selectable.length && chosen.length === selectable.length}
                   disabled={!selectable.length}
                   onChange={() => setSelected(chosen.length === selectable.length ? new Set() : new Set(selectable.map((i) => i.id)))}
                 />
               </th>
               <th>
-                <SortButton label="Entry" column="title" sort={sort} onSort={setSort} />
+                <SortButton label="Note" column="title" sort={sort} onSort={setSort} />
               </th>
               {visible.map((c) => (
                 <th key={c.key} className={c.numeric ? "num" : undefined}>
@@ -578,9 +578,9 @@ function BulkBar({
 
   const busy = decide.isPending;
   return (
-    <form className="bulk-bar" onSubmit={submit} aria-label="Change the selected entries">
+    <form className="bulk-bar" onSubmit={submit} aria-label="Change the selected notes">
       <p>
-        <strong>{plural(items.length, "entry", "entries")} selected</strong>{" "}
+        <strong>{plural(items.length, "note")} selected</strong>{" "}
         <button type="button" className="link" onClick={onClear}>
           Clear
         </button>
@@ -640,7 +640,7 @@ function BulkBar({
         ) : null}
         {action ? (
           <button type="submit" className="primary" disabled={busy}>
-            Apply to {plural(action === "unarchive" ? archived.length : live.length, "entry", "entries")}
+            Apply to {plural(action === "unarchive" ? archived.length : live.length, "note")}
           </button>
         ) : null}
       </div>

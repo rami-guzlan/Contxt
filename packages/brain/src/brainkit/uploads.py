@@ -380,7 +380,7 @@ def _as_int(value) -> int | None:
 def add_file(brain, *, source_path=None, content=None, content_base64=None, filename=None,
              title=None, description="", purpose=None, topic=None, scope=None, principal=None,
              evidence="", source="", reason="", session_id=None, replaces=None, project=None,
-             status=None, version=None, dated=None, origin=None, **_ignored):
+             status=None, version=None, dated=None, origin=None, wait=False, **_ignored):
     """File a document (a reference) or an asset with its card, or a new version of one
     already filed: `replaces` names it (references/brand-voice.md), or, in a project, a file
     named like one already there is its new version.
@@ -388,8 +388,9 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
     `project` files it in a project's folder (a Focus, by id or name); `status` (draft,
     sent, final, ...), `version` and `dated` say which copy this is. `origin` is where it
     came from (app, chat or folder): the capture policy decides whether it is filed at once,
-    as one undo point, or waits for review. Returns what happened, or a duplicate when the
-    same bytes are already filed or waiting."""
+    as one undo point, or waits for review; `wait` makes it wait whatever the policy says (a
+    bulk import the owner did not pick file by file). Returns what happened, or a duplicate
+    when the same bytes are already filed or waiting."""
     from . import governance, importers
     from . import focus as focus_mod
     from . import sections as sections_mod
@@ -582,7 +583,7 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
         "card": card_update,
         "files": [{"path": target_path, "size": len(data), "sha256": digest}]})
     named = (card.title if card is not None and card.meta.get("title") else title)
-    if governance.captures_apply(brain, who, "file", origin):
+    if not wait and governance.captures_apply(brain, who, "file", origin):
         return _file_now(brain, proposal_id, header, note_meta, pointer, who=who,
                          label=(f"New version of {named}" if replacing else f"Filed {named}"),
                          title=named, origin=origin, session_id=session_id, home=home)

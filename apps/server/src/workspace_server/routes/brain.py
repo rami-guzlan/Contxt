@@ -17,11 +17,16 @@ from ..deps import WS, Who
 from ..schemas import (
     BrainDecisionIn,
     BrainProjectIn,
+    BuiltinSkillsIn,
+    CatchUpItemIn,
     DecisionsIn,
     DistillRequestIn,
     DistillSettingsIn,
     GapIn,
+    GoalsIn,
     MarkIn,
+    MergeIn,
+    MoveInIn,
     PoliciesIn,
     ProjectUpdateIn,
     ProposalIn,
@@ -309,6 +314,105 @@ def checkpoints(who: Who, ws: WS, limit: int = 50) -> list[dict[str, Any]]:
 def undo(checkpoint_id: str, who: Who, ws: WS) -> dict[str, Any]:
     """Put back what one batch of decisions changed (refused when something changed since)."""
     return ws.brain.undo(who, checkpoint_id)
+
+
+@router.post("/merge", status_code=201)
+def merge(body: MergeIn, who: Who, ws: WS) -> Task:
+    """Two entries say the same thing: a model writes the one that should stand (its
+    suggestion waits for the person to compare it with both)."""
+    return ws.distill.merge(who, **body.model_dump())
+
+
+# ------------------------------------------------------------------------- keeping up
+
+
+@router.get("/models")
+def models(who: Who, ws: WS) -> dict[str, Any]:
+    """The local model that matches by meaning: here, being fetched, or not yet."""
+    return ws.brain.models(who)
+
+
+@router.post("/models/download", status_code=202)
+def download_models(who: Who, ws: WS) -> dict[str, Any]:
+    """Fetch the matching model (about 70 MB, once): the owner's call, never automatic."""
+    return ws.brain.download_models(who)
+
+
+@router.get("/catch-up")
+def catch_up(who: Who, ws: WS) -> dict[str, Any]:
+    """What waits, as a plan: the recap, the health score, what was handled, the decisions,
+    the quick groups, this week's upkeep and offers to decide once, with a time estimate."""
+    return ws.catch_up.plan(who)
+
+
+@router.post("/catch-up/seen")
+def catch_up_seen(who: Who, ws: WS) -> dict[str, Any]:
+    """The person caught up: the next recap starts from now."""
+    return ws.catch_up.seen(who)
+
+
+@router.post("/catch-up/snooze")
+def catch_up_snooze(body: CatchUpItemIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Later: hide an item for a few days."""
+    return ws.catch_up.snooze(who, body.key, days=body.days or 3)
+
+
+@router.post("/catch-up/dismiss")
+def catch_up_dismiss(body: CatchUpItemIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Set an item aside, for good or for some days."""
+    return ws.catch_up.dismiss(who, body.key, days=body.days)
+
+
+@router.get("/requests")
+def requests(
+    who: Who, ws: WS, limit: int = 50, before: str | None = None, app: str | None = None
+) -> dict[str, Any]:
+    """What each AI asked, what it got and why, and what it saved, newest first; `before`
+    names the last request shown, for the next page."""
+    return ws.brain.requests(who, limit=limit, before=before, client=app)
+
+
+@router.get("/weekly")
+def weekly(who: Who, ws: WS, weeks: int = 8) -> list[dict[str, Any]]:
+    """Conversations the Brain served in each of the last weeks, oldest first."""
+    return ws.brain.weekly(who, weeks=weeks)
+
+
+@router.get("/goals")
+def goals(who: Who, ws: WS) -> dict[str, Any]:
+    """The questions about what the Brain is for, and the owner's answers."""
+    return ws.brain.goals(who)
+
+
+@router.put("/goals")
+def set_goals(body: GoalsIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Say what the Brain is for: one undo point."""
+    return ws.brain.set_goals(who, body.answers)
+
+
+@router.get("/builtin-skills")
+def builtin_skills(who: Who, ws: WS) -> dict[str, Any]:
+    """The skills every Brain comes with, and whether this one has each."""
+    return ws.brain.builtin_skills(who)
+
+
+@router.post("/builtin-skills")
+def add_builtin_skills(body: BuiltinSkillsIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Add the built-in skills the Brain is missing, as one undo point."""
+    return ws.brain.add_builtin_skills(who, body.names)
+
+
+@router.post("/move-in/preview")
+def move_in_preview(body: MoveInIn, who: Who, ws: WS) -> dict[str, Any]:
+    """What the Brain makes of what an AI app already knows, stage by stage; nothing is
+    written."""
+    return ws.move_in.preview(who, [s.model_dump() for s in body.sources])
+
+
+@router.post("/move-in", status_code=201)
+def move_in(body: MoveInIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Propose the ideas worth keeping; they wait in Catch up."""
+    return ws.move_in.keep(who, [s.model_dump() for s in body.sources], ids=body.ids)
 
 
 @router.post("/reconcile", status_code=201)

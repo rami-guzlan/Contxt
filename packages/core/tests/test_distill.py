@@ -17,7 +17,7 @@ def test_a_request_is_a_ready_task_with_the_notes_pinned(ws, owner, notes, conne
     claude = connect()
     task = ws.distill.request(owner, item_ids=[n.id for n in notes], assignee_id=claude.actor_id)
     assert (task.template, task.status, task.review_policy) == ("distill", "ready", "auto")
-    assert task.title == "Find what to remember in 2 notes"
+    assert task.title == "Pull what matters from 2 items"
     assert task.assignee_id == claude.actor_id
     assert "propose_brain_entry" in task.instructions and "run_id" in task.instructions
     assert "Posting days" in (task.brain_request or "")
@@ -27,7 +27,7 @@ def test_a_request_is_a_ready_task_with_the_notes_pinned(ws, owner, notes, conne
 
 def test_a_request_names_one_note_by_its_title(ws, owner, notes, connect):
     task = ws.distill.request(owner, item_ids=[notes[0].id], assignee_id=connect().actor_id)
-    assert task.title == "Find what to remember in Posting days"
+    assert task.title == "Pull what matters from Posting days"
 
 
 def test_a_request_needs_something_to_read(ws, owner, notes, connect):

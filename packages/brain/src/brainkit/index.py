@@ -172,7 +172,7 @@ class Embedder:
             return False
         if self.local_only and not self.present():
             self._failed = (f"{self.model_name} is not in {self.model_dir}; matching by words "
-                            "until it is downloaded")
+                            "until it is downloaded (contxt models --download)")
             return False
         try:
             import fastembed  # noqa: F401
@@ -209,7 +209,7 @@ class Embedder:
     def _load(self):
         if self._model is None and not self._failed and self.local_only and not self.present():
             self._failed = (f"{self.model_name} is not in {self.model_dir}; matching by words "
-                            "until it is downloaded")
+                            "until it is downloaded (contxt models --download)")
         if self._model is None and not self._failed:
             try:
                 from fastembed import TextEmbedding
@@ -538,6 +538,8 @@ class Index:
             every = [f"{n.title} {n.summary} {n.body}" for n in self.notes.values()]
             words = [_cased(word, own) or _cased(word, every) or word
                      for word in name.replace("_", "-").split("-") if word]
+            if key.startswith("people/"):
+                words = [w[:1].upper() + w[1:] if w == w.lower() else w for w in words]
             if words and words[0] == words[0].lower():
                 words[0] = words[0][:1].upper() + words[0][1:]
             found = self._labels[key] = " ".join(words) or key

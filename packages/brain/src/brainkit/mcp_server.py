@@ -90,7 +90,8 @@ AGENT_TOOLS = [
                     "words in `evidence`. Also proposes a change to a note (target_id). File it "
                     "in an existing area/topic when one fits; the reply names the closest "
                     "topics when yours is new. Your own scope applies at once; shared knowledge "
-                    "waits for the owner. The same text twice returns the waiting proposal.",
+                    "applies or waits for the owner as their policy says (the reply tells you "
+                    "which). The same text twice returns the waiting proposal.",
      "inputSchema": {"type": "object", "properties": {
          "area": {"type": "string", "description": "Where it is filed, for example brand, "
                   "customers, sales, operations, people, projects."},
@@ -188,6 +189,16 @@ AGENT_TOOLS = [
          "pinned_notes": {"type": "array", "items": _STR},
          "pinned_skills": {"type": "array", "items": _STR}, "session_id": _STR},
          "required": ["name", "summary"]}},
+    {"name": "record_output",
+     "description": "After you save a file the person asked for (a draft, a deck, a report) in "
+                    "their outputs folder, say so: its full path, a few words on what it is, "
+                    "and your session_id. The app then shows the person what this "
+                    "conversation was given when the file was made.",
+     "inputSchema": {"type": "object", "properties": {
+         "path": {"type": "string", "description": "The saved file's full path."},
+         "title": {"type": "string", "description": "What it is, in a few words."},
+         "session_id": _STR},
+         "required": ["path"]}},
     {"name": "brain_health",
      "description": "Run the read-only brain health report.",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -227,7 +238,7 @@ HANDLERS = {
         evidence=a.get("evidence") or "", source=a.get("source") or "",
         supersedes=a.get("supersedes"), target_id=a.get("target_id"),
         title=a.get("title"), summary=a.get("summary") or a.get("index_line"),
-        note_kind=a.get("kind"), session_id=a.get("session_id")),
+        note_kind=a.get("kind"), session_id=a.get("session_id"), capture_origin="chat"),
     "propose_skill": lambda b, a: b.propose_skill(
         name=a.get("name"), category=a.get("category"), description=a.get("description"),
         when_to_use=a.get("when_to_use"), triggers=a.get("triggers"), loads=a.get("loads"),
@@ -251,6 +262,8 @@ HANDLERS = {
         pinned_skills=a.get("pinned_skills"), aliases=a.get("aliases"),
         session_id=a.get("session_id")),
     "brain_health": lambda b, a: b.health(),
+    "record_output": lambda b, a: b.record_output(
+        a.get("path"), title=a.get("title") or "", session_id=a.get("session_id")),
     "search_notes": lambda b, a: b.search(a.get("query"), limit=a.get("limit") or 8,
                                           include_archived=bool(a.get("include_archived")),
                                           session_id=a.get("session_id")),
@@ -258,7 +271,7 @@ HANDLERS = {
     "get_topic": lambda b, a: b.topic(a.get("route_key")),
     "list_focuses": lambda b, a: b.focus_list(status=a.get("status")),
     "get_focus": lambda b, a: b.focus_get(a.get("name")),
-    "remember": lambda b, a: b.remember(a.get("text")),
+    "remember": lambda b, a: b.remember(a.get("text"), capture_origin="chat"),
     "list_inbox": lambda b, a: b.inbox(),
 }
 
@@ -297,6 +310,11 @@ class Server:
         method, msg_id = message.get("method"), message.get("id")
         if method == "initialize":
             params = message.get("params") or {}
+            client = params.get("clientInfo") or {}
+            if isinstance(client, dict) and self.brain is not None:
+                # Which app this is, for the record of what each AI asked.
+                self.brain.client = " ".join(
+                    str(client.get(k) or "") for k in ("name", "version")).strip()[:80]
             self.reply(msg_id, {
                 "protocolVersion": params.get("protocolVersion", PROTOCOL_DEFAULT),
                 "capabilities": {"tools": {}},

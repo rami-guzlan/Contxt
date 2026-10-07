@@ -109,3 +109,10 @@ export function subjectLink(event: WorkspaceEvent): string | null {
       return null;
   }
 }
+
+/** "September 30": a day in words, for "since" lines (a relative "7 d ago" reads oddly there). */
+export function onDay(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric" });
+}
+

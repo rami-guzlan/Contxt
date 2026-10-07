@@ -92,6 +92,9 @@ def render(config, index, scopes, chain, partitions=()) -> tuple[str, str]:
         "- Work that runs across conversations is a project (a Focus): start one with "
         "`create_focus`, with the names the person calls it, and record progress with "
         "`record_focus_update`. Never rewrite a Focus baseline.",
+        "- When you save a file the person asked for in their outputs folder, call "
+        "`record_output` with its path and your session_id, so they can see what it was "
+        "made from.",
     ]
     for extra in kernel_cfg.get("extra") or []:
         lines.append(f"- {_one_line(extra)}")

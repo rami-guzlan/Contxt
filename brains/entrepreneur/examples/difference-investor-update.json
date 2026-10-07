@@ -1,0 +1,22 @@
+{
+  "request": "Draft this month's investor update for Loopline",
+  "illustrative": true,
+  "note": "Written for this demo from what its Brain hands over for this request. Riley, Loopline and every number are made up.",
+  "without": "Subject: Loopline Monthly Update\n\nHi everyone!\n\nWe're crushing it this month! Revenue is up [X]% and our customer base keeps growing fast. The team is energized and we're excited about the road ahead.\n\nKey metrics:\n- MRR: [insert]\n- Customers: [insert]\n- Runway: [insert]\n\nAs always, intros to potential customers and great hires are hugely appreciated!\n\nThanks for your continued support,\nRiley",
+  "with_context": "Subject: Loopline, September 2026\n\nHighlights\n- MRR is $38,400, up 9% month over month.\n- 212 paying companies.\n\nLowlights\n- Logo churn is 2.1% a month.\n- Runway is 14 months at the current burn of $118,000 a month.\n\nThe numbers\n\n| | September |\n| --- | --- |\n| MRR | $38,400 (+9%) |\n| Paying companies | 212 |\n| Logo churn | 2.1% a month |\n| CAC payback | 7 months |\n| Burn | $118,000 a month |\n| Runway | 14 months |\n\nAsks (up to three): tell me which you want; I was not given any this month.\n\nFor you to review and send on the 5th. I left out the seed round's status, which I was not given, instead of guessing.",
+  "differences": [
+    {"what": "It uses September's real numbers: $38,400 MRR up 9%, 212 companies, 2.1% churn, 7 month payback, 14 months of runway", "item": "ventures-loopline-metrics"},
+    {"what": "It follows Riley's format: highlights, lowlights, the numbers table, up to three asks", "item": "fundraising-investor-updates"},
+    {"what": "The lowlights are said plainly, not buried", "item": "fundraising-investor-updates"},
+    {"what": "It goes back to Riley to review and send on the 5th", "item": "fundraising-investor-updates"},
+    {"what": "It leaves out the seed round's status instead of guessing", "item": ""}
+  ],
+  "pieces": [
+    {"kind": "note", "id": "fundraising-investor-updates", "title": "The monthly investor update"},
+    {"kind": "note", "id": "ventures-loopline-metrics", "title": "Loopline numbers"},
+    {"kind": "startup", "id": "assistant-working-style", "title": "Decision first, one page"}
+  ],
+  "tokens": 218,
+  "kernel_tokens": 647,
+  "brain_tokens": 2059
+}

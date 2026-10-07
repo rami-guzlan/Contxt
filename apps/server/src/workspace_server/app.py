@@ -20,9 +20,12 @@ from workspace_core.workspace import Workspace
 from . import web, webapp
 from .brain_adapter import BrainKitAdapter
 from .deps import error_response
+from .difference import Differences
 from .extractor import DocumentExtractor
 from .mcp.protocol import McpHandler
+from .outputs import Outputs
 from .routes import (
+    backups,
     brain,
     bus,
     captures,
@@ -30,6 +33,8 @@ from .routes import (
     legacy,
     mcp,
     notes,
+    outputs,
+    proof,
     runners,
     skills,
     system,
@@ -49,6 +54,8 @@ class Runtime:
     owner_token: str
     runners: Runners
     speech: Speech
+    differences: Differences
+    outputs: Outputs
     closed: bool = False
 
     def close(self) -> None:
@@ -95,19 +102,22 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
     token = settings.resolved_owner_token()
     ws.actors.register_token(ws.owner_id, token, "Owner token")
     templates = TemplateLibrary(find_templates_dir())
+    runners = Runners(
+        ws,
+        templates,
+        base_url=local_url(settings),
+        outputs=settings.exports_dir or os.path.join(settings.data_dir, "exports"),
+    )
     return Runtime(
         settings=settings,
         ws=ws,
         brain=adapter,
         templates=templates,
         owner_token=token,
-        runners=Runners(
-            ws,
-            templates,
-            base_url=local_url(settings),
-            outputs=settings.exports_dir or os.path.join(settings.data_dir, "exports"),
-        ),
+        runners=runners,
         speech=Speech(settings.speech_models),
+        differences=Differences(ws, runners),
+        outputs=Outputs(ws, settings.exports_dir or os.path.join(settings.data_dir, "exports")),
     )
 
 
@@ -138,7 +148,21 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     async def workspace_error(_request: Request, exc: WorkspaceError) -> JSONResponse:
         return error_response(exc)
 
-    routers = (system, notes, captures, brain, skills, bus, connections, runners, legacy, mcp)
+    routers = (
+        system,
+        notes,
+        captures,
+        brain,
+        outputs,
+        proof,
+        skills,
+        bus,
+        connections,
+        runners,
+        legacy,
+        backups,
+        mcp,
+    )
     for module in routers:
         app.include_router(module.router)
     app.include_router(web.router)

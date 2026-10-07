@@ -1,7 +1,8 @@
 """First-time setup: what a new Brain still needs, worked out from what it holds.
 
-Each step is done when its thing exists (the owner's own name, a connected AI, something of
-the person's in the Brain, a project the Brain follows, a file in it), so the checklist never
+Each step is done when its thing exists (the owner's own name, what the Brain is for, a
+connected AI, something of the person's in the Brain, a project the Brain follows, a file in
+it), so the checklist never
 disagrees with the data and needs no upkeep. Only what cannot be read from the data is
 stored, in the workspace's settings: when the person finished or put the setup aside, took
 the guided tour, or said a step is done as it stands.
@@ -19,9 +20,10 @@ from workspace_core.errors import ValidationFailed
 
 from .runtime import Runtime
 
-STEPS = ("you", "ai", "brain", "project", "file")
+STEPS = ("you", "goals", "ai", "brain", "project", "file")
 MARKS = ("completed", "dismissed", "tour_seen")  # moments kept with the workspace
 DEFAULT_OWNER = "Owner"  # the owner's name until the person gives theirs
+GOALS_ID = "you-goals"  # the owner's goals for the Brain: a setup step of its own
 
 
 class Onboarding:
@@ -49,6 +51,7 @@ class Onboarding:
         name = (owner or {}).get("name") or DEFAULT_OWNER
         done = {
             "you": name != DEFAULT_OWNER,
+            "goals": brain["goals"],
             "ai": found["ai"] > 0 or local_model,
             "brain": brain["own_entries"] > 0 or brain["waiting"] > 0,
             "project": found["project"] > 0,
@@ -126,14 +129,26 @@ class Onboarding:
         """Whether the Brain is there, how much of it is the person's own (not the system
         notes every Brain starts with), how many proposals wait for them, and how many
         projects it follows and files they hold."""
-        out = {"available": False, "own_entries": 0, "waiting": 0, "projects": 0, "files": 0}
+        out = {
+            "available": False,
+            "own_entries": 0,
+            "waiting": 0,
+            "projects": 0,
+            "files": 0,
+            "goals": False,
+        }
         if not who.can("brain.read"):
             return out
         status = self.rt.brain.status()
         if not status.get("available"):
             return out
-        # the catalog is what the Brain holds in memory: cheap to read on every page
-        own = [e for e in self.rt.brain.catalog().entries if e.area not in ("system", "skills")]
+        # the catalog is what the Brain holds in memory: cheap to read on every page; the
+        # goals are the person's own, but setting them is a step of its own
+        own = [
+            e
+            for e in self.rt.brain.catalog().entries
+            if e.area not in ("system", "skills") and e.id != GOALS_ID
+        ]
         projects = self.rt.brain.projects()
         return {
             "available": True,
@@ -141,6 +156,7 @@ class Onboarding:
             "waiting": len(self.rt.brain.proposals()),
             "projects": len(projects),
             "files": sum(p.files for p in projects),  # filed in a project
+            "goals": bool(self.rt.brain.goals().get("exists")),
         }
 
 

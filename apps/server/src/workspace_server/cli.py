@@ -30,6 +30,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 from datetime import UTC, datetime
 
 from workspace_connectors.providers import BRAIN_CLIENTS, PROVIDERS, brain_setup, mcp_setup
@@ -39,6 +40,17 @@ from workspace_core.db.engine import Database, sqlite_url
 
 from . import doctor, homes, webapp
 from .settings import Settings, new_token
+
+
+def _opening(p: argparse.ArgumentParser) -> None:
+    """Whether serving opens the browser, signed in (the first time it does by itself)."""
+    opening = p.add_mutually_exclusive_group()
+    opening.add_argument(
+        "--open", action="store_true", help="open the app in the browser, signed in"
+    )
+    opening.add_argument(
+        "--no-open", action="store_true", help="do not open the browser (the first time does)"
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -56,6 +68,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int)
     p.add_argument("--host")
     p.add_argument("--no-worker", action="store_true")
+    _opening(p)
     sub.add_parser("starters", help="the starter Brains")
     p = sub.add_parser("connect", help="connect an AI app to your Brain")
     p.add_argument("client", nargs="?", choices=sorted(BRAIN_CLIENTS))
@@ -68,6 +81,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--host")
     p.add_argument("--port", type=int)
     p.add_argument("--no-worker", action="store_true")
+    _opening(p)
     p = sub.add_parser("worker")
     p.add_argument("--once", action="store_true")
     p = sub.add_parser("mcp")
@@ -248,6 +262,37 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
+OPENED = ".browser-opened"  # in the data folder: the browser opened once, signed in
+
+
+def should_open(data_dir: str, host: str, *, wanted: bool, refused: bool) -> bool:
+    """Open the browser signed in the first time a home is served on this computer (as
+    Jupyter does), or whenever --open asks; never with --no-open, in CI, or for a server
+    bound to another machine's address."""
+    if refused or os.environ.get("CI"):
+        return False
+    if host not in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "", "::"):
+        return False
+    return wanted or not os.path.exists(os.path.join(data_dir, OPENED))
+
+
+def local_base(settings: Settings) -> str:
+    from .app import local_url
+
+    return local_url(settings)
+
+
+def _open_browser(link: str, data_dir: str) -> None:
+    import webbrowser
+
+    try:
+        if webbrowser.open(link):
+            with open(os.path.join(data_dir, OPENED), "w", encoding="utf-8") as handle:
+                handle.write("The browser opened once, signed in. Delete this to open again.\n")
+    except (OSError, webbrowser.Error):
+        pass
+
+
 def _serve(runtime: object, args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -277,6 +322,11 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
         print("Connect an AI app to your Brain: uv run contxt connect")
     if not webapp.built(webapp.location(settings.web_dist)):
         print("The web app is not built yet: uv run contxt web --download")
+    if should_open(settings.data_dir, host, wanted=args.open, refused=args.no_open):
+        link = f"{local_base(settings)}/auth/login?token={runtime.owner_token}"
+        timer = threading.Timer(1.5, _open_browser, args=(link, settings.data_dir))
+        timer.daemon = True
+        timer.start()
     try:
         uvicorn.run(
             create_app(runtime=runtime),

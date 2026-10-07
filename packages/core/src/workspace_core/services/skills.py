@@ -167,9 +167,10 @@ def use_of(skill: BrainSkill, used_by: builtins.list[str]) -> str:
     return "run"
 
 
-def apply_edits(body: str, edits: builtins.list[dict[str, Any]]) -> str:
+def apply_edits(body: str, edits: builtins.list[dict[str, Any]], *, shown: str = "") -> str:
     """The procedure with each quoted passage replaced, in order. A passage must occur exactly
-    once, so an edit can never land somewhere it was not meant for."""
+    once, so an edit can never land somewhere it was not meant for. `shown` is the skill as an
+    AI reads it (a header above the procedure), so a quote from the header is named as such."""
     if len(edits) > MAX_EDITS:
         raise ValidationFailed(f"Send at most {MAX_EDITS} edits at a time.", field="edits")
     for number, edit in enumerate(edits, start=1):
@@ -179,6 +180,14 @@ def apply_edits(body: str, edits: builtins.list[dict[str, Any]]) -> str:
         if not find.strip():
             raise ValidationFailed(f"Edit {number} quotes nothing to find.", field="edits")
         found = body.count(find)
+        if not found and find.strip() in shown:
+            raise ValidationFailed(
+                f"Edit {number}: that passage is in the header shown above the procedure (its "
+                "name, Loads, Folder and the like), which an edit cannot change. Quote the "
+                "procedure itself, the text below the Folder line.",
+                field="edits",
+                find=find[:200],
+            )
         if found != 1:
             raise ValidationFailed(
                 f"Edit {number}: the passage to find occurs {found} times in the skill"
@@ -587,7 +596,8 @@ class Skills:
             current = self.rt.brain.skill_source(target)
             if current is None:
                 raise NotFound(f"No skill {target}.", name=target)
-            body = apply_edits(current, list(edits))
+            shown = self.rt.brain.skill(target)
+            body = apply_edits(current, list(edits), shown=shown.text if shown else "")
         body = str(body or "").strip()
         if not body:
             raise ValidationFailed(
@@ -765,6 +775,52 @@ class Skills:
         for ref_type, ref_id, version in pins or []:
             self.tasks.pin(who, task.id, ref_type=ref_type, ref_id=ref_id, version=version)
         return self.tasks.mark_ready(who, task.id) if assignee else task
+
+    def made_in(self, who: Principal, folder: str) -> dict[str, Any] | None:
+        """The skill run that worked in one folder of the outputs folder: what was asked of
+        which skill, for which project, with which files, and its runs (each run's id is how
+        to read what the Brain handed it)."""
+        wanted = os.path.normcase(os.path.abspath(folder))
+        for task in self._tasks(who, RUN):
+            about = dict(task.provenance.get("skill") or {})
+            there = str(about.get("folder") or "")
+            if not there or os.path.normcase(os.path.abspath(there)) != wanted:
+                continue
+            runs = schema.task_runs
+            with self.rt.read() as tx:
+                rows = tx.rows(
+                    sa.select(runs.c.id, runs.c.actor_id, runs.c.claimed_at, runs.c.status)
+                    .where(runs.c.task_id == task.id)
+                    .order_by(runs.c.claimed_at)
+                )
+                names = {
+                    r["id"]: r["name"]
+                    for r in tx.rows(
+                        sa.select(schema.actors.c.id, schema.actors.c.name).where(
+                            schema.actors.c.id.in_({r["actor_id"] for r in rows})
+                        )
+                    )
+                }
+            return {
+                "task_id": task.id,
+                "skill": self._skill_of(task),
+                "ask": about.get("ask") or "",
+                "project": about.get("project"),
+                "attached": list(about.get("attached") or []),
+                "capture": about.get("capture"),
+                "status": task.status,
+                "created_at": task.created_at,
+                "runs": [
+                    {
+                        "id": r["id"],
+                        "at": r["claimed_at"],
+                        "status": r["status"],
+                        "by": names.get(r["actor_id"], "a model"),
+                    }
+                    for r in rows
+                ],
+            }
+        return None
 
     def _tasks(self, who: Principal, *templates: str) -> builtins.list[Task]:
         who.require("tasks.read")

@@ -1,0 +1,23 @@
+{
+  "request": "Write the release notes for tidyq 1.0",
+  "illustrative": true,
+  "note": "Written for this demo from what its Brain hands over for this request. Kai and tidyq are made up.",
+  "without": "# tidyq 1.0 Release Notes\n\nWe're thrilled to announce tidyq 1.0, our biggest release yet!\n\n## New Features\n- Blazing fast distributed processing with Redis and RabbitMQ backends\n- Cloud-native autoscaling workers\n- A brand new web dashboard\n- Async/await support everywhere\n\n## Improvements\n- Up to 10x performance gains\n- Better error messages\n\nUpgrade today with pip install --upgrade tidyq!",
+  "with_context": "# tidyq 1.0\n\ntidyq is a task queue for apps that run on one machine: one SQLite file, no broker to run.\n\n## What 1.0 means\n\n- A stable public API. From here on, breaking changes come only in major versions, each with a migration note.\n- Retry policies with backoff.\n- Windows support.\n- A documentation site.\n\n## Unchanged on purpose\n\n- The core still has no dependencies outside the standard library; integrations stay extras.\n- Every public function is typed and documented.\n\n## Upgrading from 0.x\n\nMigration note: to write. I do not have the list of API changes since 0.x, so I left it empty rather than guess. Paste the changelog or the diff and I will fill it in.\n\nRelease date: not set yet (the target is the end of November).",
+  "differences": [
+    {"what": "It names what 1.0 actually ships: a stable API, retries with backoff, Windows support, a documentation site", "item": "tidyq-1-0-release"},
+    {"what": "It says what tidyq is: one SQLite file, no broker", "item": "topics-tidyq"},
+    {"what": "It promises a migration note, because breaking changes only come in major versions", "item": "references/tidyq-design.md#3"},
+    {"what": "It keeps the core dependency-free and integrations as extras, instead of inventing Redis and RabbitMQ backends", "item": "topics-tidyq"},
+    {"what": "It asks for the API changes and the date instead of guessing them", "item": "assistant-identity"}
+  ],
+  "pieces": [
+    {"kind": "project", "id": "tidyq-1-0-release", "title": "tidyq 1.0 release"},
+    {"kind": "note", "id": "topics-tidyq", "title": "tidyq, Kai's side project"},
+    {"kind": "section", "id": "references/tidyq-design.md#3", "title": "tidyq design: Rules"},
+    {"kind": "startup", "id": "assistant-identity", "title": "Kai's pair programmer"}
+  ],
+  "tokens": 439,
+  "kernel_tokens": 682,
+  "brain_tokens": 2281
+}

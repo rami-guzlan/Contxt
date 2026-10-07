@@ -31,7 +31,7 @@ from workspace_core.ports import (
 from .distill import RECONCILE
 from .runtime import Runtime, recall, remember
 
-KINDS = ("fact", "rule", "preference", "decision", "procedure", "identity")
+KINDS = ("fact", "rule", "preference", "decision", "procedure", "identity", "state")
 MAX_FILE = 10 * 1024 * 1024  # the Brain's own ceiling for one document or asset
 ACTIONS = (
     "approve",
@@ -457,6 +457,18 @@ class Brain:
         who.require("brain.read")
         return self.rt.brain.policies()
 
+    def models(self, who: Principal) -> dict[str, Any]:
+        """The local model that matches by meaning: here, being fetched, or not yet."""
+        who.require("brain.read")
+        return self.rt.brain.models()
+
+    def download_models(self, who: Principal) -> dict[str, Any]:
+        """Fetch the matching model, once: the owner's call, never automatic."""
+        who.require("workspace.admin")
+        if not who.is_human:
+            raise PermissionDenied("Only a person downloads a model.")
+        return self.rt.brain.download_models()
+
     def set_policies(self, who: Principal, changes: dict[str, Any]) -> dict[str, Any]:
         """The owner changes how the Brain is governed: one undo point, one event."""
         who.require("brain.govern")
@@ -475,6 +487,77 @@ class Brain:
                 },
             )
         return result
+
+    # ---- what the Brain is for, and what it comes with
+
+    def goals(self, who: Principal) -> dict[str, Any]:
+        """The questions about what the Brain is for, and the owner's answers."""
+        who.require("brain.read")
+        return self.rt.brain.goals()
+
+    def set_goals(self, who: Principal, answers: Any) -> dict[str, Any]:
+        """The owner says what the Brain is for: their purpose (which every AI reads first)
+        and every answer, as one undo point."""
+        who.require("brain.govern")
+        if not isinstance(answers, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in answers.items()
+        ):
+            raise ValidationFailed("Answers map a question to its answer.", field="answers")
+        result = self.rt.brain.set_goals(answers)
+        if result.get("status") == "saved":
+            with self.rt.write() as tx:
+                tx.emit(
+                    "brain.goals_set",
+                    actor_id=who.actor_id,
+                    subject_type="brain",
+                    subject_id="goals",
+                    data={
+                        "answered": sorted(k for k, v in answers.items() if v.strip()),
+                        "checkpoint": (result.get("checkpoint") or {}).get("id"),
+                    },
+                )
+        return result
+
+    def builtin_skills(self, who: Principal) -> dict[str, Any]:
+        """The skills every Brain comes with, and whether this one has each."""
+        who.require("brain.read")
+        return self.rt.brain.builtin_skills()
+
+    def add_builtin_skills(self, who: Principal, names: list[str] | None = None) -> dict[str, Any]:
+        """Add the built-in skills the Brain is missing, as one undo point."""
+        who.require("brain.govern")
+        result = self.rt.brain.add_builtin_skills(names)
+        if result.get("added"):
+            with self.rt.write() as tx:
+                tx.emit(
+                    "brain.skills_added",
+                    actor_id=who.actor_id,
+                    subject_type="brain",
+                    subject_id="skills",
+                    data={"skills": result["added"]},
+                )
+        return result
+
+    def requests(
+        self,
+        who: Principal,
+        *,
+        limit: int = 50,
+        before: str | None = None,
+        client: str | None = None,
+    ) -> dict[str, Any]:
+        """What each AI asked and what it got, newest first, with the app that asked."""
+        who.require("brain.read")
+        return self.rt.brain.requests(
+            limit=max(1, min(int(limit), 200)),
+            before=str(before or "").strip() or None,
+            client=str(client or "").strip() or None,
+        )
+
+    def weekly(self, who: Principal, *, weeks: int = 8) -> list[dict[str, Any]]:
+        """Conversations the Brain served in each of the last weeks, oldest first."""
+        who.require("brain.read")
+        return self.rt.brain.weekly(max(1, min(int(weeks), 26)))
 
     def search(self, who: Principal, query: str, limit: int = 10) -> list[BrainHit]:
         who.require("brain.read")
@@ -929,6 +1012,8 @@ class Brain:
         revises: str | None = None,
         summary: str | None = None,
         origin: str | None = None,
+        goal: str | None = None,
+        project: str | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
 
@@ -936,10 +1021,13 @@ class Brain:
         work that produced it (a distillation request, say) can show what came of it. It can
         name the entries it replaces (archived when it is approved), the ones it contradicts
         without replacing (for the reviewer to settle), and the topic it belongs in. With
-        `revises`, it is a new text for one existing entry instead of a new entry. Its
+        `revises`, it is a new text for one existing entry instead of a new entry (with
+        `replaces` as well, a merge: the entry now says what they said, and they retire). Its
         `summary` is the one line a list shows; without one, the Brain uses the statement's
         first sentence. `origin` says where it came from (`doc:<item>@r<version>` for a
-        selection in a doc, say); without one it is read from the run or the first source."""
+        selection in a doc, say); without one it is read from the run or the first source.
+        `goal` names the owner's goal it serves; `project` the active project it belongs to,
+        by id or name (it is then kept with that project)."""
         who.require("brain.propose")
         title, statement = " ".join(str(title or "").split()), str(statement or "").strip()
         if not title or not statement:
@@ -962,12 +1050,13 @@ class Brain:
             revises = str(revises).strip()
             if not ENTRY_ID.match(revises):
                 raise ValidationFailed("revises names one entry id.", field="revises")
-            if replaces or contradicts:
+            if contradicts:
                 raise ValidationFailed(
-                    "A change to an entry cannot also replace or contradict others.",
-                    field="revises",
+                    "A change to an entry cannot also contradict others.", field="revises"
                 )
-            topic = None  # a change stays where its entry lives
+            if revises in replaces:
+                raise ValidationFailed("An entry cannot replace itself.", field="replaces")
+            topic = None  # a change stays where its entry lives (with replaces: a merge)
         if not str(evidence or "").strip() and not sources:
             raise ValidationFailed(
                 "Say where this comes from: quote the evidence or name the source items.",
@@ -984,6 +1073,26 @@ class Brain:
             task_id, project_id = task["id"], task["project_id"]
             sources += [s for s in (f"task:{task_id}", f"run:{run_id}") if s not in sources]
         origin = _origin(origin, run_id, sources, who)
+        extra: dict[str, Any] = {}
+        goal = " ".join(str(goal or "").split())[:120]
+        if goal:
+            extra["goal"] = goal
+        if str(project or "").strip():
+            wanted = " ".join(str(project).split()).lower()
+            found = next(
+                (
+                    p
+                    for p in self.rt.brain.projects()
+                    if wanted in (p.id.lower(), p.title.lower(), *(a.lower() for a in p.aliases))
+                ),
+                None,
+            )
+            if found is None:
+                raise ValidationFailed(
+                    f"The Brain follows no project {project!r}: name one of its projects by id.",
+                    field="project",
+                )
+            extra["project_id"] = found.id
         request = {
             "title": title,
             "statement": statement,
@@ -996,6 +1105,7 @@ class Brain:
             "topic": topic,
             "revises": revises,
             "summary": summary,
+            **extra,
         }
         with self.rt.read() as tx:
             prior = recall(tx, who, idempotency_key, "brain.propose", request)
@@ -1017,6 +1127,7 @@ class Brain:
             revises=revises,
             summary=summary,
             origin=origin,
+            **({"extra": extra} if extra else {}),
         )
         data: dict[str, Any] = {
             "title": title,
@@ -1029,6 +1140,7 @@ class Brain:
             data.update(task_id=task_id, run_id=run_id)
         if revises:
             data["revises"] = revises
+        data.update(extra)
         with self.rt.write() as tx:
             tx.emit(
                 "brain.proposed",

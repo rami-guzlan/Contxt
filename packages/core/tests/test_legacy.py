@@ -201,7 +201,11 @@ def test_bringing_it_in_moves_each_kind_of_context_once(ws, owner, earlier, brai
     report = ws.legacy.bring_into_brain(owner)
     assert report["projects_started"] == ["LinkedIn Campaigns"]
     assert (report["projects_matched"], report["projects_left"]) == (2, [])
-    assert (report["notes_proposed"], report["files_filed"], report["next_steps"]) == (2, 2, 2)
+    assert (report["notes_proposed"], report["files_filed"], report["next_steps"]) == (2, 0, 2)
+    # under Careful (a Brain without a preset), the files wait in Review with their names
+    assert report["files_waiting"] == 2
+    assert report["waiting_files"] == ["Jordan sync transcript (2026-09-30)", "business.md"]
+    assert all(upload["wait"] for upload in brain.uploaded)
     assert (report["refused"], report["skipped"]) == ([], 0)
     named = ws.projects.get(owner, earlier["named"].id)
     assert named.brain_ref == "website-relaunch"  # matched by its name, not started again
@@ -243,7 +247,7 @@ def test_bringing_it_in_moves_each_kind_of_context_once(ws, owner, earlier, brai
     assert "- [ ] Book the venue (due 2026-10-09), Robin" in body
 
     again = ws.legacy.bring_into_brain(owner)
-    assert (again["notes_proposed"], again["files_filed"], again["next_steps"]) == (0, 0, 0)
+    assert (again["notes_proposed"], again["files_waiting"], again["next_steps"]) == (0, 0, 0)
     assert again["projects_started"] == [] and again["skipped"] == 4
     assert len(brain.proposed) == 2 and len(brain.uploaded) == 2 and len(brain.updates) == 1
     assert len(ws.notes.list(owner)) == 1 and again["todo_note"] == report["todo_note"]
@@ -264,10 +268,36 @@ def test_what_the_brain_refuses_is_reported_and_tried_again_next_time(ws, owner,
     brain.add_file = picky
     report = ws.legacy.bring_into_brain(owner)
     assert report["refused"] == [{"title": "business.md", "why": "That type is not allowed."}]
-    assert report["files_filed"] == 1
+    assert report["files_waiting"] == 1
     brain.add_file = taken
     again = ws.legacy.bring_into_brain(owner)
-    assert (again["files_filed"], again["refused"]) == (1, [])
+    assert (again["files_waiting"], again["refused"]) == (1, [])
+
+
+def test_under_personal_the_files_are_filed_at_once(ws, owner, earlier, brain):
+    brain.policy["preset"] = "personal"
+    brain.file_policy = "apply"
+    report = ws.legacy.bring_into_brain(owner)
+    assert (report["files_filed"], report["files_waiting"], report["waiting_files"]) == (2, 0, [])
+    assert not any(upload["wait"] for upload in brain.uploaded)
+
+
+def test_catch_up_offers_the_earlier_workspace_until_it_is_in(ws, owner, earlier, brain, clock):
+    plan = ws.catch_up.plan(owner)
+    offer = plan["legacy"]
+    assert offer["title"] == "2 notes from your earlier workspace are not in your Brain yet"
+    assert offer["detail"].startswith(
+        "It holds 2 notes, 1 transcript, 1 document, 2 open to-dos and 2 projects."
+    )
+    assert "wait in Review, each with its name" in offer["detail"]
+    assert offer["minutes"] == 2 and plan["counts"]["legacy"] == 1
+    assert not plan["caught_up"]
+    ws.catch_up.snooze(owner, "legacy:workspace")
+    assert ws.catch_up.plan(owner)["legacy"] is None  # later: it comes back in a few days
+    clock.advance(timedelta(days=4))
+    assert ws.catch_up.plan(owner)["legacy"] is not None
+    ws.legacy.bring_into_brain(owner)
+    assert ws.catch_up.plan(owner)["legacy"] is None  # in: never offered again
 
 
 def test_a_long_list_of_to_dos_is_cut_to_fit_the_next_steps(ws, owner, brain):

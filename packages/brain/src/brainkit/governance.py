@@ -23,6 +23,15 @@ proposal instead of a second one, and one conversation (session) may make at mos
 session that produced it. Skills, documents and assets go through uploads.py, staged outside
 git until approved.
 
+PRESETS AND THE CAPTURE POLICY. What the owner's own AI notes in a conversation (`chat`), and
+what a swept folder brings (`folder`), applies at once or waits by what it is: a fact, a
+decision, progress, a preference, a rule, a convention, a change to an entry, or a file. A
+preset (`governance.preset`: personal, careful or regulated) is the starting point; brain.json
+`governance.capture` keeps only what the owner changed on top of it. A vault without a preset
+is `careful`: only files go in at once. Whatever the policy says, a capture that names an entry
+it replaces or contradicts, nearly repeats a live one, or carries text that does not belong in
+a note waits for the owner. Each capture that applies is an undo point of its own.
+
 WHAT THIS MODULE NEVER DOES: approve on behalf of an AI. `approve` and `reject` are owner
 operations for the CLI and the local UI; the MCP agent surface cannot reach them, and no
 text inside a proposal can change who is asking.
@@ -33,7 +42,7 @@ import fnmatch
 import re
 
 from . import uploads, util
-from .model import CONFIDENCE
+from .model import CONFIDENCE, LEGACY_KINDS
 from .scopes import Scopes
 
 KINDS = ("note.create", "note.update", "note.archive", "focus.create")
@@ -84,45 +93,93 @@ def _result(message, data=None, is_error=False):
 
 
 def auto_applies(config, principal: str, scope: str) -> bool:
-    """Own person scope applies at once; shared scopes wait unless a pattern says otherwise."""
+    """Own person scope applies at once (unless the preset says otherwise); shared scopes wait
+    unless a pattern says otherwise."""
     policy = config.governance
-    if policy.get("auto_apply_own_scope", True) and scope == principal and ":" in scope:
+    own = policy.get("auto_apply_own_scope", PRESETS[preset_of(config)]["auto_apply_own_scope"])
+    if own and scope == principal and ":" in scope:
         return True
     return any(fnmatch.fnmatch(scope, pattern)
                for pattern in policy.get("auto_apply_scopes") or [])
 
 
 # WHAT THE OWNER'S OWN CAPTURES DO, by what is captured and where it came from:
-# `apply` (in at once, listed with an undo point) or `wait` (in the review queue). An origin is
-# `app` (the owner, in the workspace or the CLI), `chat` (the owner's AI, in a conversation) or
-# `folder` (a folder the brain sweeps). Changes to what is there, and what changes how every
-# AI behaves (rules, preferences, conventions), wait when an AI made them. Anyone else's
-# changes to shared knowledge follow scopes (auto_applies) and wait for the approver.
+# `apply` (in at once, as an undo point) or `wait` (in the review queue). An origin is `app`
+# (the owner, in the workspace or the CLI), `chat` (the owner's AI, in a conversation) or
+# `folder` (a folder the brain sweeps). Anyone else's changes to shared knowledge follow
+# scopes (auto_applies) and wait for the approver.
 CAPTURE_TYPES = ("file", "fact", "decision", "progress", "preference", "rule", "convention",
                  "change")
 CAPTURE_ORIGINS = ("app", "chat", "folder")
-DEFAULT_CAPTURE = {
-    "file": {"app": "apply", "chat": "apply", "folder": "apply"},
-    "fact": {"app": "apply", "chat": "apply", "folder": "wait"},
-    "decision": {"app": "apply", "chat": "apply", "folder": "wait"},
-    "progress": {"app": "apply", "chat": "apply", "folder": "apply"},
-    "preference": {"app": "apply", "chat": "wait", "folder": "wait"},
-    "rule": {"app": "apply", "chat": "wait", "folder": "wait"},
-    "convention": {"app": "apply", "chat": "wait", "folder": "wait"},
-    "change": {"app": "apply", "chat": "wait", "folder": "wait"},
+# What changes how every AI behaves, and changes to what is there, never apply from a chat or
+# a folder under any preset; a person may still let them in, one type at a time.
+SHAPING = ("preference", "rule", "convention", "change")
+
+
+def _matrix(chat: tuple, folder: tuple, *, files_wait: bool = False) -> dict:
+    """A capture matrix: the owner's own (`app`) captures apply; `chat` and `folder` apply
+    for the types named."""
+    out = {}
+    for kind in CAPTURE_TYPES:
+        apply_file = kind == "file" and not files_wait
+        out[kind] = {"app": "apply",
+                     "chat": "apply" if kind in chat or apply_file else "wait",
+                     "folder": "apply" if kind in folder or apply_file else "wait"}
+    return out
+
+
+# personal: what the owner's own AI notes as facts, decisions and progress goes in at once;
+#   what changes how every AI behaves waits.
+# careful: only files go in at once (a vault without a preset).
+# regulated: nothing a chat or a folder brings applies without approval, files and the owner's
+#   own preferences included.
+PRESETS = {
+    "personal": {"capture": _matrix(("fact", "decision", "progress"), ("progress",)),
+                 "auto_apply_own_scope": True},
+    "careful": {"capture": _matrix((), ()), "auto_apply_own_scope": True},
+    "regulated": {"capture": _matrix((), (), files_wait=True), "auto_apply_own_scope": False},
 }
+DEFAULT_PRESET = "careful"
+DEFAULT_CAPTURE = PRESETS["personal"]["capture"]  # the matrix a personal Brain starts from
+
+
+def preset_of(config) -> str:
+    """The Brain's preset: brain.json `governance.preset`, else careful."""
+    value = str(config.governance.get("preset") or "").strip().lower()
+    return value if value in PRESETS else DEFAULT_PRESET
 
 
 def capture_policy(config) -> dict:
     """{type: {origin: "apply" | "wait"}}: brain.json's `governance.capture` over the
-    defaults."""
-    out = {kind: dict(origins) for kind, origins in DEFAULT_CAPTURE.items()}
+    preset's matrix."""
+    base = PRESETS[preset_of(config)]["capture"]
+    out = {kind: dict(origins) for kind, origins in base.items()}
     for kind, origins in (config.governance.get("capture") or {}).items():
         if kind in out and isinstance(origins, dict):
             for origin, value in origins.items():
                 if origin in CAPTURE_ORIGINS and value in ("apply", "wait"):
                     out[kind][origin] = value
     return out
+
+
+def capture_type(kind: str, target: dict) -> str:
+    """What a note proposal is, as the capture policy names it: a change to an entry, a rule,
+    a convention (who you are, how you are known), progress (where things stand), a decision
+    or a fact."""
+    if kind in ("note.update", "note.archive"):
+        return "change"
+    # An older vault's layer says what its notes are (rules, facts, ...).
+    note_kind = str(target.get("kind") or LEGACY_KINDS.get(str(target.get("layer") or ""))
+                    or "").strip().lower()
+    if note_kind == "rule":
+        return "rule"
+    if note_kind == "identity":
+        return "convention"
+    if note_kind == "state":
+        return "progress"
+    if str(target.get("type") or "").strip().lower() == "decision":
+        return "decision"
+    return "fact"
 
 
 def captures_apply(brain, who, kind, origin) -> bool:
@@ -136,6 +193,7 @@ def captures_apply(brain, who, kind, origin) -> bool:
 
 
 DEFAULT_SESSION_BUDGET = 12
+CLOSE = 0.75  # a live note this near may say the same thing (review.CLOSE)
 
 
 def check_budget(brain, session_id):
@@ -177,7 +235,8 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
                  title=None, note_kind=None, startup_text=None, note_id=None, target_id=None,
                  archive=False, partition=None, reason="", review_by=None, kind=None,
                  extra=None, session_id=None, force_pending=False, layer=None,
-                 index_line=None, conflicts=None, origin=None, **_ignored):
+                 index_line=None, conflicts=None, origin=None, capture_origin=None,
+                 **_ignored):
     """Propose a new note, a change to one (`target_id`), or its retirement (`archive`).
 
     `kind` is the proposal kind (note.create, note.update, ...); `note_kind` is what the note
@@ -187,7 +246,9 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     say the same thing); `conflicts` names notes it contradicts without replacing, for the
     reviewer to settle. Both must name existing notes. `origin` says where a new note came
     from, as `<kind>:<reference>` (`file:...`, `meeting:...`, `output:...`); a proposal made
-    in a conversation without one records that conversation.
+    in a conversation without one records that conversation. `capture_origin` (`chat`,
+    `folder`) says the owner's own AI or a swept folder brought it: the capture policy may then
+    apply it at once (see PRESETS).
     """
     st = brain.state()
     config = st.config
@@ -235,8 +296,9 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         problems.append(f"partition {partition!r} is not declared in brain.json")
     if kind != "note.archive" and not text:
         problems.append("text is required")
-    if load is not None and str(load).strip().lower() not in ("standing", "on-demand"):
-        problems.append("load must be standing or on-demand")
+    if load is not None and str(load).strip().lower() not in ("standing", "on-demand",
+                                                              "manual"):
+        problems.append("load must be standing, on-demand or manual")
     for key in (extra or {}):
         if key in RESERVED:
             problems.append(f"{key} is set by governance, not by a proposal")
@@ -354,8 +416,29 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
             placement_note = (f" {route_key} is a new topic. Closest existing topics: "
                               f"{header['suggested']}; propose it there if one fits, or the "
                               "owner can move it when approving.")
-    if auto_applies(config, who, scope) and not force_pending:
-        applied = _apply(brain, proposal_id, header, target, text, actor=who, auto=True)
+    capture = capture_type(kind, target) if capture_origin in CAPTURE_ORIGINS else None
+    if capture:
+        header["capture"] = f"{capture}:{capture_origin}"
+    applies = auto_applies(config, who, scope)
+    if not applies and capture and not force_pending and not (
+            named["conflicts"] or supersedes or util.text_flags(text)
+            or any(s["score"] >= CLOSE for s in similar)):
+        applies = captures_apply(brain, who, capture, capture_origin)
+    if applies and not force_pending:
+        from . import checkpoints
+        label = f"Went in on its own: {target.get('title') or note_id}"
+        with checkpoints.batch(brain, actor=who, label=label) as batch:
+            applied = _apply(brain, proposal_id, header, target, text, actor=who, auto=True)
+            if not applied.is_error:
+                batch.decisions.append({"action": "approved", "proposal": proposal_id,
+                                        "kind": kind, "note": note_id,
+                                        "title": str(target.get("title") or note_id)})
+        if not applied.is_error:
+            applied.data["checkpoint"] = batch.checkpoint
+            if header.get("capture") and not auto_applies(config, who, scope):
+                applied.text = applied.text.replace(
+                    " It applied immediately because it is inside your own scope.",
+                    f" It applied at once: the owner lets {capture} from {capture_origin} in.")
         if placement_note and not applied.is_error:
             applied.text += placement_note
             applied.data["suggested"] = header.get("suggested")
@@ -448,7 +531,7 @@ def guess_placement(brain, text, chain, partitions=()):
     return ("topics", "general") if st.config.uses_areas else ("facts", "notes")
 
 
-def remember(brain, text, *, principal=None, scope=None, session_id=None):
+def remember(brain, text, *, principal=None, scope=None, session_id=None, capture_origin=None):
     """Capture one durable thought fast: guess its topic, file it in the caller's own scope."""
     text = str(text or "").strip()
     if not text:
@@ -467,7 +550,8 @@ def remember(brain, text, *, principal=None, scope=None, session_id=None):
     return propose_note(brain, area=area, topic=topic, text=text, scope=scope or who,
                         principal=who, source=f"captured by {who} with remember",
                         evidence="owner capture", reason="quick capture; placement guessed",
-                        extra={"placement": "guessed"}, session_id=session_id)
+                        extra={"placement": "guessed"}, session_id=session_id,
+                        capture_origin=capture_origin)
 
 
 def inbox(brain, **_ignored):
@@ -560,6 +644,8 @@ def reject(brain, proposal_id, reason="", *, actor=None):
               "kind": proposal.kind, "reason": str(reason or ""), "target": proposal.target,
               "body": proposal.body, "proposer": proposal.proposer,
               "session": str(proposal.meta.get("session") or "")}
+    if proposal.meta.get("capture"):
+        record["capture"] = str(proposal.meta["capture"])
     decisions = brain.vault.append_decision(record)
     brain.vault.remove_file(proposal.path)
     if proposal.kind in uploads.UPLOAD_KINDS:
@@ -629,6 +715,8 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
               "proposer": header.get("proposer") or actor,
               "session": str(header.get("session") or ""), "hash": util.sha256(body.strip()),
               "file_hash": brain.vault.file_hash(relpath)}
+    if header.get("capture"):
+        record["capture"] = str(header["capture"])
     if kind in ("note.update", "note.archive"):
         record["previous_hash"] = current.body_hash
     if header.get("reason"):
@@ -1048,6 +1136,7 @@ POLICY = {
     "max_proposals_per_session": ("governance", "max_proposals_per_session", "count"),
     "retention_days": ("sessions", "retention_days", "count"),
     "capture": ("governance", "capture", "capture"),
+    "preset": ("governance", "preset", "preset"),
 }
 
 
@@ -1058,12 +1147,15 @@ def policies(brain) -> dict:
     return {
         "review_days": dict(data["governance"].get("review_days") or {}),
         "default_owner": config.default_owner,
-        "auto_apply_own_scope": bool(data["governance"].get("auto_apply_own_scope", True)),
+        "auto_apply_own_scope": bool(data["governance"].get(
+            "auto_apply_own_scope", PRESETS[preset_of(config)]["auto_apply_own_scope"])),
         "auto_apply_scopes": list(data["governance"].get("auto_apply_scopes") or []),
         "max_proposals_per_session": int(data["governance"].get("max_proposals_per_session")
                                          or DEFAULT_SESSION_BUDGET),
         "retention_days": int((data.get("sessions") or {}).get("retention_days") or 90),
         "approver": config.approver,
+        "preset": preset_of(config),
+        "presets": list(PRESETS),
         "areas": config.area_order(),
         "kinds": config.kind_order(),
         "scopes": sorted(brain.state().scopes.declared),
@@ -1091,8 +1183,13 @@ def _policy_value(st, key, kind, value):
     if kind == "patterns":
         items = value if isinstance(value, list) else [value]
         return [str(p).strip() for p in items if str(p or "").strip()], None
+    if kind == "preset":
+        text = str(value or "").strip().lower()
+        if text not in PRESETS:
+            return None, f"preset is one of {', '.join(PRESETS)}"
+        return text, None
     if kind == "capture":
-        # Only what differs from the defaults is kept in brain.json.
+        # Only what differs from the preset is kept in brain.json.
         if not isinstance(value, dict):
             return None, "capture maps a type to {origin: apply or wait}"
         current = capture_policy(st.config)
@@ -1109,9 +1206,10 @@ def _policy_value(st, key, kind, value):
                 if setting not in ("apply", "wait"):
                     return None, f"capture {name} {origin} is apply or wait"
                 current[name][origin] = setting
+        base = PRESETS[preset_of(st.config)]["capture"]
         for name, origins in current.items():
             for origin, setting in origins.items():
-                if DEFAULT_CAPTURE[name][origin] != setting:
+                if base[name][origin] != setting:
                     clean.setdefault(name, {})[origin] = setting
         return clean, None
     if not isinstance(value, dict):
@@ -1156,6 +1254,14 @@ def set_policies(brain, changes, *, reason="", actor=None):
     if problems:
         return _result("Policy not changed: " + "; ".join(problems) + ".",
                        {"status": "invalid", "problems": problems}, True)
+    if "preset" in clean:
+        # A preset is a fresh start: what was changed on top of the old one goes, and the
+        # preset says whether the owner's own preferences apply at once, unless this change
+        # says so itself.
+        if "capture" not in clean:
+            clean["capture"] = {}
+        clean.setdefault("auto_apply_own_scope",
+                         PRESETS[clean["preset"]]["auto_apply_own_scope"])
     path = brain.vault.path("brain.json")
     with open(path, encoding="utf-8") as handle:
         raw = json.load(handle)

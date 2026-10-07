@@ -1,0 +1,22 @@
+{
+  "request": "Plan dinners for this week",
+  "illustrative": true,
+  "note": "Written for this demo from what its Brain hands over for this request. Taylor's family is made up.",
+  "without": "Here's a delicious and balanced dinner plan for your week!\n\n- Monday: Lemon herb chicken with roasted vegetables\n- Tuesday: Thai peanut satay noodles\n- Wednesday: Beef stir fry with jasmine rice\n- Thursday: Creamy mushroom risotto\n- Friday: Grilled salmon with asparagus\n- Saturday: Homemade burgers and sweet potato fries\n- Sunday: Slow cooker beef stew\n\nEnjoy your week of tasty meals!",
+  "with_context": "- Monday: lentil soup\n- Tuesday: black bean tacos\n- Wednesday: veggie fried rice\n- Thursday: salmon with rice\n- Friday: homemade pizza, an easy night before Ollie's soccer at 9:00 AM Saturday\n- Saturday: leftovers or pizza again\n- Sunday: something new; tell me what you are in the mood for\n\nNothing here has peanuts, for Ollie. Want a shopping list?",
+  "differences": [
+    {"what": "Nothing with peanuts: Ollie, who is 7, is allergic", "item": "family-ollie"},
+    {"what": "It follows the family's week: soup on Monday, tacos on Tuesday, pizza on Friday, something new on Sunday", "item": "food-favorites"},
+    {"what": "Every dinner is one the family already likes", "item": "food-favorites"},
+    {"what": "Friday stays easy, before Saturday soccer at 9:00 AM", "item": "family-ollie"},
+    {"what": "A short list, the simple option first", "item": "me-preferences"}
+  ],
+  "pieces": [
+    {"kind": "note", "id": "food-favorites", "title": "Favorite dinners and the weekly pattern"},
+    {"kind": "startup", "id": "family-ollie", "title": "Ollie: school, soccer, allergy"},
+    {"kind": "startup", "id": "me-preferences", "title": "How Taylor wants answers"}
+  ],
+  "tokens": 95,
+  "kernel_tokens": 656,
+  "brain_tokens": 1763
+}

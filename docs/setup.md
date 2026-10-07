@@ -20,7 +20,7 @@ uv run contxt web --download
 
 `web --download` fetches this version's built web app from its GitHub release and checks it
 against its checksum. To build it yourself instead, you need [Node.js](https://nodejs.org/)
-20+: `npm install`, then `npm run build`. On Windows, run the commands in PowerShell, one per
+20.19+: `npm install`, then `npm run build`. On Windows, run the commands in PowerShell, one per
 line.
 
 ## 2. Make your Brain
@@ -94,7 +94,8 @@ running for your AI apps to use the Brain.
 From then on, every chat starts by asking the Brain for the context its request needs
 (`get_task_context`), and proposes what it learns: rules and preferences you state, decisions,
 progress on your projects, files you share. Projects and files go in at once with an undo
-point; rules and preferences wait for you in **Review**.
+point; what else your AI picks up waits for you in **Catch up** (Settings, Approval, says what
+waits).
 
 ## 5. Match by meaning, and talk (optional)
 
@@ -109,7 +110,9 @@ fetches two local models into `brain/vault/.brain/models`, once:
 - a speech model (faster-whisper `small.en`, about 480 MB), so talk and recordings turn into
   text on this computer. On a 12-thread laptop CPU, 15 seconds of talk takes about 2 seconds.
 
-Nothing downloads on its own. Without them the Brain matches by words, and talking is off.
+Nothing downloads on its own, not even when an AI app starts the Brain: without them the
+Brain matches by words, and talking is off. Settings, On this computer, has the same
+downloads. (`BRAIN_LOCAL_MODELS=0` lets the Brain fetch its embedding model on first use.)
 
 ## 6. Start a project and add its files
 

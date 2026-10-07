@@ -96,10 +96,10 @@ export function Tabs<T extends string>({
   );
 }
 
-export function CopyBlock({ text, label: title }: { text: string; label?: string }) {
+export function CopyBlock({ text, label: title, prose = false }: { text: string; label?: string; prose?: boolean }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="copy-block">
+    <div className={prose ? "copy-block prose" : "copy-block"}>
       <div className="copy-head">
         <span>{title}</span>
         <button

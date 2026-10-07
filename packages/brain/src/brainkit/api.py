@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from . import config as config_mod
 from . import kernel as kernel_mod
 from . import packets as packets_mod
+from . import runtime as runtime_mod
 from . import systemdocs, util
 from .index import Embedder, Index, Reranker, configured_model
 from .locking import Busy, WriteLock
@@ -94,8 +95,11 @@ class Brain:
         self.default_principal = principal or os.environ.get("BRAIN_PRINCIPAL") or None
         if embeddings is None:
             embeddings = os.environ.get("BRAIN_EMBEDDINGS", "1") not in ("0", "false", "off")
+        # No Brain fetches a model on its own, its MCP server included: it uses one already in
+        # vault/.brain/models, or matches by words until the owner downloads one (`models
+        # --download`, or the app's Settings). BRAIN_LOCAL_MODELS=0 lets it fetch on first use.
         if local_models is None:
-            local_models = os.environ.get("BRAIN_LOCAL_MODELS", "0") in ("1", "true", "on")
+            local_models = os.environ.get("BRAIN_LOCAL_MODELS", "1") not in ("0", "false", "off")
         self.embedder = (Embedder(self.vault.runtime_dir, configured_model(self.vault.root),
                                   local_only=local_models)
                          if embeddings else None)
@@ -108,6 +112,11 @@ class Brain:
         self._lock = threading.RLock()
         self._ledger: Ledger | None = None
         self._deferred: Deferred | None = None  # a batch of writes in progress
+        # The app this process serves (an MCP client's name from its handshake), recorded
+        # on each conversation it starts.
+        self.client = ""
+        self._write_depth = 0
+        self._unsaved: list[str] = []  # why this write's commit failed, if it did
         # Shared with every other process that writes this vault (locking.py).
         self._writes = WriteLock(os.path.join(self.vault.runtime_dir, "write.lock"))
 
@@ -167,12 +176,42 @@ class Brain:
 
     def _write(self, run) -> Result:
         """Run one change under the vault's write lock. A vault another process holds for
-        too long is an error the caller can retry, not a crash."""
+        too long is an error the caller can retry, not a crash. When the change is live but
+        its commit failed, the reply says so (and why), so nobody believes a change is in the
+        history when it is not."""
+        outermost = self._write_depth == 0
+        if outermost:
+            self._unsaved = []
+        self._write_depth += 1
         try:
             with self.writing():
-                return run()
+                result = run()
         except Busy as exc:
             return Result(str(exc), {"status": "busy"}, is_error=True)
+        finally:
+            self._write_depth -= 1
+        if outermost and self._unsaved and isinstance(result, Result):
+            reason = " ".join(self._unsaved[-1].split())[:300]
+            result.text = (str(result.text).rstrip() + "\n\nThis change is live, but saving it "
+                           f"to the brain's git history failed: {reason}. Its history is "
+                           "incomplete until the next change saves it; brain_health shows it "
+                           "until then.")
+            result.data = dict(result.data or {}, saved=False, commit_error=reason)
+        return result
+
+    def governed_folders(self) -> list[str]:
+        """The vault's governed folders, relative to the repository."""
+        from . import gitops
+        rel = os.path.relpath(self.vault.root, self.repo_root).replace("\\", "/")
+        return [name if rel in (".", "") else f"{rel}/{name}" for name in gitops.GOVERNED]
+
+    def unsaved(self) -> list[str]:
+        """Governed files whose changes are live but not in git (a commit that failed), when
+        this brain commits its changes."""
+        from . import gitops
+        if not (self.state().config.data.get("git") or {}).get("auto_commit", True):
+            return []
+        return gitops.uncommitted(self.repo_root, self.governed_folders())
 
     @property
     def config(self):
@@ -284,7 +323,8 @@ class Brain:
                 # fingerprint the client presented. Later calls need not repeat either.
                 items.append(("kernel", kernel_fp, kernel_fp,
                               0 if kernel_held else util.tokens(kernel_text)))
-            self.ledger.touch(session, chain[-1])
+            self.ledger.touch(session, chain[-1], label=self.client,
+                              engine=runtime_mod.STARTED_WITH)
             self.ledger.record(session, packet.id, str(request), route.mode, packet.text,
                                data, items)
         return Result("\n\n".join(parts), data)
@@ -498,8 +538,14 @@ class Brain:
         file_lines = [f"- {f['title']}: {f['label']} (`{f['path']}`, {f['score']:.2f})"
                       + (" [already in this conversation]" if f["held"] else "")
                       + f": {f['summary']}" for f in files]
+        # Close: the best note would make it into a packet for this as a request, or a file
+        # part passed the search's own bar. Otherwise the nearest notes are only nearest.
+        close = bool(files) or bool(hits and hits[0].score >= st.router.policy.lean_floor)
         parts = []
-        if lines:
+        if lines and not close:
+            parts.append(f"No close match for {query!r}: the nearest notes, none of them likely "
+                         "about it:\n" + "\n".join(lines))
+        elif lines:
             parts.append(f"Notes matching {query!r}, best first:\n" + "\n".join(lines)
                          + '\n\nOpen one with get_note(id="...").')
         if file_lines:
@@ -511,7 +557,8 @@ class Brain:
         else:
             text = (f"No notes or files match {query!r}. Try other words before concluding "
                     "the brain has nothing on it.")
-        return Result(text, {"hits": rows, "files": files, "query": query})
+        return Result(text, {"hits": rows, "files": files, "query": query,
+                             "close_match": close})
 
     def topics(self, *, principal=None) -> Result:
         caller = self.caller(principal)
@@ -896,6 +943,78 @@ class Brain:
                 "standing_tokens": sum(n.tokens for n in live if n.standing),
             }})
 
+    def requests(self, *, limit=50, before=None, client=None, session=None) -> Result:
+        """What each AI asked and what it got, newest first (activity.py)."""
+        from . import activity
+        return activity.requests(self, limit=limit, before=before, client=client,
+                                 session=session)
+
+    def record_output(self, path, *, title="", session_id=None) -> Result:
+        """Note a file an AI saved for the person, with the conversation it was made in."""
+        from . import activity
+        return activity.record_output(self, path, title=title, session_id=session_id)
+
+    def made_from(self, path) -> Result:
+        """What a saved file was made from, when an AI recorded it (activity.py)."""
+        from . import activity
+        found = activity.made_from(self, path)
+        return Result("Nothing was recorded for that file." if found is None else
+                      f"Made in {found['app']}.", {"found": found})
+
+    def work_given(self, run_id) -> Result:
+        """What one run of the app's AI work was handed from the brain."""
+        from . import activity
+        return Result("Handed to the run.", {"pieces": activity.work_given(self, run_id)})
+
+    def weekly(self, weeks=8) -> Result:
+        """Conversations served in each of the last `weeks` weeks, oldest first."""
+        try:
+            rows = self.ledger.weekly(weeks)
+        except Exception:  # an unreadable ledger costs the bars, not the page
+            rows = []
+        total = sum(r["conversations"] for r in rows)
+        return Result(f"{total} conversation(s) in {len(rows)} week(s).", {"weeks": rows})
+
+    def recap(self, since) -> Result:
+        """What happened since an ISO moment: what went in on its own (with the undo point
+        that takes each back), what people decided, what came in by source, the projects that
+        moved, and the questions the brain could not answer (recap.py)."""
+        from . import recap
+        return recap.since(self, since)
+
+    def builtin_skills(self) -> Result:
+        """The skills every brain comes with, and whether this one has each (builtin.py)."""
+        from . import builtin
+        have = set(self.state().index.skills)
+        rows = [{"name": s["name"], "category": s["category"], "description": s["description"],
+                 "installed": s["name"] in have} for s in builtin.available()]
+        missing = [r["name"] for r in rows if not r["installed"]]
+        return Result(f"{len(rows) - len(missing)} of {len(rows)} built-in skills.",
+                      {"skills": rows, "missing": missing})
+
+    def add_builtin_skills(self, names=None, **kwargs) -> Result:
+        """Add the built-in skills this brain is missing, as one undo point (builtin.py)."""
+        from . import builtin
+        return self._write(lambda: builtin.install(self, names=names, **kwargs))
+
+    def goals(self) -> Result:
+        """The questions about what this brain is for, and the owner's answers (goals.py)."""
+        from . import goals
+        found = goals.read(self)
+        return Result(found["text"] or "No goals yet.", found)
+
+    def set_goals(self, answers, **kwargs) -> Result:
+        """The owner sets the brain's goals: the purpose (standing) and every answer, one undo
+        point (goals.py)."""
+        from . import goals
+        return self._write(lambda: goals.write(self, answers, **kwargs))
+
+    def move_in(self, sources, *, name="", principal=None) -> Result:
+        """Read what an AI app already knows (a memory list, an instruction file, pasted text)
+        into ideas checked against the brain. Writes nothing (movein.py)."""
+        from . import movein
+        return movein.analyze(self, sources, name=name, principal=principal)
+
     # ------------------------------------------------------------------ after writes
     def after_write(self, paths, message) -> dict:
         """Refresh derived files and record the change in git, per brain.json policy. Inside
@@ -908,7 +1027,17 @@ class Brain:
         kernel_outcome = self.write_kernel().data
         commit = None
         if (self.state().config.data.get("git") or {}).get("auto_commit", True):
+            # What an earlier failed commit left unsaved goes with this one: a retry.
+            earlier = gitops.uncommitted(self.repo_root, self.governed_folders())
             commit = gitops.commit(self.repo_root, list(paths) + [
-                os.path.join(self.repo_root, name) for name in kernel_outcome.get("written", [])],
-                message)
+                os.path.join(self.repo_root, name) for name in kernel_outcome.get("written", [])]
+                + [os.path.join(self.repo_root, p) for p in earlier], message)
+            if commit and commit.get("failed"):
+                reason = str(commit.get("reason") or "git failed")
+                self._unsaved.append(reason)
+                self.vault.append_decision({
+                    "at": util.now_iso(), "action": "unsaved", "reason": reason[:500],
+                    "message": str(message)[:300],
+                    "paths": [os.path.relpath(p, self.repo_root).replace("\\", "/")
+                              for p in paths if p][:50]})
         return {"kernel": kernel_outcome, "commit": commit}
