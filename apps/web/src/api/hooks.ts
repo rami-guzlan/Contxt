@@ -4,6 +4,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, get, post, put, query } from "./client";
 import type {
+  BackupFile,
+  BackupMade,
+  LocalModels,
+  AiApp,
+  AiRequests,
+  BuiltinSkills,
+  CatchUpPlan,
+  Comparison,
+  DifferenceExample,
+  Dictation,
+  Goals,
+  MadeFrom,
+  MoveInKept,
+  MoveInKind,
+  MoveInPreview,
+  Outputs,
+  WeekOfUse,
   RelatedInBrain,
   SpeechStatus,
   Actor,
@@ -56,6 +73,8 @@ import type {
 export const keys = {
   me: ["me"] as const,
   home: ["home"] as const,
+  catchUp: ["brain", "catch-up"] as const,
+  outputs: ["outputs"] as const,
   tasks: ["tasks"] as const,
   events: ["events"] as const,
   actors: ["actors"] as const,
@@ -671,3 +690,233 @@ export function useBringLegacyIn() {
     onSettled: () => invalidate(keys.legacy, keys.brain, keys.home, keys.events, keys.onboarding),
   });
 }
+
+// ---- catch up: a plan, never a pile
+
+/** What needs the person, in tiers, with a time estimate; and how the Brain is doing. */
+export const useCatchUp = () => useQuery({ queryKey: keys.catchUp, queryFn: () => get<CatchUpPlan>("/api/brain/catch-up") });
+
+/** The person caught up: the next recap starts from now. */
+export function useCatchUpSeen() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: () => post<Record<string, unknown>>("/api/brain/catch-up/seen"),
+    onSettled: () => invalidate(keys.catchUp),
+  });
+}
+
+/** Later (a few days), or set aside (for good, or for `days`). */
+export function useSetAside() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ key, later, days }: { key: string; later?: boolean; days?: number }) =>
+      post<Record<string, unknown>>(`/api/brain/catch-up/${later ? "snooze" : "dismiss"}`, { key, days }),
+    onSettled: () => invalidate(keys.catchUp),
+  });
+}
+
+/** Two notes that say the same: keep one, and a model writes them as one for review. */
+export function useMerge() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { keep_id: string; other_id: string }) => post<Task>("/api/brain/merge", body),
+    onSettled: () => invalidate(keys.brain, keys.tasks),
+  });
+}
+
+// ---- what the Brain is for, and the skills every Brain comes with
+
+export const useGoals = () => useQuery({ queryKey: [...keys.brain, "goals"], queryFn: () => get<Goals>("/api/brain/goals") });
+
+/** The owner's own words: they go straight in, as one undo point. */
+export function useSetGoals() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (answers: Record<string, string>) => put<Goals>("/api/brain/goals", { answers }),
+    onSettled: () => invalidate(keys.brain, keys.onboarding, keys.events),
+  });
+}
+
+/** One follow-up on an answer, from Claude Code on this computer; none when it is specific. */
+export function useGoalFollowup() {
+  return useMutation({
+    mutationFn: (body: { question: string; answer: string }) =>
+      post<{ followup: string | null }>("/api/brain/goals/followup", body),
+  });
+}
+
+export const useBuiltinSkills = () =>
+  useQuery({ queryKey: [...keys.brain, "builtin-skills"], queryFn: () => get<BuiltinSkills>("/api/brain/builtin-skills") });
+
+export function useAddBuiltinSkills() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (names?: string[]) => post<BuiltinSkills>("/api/brain/builtin-skills", { names: names ?? null }),
+    onSettled: () => invalidate(keys.brain, keys.skills, keys.events),
+  });
+}
+
+// ---- moving in: what your AIs already know
+
+export interface MoveInSource {
+  kind: MoveInKind;
+  text: string;
+  label?: string;
+}
+
+/** Read the sources into ideas, checked against the Brain and sifted; writes nothing. */
+export function useMoveInPreview() {
+  return useMutation({
+    mutationFn: (sources: MoveInSource[]) => post<MoveInPreview>("/api/brain/move-in/preview", { sources }),
+  });
+}
+
+/** Suggest the ideas chosen (none named: the ones that fit); they wait in Catch up. */
+export function useMoveInKeep() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ sources, ids }: { sources: MoveInSource[]; ids?: string[] }) =>
+      post<MoveInKept>("/api/brain/move-in", { sources, ids: ids ?? null }),
+    onSettled: () => invalidate(keys.brain, keys.home, keys.events),
+  });
+}
+
+// ---- activity: what each AI asked and got
+
+export const useAiRequests = (params: { limit?: number; before?: string; app?: string } = {}, watch = false) =>
+  useQuery({
+    queryKey: [...keys.brain, "requests", params],
+    queryFn: () => get<AiRequests>(`/api/brain/requests${query(params)}`),
+    // While the first run waits for the handshake, look again every few seconds.
+    refetchInterval: watch ? 3000 : false,
+  });
+
+export const useWeekly = (weeks = 8) =>
+  useQuery({ queryKey: [...keys.brain, "weekly", weeks], queryFn: () => get<WeekOfUse[]>(`/api/brain/weekly${query({ weeks })}`) });
+
+/** The AI apps on this computer: found, connected, and their last request. */
+export const useAiApps = (watch = false) =>
+  useQuery({
+    queryKey: [...keys.brain, "apps"],
+    queryFn: () => get<AiApp[]>("/api/brain/apps"),
+    // While the first run waits for the handshake, look again every few seconds.
+    refetchInterval: watch ? 3000 : false,
+  });
+
+/** Add the Brain to one app's settings, after the person's yes (a backup is made first). */
+export function useConnectApp() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (client: string) =>
+      post<{ client: string; connected: boolean; changed: boolean; backup: string | null }>(
+        `/api/brain/apps/${encodeURIComponent(client)}/connect`,
+        { confirm: true },
+      ),
+    onSettled: () => invalidate(keys.brain, keys.onboarding),
+  });
+}
+
+// ---- see the difference
+
+export function useStartDifference() {
+  return useMutation({
+    mutationFn: (body: { request: string; project?: string }) => post<Comparison>("/api/brain/difference", body),
+  });
+}
+
+export const useDifference = (id: string | null) =>
+  useQuery({
+    queryKey: [...keys.brain, "difference", id],
+    queryFn: () => get<Comparison>(`/api/brain/difference/${encodeURIComponent(id ?? "")}`),
+    enabled: !!id,
+    refetchInterval: (q) => (q.state.data && q.state.data.status !== "running" ? false : 2000),
+  });
+
+/** The before and after pairs a demo Brain keeps. */
+export const useExamples = () =>
+  useQuery({ queryKey: [...keys.brain, "examples"], queryFn: () => get<DifferenceExample[]>("/api/brain/examples") });
+
+// ---- the outputs folder
+
+export const useOutputs = () => useQuery({ queryKey: keys.outputs, queryFn: () => get<Outputs>("/api/outputs") });
+
+export const useMadeFrom = (path: string | null) =>
+  useQuery({
+    queryKey: [...keys.outputs, "made-from", path],
+    queryFn: () => get<MadeFrom>(`/api/outputs/made-from${query({ path: path ?? "" })}`),
+    enabled: !!path,
+  });
+
+export function useMakeOutputFolder() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (path: string) => post<{ path: string }>("/api/outputs/folders", { path }),
+    onSettled: () => invalidate(keys.outputs),
+  });
+}
+
+/** Move or rename one file inside the outputs folder, never over another. */
+export function useMoveOutput() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { source: string; target: string }) => post<{ path: string }>("/api/outputs/move", body),
+    onSettled: () => invalidate(keys.outputs),
+  });
+}
+
+export const outputFileUrl = (path: string, download = true) =>
+  `/api/outputs/file${query({ path, download: download ? undefined : false })}`;
+
+// ---- the knowledge agent on documents in the Brain, and dictation
+
+/** Pull what matters from captures or from documents filed in the Brain. */
+export function useRequestPull() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { item_ids?: string[]; paths?: string[]; guidance?: string }) =>
+      post<Task>("/api/brain/distill/requests", { item_ids: [], paths: [], ...body }),
+    onSettled: () => invalidate(keys.brain, keys.tasks, keys.notes),
+  });
+}
+
+/** What the person just said, as text for the field they fill in; nothing is kept. */
+export function useDictate() {
+  return useMutation({
+    mutationFn: (audio: Blob) => {
+      const form = new FormData();
+      form.set("audio", audio, audio.type.includes("mp4") ? "dictation.m4a" : "dictation.webm");
+      return api<Dictation>("/api/speech/transcribe", { method: "POST", form });
+    },
+  });
+}
+
+// ---- this computer: the matching model, and backups
+
+export const useModels = () =>
+  useQuery({
+    queryKey: [...keys.brain, "models"],
+    queryFn: () => get<LocalModels>("/api/brain/models"),
+    refetchInterval: (q) => (q.state.data?.matching.downloading ? 3000 : false),
+  });
+
+/** Fetch the model that matches by meaning, once: the person's call, never automatic. */
+export function useDownloadModels() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: () => post<LocalModels>("/api/brain/models/download"),
+    onSettled: () => invalidate([...keys.brain, "models"]),
+  });
+}
+
+export const useBackups = () => useQuery({ queryKey: ["backups"], queryFn: () => get<BackupFile[]>("/api/backups") });
+
+export function useMakeBackup() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: () => post<BackupMade>("/api/backups"),
+    onSettled: () => invalidate(["backups"]),
+  });
+}
+
+export const backupUrl = (name: string) => `/api/backups/${encodeURIComponent(name)}`;
+

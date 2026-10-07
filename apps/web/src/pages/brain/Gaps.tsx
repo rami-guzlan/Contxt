@@ -20,10 +20,10 @@ export function GapsPage() {
   return (
     <div className="gaps">
       <p className="section-lede">
-        What the Brain could not serve well in the last 30 days. A request that found nothing may be worth teaching it; an entry
-        the AI had to look for itself needs the words people ask with in its title or summary. Dismiss what does not matter.
+        The questions your AI asked in the last 30 days that the Brain could not answer well. Teach it the answer in a sentence or two; a note
+        the AI had to look for itself needs the words people ask with in its title or summary. Set aside what does not matter.
       </p>
-      {!gaps.length ? <Empty why="No gaps in the last 30 days: every request found what it needed, or asked for nothing the Brain should know." /> : null}
+      {!gaps.length ? <Empty why="No questions in the last 30 days: every request found what it needed, or asked for nothing the Brain should know." /> : null}
       {searched.length ? (
         <section className="section">
           <header className="section-head">
@@ -87,7 +87,7 @@ function Gap({ gap }: { gap: BrainGap }) {
       <div className="row wrap">
         {gap.kind === "searched" && gap.entry ? (
           asked ? (
-            <span className="muted small">Marked as needing an update, with why. It shows on the entry.</span>
+            <span className="muted small">Marked as needing an update, with why. It shows on the note.</span>
           ) : (
             <>
               <Link className="button" to={entryUrl(gap.entry)}>
@@ -158,7 +158,7 @@ function Teach({ request, onDone }: { request: string; onDone: () => void }) {
   }
   return (
     <form className="stack" onSubmit={submit} aria-label="Teach the Brain">
-      <Field label="Title" hint="What the entry is for, in a few words.">
+      <Field label="Title" hint="What the note is for, in a few words.">
         <input value={title} onChange={(event) => setTitle(event.target.value)} required />
       </Field>
       <Field label="What it should say">

@@ -22,7 +22,7 @@ import { CopyBlock, Empty, ErrorNote, Field, Section } from "../components/ui";
 import { when } from "../lib/format";
 
 /** Whether what is brought in gets its summary and key points as it arrives. */
-function Summaries() {
+export function Summaries() {
   const { data: settings } = useCaptureSettings();
   const change = useSetCaptureSettings();
   if (!settings) return null;
@@ -47,7 +47,7 @@ function Summaries() {
 }
 
 /** Talk and recordings become text on this computer: the model, once, at the person's word. */
-function SpeechToText() {
+export function SpeechToText() {
   const { data: speech } = useSpeech();
   const download = useDownloadSpeech();
   if (!speech) return null;
@@ -74,20 +74,24 @@ function SpeechToText() {
   );
 }
 
-export function ConnectionsPage({ embedded = false }: { embedded?: boolean }) {
+export function ConnectionsPage({ embedded = false, computer = false }: { embedded?: boolean; computer?: boolean }) {
   const { data: actors } = useActors();
   const models = (actors ?? []).filter((a) => a.kind === "model");
   const [created, setCreated] = useState<Connection | null>(null);
   return (
     <div className={embedded ? "" : "page"}>
       {embedded ? null : <h1>Connections</h1>}
-      <p className="lede">
-        Connect each AI app you use to your Brain once: from then on it reads what matters in every chat and saves what it learns
-        for your review. Below that, the models that take on the work the app itself starts, like finding what to remember in a
-        note. Each of those gets its own revocable token and only ever sees its own queue.
-      </p>
-      <h2 className="section-title">Your Brain in every chat</h2>
-      <ConnectBrain />
+      {computer ? null : (
+        <>
+          <p className="lede">
+            Connect each AI app you use to your Brain once: from then on it reads what matters in every chat and saves what it learns
+            for your review. Below that, the models that take on the work the app itself starts, like finding what to remember in a
+            note. Each of those gets its own revocable token and only ever sees its own queue.
+          </p>
+          <h2 className="section-title">Your Brain in every chat</h2>
+          <ConnectBrain />
+        </>
+      )}
       <Runners />
       <SpeechToText />
       <Summaries />

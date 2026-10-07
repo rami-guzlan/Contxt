@@ -473,6 +473,10 @@ export interface BrainFlow {
   usage_since?: string;
 }
 
+export type Preset = "personal" | "careful" | "regulated";
+export type CaptureType = "file" | "fact" | "decision" | "progress" | "preference" | "rule" | "convention" | "change";
+export type CaptureOrigin = "app" | "chat" | "folder";
+
 export interface BrainPolicies {
   review_days: Record<string, number>;
   default_owner: string;
@@ -484,11 +488,20 @@ export interface BrainPolicies {
   areas: string[];
   kinds: string[];
   scopes: string[];
+  /** The starting point for what goes straight in (a Brain without one is careful). */
+  preset?: Preset;
+  presets?: Preset[];
+  /** What each kind of capture does, by where it came from: in at once, or wait for you. */
+  capture?: Record<CaptureType, Record<CaptureOrigin, "apply" | "wait">>;
+  capture_types?: CaptureType[];
+  capture_origins?: CaptureOrigin[];
 }
 
 export interface DecisionOutcome {
   results: { id: string; action: string; ok: boolean; message: string; data: Record<string, unknown> }[];
   checkpoint: BrainCheckpoint | null;
+  /** Live, but saving it to the Brain's git history failed: why. */
+  commit_error?: string;
 }
 
 export interface BrainEntrySummary {
@@ -742,8 +755,19 @@ export interface DistillRequest {
   created_at: string;
   updated_at: string;
   summary: string;
-  proposals: { id: string; title: string; status: "pending" | "approved" | "rejected" | "closed" }[];
+  proposals: {
+    id: string;
+    title: string;
+    status: "pending" | "approved" | "rejected" | "closed";
+    /** The goal it serves and the project it belongs to, as the knowledge agent said. */
+    goal?: string | null;
+    project_id?: string | null;
+  }[];
   waiting: boolean;
+  /** Documents filed in the Brain it reads. */
+  files?: string[];
+  /** What it considered and did not pull, each with why: one tap from pulled anyway. */
+  left_out?: { statement: string; why: string }[];
 }
 
 /** Which model does the AI work the app starts (none: the only one connected). */
@@ -869,7 +893,7 @@ export interface BrainAttention {
   days: number;
 }
 
-export type SetupStep = "you" | "ai" | "brain" | "project" | "file";
+export type SetupStep = "you" | "goals" | "ai" | "brain" | "project" | "file";
 
 /** First-time setup: each step is done when its thing exists in the Brain. */
 export interface Onboarding {
@@ -877,7 +901,7 @@ export interface Onboarding {
   done: number;
   total: number;
   owner_name: string;
-  brain: { available: boolean; own_entries: number; waiting: number; projects: number; files: number };
+  brain: { available: boolean; own_entries: number; waiting: number; projects: number; files: number; goals?: boolean };
   local_model: boolean;
   completed_at: string | null;
   dismissed_at: string | null;
@@ -918,12 +942,20 @@ export interface DigestPoint {
   /** The entry it repeats, updates or clashes with. */
   entry?: string;
   why?: string;
+  /** The project it moves forward, or "goals". */
+  serves?: string;
 }
 
 export interface Digest {
   /** queued: asked for once its text is in; waiting: a model has it; ready: written. */
   state: "queued" | "waiting" | "ready";
   task_id?: string;
+  /** What it is mostly about, and which goal or project that serves. */
+  about?: string;
+  /** Work it is about that is not a project yet. */
+  new_project?: string;
+  /** A subject none of the goals covers. */
+  off_goal?: string;
   summary?: string;
   points?: DigestPoint[];
   decisions?: string[];
@@ -1014,11 +1046,472 @@ export interface LegacyReport {
   projects_matched: number;
   projects_left: { title: string; why: string }[];
   notes_proposed: number;
+  /** In the Brain at once. */
   files_filed: number;
+  /** Waiting in Review (Careful and Regulated), with their names. */
+  files_waiting?: number;
+  waiting_files?: string[];
   next_steps: number;
   /** Every open to-do, in one private note. */
   todos_noted: number;
   todo_note: string | null;
   refused: { title: string; why: string }[];
   skipped: number;
+}
+
+// ---------------------------------------------------------------- catch up
+
+export interface Advice {
+  action: string;
+  reason: string;
+}
+
+/** The goal and the project the knowledge agent tagged a suggestion with. */
+export interface Serves {
+  goal: string | null;
+  project: { id: string; title: string } | null;
+}
+
+export type CardType = "conflict" | "close" | "duplicate" | "private" | "change" | "retire" | "replace" | "skill" | "problem";
+export type CardAction = "keep_mine" | "use_this" | "keep_both" | "edit" | "later" | "keep_one" | "not_this" | "keep" | "review" | "compare";
+
+/** One decision that needs the person, in plain words, with a recommendation. */
+export interface JudgmentCard extends Serves {
+  key: string;
+  proposal_id: string;
+  type: CardType;
+  kind: string;
+  tag: string;
+  /** It changes how every AI works (a rule, who you are, a skill). */
+  shapes: boolean;
+  title: string;
+  summary: string;
+  body: string;
+  source: string;
+  at: string | null;
+  topic: string;
+  /** The note it disagrees with, repeats, changes or retires. */
+  with: { id: string; title: string; body: string; score: number | null } | null;
+  duplicates: string[];
+  why: string;
+  recommend: Advice;
+  actions: CardAction[];
+}
+
+/** Suggestions nothing disagrees with, kept with one tap. */
+export interface QuickGroup {
+  key: string;
+  kind: string;
+  area: string;
+  title: string;
+  detail: string;
+  count: number;
+  proposal_ids: string[];
+  shapes: boolean;
+  items: ({ id: string; title: string; summary: string; source: string } & Serves)[];
+  sources: string[];
+}
+
+export interface UpkeepSide {
+  id: string;
+  title: string;
+  summary: string;
+  uses: number;
+  added: string | null;
+}
+
+export type UpkeepCard =
+  | { key: string; type: "recheck"; id: string; title: string; summary: string; why: string; uses: number; last_used: string | null }
+  | { key: string; type: "duplicate"; score: number | null; a: UpkeepSide; b: UpkeepSide; recommend: Advice }
+  | { key: string; type: "tidy"; id: string; title: string; why: string }
+  | { key: string; type: "unused"; count: number; days: number; items: { id: string; title: string; last_used: string | null; topic: string }[] };
+
+/** After a run of the same yes: let this kind go straight in? */
+export interface Offer {
+  key: string;
+  type: CaptureType;
+  origin: CaptureOrigin;
+  kept: number;
+  title: string;
+  detail: string;
+  shapes: boolean;
+}
+
+export type Nudge =
+  | { key: string; type: "start_project"; name: string; capture: { id: string; title: string }; title: string }
+  | { key: string; type: "add_goal"; subject: string; count: number; captures: { id: string; title: string }[]; title: string };
+
+/** Offered once: what the earlier workspace holds that the Brain does not. */
+export interface LegacyOffer {
+  key: string;
+  title: string;
+  detail: string;
+  counts: LegacySummary["counts"];
+  seconds: number;
+  minutes: number;
+}
+
+export interface HealthFactor {
+  key: "fresh" | "tidy" | "used";
+  label: string;
+  score: number;
+  detail: string;
+  fix: { label: string; to: string } | null;
+}
+
+export interface BrainHealth {
+  score: number | null;
+  label: "good" | "fair" | "low" | "new";
+  factors: HealthFactor[];
+  /** Governed files live but not saved to git (a commit failed). */
+  unsaved: string[];
+}
+
+/** Something that went in on its own (the capture policy, your own scope). */
+export interface WentIn {
+  at: string;
+  kind: string;
+  id: string;
+  title: string;
+  source: string;
+  capture: string;
+  path: string | null;
+  live: boolean;
+  checkpoint: string | null;
+}
+
+export interface Recap {
+  since: string;
+  went_in: WentIn[];
+  went_in_total: number;
+  decided: Record<string, number>;
+  came_in: { total: number; by_source: Record<string, number>; waiting: number };
+  projects: { id: string; title: string; updates: number; last: { at: string; summary: string } | null }[];
+  gaps: number;
+}
+
+/** Everything the catch-up shows: a plan, never a pile. */
+export interface CatchUpPlan {
+  seen_at: string | null;
+  since: string;
+  away_days: number | null;
+  recap_first: boolean;
+  seconds: number;
+  minutes: number;
+  caught_up: boolean;
+  counts: {
+    judgment: number;
+    quick: number;
+    quick_items: number;
+    upkeep: number;
+    offers: number;
+    legacy: number;
+    handled: number;
+    snoozed: number;
+  };
+  health: BrainHealth;
+  recap: Recap;
+  handled: WentIn[];
+  judgment: JudgmentCard[];
+  quick: QuickGroup[];
+  upkeep: UpkeepCard[];
+  offers: Offer[];
+  legacy: LegacyOffer | null;
+  nudges: Nudge[];
+  preset: Preset | null;
+}
+
+// ---------------------------------------------------------------- goals and built-in skills
+
+export interface GoalQuestion {
+  id: string;
+  question: string;
+  why: string;
+  required: boolean;
+  example: string;
+}
+
+export interface Goals {
+  questions: GoalQuestion[];
+  answers: Record<string, string>;
+  exists: boolean;
+  id: string;
+  starter: string | null;
+  updated: string | null;
+  purpose: string;
+  /** "What is in motion", one per line: each can start a project. */
+  projects: string[];
+  text: string;
+  status?: "saved" | "unchanged";
+  checkpoint?: BrainCheckpoint | null;
+}
+
+export interface BuiltinSkill {
+  name: string;
+  category: string;
+  description: string;
+  installed: boolean;
+}
+
+export interface BuiltinSkills {
+  skills: BuiltinSkill[];
+  missing: string[];
+  added?: string[];
+}
+
+// ---------------------------------------------------------------- moving in
+
+export type MoveInKind = "chatgpt" | "claude" | "cursor" | "instructions" | "paste";
+
+export interface MoveInIdea {
+  id: string;
+  source: string;
+  source_kind: MoveInKind;
+  text: string;
+  original: string;
+  group: string;
+  kind: "identity" | "rule" | "state" | "fact";
+  personal: boolean;
+  topic: string;
+  topic_label: string;
+  match: { id: string; title: string; score: number } | null;
+  why: string;
+  status: "new" | "known" | "waiting" | "disagree" | "private";
+  private?: string;
+  secret?: boolean;
+  /** It serves a goal, an active project, or says who you are or how you work. */
+  fits: boolean;
+  serves: { goal: string | null; project: { id: string; title: string } | null; about_you: boolean };
+  /** Why the sift left it out (it can still be kept). */
+  left_out?: string;
+}
+
+export interface MoveInStages {
+  sources: number;
+  chars: number;
+  ideas: number;
+  kinds: Record<string, number>;
+  new: number;
+  known: number;
+  waiting: number;
+  disagree: number;
+  private: number;
+  sifted?: boolean;
+  fits?: number;
+  for_goals?: number;
+  for_projects?: Record<string, number>;
+  about_you?: number;
+  left_out?: number;
+  to_keep: number;
+}
+
+export interface MoveInPreview {
+  sources: { id: string; kind: MoveInKind; label: string; chars: number; ideas: number }[];
+  ideas: MoveInIdea[];
+  stages: MoveInStages;
+  /** One idea to open at each stage of the pipeline. */
+  examples: Record<string, string>;
+}
+
+export interface MoveInKept {
+  stages: MoveInStages;
+  proposed: { idea: string; proposal_id: string | null; status: string }[];
+  already: { idea: string; proposal_id: string | null; status: string }[];
+  refused: { idea: string; message: string }[];
+  secrets_left_out: number;
+}
+
+// ---------------------------------------------------------------- activity: what each AI got
+
+export interface RequestPiece {
+  kind: "note" | "section" | "focus" | "skill" | "reference" | "kernel" | "system" | string;
+  id: string;
+  tokens: number;
+  why: string;
+  title?: string;
+  note_kind?: string;
+  topic?: string;
+  topic_label?: string;
+  live?: boolean;
+  path?: string;
+}
+
+export interface AiRequest {
+  id: string;
+  session_id: string;
+  at: string;
+  request: string;
+  mode: string;
+  /** The app that asked, as a person names it. */
+  app: string;
+  client: string | null;
+  tokens: number;
+  /** Its share of the whole Brain. */
+  share: number | null;
+  project: { id: string; title: string } | null;
+  skill: string | null;
+  got: RequestPiece[];
+  /** It got the startup context too. */
+  kernel: boolean;
+  opened: RequestPiece[];
+  nothing: boolean;
+  saved: { id: string; title: string; status: string; source?: string }[];
+  engine: string | null;
+  /** Its app runs older engine code: restart it to pick up the new version. */
+  old_engine: boolean;
+}
+
+export interface AiRequests {
+  requests: AiRequest[];
+  brain_tokens: number;
+  apps: string[];
+  engine: string;
+}
+
+export interface WeekOfUse {
+  start: string;
+  end: string;
+  conversations: number;
+  packets: number;
+}
+
+export interface AiApp {
+  client: string;
+  label: string;
+  found: boolean;
+  connected: boolean;
+  last_request: { at: string; request: string } | null;
+  setup: BrainClientSetup | null;
+}
+
+// ---------------------------------------------------------------- see the difference
+
+export interface DifferenceItem {
+  what: string;
+  item: string;
+}
+
+export interface DifferencePiece {
+  kind: string;
+  id: string;
+  title: string;
+}
+
+export interface Comparison {
+  id: string;
+  request: string;
+  project: string | null;
+  started_at: string;
+  status: "running" | "done" | "failed";
+  step: "without" | "with" | "differences" | "done";
+  without: string;
+  with_context: string;
+  differences: DifferenceItem[];
+  pieces: DifferencePiece[];
+  tokens: number;
+  kernel_tokens: number;
+  brain_tokens: number;
+  share: number | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
+/** A before and after a demo Brain keeps, made earlier. */
+export interface DifferenceExample {
+  id: string;
+  request: string;
+  illustrative: boolean;
+  note: string;
+  without: string;
+  with_context: string;
+  differences: DifferenceItem[];
+  pieces: DifferencePiece[];
+  tokens: number;
+  kernel_tokens: number;
+  brain_tokens: number;
+}
+
+// ---------------------------------------------------------------- outputs
+
+export type OutputKind = "document" | "pdf" | "slides" | "spreadsheet" | "image" | "page" | "data" | "audio" | "video" | "file";
+
+export interface OutputFile {
+  path: string;
+  name: string;
+  folder: string;
+  size: number;
+  modified: string;
+  kind: OutputKind | string;
+  from: "skill" | null;
+  /** A skill run is still working in its folder. */
+  working: boolean;
+}
+
+export interface Outputs {
+  root: string;
+  folders: string[];
+  files: OutputFile[];
+}
+
+export interface MadeFrom {
+  path: string;
+  how: "skill" | "export" | "chat" | "unknown";
+  skill_run?: {
+    task_id: string;
+    skill: string;
+    ask: string;
+    project: string | null;
+    attached: string[];
+    capture: { id: string; title: string } | null;
+    status: string;
+    created_at: string;
+    runs: { id: string; at: string | null; status: string; by: string }[];
+  };
+  export?: {
+    artifact_id: string;
+    version: number;
+    title: string;
+    type: string;
+    task_id: string | null;
+    run_id: string | null;
+    exported_at: string;
+  };
+  chat?: { title: string; at: string | null; app: string; session_id: string | null; requests: AiRequest[] };
+  /** What each run was handed from the Brain. */
+  given?: { id: string; pieces: RequestPiece[] }[];
+}
+
+/** Dictation into a field: the words, and how long the person spoke. */
+export interface Dictation {
+  text: string;
+  seconds: number;
+}
+
+// ---------------------------------------------------------------- this computer
+
+/** The local model that matches by meaning: here, being fetched, or not yet. */
+export interface LocalModels {
+  matching: {
+    enabled: boolean;
+    model?: string | null;
+    present: boolean;
+    downloading: boolean;
+    error?: string | null;
+    about_mb?: number;
+  };
+}
+
+export interface BackupFile {
+  name: string;
+  size: number;
+  at: string;
+}
+
+export interface BackupMade {
+  name: string;
+  size: number;
+  records: number;
+  files: number;
+  brain_files: number;
+  originals: number;
 }

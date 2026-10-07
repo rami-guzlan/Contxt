@@ -28,8 +28,9 @@ MCP client) reads the part each request needs and saves what it learns, for your
 - **Every AI gets the right part.** Each request gets a small, focused packet: the rules that
   always apply, the notes and file sections that request is about, and where the project it
   names stands. Never the whole Brain.
-- **Nothing changes without you.** Files, decisions and progress go in at once with an undo
-  point. Rules and preferences an AI picks up wait for you in Review.
+- **Nothing changes without you.** Your own words and files go in at once with an undo point.
+  What an AI picks up waits for you in Catch up, a few minutes a week; a preset (Personal,
+  Careful, Regulated) says what waits.
 - **Local by default.** The app runs on `127.0.0.1`. Matching by meaning and speech to text
   run on local models. Nothing leaves your computer except what your AI app sends to its own
   model.
@@ -55,7 +56,7 @@ uv run contxt serve
 ```
 
 - `web --download` fetches this version's built web app and checks it. Building it yourself
-  instead takes [Node.js](https://nodejs.org/) 20+: `npm install`, then `npm run build`.
+  instead takes [Node.js](https://nodejs.org/) 20.19+: `npm install`, then `npm run build`.
 - `setup` makes your Brain (from the empty starter) and the folders beside it.
 - `check` confirms everything works, and says what to fix when something does not.
 - `serve` starts the app on `http://127.0.0.1:8787` and prints your sign-in link.
@@ -112,13 +113,15 @@ the app into the Brain when you approve it.
 
 | Page | What it is for |
 | --- | --- |
-| Home | What came in, what waits for you, your Brain at a glance, projects in motion |
-| Capture | Talk (hold Space), upload a recording or a file, or write a note: each gets a summary that says how it relates to your Brain, and you pull in what matters |
-| Projects | Each project's brief, where it stands, its progress and files, the names your AI knows it by |
-| Brain | The map of what it knows, every entry, its files, the history of every change, the questions it could not answer |
-| Skills | Procedures your AI follows: run one here and watch what it makes, or improve it in plain words |
-| Review | What your AI suggested, in batches, each decision an undo point |
-| Settings | Your AI apps, what saves straight in, local models, backups |
+| Home | How you are doing in one line, what the Brain is for, what your AIs asked, what came in, projects in motion, your AI apps, ask your Brain, see the difference |
+| Catch up | What needs your yes, as a plan with a time: decisions one at a time with a recommendation, groups kept with one tap, a little upkeep each week |
+| Capture | Talk (hold Space), record, upload or write: each gets a summary, and the Brain pulls out what serves your goals and projects |
+| Projects | Each project's brief, where it stands, its progress and files, what your AI asked about it |
+| Brain | What your AI knows, in the words it receives; every note; its files; the questions it could not answer |
+| Skills | Procedures your AI follows, including the ones every Brain comes with: run one here, or ask for it in any AI |
+| Outputs | What your AI made, organized and downloadable, each file with what it was made from |
+| Activity | Every request from every AI app: what it got and why; every change, with its undo point |
+| Settings | Your AI apps, your goals, approval, local models and the app's own AI work, backups |
 
 ![A project: where it stands, its progress, what your AI gets](docs/images/project.png)
 

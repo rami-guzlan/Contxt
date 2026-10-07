@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router";
 import { brainFileUrl, keys, useBrainCatalog, useBrainFiles } from "../../api/hooks";
 import type { BrainFile, BrainSkill } from "../../api/types";
 import { Markdown } from "../../components/Markdown";
+import { KnowledgeCheck, PullWhatMatters } from "../../components/Pull";
 import { Empty, ErrorNote, Loading, Tabs } from "../../components/ui";
 import { bytes, label, plural, when } from "../../lib/format";
 import { AddFileDialog } from "./AddFile";
@@ -123,11 +124,11 @@ function FileRows({ files, titles }: { files: BrainFile[]; titles: Map<string, s
               {file.entry_id ? (
                 <>
                   {" · models find it through "}
-                  <Link to={entryUrl(file.entry_id)}>{titles.get(file.entry_id) ?? "its entry"}</Link>
+                  <Link to={entryUrl(file.entry_id)}>{titles.get(file.entry_id) ?? "its note"}</Link>
                 </>
               ) : (
                 <span className="unrouted" title="Models reach it only when a task pins it or they search for it">
-                  {" · no entry points models here yet"}
+                  {" · no note points your AI here yet"}
                 </span>
               )}
             </p>
@@ -146,6 +147,8 @@ function FileRows({ files, titles }: { files: BrainFile[]; titles: Map<string, s
                 Original
               </a>
             ) : null}
+            <PullWhatMatters paths={[file.path]} />
+            <KnowledgeCheck title={file.title} path={file.path} />
           </div>
         </li>
       ))}
@@ -156,7 +159,7 @@ function FileRows({ files, titles }: { files: BrainFile[]; titles: Map<string, s
 function Assets({ filed, kept }: { filed: BrainFile[]; kept: KeptAssets[] }) {
   if (!filed.length && !kept.length) {
     return (
-      <Empty why="No assets yet. Logos, images, fonts and data files you add are kept byte for byte, with an entry that tells models where they are." />
+      <Empty why="No assets yet. Logos, images, fonts and data files you add are kept byte for byte, with a note that tells your AI where they are." />
     );
   }
   return (
@@ -258,7 +261,7 @@ export function FileViewPage() {
           ) : null}
           {file?.entry_id ? (
             <Link className="button" to={entryUrl(file.entry_id)}>
-              Open its entry
+              Open its note
             </Link>
           ) : null}
         </div>

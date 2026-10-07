@@ -6,7 +6,7 @@ import { WandSparkles } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
-import { brainFileUrl, useBrainSkill, useNote, useSkills } from "../api/hooks";
+import { brainFileUrl, useAddBuiltinSkills, useBrainSkill, useBuiltinSkills, useNote, useSkills } from "../api/hooks";
 import type { BrainCheckpoint, SkillCard, SkillVersion } from "../api/types";
 import { Markdown } from "../components/Markdown";
 import {
@@ -19,6 +19,7 @@ import {
   SkillRuns,
   makesLine,
 } from "../components/SkillWork";
+import { FirstVisitTip } from "../components/Tips";
 import { Empty, ErrorNote, Loading, Pill, Section, Tabs } from "../components/ui";
 import { bytes, label, plural, when } from "../lib/format";
 import { fileViewUrl } from "./brain/shared";
@@ -76,9 +77,13 @@ export function SkillsPage() {
           ) : null}
         </div>
       </header>
+      <FirstVisitTip id="skills">
+        A skill is how your AI makes something, step by step. Run one here, or just ask for it in any AI you connect: it finds the skill.
+      </FirstVisitTip>
       {writing ? (
         <NewSkill capture={teaching && capture ? { id: capture.id, title: capture.title } : null} onClose={() => setParams({})} />
       ) : null}
+      <BuiltIns />
       {data.waiting.length ? (
         <p className="notice small">
           Waiting in <Link to="/review">Review</Link>: {data.waiting.map((w) => `/${w.name}`).join(", ")}. Approve{" "}
@@ -103,10 +108,10 @@ export function SkillsPage() {
                   ) : null}
                   {skill.use === "support" ? (
                     <p className="skill-card-meta muted small">
-                      Used by {plural(skill.used_by.length, "skill")}, not run on its own
+                      Used by other skills ({plural(skill.used_by.length, "skill")}), not run on its own
                     </p>
                   ) : skill.use === "chat" ? (
-                    <p className="skill-card-meta muted small">Run it in a chat with /{skill.name}</p>
+                    <p className="skill-card-meta muted small">Use it in a chat: /{skill.name}</p>
                   ) : (
                     <>
                       <p className="skill-card-meta muted small">
@@ -115,7 +120,7 @@ export function SkillsPage() {
                           .join(" · ") || plural(skill.files, "file")}
                       </p>
                       <Link to={skillUrl(skill.name)} className="button small" aria-label={`Run /${skill.name}`}>
-                        Run
+                        Run it here
                       </Link>
                     </>
                   )}
@@ -348,3 +353,31 @@ function withoutHeading(source: string, name: string): string {
   const lines = source.split("\n");
   return lines[0]?.trim() === `# /${name}` ? lines.slice(1).join("\n") : source;
 }
+
+/** The skills every Brain comes with: the knowledge agent, the knowledge check, teaching it,
+ * wrapping up a chat and the goals interview. An older Brain can add the ones it lacks. */
+function BuiltIns() {
+  const { data } = useBuiltinSkills();
+  const add = useAddBuiltinSkills();
+  if (!data?.skills.length) return null;
+  return (
+    <Section title="Comes with every Brain">
+      <ul className="list builtins">
+        {data.skills.map((skill) => (
+          <li key={skill.name}>
+            {skill.installed ? <Link to={skillUrl(skill.name)}>/{skill.name}</Link> : <span>/{skill.name}</span>}
+            <span className="muted small"> · {gist(skill.description, 140)}</span>
+            {skill.installed ? null : <span className="chip small">Not in this Brain yet</span>}
+          </li>
+        ))}
+      </ul>
+      {data.missing.length ? (
+        <button type="button" className="primary" disabled={add.isPending} onClick={() => add.mutate(undefined)}>
+          {add.isPending ? "Adding…" : `Add the ${plural(data.missing.length, "missing one")}`}
+        </button>
+      ) : null}
+      <ErrorNote error={add.error} />
+    </Section>
+  );
+}
+

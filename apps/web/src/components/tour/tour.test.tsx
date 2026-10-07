@@ -136,7 +136,7 @@ describe("the guided tour", () => {
     expect(screen.getByTestId("saved")).toHaveTextContent("none");
   });
 
-  it("is started from the help menu, whole or by chapter", async () => {
+  it("is started from the help menu, beside the first run and the tips", async () => {
     mockApi({
       "GET /api/brain/projects": [],
       "GET /api/notes": [],
@@ -146,10 +146,10 @@ describe("the guided tour", () => {
     renderTour(<HelpMenu />);
     await user.click(screen.getByRole("button", { name: "Help and guided tour" }));
     const menu = screen.getByRole("menu", { name: "Help" });
-    expect(within(menu).getByRole("menuitem", { name: /Take the guided tour/ })).toBeInTheDocument();
-    expect(await within(menu).findByRole("menuitem", { name: /First-time setup 6 of 7 done/ })).toBeInTheDocument();
-    await user.click(within(menu).getByRole("menuitem", { name: "Home" }));
-    expect(await screen.findByRole("dialog", { name: "Another page" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: /Take the short tour/ })).toBeInTheDocument();
+    expect(await within(menu).findByRole("menuitem", { name: /The first run not finished yet/ })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Show the tips again" })).toBeInTheDocument();
+    await user.click(within(menu).getByRole("menuitem", { name: /Take the short tour/ }));
     expect(screen.queryByRole("menu")).toBeNull();
   });
 });

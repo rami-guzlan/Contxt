@@ -53,7 +53,7 @@ export function EntryPage() {
   return (
     <div className="entry-page">
       <nav className="breadcrumb" aria-label="Breadcrumb">
-        <Link to="/brain/entries">All entries</Link>
+        <Link to="/brain/entries">All notes</Link>
         {areaKey && areaLabel ? (
           <>
             <span aria-hidden="true">/</span>
@@ -206,7 +206,7 @@ function About({
           <TextEditor
             label={`Edit ${entry.title}`}
             initial={{ title: entry.title, summary: entry.summary, body: entry.text }}
-            saveLabel="Save the entry"
+            saveLabel="Save the note"
             onSave={save}
             onCancel={() => setEditing(false)}
           />
@@ -226,7 +226,7 @@ function About({
           <ErrorNote error={decide.error} />
         </Section>
         <Section
-          title="About this entry"
+          title="About this note"
           actions={
             details && !changingDetails ? (
               <button type="button" className="link" onClick={() => setChangingDetails(true)}>
@@ -365,7 +365,7 @@ function DetailsForm({ details, onDone }: { details: InventoryItem; onDone: (dec
   }
 
   return (
-    <form className="stack" onSubmit={submit} aria-label="Change the entry's details">
+    <form className="stack" onSubmit={submit} aria-label="Change the note's details">
       <Field label="Owner" hint="Who answers for it. Empty: the Brain's default owner.">
         <select value={form.owner} onChange={(event) => set("owner", event.target.value)}>
           <option value="">Default ({ownerName(policies?.default_owner ?? "", approver) || "the owner"})</option>
@@ -479,7 +479,7 @@ function Removed({ title, point, onBack }: { title: string; point: BrainCheckpoi
           Undo
         </button>
         <Link className="button" to="/brain/entries">
-          Back to all entries
+          Back to all notes
         </Link>
       </div>
     </div>
@@ -584,7 +584,7 @@ function Versions({ id, onDecided, archived = false }: { id: string; onDecided: 
   return (
     <div className="versions">
       <p className="section-lede">
-        Every version this entry has had, newest first. Pick one to compare it with today's and put it back: the restore is an
+        Every version this note has had, newest first. Pick one to compare it with today's and put it back: the restore is an
         undo point of its own.
       </p>
       <ol className="version-list">
@@ -621,7 +621,7 @@ function Versions({ id, onDecided, archived = false }: { id: string; onDecided: 
             after={{ label: "Now", title: current.title, body: current.body ?? "" }}
           />
           {archived ? (
-            <p className="muted">Bring the entry back first to put this version back.</p>
+            <p className="muted">Bring the note back first to put this version back.</p>
           ) : (
             <div className="row wrap">
               <Field label="Why put it back" hint="Optional; the history keeps it.">
@@ -722,6 +722,6 @@ function Activity({ id }: { id: string }) {
   const { data: policies } = useBrainPolicies();
   if (isLoading) return <Loading />;
   if (!events) return <ErrorNote error={error} />;
-  if (!events.length) return <Empty why="Nothing recorded for this entry yet." />;
+  if (!events.length) return <Empty why="Nothing recorded for this note yet." />;
   return <EventList events={events} approver={policies?.approver} about={id} />;
 }

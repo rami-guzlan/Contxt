@@ -6,10 +6,12 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { Layout } from "../components/Layout";
+import { apps, goals, health, plan } from "../test/fixtures";
 import { actors, mockApi, renderAt, workspace } from "../test/render";
 import { ConnectionsPage } from "./Connections";
 import { HomePage } from "./Home";
-import { SearchPage, SettingsPage } from "./Misc";
+import { SearchPage } from "./Misc";
+import { SettingsPage } from "./Settings";
 import { Week } from "./brain/Week";
 import { ProjectPage, ProjectsPage } from "./Projects";
 
@@ -58,130 +60,144 @@ const detail = {
 };
 
 describe("layout", () => {
-  it("shows the six places and how much waits in Review", async () => {
-    mockApi({ "GET /api/home": home });
+  it("names the places for the person's questions, with Catch up while something needs them", async () => {
+    mockApi({ "GET /api/home": home, "GET /api/brain/catch-up": plan(), "GET /api/brain/goals": goals });
     renderAt(
       <Layout>
         <p>content</p>
       </Layout>,
     );
-    expect(await screen.findByLabelText("3 waiting for you")).toHaveTextContent("3");
     const main = screen.getByRole("navigation", { name: "Main" });
-    expect(within(main).getAllByRole("link").map((l) => l.textContent?.replace(/\d+$/, ""))).toEqual([
+    expect(await within(main).findByRole("link", { name: /Catch up/ })).toHaveAttribute("href", "/catch-up");
+    expect(within(main).getAllByRole("link").map((l) => l.textContent?.replace(/\d+ minutes?$/, ""))).toEqual([
       "Home",
       "Capture",
       "Projects",
       "Brain",
       "Skills",
-      "Review",
+      "Outputs",
+      "Activity",
+      "Catch up",
     ]);
-    expect(within(main).getByRole("link", { name: /Review/ })).toHaveAttribute("href", "/review");
+    expect(within(main).getByRole("link", { name: /Catch up/ })).toHaveTextContent("3 minutes");
+    expect(screen.queryByLabelText(/waiting for you/)).not.toBeInTheDocument(); // calm: no red badge
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
-    expect(screen.getByRole("button", { name: "New note" })).toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument(); // not a demo
   });
 
-  it("lists Review only while something waits for a look", async () => {
+  it("lists Catch up only while something needs you, and says when a Brain is a demo", async () => {
     mockApi({
-      "GET /api/home": { ...home, counts: { brain_proposals: 0, ai_work: {} } },
-      "GET /api/brain/attention": { clashes: [], twins: [], flagged: [], recheck: [], usage: {}, days: 7 },
+      "GET /api/home": home,
+      "GET /api/brain/catch-up": plan({ caught_up: true, judgment: [], quick: [], upkeep: [] }),
+      "GET /api/brain/goals": { ...goals, starter: "knowledge-company" },
     });
     renderAt(
       <Layout>
         <p>content</p>
       </Layout>,
     );
-    const main = await screen.findByRole("navigation", { name: "Main" });
-    expect(await within(main).findByRole("link", { name: "Skills" })).toBeInTheDocument();
-    expect(within(main).queryByRole("link", { name: /Review/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole("note")).toHaveTextContent("Test workspace is made up");
+    const main = screen.getByRole("navigation", { name: "Main" });
+    expect(within(main).queryByRole("link", { name: /Catch up/ })).not.toBeInTheDocument();
+  });
+
+  it("adds things from one menu: talk, record, upload, write, or move in", async () => {
+    mockApi({ "GET /api/home": home, "GET /api/brain/catch-up": plan() });
+    const user = userEvent.setup();
+    renderAt(
+      <Layout>
+        <p>content</p>
+      </Layout>,
+    );
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    const menu = screen.getByRole("menu", { name: "Add" });
+    expect(within(menu).getByRole("menuitem", { name: /Record a meeting/ })).toBeInTheDocument();
+    expect(within(menu).getByRole("button", { name: /Upload a file/ })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Write" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Move in from another AI" })).toHaveAttribute("href", "/move-in");
   });
 });
 
 describe("home", () => {
-  it("shows how context flows, what waits, the Brain at a glance and the projects in motion", async () => {
-    mockApi({
-      "GET /api/home": home,
-      "GET /api/onboarding": { steps: [], done: 5, total: 5, completed_at: stamp, dismissed_at: null, tour_seen_at: null },
-      "GET /api/brain/attention": { clashes: [], twins: [], flagged: [], recheck: [], usage: { "voice-1": 3 }, days: 7 },
-      "GET /api/brain/projects": [project, { ...project, id: "old", title: "Old work", active: false }],
-      "GET /api/brain/catalog": {
-        areas: [{ key: "brand", label: "Brand", description: "", topics: [{ key: "brand/voice", label: "Voice", description: "", entries: 1 }] }],
-        entries: [
-          {
-            id: "voice-1",
-            title: "Plain words",
-            summary: "",
-            area: "brand",
-            topic: "brand/voice",
-            kind: "rule",
-            scope: "company",
-            partition: null,
-            added: null,
-            verified: null,
-            confidence: null,
-            stale_reason: null,
-            standing: false,
-            file: null,
-          },
-        ],
-      },
-      "GET /api/brain/files": { references: [], assets: [], skills: [] },
-      "GET /api/notes": [],
-      "GET /api/brain/activity": [],
-      "GET /api/brain/policies": { approver: "person:owner" },
-      "GET /api/brain/flow?days=7": {
-        days: 7,
-        since: "2026-09-28T00:00:00Z",
-        came_in: 4,
-        approved: 3,
-        rejected: 1,
-        decided: {},
-        waiting: 3,
-        oldest_waiting: null,
-        delivery: { conversations: 12 },
-        stock: { live: 1, due: 0, disputed: 0, unused_60_days: 0, standing_tokens: 0 },
-      },
-    });
+  const cockpit = {
+    "GET /api/home": home,
+    "GET /api/brain/catch-up": plan(),
+    "GET /api/brain/goals": goals,
+    "GET /api/onboarding": {
+      steps: [],
+      done: 5,
+      total: 6,
+      owner_name: "Sam",
+      brain: { available: true, own_entries: 30, waiting: 3, projects: 1, files: 0, goals: true },
+      local_model: true,
+      completed_at: stamp,
+      dismissed_at: null,
+      tour_seen_at: null,
+    },
+    "GET /api/brain/apps": apps,
+    "GET /api/brain/projects": [project, { ...project, id: "old", title: "Old work", active: false }],
+    "GET /api/notes": [],
+    "GET /api/brain/weekly": [
+      { start: "2026-09-22", end: "2026-09-28", conversations: 2, packets: 5 },
+      { start: "2026-09-29", end: "2026-10-05", conversations: 4, packets: 9 },
+    ],
+    "GET /api/runners": [],
+    "GET /api/brain/examples": [],
+  };
+
+  it("says in one line how you are doing, with the plan and the health behind it", async () => {
+    mockApi(cockpit);
     renderAt(<HomePage />);
     expect(await screen.findByRole("heading", { level: 1, name: "Test workspace" })).toBeInTheDocument();
-    // The flow: each stage with its count, each a way in.
-    const flow = screen.getByRole("navigation", { name: "How your context flows" });
-    expect(within(flow).getByRole("link", { name: /Review\s*3/ })).toHaveAttribute("href", "/review");
-    expect(await within(flow).findByRole("link", { name: /Your AI\s*12/ })).toHaveAttribute("href", "/brain/entries?view=most");
-    expect(within(flow).getByRole("link", { name: /Capture/ })).toHaveAttribute("href", "/capture");
-    expect(screen.getByRole("link", { name: "Review 3 suggestions" })).toHaveAttribute("href", "/review");
-    expect(screen.getByRole("button", { name: "Upload" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Write" })).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: "Brand: 1 entry, used 3 times this week" })).toHaveAttribute("href", "/brain?area=brand");
-    const projects = await screen.findByRole("link", { name: "Q4 campaigns" });
-    expect(projects).toHaveAttribute("href", "/projects/q4-campaigns");
+    expect(await screen.findByText("3 things for you, about 3 minutes.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Catch up, about 3 minutes/ })).toHaveAttribute("href", "/catch-up");
+    expect(screen.getByLabelText("Brain health 82 of 100, good")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Tidy up" })).toHaveAttribute("href", "/review");
+    expect(screen.getByText("Run marketing without dropping follow-ups.")).toBeInTheDocument();
+    // what is left to set up, until it is done
+    const steps = await screen.findByRole("region", { name: "Next steps" });
+    expect(within(steps).getByRole("link", { name: "Add its files" })).toHaveAttribute("href", "/projects/q4-campaigns");
+    expect(within(steps).queryByRole("link", { name: "Connect an AI app" })).not.toBeInTheDocument();
+    // three pictures and the apps, calm
+    expect(await screen.findByLabelText("What your AIs asked")).toHaveTextContent("9");
+    expect(screen.getByLabelText("What came in")).toHaveTextContent("Your AI's chats 3");
+    expect(await screen.findByRole("link", { name: "Q4 campaigns" })).toHaveAttribute("href", "/projects/q4-campaigns");
     expect(screen.queryByRole("link", { name: "Old work" })).not.toBeInTheDocument();
-    expect(await screen.findByText(/Nothing came in this week/)).toBeInTheDocument();
+    const appsLine = await screen.findByRole("region", { name: "Your AI apps" });
+    expect(within(appsLine).getByText(/asked/)).toBeInTheDocument();
+    expect(within(appsLine).getByRole("link", { name: "Connect" })).toHaveAttribute("href", "/settings?tab=apps");
+    expect(screen.getByRole("link", { name: "Move in" })).toHaveAttribute("href", "/move-in");
   });
 
-  it("welcomes an empty Brain with how context moves and three ways to start", async () => {
+  it("is calm when nothing needs you, and warns when a change is not saved", async () => {
     mockApi({
-      "GET /api/home": { ...home, counts: { brain_proposals: 0, ai_work: {} } },
+      ...cockpit,
+      "GET /api/brain/catch-up": plan({ caught_up: true, judgment: [], quick: [], upkeep: [], health: { ...health, unsaved: ["knowledge/x.md"] } }),
+    });
+    renderAt(<HomePage />);
+    expect(await screen.findByText("All caught up.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "What went in" })).toHaveAttribute("href", "/catch-up");
+    expect(screen.getByText(/live but not saved to your Brain's history/)).toBeInTheDocument();
+  });
+
+  it("opens the first run for a new Brain", async () => {
+    mockApi({
+      ...cockpit,
+      "GET /api/brain/goals": { ...goals, exists: false, answers: {}, purpose: "" },
       "GET /api/onboarding": {
         steps: [],
         done: 0,
-        total: 5,
-        owner_name: "",
-        brain: { available: true, own_entries: 0, waiting: 0, projects: 0, files: 0 },
+        total: 6,
+        owner_name: "Owner",
+        brain: { available: true, own_entries: 0, waiting: 0, projects: 0, files: 0, goals: false },
         local_model: true,
         completed_at: null,
         dismissed_at: null,
         tour_seen_at: null,
       },
-      "GET /api/notes": [],
     });
     renderAt(<HomePage />);
-    expect(await screen.findByRole("heading", { name: "Your Brain is ready for its first things" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Tell it about you" })).toHaveAttribute("href", "/settings?tab=start");
-    expect(screen.getByRole("link", { name: "Start a project" })).toHaveAttribute("href", "/projects");
-    expect(screen.getByRole("link", { name: "Bring in a recording or a file" })).toHaveAttribute("href", "/capture");
-    expect(screen.getByRole("link", { name: "connect your AI" })).toHaveAttribute("href", "/settings?tab=connections");
-    expect(screen.getByRole("navigation", { name: "How your context flows" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Your Brain at a glance" })).not.toBeInTheDocument();
+    expect(await screen.findByText("navigated away")).toBeInTheDocument();
   });
 
   it("shows the week in the supply chain on the Brain's map", async () => {
@@ -202,8 +218,8 @@ describe("home", () => {
     });
     renderAt(<Week />);
     expect(await screen.findByText("Conversations served")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Found nothing/ })).toHaveAttribute("href", "/brain/gaps");
-    expect(screen.getByRole("link", { name: "5 entries due for a check" })).toHaveAttribute("href", "/brain/entries?view=due");
+    expect(screen.getByRole("link", { name: /Found nothing/ })).toHaveAttribute("href", "/brain/questions");
+    expect(screen.getByRole("link", { name: "5 notes due for a check" })).toHaveAttribute("href", "/brain/entries?view=due");
   });
 });
 
@@ -342,17 +358,18 @@ describe("the earlier workspace in settings", () => {
       },
     });
     const user = userEvent.setup();
-    renderAt(<SettingsPage />, { path: "/settings", route: "/settings" });
+    renderAt(<SettingsPage />, { path: "/settings", route: "/settings?tab=backups" });
     const card = (await screen.findByRole("heading", { name: "Your earlier workspace" })).closest("section") as HTMLElement;
     expect(within(card).getByText(/12 projects, 1 goal, 19 open to-dos, 18 project memories/)).toBeInTheDocument();
     await user.click(within(card).getByRole("button", { name: "Copy it out as files" }));
     expect(await within(card).findByText(/Wrote 40 files/)).toBeInTheDocument();
     await user.click(within(card).getByRole("button", { name: "Bring it into the Brain" }));
     expect(await within(card).findByRole("status")).toHaveTextContent(
-      "Started 1 project (Website Work); matched 11 projects; 18 memories waiting in Review; 3 files filed; 19 to-dos made next steps.",
+      "Started 1 project (Website Work); matched 11 projects; 18 memories waiting in Catch up; 3 files filed; 19 to-dos made next steps.",
     );
     expect(within(card).getByRole("link", { name: "Open to-dos from the earlier workspace" })).toHaveAttribute("href", "/capture/ctx_9");
     expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/legacy/export", "/api/legacy/bring-into-brain"]);
+    expect(screen.getByRole("button", { name: "Back up now" })).toBeInTheDocument();
   });
 });
 

@@ -141,10 +141,10 @@ describe("the Skills place", () => {
     expect(screen.getByRole("link", { name: "Run /one-pager" })).toHaveAttribute("href", "/skills/one-pager");
     expect(screen.getByText(/Waiting in/)).toHaveTextContent("/poll-recap");
     // One that other skills build on is kept, not run.
-    expect(screen.getByText("Used by 1 skill, not run on its own")).toBeInTheDocument();
+    expect(screen.getByText("Used by other skills (1 skill), not run on its own")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Run /shared-assets" })).not.toBeInTheDocument();
     // The Brain's own housekeeping is called by name in a conversation.
-    expect(screen.getByText("Run it in a chat with /end-session")).toBeInTheDocument();
+    expect(screen.getByText("Use it in a chat: /end-session")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Run /end-session" })).not.toBeInTheDocument();
   });
 

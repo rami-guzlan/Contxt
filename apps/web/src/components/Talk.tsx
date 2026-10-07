@@ -6,7 +6,7 @@ import { Mic, Square, X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
-import { useTalkUpload } from "../api/hooks";
+import { useDictate, useTalkUpload } from "../api/hooks";
 import type { Note } from "../api/types";
 
 const HOLD_MS = 300; // a press longer than this is push-to-talk; a shorter one a tap
@@ -15,6 +15,13 @@ const TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;c
 
 type State = "idle" | "asking" | "listening" | "sending";
 
+/** Where what is said goes instead of Capture: a field the page is filling in. */
+export interface DictationTarget {
+  /** What the status line calls it: "your answer". */
+  label: string;
+  add(text: string): void;
+}
+
 interface Talk {
   state: State;
   /** A tap started it: it listens until the next press. */
@@ -22,9 +29,13 @@ interface Talk {
   seconds: number;
   error: string | null;
   saved: Note | null;
+  /** Dictating into a field rather than saving to Capture. */
+  target: DictationTarget | null;
   press(): void;
   release(): void;
   dismiss(): void;
+  /** A page names the field Space and the Talk button dictate into; null gives it back. */
+  setTarget(target: DictationTarget | null): void;
 }
 
 const TalkContext = createContext<Talk | null>(null);
@@ -86,6 +97,13 @@ function typing(target: EventTarget | null): boolean {
 
 export function TalkProvider({ children }: { children: ReactNode }) {
   const upload = useTalkUpload();
+  const dictate = useDictate();
+  const [target, setTargetState] = useState<DictationTarget | null>(null);
+  const into = useRef<DictationTarget | null>(null);
+  const setTarget = useCallback((next: DictationTarget | null) => {
+    into.current = next;
+    setTargetState(next);
+  }, []);
   const { begin, end } = useRecorder();
   const [state, setState] = useState<State>("idle");
   const [latched, setLatched] = useState(false);
@@ -112,6 +130,22 @@ export function TalkProvider({ children }: { children: ReactNode }) {
       setError("That was too short to hear. Hold a little longer.");
       return;
     }
+    const field = into.current;
+    if (field) {
+      // Dictation: the words go into the field; the audio is not kept.
+      dictate.mutate(blob, {
+        onSuccess: (heard) => {
+          if (heard.text) field.add(heard.text);
+          else setError("Nothing was heard. Try again, a little closer to the microphone.");
+          move("idle");
+        },
+        onError: (caught) => {
+          move("idle");
+          setError(caught instanceof Error ? caught.message : "It could not be heard. Type it instead.");
+        },
+      });
+      return;
+    }
     upload.mutate(blob, {
       onSuccess: (note) => {
         setSaved(note);
@@ -122,7 +156,7 @@ export function TalkProvider({ children }: { children: ReactNode }) {
         setError(caught instanceof Error ? caught.message : "It could not be sent. Try again.");
       },
     });
-  }, [end, move, upload]);
+  }, [dictate, end, move, upload]);
 
   const start = useCallback(async () => {
     setError(null);
@@ -208,7 +242,7 @@ export function TalkProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [saved]);
 
-  const value: Talk = { state, latched, seconds, error, saved, press, release, dismiss };
+  const value: Talk = { state, latched, seconds, error, saved, target, press, release, dismiss, setTarget };
   return (
     <TalkContext.Provider value={value}>
       {children}
@@ -219,7 +253,7 @@ export function TalkProvider({ children }: { children: ReactNode }) {
 
 /** What the microphone is doing, and where what was said went. */
 function TalkStatus({ talk }: { talk: Talk }) {
-  const { state, latched, seconds, error, saved } = talk;
+  const { state, latched, seconds, error, saved, target } = talk;
   if (state === "idle" && !error && !saved) return null;
   return (
     <div className={`talk-status${state === "listening" ? " live" : ""}`} role="status" aria-live="polite">
@@ -228,11 +262,18 @@ function TalkStatus({ talk }: { talk: Talk }) {
         <>
           <span className="talk-dot" aria-hidden="true" />
           <span>
-            Listening {formatSeconds(seconds)}. {latched ? "Press again to send." : "Let go to send."}
+            Listening {formatSeconds(seconds)}.{" "}
+            {target
+              ? latched
+                ? `Press again to add it to ${target.label}.`
+                : `Let go to add it to ${target.label}.`
+              : latched
+                ? "Press again to send."
+                : "Let go to send."}
           </span>
         </>
       ) : null}
-      {state === "sending" ? <span>Sending…</span> : null}
+      {state === "sending" ? <span>{target ? "Writing it down…" : "Sending…"}</span> : null}
       {state === "idle" && saved ? (
         <span>
           Saved to Capture, turning it into text. <Link to={`/capture/${encodeURIComponent(saved.id)}`}>Open it</Link>

@@ -156,13 +156,13 @@ export function topicLabel(routeKey: string, catalog?: BrainCatalog): string {
 }
 
 function Badge({ analysis }: { analysis: ProposalAnalysis }) {
-  if (analysis.conflicts.length) return <span className="chip chip-conflict">Contradicts an entry</span>;
+  if (analysis.conflicts.length) return <span className="chip chip-conflict">Might disagree with a note</span>;
   if (analysis.problems.length) return <span className="chip chip-conflict">Check first</span>;
-  if (closeOverlaps(analysis).length) return <span className="chip chip-close">Close to an entry</span>;
-  if (analysis.duplicates.length) return <span className="chip chip-close">Repeats a proposal</span>;
-  if (analysis.change === "new" && analysis.replaces.length) return <span className="chip chip-replace">Replaces an entry</span>;
-  if (analysis.change === "update") return <span className="chip chip-replace">Changes an entry</span>;
-  if (analysis.change === "retire") return <span className="chip chip-conflict">Retires an entry</span>;
+  if (closeOverlaps(analysis).length) return <span className="chip chip-close">Close to a note</span>;
+  if (analysis.duplicates.length) return <span className="chip chip-close">Repeats a suggestion</span>;
+  if (analysis.change === "new" && analysis.replaces.length) return <span className="chip chip-replace">Replaces a note</span>;
+  if (analysis.change === "update") return <span className="chip chip-replace">Changes a note</span>;
+  if (analysis.change === "retire") return <span className="chip chip-conflict">Retires a note</span>;
   if (analysis.change === "skill")
     return <span className="chip chip-kind">{analysis.kind === "skill.update" ? "Changes a skill" : "New skill"}</span>;
   if (analysis.change === "file") return <span className="chip chip-kind">{label(analysis.change)}</span>;
@@ -318,7 +318,7 @@ function ProposalDetail({
         />
       ) : analysis.change === "retire" && analysis.replaces[0] ? (
         <div className="relation">
-          <p className="relation-head">Retires this entry. It leaves every task; Undo brings it back.</p>
+          <p className="relation-head">Retires this note. It leaves every task; Undo brings it back.</p>
           <div className="document compact">
             <Markdown text={analysis.replaces[0].body} />
           </div>

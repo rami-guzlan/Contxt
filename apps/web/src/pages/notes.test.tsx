@@ -170,9 +170,10 @@ describe("notes", () => {
     });
     const user = userEvent.setup();
     renderAt(<NotePage />, at);
-    const panel = await screen.findByRole("region", { name: "Pull into the Brain" });
+    const panel = await screen.findByRole("region", { name: "Pull what matters" });
+    expect(within(panel).getByText(/against your goals and active projects/)).toBeInTheDocument();
     await user.type(within(panel).getByLabelText("What to pull in (optional)"), "Only the decisions");
-    await user.click(within(panel).getByRole("button", { name: "Suggest what to keep" }));
+    await user.click(within(panel).getByRole("button", { name: "Pull what matters" }));
     expect(await within(panel).findByText("Waiting for a model to take it.")).toBeInTheDocument();
     await user.click(await within(panel).findByRole("button", { name: "Run now with Claude Code" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/api/runners/claude/runs")).toBe(true));
@@ -189,7 +190,7 @@ describe("notes", () => {
     renderAt(<NotePage />, at);
     await user.click(await screen.findByRole("button", { name: "select a sentence" }));
     const part = await screen.findByRole("region", { name: "Remember the selection" });
-    await user.type(within(part).getByLabelText("Entry title"), "Video budget");
+    await user.type(within(part).getByLabelText("Note title"), "Video budget");
     await user.click(within(part).getByRole("button", { name: "Suggest it" }));
     expect(await within(part).findByText(/waits in Review/)).toBeInTheDocument();
     expect(calls.find((c) => c.path === "/api/brain/proposals")?.body).toMatchObject({

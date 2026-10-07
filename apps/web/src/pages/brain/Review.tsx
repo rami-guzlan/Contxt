@@ -113,7 +113,7 @@ export function BatchTiles({ batch }: { batch: ReviewBatch }) {
         <dd>{c.look}</dd>
       </div>
       <div className="tile">
-        <dt>Replace or change entries</dt>
+        <dt>Replace or change notes</dt>
         <dd>{c.replaces + c.updates}</dd>
       </div>
       {c.files ? (

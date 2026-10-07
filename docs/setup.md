@@ -20,7 +20,7 @@ uv run contxt web --download
 
 `web --download` fetches this version's built web app from its GitHub release and checks it
 against its checksum. To build it yourself instead, you need [Node.js](https://nodejs.org/)
-20+: `npm install`, then `npm run build`. On Windows, run the commands in PowerShell, one per
+20.19+: `npm install`, then `npm run build`. On Windows, run the commands in PowerShell, one per
 line.
 
 ## 2. Make your Brain
@@ -94,7 +94,8 @@ running for your AI apps to use the Brain.
 From then on, every chat starts by asking the Brain for the context its request needs
 (`get_task_context`), and proposes what it learns: rules and preferences you state, decisions,
 progress on your projects, files you share. Projects and files go in at once with an undo
-point; rules and preferences wait for you in **Review**.
+point; what else your AI picks up waits for you in **Catch up** (Settings, Approval, says what
+waits).
 
 ## 5. Match by meaning, and talk (optional)
 

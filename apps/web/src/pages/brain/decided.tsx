@@ -14,6 +14,8 @@ export interface Decided {
   checkpoint: BrainCheckpoint | null;
   undone?: boolean;
   failed?: string[];
+  /** Live, but saving it to the Brain's git history failed: why. */
+  unsaved?: string;
 }
 
 export function describeOutcome(outcome: DecisionOutcome): Decided {
@@ -23,6 +25,7 @@ export function describeOutcome(outcome: DecisionOutcome): Decided {
     message: label ? `${label}. Undo point saved.` : failed.length ? "Nothing changed." : "Done.",
     checkpoint: outcome.checkpoint,
     failed,
+    unsaved: outcome.commit_error,
   };
 }
 
@@ -33,7 +36,13 @@ export function DecidedBanner({ decided, onChange }: { decided: Decided; onChang
     <div className="decided" role="status">
       <div>
         <strong>{decided.message}</strong>
-        {decided.undone ? <span> The Brain is back to how it was before; its proposals are waiting again.</span> : null}
+        {decided.undone ? <span> The Brain is back to how it was before; its suggestions are waiting again.</span> : null}
+        {decided.unsaved ? (
+          <p className="warning small">
+            It is live, but saving it to the Brain's history failed ({decided.unsaved}). The next change tries again; Home shows it until
+            then.
+          </p>
+        ) : null}
         {decided.failed?.length ? (
           <ul className="error">
             {decided.failed.map((message) => (
@@ -62,7 +71,7 @@ export function DecidedBanner({ decided, onChange }: { decided: Decided; onChang
             {decided.undone ? "Redo" : "Undo"}
           </button>
         ) : null}
-        <Link className="button" to="/brain/history?view=undo">
+        <Link className="button" to="/activity?tab=changes&view=undo">
           History
         </Link>
         <button type="button" className="link" aria-label="Dismiss" onClick={() => onChange(null)}>

@@ -6,11 +6,13 @@ import { type FormEvent, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import {
+  useAiRequests,
   useBrainDecisions,
   useBrainProject,
   useBrainProjects,
   useBrainProposals,
   useCreateBrainProject,
+  useGoals,
   useUpdateProject,
 } from "../api/hooks";
 import type { BrainProject, BrainProjectDetail } from "../api/types";
@@ -22,6 +24,13 @@ import { AddFileDialog } from "./brain/AddFile";
 import { day, entryUrl, fileViewUrl } from "./brain/shared";
 
 const projectUrl = (id: string) => `/projects/${encodeURIComponent(id)}`;
+const QUIET_DAYS = 14; // this long without a move, a project is asked whether it is still active
+
+/** Days since a project last moved, or null when it never did. */
+export function quietDays(updated: string | null | undefined, now = Date.now()): number | null {
+  if (!updated) return null;
+  return Math.floor((now - new Date(updated).getTime()) / 86_400_000);
+}
 
 /** Text cut at a word to fit a card; the project's page has it whole. */
 function clip(text: string, limit: number): string {
@@ -84,6 +93,9 @@ export function ProjectsPage() {
 }
 
 function ProjectCard({ project }: { project: BrainProject }) {
+  const { data: goals } = useGoals();
+  const fromGoals = (goals?.projects ?? []).some((name) => name.toLowerCase() === project.title.toLowerCase());
+  const quiet = quietDays(project.updated);
   return (
     <li className="card project-card">
       <header>
@@ -91,6 +103,7 @@ function ProjectCard({ project }: { project: BrainProject }) {
           <Link to={projectUrl(project.id)}>{project.title}</Link>
         </h3>
         {project.status && project.status !== "active" ? <span className="chip">{label(project.status)}</span> : null}
+        {fromGoals ? <span className="chip small">From your goals</span> : null}
       </header>
       {project.summary ? <p className="muted">{project.summary}</p> : null}
       {project.current && project.current !== project.summary ? (
@@ -107,7 +120,32 @@ function ProjectCard({ project }: { project: BrainProject }) {
         {plural(project.files, "file")} · {plural(project.updates, "update")}
         {project.updated ? ` · moved ${when(project.updated)}` : ""}
       </p>
+      {project.active && quiet !== null && quiet >= QUIET_DAYS ? <StillActive project={project} days={quiet} /> : null}
     </li>
+  );
+}
+
+/** Nothing moved in two weeks: still active, paused, or done? One tap. */
+function StillActive({ project, days }: { project: BrainProject; days: number }) {
+  const update = useUpdateProject(project.id);
+  const set = (status: string, summary: string) => update.mutate({ summary, state: { status } });
+  if (update.isSuccess) return <p className="small muted">Noted.</p>;
+  return (
+    <div className="nudge small">
+      <span>Nothing moved in {plural(days, "day")}. Still active?</span>
+      <div className="row">
+        <button type="button" className="link small" disabled={update.isPending} onClick={() => set("active", "Still active")}>
+          Yes
+        </button>
+        <button type="button" className="link small" disabled={update.isPending} onClick={() => set("paused", "Paused for now")}>
+          Paused
+        </button>
+        <button type="button" className="link small" disabled={update.isPending} onClick={() => set("done", "Done")}>
+          Done
+        </button>
+      </div>
+      <ErrorNote error={update.error} />
+    </div>
   );
 }
 
@@ -202,6 +240,9 @@ export function ProjectPage() {
       <Section title="Progress">
         <Timeline project={project} />
       </Section>
+      <Section title="Your AI on this project">
+        <AiOnProject id={project.id} />
+      </Section>
       <Section title="Kept with it">
         <Waiting project={project} />
         {project.notes.length ? (
@@ -227,6 +268,29 @@ export function ProjectPage() {
         </Section>
       ) : null}
     </div>
+  );
+}
+
+/** The recent requests that brought this project: which app, when, and what was asked. */
+function AiOnProject({ id }: { id: string }) {
+  const { data } = useAiRequests({ limit: 100 });
+  const mine = (data?.requests ?? []).filter((r) => r.project?.id === id || r.got.some((p) => p.kind === "focus" && p.id === id)).slice(0, 6);
+  if (!mine.length) {
+    return <p className="muted small">No AI has asked about it yet. Mention it in any chat and its state comes along.</p>;
+  }
+  return (
+    <ul className="list compact-list">
+      {mine.map((r) => (
+        <li key={r.id}>
+          <strong>{r.app}</strong> <span className="muted small">{when(r.at)}</span> · “{r.request}”
+        </li>
+      ))}
+      <li>
+        <Link className="small" to="/activity">
+          Everything in Activity
+        </Link>
+      </li>
+    </ul>
   );
 }
 
