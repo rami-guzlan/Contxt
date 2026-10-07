@@ -415,6 +415,7 @@ class FakeBrain:
         project=None,
         status=None,
         origin="app",
+        wait=False,
     ):
         self.uploaded.append(
             {
@@ -427,9 +428,10 @@ class FakeBrain:
                 "project": project,
                 "status": status,
                 "origin": origin,
+                "wait": wait,
             }
         )
-        if self.file_policy == "apply":
+        if self.file_policy == "apply" and not wait:
             return BrainProposal(
                 status="applied",
                 message="Filed it. Your AI can use it now.",
@@ -614,6 +616,15 @@ class FakeBrain:
             "gaps": 0,
         }
 
+    def unsaved(self):
+        return list(getattr(self, "unsaved_paths", []))
+
+    def models(self):
+        return {"matching": {"enabled": True, "present": False, "downloading": False}}
+
+    def download_models(self):
+        return {"matching": {"enabled": True, "present": False, "downloading": True}}
+
     def made_from(self, path):
         return None
 
@@ -679,6 +690,8 @@ class FakeBrain:
                 if not text:
                     continue
                 status, _, rest = text.partition(":") if ":" in text else ("new", "", text)
+                off = status == "off"  # an idea the sift left out
+                project = status == "project"  # one that serves a goal and a project
                 ideas.append(
                     {
                         "id": f"i{len(ideas) + 1}",
@@ -697,6 +710,15 @@ class FakeBrain:
                         else None,
                         "private": "a password or key" if status == "secret" else None,
                         "secret": status == "secret",
+                        "fits": not off,
+                        "serves": {
+                            "goal": "what your Brain is for" if project else None,
+                            "project": {"id": "q4-webinars", "title": "Q4 webinars"}
+                            if project
+                            else None,
+                            "about_you": status == "rule",
+                        },
+                        **({"left_out": "none of your goals or projects covers it"} if off else {}),
                     }
                 )
         return {

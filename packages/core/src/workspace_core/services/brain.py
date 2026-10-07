@@ -457,6 +457,18 @@ class Brain:
         who.require("brain.read")
         return self.rt.brain.policies()
 
+    def models(self, who: Principal) -> dict[str, Any]:
+        """The local model that matches by meaning: here, being fetched, or not yet."""
+        who.require("brain.read")
+        return self.rt.brain.models()
+
+    def download_models(self, who: Principal) -> dict[str, Any]:
+        """Fetch the matching model, once: the owner's call, never automatic."""
+        who.require("workspace.admin")
+        if not who.is_human:
+            raise PermissionDenied("Only a person downloads a model.")
+        return self.rt.brain.download_models()
+
     def set_policies(self, who: Principal, changes: dict[str, Any]) -> dict[str, Any]:
         """The owner changes how the Brain is governed: one undo point, one event."""
         who.require("brain.govern")

@@ -37,6 +37,9 @@ docker/exports/*
 # Brain runtime state
 .brain/
 
+# The local models the model tests use (scripts/fetch_test_models.py)
+.test-models/
+
 # Scratch space for tools that need a writable temp folder
 .tmp/
 

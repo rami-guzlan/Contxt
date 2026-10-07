@@ -227,8 +227,12 @@ def _identity(folder: str) -> list[str]:
 
 
 def start_history(brain: str, message: str) -> None:
-    """Make `brain` a git repository of its own, with everything in it as the first commit."""
-    for args in (["init", "-q", "-b", "main"], ["add", "-A"]):
+    """Make `brain` a git repository of its own, with everything in it as the first commit.
+    On Windows it allows long paths, so a Brain in a deep folder still commits."""
+    steps = [["init", "-q", "-b", "main"]]
+    if os.name == "nt":
+        steps.append(["config", "core.longpaths", "true"])
+    for args in [*steps, ["add", "-A"]]:
         done = _git(brain, *args)
         if done.returncode != 0:
             raise HomeError(f"git {args[0]} failed in {brain}: {done.stderr.strip()}")

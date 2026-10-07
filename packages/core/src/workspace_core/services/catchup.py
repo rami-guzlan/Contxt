@@ -37,6 +37,7 @@ from workspace_core.domain.policy import Principal
 from workspace_core.errors import ValidationFailed
 
 from .brain import Brain, display_name
+from .legacy import Legacy
 from .onboarding import GOALS_ID
 from .runtime import Runtime
 
@@ -250,9 +251,10 @@ def offers(
 
 
 class CatchUp:
-    def __init__(self, rt: Runtime, brain: Brain) -> None:
+    def __init__(self, rt: Runtime, brain: Brain, legacy: Legacy | None = None) -> None:
         self.rt = rt
         self.brain = brain
+        self.legacy = legacy
         self._project_titles: dict[str, str] = {}
 
     # ---------------------------------------------------------------- the plan
@@ -294,11 +296,16 @@ class CatchUp:
         ]
         recap = port.recap(since)
         handled = recap.get("went_in") or []
+        # Offered once, until it is brought in or set aside: what the earlier workspace holds.
+        legacy = self.legacy.offer(who) if self.legacy is not None else None
+        if legacy is not None and legacy["key"] in hidden:
+            legacy = None
         seconds = (
             SECONDS["judgment"] * len(judgment)
             + SECONDS["quick"] * len(quick)
             + sum(SECONDS.get(card["type"], 20) for card in upkeep)
             + SECONDS["offer"] * len(offered)
+            + (legacy["seconds"] if legacy else 0)
         )
         return {
             "seen_at": seen_at,
@@ -307,23 +314,25 @@ class CatchUp:
             "recap_first": away is not None and away >= AWAY_DAYS,
             "seconds": seconds,
             "minutes": math.ceil(seconds / 60) if seconds else 0,
-            "caught_up": not (judgment or quick or upkeep or offered),
+            "caught_up": not (judgment or quick or upkeep or offered or legacy),
             "counts": {
                 "judgment": len(judgment),
                 "quick": len(quick),
                 "quick_items": sum(g["count"] for g in quick),
                 "upkeep": len(upkeep),
                 "offers": len(offered),
+                "legacy": 1 if legacy else 0,
                 "handled": recap.get("went_in_total", len(handled)),
                 "snoozed": sum(1 for key in hidden if key in state.get("snoozed", {})),
             },
-            "health": health(inventory, attention, now),
+            "health": dict(health(inventory, attention, now), unsaved=port.unsaved()),
             "recap": recap,
             "handled": handled,
             "judgment": judgment,
             "quick": quick,
             "upkeep": upkeep,
             "offers": offered,
+            "legacy": legacy,
             "nudges": [n for n in self._nudges(now, projects) if n["key"] not in hidden],
             "preset": policies.get("preset"),
         }

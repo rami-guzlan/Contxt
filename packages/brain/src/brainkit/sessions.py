@@ -79,6 +79,10 @@ class Ledger:
         if "reason" not in columns:
             with contextlib.suppress(sqlite3.OperationalError):  # another process added it
                 conn.execute("ALTER TABLE deliveries ADD COLUMN reason TEXT")
+        held = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+        if "engine" not in held:
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE sessions ADD COLUMN engine TEXT")
         claimed = conn.execute("INSERT OR IGNORE INTO ledger_meta (key, value) VALUES "
                                "('usage_backfill', ?)", (util.now_iso(),)).rowcount
         if claimed:
@@ -136,16 +140,19 @@ class Ledger:
         text = str(session_id or "").strip()
         return 3 <= len(text) <= 120 and all(c.isalnum() or c in "-_.:" for c in text)
 
-    def touch(self, session_id: str, principal: str = "", label: str = "") -> None:
-        """Note a session as seen now; `label` names the app it came from (the MCP client),
-        kept from the first time it is known."""
+    def touch(self, session_id: str, principal: str = "", label: str = "",
+              engine: str = "") -> None:
+        """Note a session as seen now; `label` names the app it came from (the MCP client)
+        and `engine` the engine code it ran, each kept from the first time it is known."""
         now = util.now_iso()
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO sessions (id, principal, created, seen, label) "
-                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET seen = excluded.seen, "
-                "label = COALESCE(NULLIF(sessions.label, ''), excluded.label)",
-                (session_id, principal, now, now, str(label or "") or None))
+                "INSERT INTO sessions (id, principal, created, seen, label, engine) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET seen = excluded.seen, "
+                "label = COALESCE(NULLIF(sessions.label, ''), excluded.label), "
+                "engine = COALESCE(NULLIF(sessions.engine, ''), excluded.engine)",
+                (session_id, principal, now, now, str(label or "") or None,
+                 str(engine or "") or None))
         self.prune()
 
     def exists(self, session_id: str) -> bool:
@@ -399,7 +406,8 @@ class Ledger:
         the request, its tokens, its session's app (`client`), each piece it delivered with
         why, and what the conversation opened after it (until its next packet)."""
         query = ("SELECT p.id, p.session_id, p.at, p.request, p.mode, p.tokens, p.data, "
-                 "s.label AS client FROM packets p LEFT JOIN sessions s ON s.id = p.session_id")
+                 "s.label AS client, s.engine AS engine FROM packets p "
+                 "LEFT JOIN sessions s ON s.id = p.session_id")
         params: list = []
         where = []
         if before:

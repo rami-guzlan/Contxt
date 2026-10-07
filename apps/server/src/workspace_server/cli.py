@@ -42,6 +42,17 @@ from . import doctor, homes, webapp
 from .settings import Settings, new_token
 
 
+def _opening(p: argparse.ArgumentParser) -> None:
+    """Whether serving opens the browser, signed in (the first time it does by itself)."""
+    opening = p.add_mutually_exclusive_group()
+    opening.add_argument(
+        "--open", action="store_true", help="open the app in the browser, signed in"
+    )
+    opening.add_argument(
+        "--no-open", action="store_true", help="do not open the browser (the first time does)"
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="contxt", description=__doc__.split("\n")[0])
     parser.add_argument("--home", help="the Contxt folder to use (default: this one)")
@@ -57,6 +68,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int)
     p.add_argument("--host")
     p.add_argument("--no-worker", action="store_true")
+    _opening(p)
     sub.add_parser("starters", help="the starter Brains")
     p = sub.add_parser("connect", help="connect an AI app to your Brain")
     p.add_argument("client", nargs="?", choices=sorted(BRAIN_CLIENTS))
@@ -69,13 +81,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--host")
     p.add_argument("--port", type=int)
     p.add_argument("--no-worker", action="store_true")
-    opening = p.add_mutually_exclusive_group()
-    opening.add_argument(
-        "--open", action="store_true", help="open the app in the browser, signed in"
-    )
-    opening.add_argument(
-        "--no-open", action="store_true", help="do not open the browser (the first time does)"
-    )
+    _opening(p)
     p = sub.add_parser("worker")
     p.add_argument("--once", action="store_true")
     p = sub.add_parser("mcp")

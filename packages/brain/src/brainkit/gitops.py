@@ -16,6 +16,11 @@ import os
 import subprocess
 
 FALLBACK_IDENTITY = ("AI Brain", "brain@localhost")
+# Git for Windows refuses paths over 260 characters unless told otherwise; a Brain in a deep
+# folder (a OneDrive path, a long home) would then fail every commit.
+GIT = ("git", "-c", "core.longpaths=true") if os.name == "nt" else ("git",)
+# Where governed changes live in a vault: what must reach git for the history and undo to hold.
+GOVERNED = ("knowledge", "inbox", "references", "skills", "assets", "journal")
 
 
 def _env() -> dict:
@@ -31,7 +36,7 @@ def _run(root, *args, timeout=20):
     kwargs = dict(cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
                   timeout=timeout, stdin=subprocess.DEVNULL, env=_env(), **_flags())
     try:
-        return subprocess.run(["git", *args], **kwargs)
+        return subprocess.run([*GIT, *args], **kwargs)
     except (OSError, subprocess.SubprocessError):
         return None
 
@@ -143,6 +148,24 @@ def locate_own(folder, root) -> tuple[str, str] | None:
     return found if same else None
 
 
+def uncommitted(root, folders) -> list[str]:
+    """Paths under `folders` (relative to `root`) whose changes are not committed: what a
+    failed commit left live but unsaved. Empty when `root` is not the Brain's own repository."""
+    if not folders or not is_repo(root) or not owns_repo(root):
+        return []
+    proc = _run(root, "status", "--porcelain", "--untracked-files=all", "--", *folders)
+    if proc is None or proc.returncode != 0:
+        return []
+    out = []
+    for line in proc.stdout.splitlines():
+        path = line[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if path:
+            out.append(path.strip('"'))
+    return out
+
+
 def commit(root, paths, message) -> dict:
     """Stage and commit `paths` (absolute or root-relative). Returns what happened.
 
@@ -174,13 +197,14 @@ def commit(root, paths, message) -> dict:
         return {"committed": False, "reason": "nothing to commit"}
     add = _run(root, "add", "--all", "--", *rels)
     if add is None or add.returncode != 0:
-        return {"committed": False, "reason": (add.stderr.strip() if add else "git unavailable")}
+        return {"committed": False, "failed": True,
+                "reason": (add.stderr.strip() if add else "git unavailable")}
     staged = _run(root, "diff", "--cached", "--name-only", "--", *rels)
     if staged is None or not staged.stdout.strip():
         return {"committed": False, "reason": "no changes"}
     proc = _run(root, *_identity(root), "commit", "--no-verify", "-m", message, "--", *rels)
     if proc is None or proc.returncode != 0:
-        return {"committed": False,
+        return {"committed": False, "failed": True,
                 "reason": (proc.stderr.strip() or proc.stdout.strip()) if proc else "git failed"}
     head = _run(root, "rev-parse", "--short", "HEAD")
     return {"committed": True, "commit": head.stdout.strip() if head else None,

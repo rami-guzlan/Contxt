@@ -538,6 +538,8 @@ class Index:
             every = [f"{n.title} {n.summary} {n.body}" for n in self.notes.values()]
             words = [_cased(word, own) or _cased(word, every) or word
                      for word in name.replace("_", "-").split("-") if word]
+            if key.startswith("people/"):
+                words = [w[:1].upper() + w[1:] if w == w.lower() else w for w in words]
             if words and words[0] == words[0].lower():
                 words[0] = words[0][:1].upper() + words[0][1:]
             found = self._labels[key] = " ".join(words) or key

@@ -30,6 +30,19 @@ def test_a_preview_reads_and_keeping_proposes_what_is_worth_it(ws, owner, brain)
     assert clash["contradicts"] == ["voice-guide"]
 
 
+def test_what_the_sift_left_out_is_kept_only_when_chosen(ws, owner, brain):
+    sources = [{"kind": "paste", "text": "project: Book the guest.\noff: Has a dog named Pepper."}]
+    kept = ws.move_in.keep(owner, sources)
+    assert [p["idea"] for p in kept["proposed"]] == ["i1"]
+    (guest,) = brain.proposed
+    assert (guest["extra"]["goal"], guest["extra"]["project_id"]) == (
+        "what your Brain is for",
+        "q4-webinars",
+    )
+    anyway = ws.move_in.keep(owner, sources, ids=["i2"])  # pulled anyway
+    assert [p["idea"] for p in anyway["proposed"]] == ["i2"]
+
+
 def test_only_the_ideas_chosen_are_kept(ws, owner, brain):
     sources = [{"kind": "paste", "text": MEMORY}]
     kept = ws.move_in.keep(owner, sources, ids=["i3"])

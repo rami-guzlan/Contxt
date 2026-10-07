@@ -13,11 +13,12 @@ person's own computer.
 
 Do it step by step, and show the person each result.
 
-1. Check the prerequisites: `git`, `uv` and Node.js 20 or newer.
+1. Check the prerequisites: `git`, `uv` and Node.js 20.19 or newer (22.12 or newer to run
+   the web tests).
 2. `uv sync`. On Windows, "Failed to update Windows PE resources" is antivirus scanning a
    launcher uv wrote: run it again (each try gets further), or set `TMP` and `TEMP` to a
    folder inside the repository first.
-3. `uv run contxt web --download` for the built web app (or, with Node.js 20+:
+3. `uv run contxt web --download` for the built web app (or, with Node.js 20.19+:
    `npm install`, then `npm run build`).
 4. Ask which starter they want (`uv run contxt starters`; `empty` for their own Brain), then
    `uv run contxt setup --brain <starter>`. Setup refuses to overwrite an existing `brain/`;

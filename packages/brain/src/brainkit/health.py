@@ -143,6 +143,12 @@ def report(brain, *, strict=False):
     stale, why = runtime.stale()
     if stale:
         warnings.append(why)
+    facts.append(f"engine {runtime.VERSION} ({runtime.STARTED_WITH}) from {runtime.ENGINE_DIR}")
+    unsaved = brain.unsaved()
+    if unsaved:
+        warnings.append(f"{len(unsaved)} governed file(s) are live but not saved to git (a commit "
+                        "failed): " + ", ".join(unsaved[:6]) + (" ..." if len(unsaved) > 6 else "")
+                        + ". The next change retries; commit them by hand if it keeps failing.")
 
     lines = [f"# Brain health: {config.name}", ""]
     lines += [f"- {fact}" for fact in facts]

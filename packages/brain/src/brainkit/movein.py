@@ -76,6 +76,8 @@ SUBJECTLESS = re.compile(
     r"runs|leads|manages|owns|writes|speaks|studies|plans|needs|values|cares|tends|"
     r"usually|often|always|never|does|did|was|teaches|builds|travels)\b")
 THE_USER = re.compile(r"^(?:the user|user)('s)?\b", re.IGNORECASE)
+# "Never use emojis" is an instruction; "Never uses emojis" says what the person does.
+HABIT = re.compile(r"^(?:always|never|usually|often)\s+([a-z']+)")
 GENERIC_NAMES = {"me", "you", "owner", "user", "i"}
 
 # Private detail: what should not reach every AI without the person's say. (label, pattern)
@@ -98,6 +100,13 @@ PRIVATE = [
                                 r"debt|mortgage)\b", re.I)),
 ]
 STATUSES = ("new", "known", "waiting", "disagree", "private")
+# The goals an idea can serve, by the question whose answer holds them, in plain words.
+GOAL_LABELS = (("purpose", "what your Brain is for"), ("slips", "what slips today"),
+               ("how", "how you like work done"), ("never", "what an AI never does"),
+               ("work", "your work"), ("working", "how you will know it works"))
+FIT_WORDS = 2  # content words an idea shares with a goal's answer to serve it (3 for a project)
+LEFT_OUT = {"off": "none of your goals or projects covers it",
+            "asked": "you asked to leave this kind of thing out"}
 
 
 def _result(message, data=None, is_error=False):
@@ -147,6 +156,9 @@ def with_subject(text: str, name: str) -> str:
         rest = text[found.end():].lstrip()
         return f"{name}{chr(39) + 's' if found.group(1) else ''} {rest}".strip()
     lowered = text[:1].lower() + text[1:]
+    habit = HABIT.match(lowered)
+    if habit and not (habit.group(1).endswith("s") and not habit.group(1).endswith("ss")):
+        return text  # an instruction to whoever reads it, not a habit of the person's
     if SUBJECTLESS.match(lowered):
         return f"{name} {lowered}"
     return text
@@ -248,15 +260,31 @@ def analyze(brain, sources, *, name: str = "", principal=None):
                               idea_kind == "rule" and (
                                   about_person
                                   or bool(governance.FIRST_PERSON.search(item["text"]))))})
+    sifter = sift(brain, st, chain, partitions)
     for idea in ideas:
         _check(brain, st, idea, notes, canon, waiting, chain, partitions, who)
+        _fit(idea, sifter)
     counts = {status: sum(1 for i in ideas if i["status"] == status) for status in STATUSES}
     kinds = {k: sum(1 for i in ideas if i["kind"] == k and i["status"] not in ("known",
                                                                               "waiting"))
              for k in ("identity", "rule", "state", "fact")}
+    keepable = [i for i in ideas if i["status"] in ("new", "disagree", "private")]
+    projects: dict[str, int] = {}
+    for idea in keepable:
+        if idea["fits"] and idea["serves"]["project"]:
+            title = idea["serves"]["project"]["title"]
+            projects[title] = projects.get(title, 0) + 1
     stages = {"sources": len(read), "chars": sum(s["chars"] for s in read),
               "ideas": len(ideas), "kinds": kinds, **counts,
-              "to_keep": counts["new"] + counts["disagree"] + counts["private"]}
+              # the sift: what serves the goals or a project (or says who the person is and
+              # how they work), and what was left out, one tap from kept
+              "sifted": sifter is not None,
+              "fits": sum(1 for i in keepable if i["fits"]),
+              "for_goals": sum(1 for i in keepable if i["fits"] and i["serves"]["goal"]),
+              "for_projects": projects,
+              "about_you": sum(1 for i in keepable if i["fits"] and i["serves"]["about_you"]),
+              "left_out": sum(1 for i in keepable if not i["fits"]),
+              "to_keep": sum(1 for i in keepable if i["fits"])}
     examples = {}
     if ideas:
         examples["split"] = next((i["id"] for i in ideas if i["text"] != i["original"]),
@@ -266,11 +294,64 @@ def analyze(brain, sources, *, name: str = "", principal=None):
         found = next((i for i in ideas if i["status"] in statuses), None)
         if found is not None:
             examples[stage] = found["id"]
+    if sifter is not None:
+        for stage, wanted in (("fits", True), ("left_out", False)):
+            found = next((i for i in keepable if i["fits"] is wanted and (
+                not wanted or i["serves"]["goal"] or i["serves"]["project"])), None)
+            if found is not None:
+                examples[stage] = found["id"]
     return _result(
         f"Read {len(read)} source(s) into {len(ideas)} idea(s): {counts['new']} new, "
         f"{counts['known'] + counts['waiting']} already known, {counts['disagree']} might "
         f"disagree, {counts['private']} with private detail.",
         {"sources": read, "ideas": ideas, "stages": stages, "examples": examples})
+
+
+def _stems(text) -> set:
+    return util.stems(util.content_terms(text))
+
+
+def sift(brain, st, chain, partitions) -> dict | None:
+    """What ideas are weighed against: the words of each of the owner's goals, what they asked
+    to leave out, and the active projects (names, other names, what each is for). None until
+    the owner has said what the Brain is for."""
+    from . import goals as goals_mod
+    answers = goals_mod.read(brain).get("answers") or {}
+    if not str(answers.get("purpose") or "").strip():
+        return None
+    return {"goals": [(label, _stems(answers.get(key) or "")) for key, label in GOAL_LABELS
+                      if str(answers.get(key) or "").strip()],
+            "leave_out": _stems(answers.get("leave_out") or ""),
+            "projects": [(f, [n for n in [f.title, *f.aliases] if n],
+                          _stems(f"{f.title} {' '.join(f.aliases)} {f.note.summary}"))
+                         for f in st.router.admitted_focuses(chain, partitions) if f.active]}
+
+
+def _fit(idea, sifter) -> None:
+    """Does an idea serve one of the goals, belong to an active project, or tell every AI who
+    the person is or how they want work done? Sets `fits` and `serves` ({goal, project,
+    about_you}); one that fits nothing gets `left_out`, the reason, and can still be kept."""
+    serves = {"goal": None, "project": None,
+              "about_you": bool(idea["personal"]) or idea["kind"] in ("identity", "rule")}
+    idea["serves"] = serves
+    idea["fits"] = True
+    if sifter is None:
+        return  # no goals yet: nothing to sift against
+    words = _stems(idea["text"])
+    plain = util.normalize(idea["text"])
+    for focus, names, stems in sifter["projects"]:
+        if any(util.phrase_in(name, plain) for name in names) or \
+                len(words & stems) >= FIT_WORDS + 1:
+            serves["project"] = {"id": focus.id, "title": focus.title}
+            break
+    shared, label = max(((len(words & stems), label) for label, stems in sifter["goals"]),
+                        default=(0, None))
+    if shared >= FIT_WORDS:
+        serves["goal"] = label
+    if not serves["project"] and len(words & sifter["leave_out"]) >= FIT_WORDS:
+        idea.update(fits=False, left_out=LEFT_OUT["asked"])
+    elif not (serves["goal"] or serves["project"] or serves["about_you"]):
+        idea.update(fits=False, left_out=LEFT_OUT["off"])
 
 
 def _check(brain, st, idea, notes, canon, waiting, chain, partitions, who) -> None:

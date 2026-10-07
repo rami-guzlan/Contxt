@@ -215,4 +215,11 @@ def _git(cwd, *args):
 
 
 def remove(vault):
-    shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+    """Remove a vault made by build(), with the temp folder build() made for it: never a folder
+    that holds anything else (the temp folder itself, which a test's own mkdtemp sits in)."""
+    vault = os.path.abspath(vault)
+    base = os.path.dirname(vault)
+    temp = os.path.abspath(tempfile.gettempdir())
+    if os.path.basename(vault) != "vault" or os.path.normcase(base) == os.path.normcase(temp):
+        raise ValueError(f"fixture.remove takes a vault made by fixture.build(), not {vault}")
+    shutil.rmtree(base, ignore_errors=True)

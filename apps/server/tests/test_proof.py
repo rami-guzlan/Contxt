@@ -189,6 +189,13 @@ def test_what_each_ai_asked_over_rest(owner, runtime):
     assert listed["Claude Code"]["last_request"]["request"] == "How long do web projects take?"
 
 
+def test_serve_and_demo_both_take_the_browser_flags():
+    # _serve reads them, so every command that serves must define them
+    for argv in (["serve"], ["demo", "personal"], ["demo", "personal", "--no-open"]):
+        args = cli._parser().parse_args(argv)
+        assert (args.open, args.no_open) == (False, argv[-1] == "--no-open")
+
+
 def test_the_browser_opens_the_first_time_unless_told_not_to(tmp_path, monkeypatch):
     monkeypatch.delenv("CI", raising=False)
     data = str(tmp_path)

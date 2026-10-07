@@ -321,10 +321,12 @@ class BrainPort(Protocol):
         project: str | None = None,
         status: str | None = None,
         origin: str = "app",
+        wait: bool = False,
     ) -> BrainProposal:
         """File a document or asset (in a project, as a new version of one already there
         when its name says so). The Brain's capture policy decides whether it is filed at
-        once, with an undo point (`status` applied), or waits for review (pending)."""
+        once, with an undo point (`status` applied), or waits for review (pending); `wait`
+        makes it wait whatever the policy says."""
         ...
 
     def projects(self) -> list[BrainProject]:
@@ -428,6 +430,18 @@ class BrainPort(Protocol):
 
     def kernel(self) -> dict[str, Any]:
         """The startup context every conversation gets once: {"text", "tokens"}."""
+        ...
+
+    def unsaved(self) -> list[str]:
+        """Governed files whose changes are live but not saved to git (a commit failed)."""
+        ...
+
+    def models(self) -> dict[str, Any]:
+        """The local model that matches by meaning: whether it is here or being fetched."""
+        ...
+
+    def download_models(self) -> dict[str, Any]:
+        """Fetch the matching model in the background (the owner's call, never automatic)."""
         ...
 
     def made_from(self, path: str) -> dict[str, Any] | None:
@@ -627,6 +641,15 @@ class NoBrain:
 
     def kernel(self) -> dict[str, Any]:
         return {"text": "", "tokens": 0}
+
+    def unsaved(self) -> list[str]:
+        return []
+
+    def models(self) -> dict[str, Any]:
+        return {"matching": {"enabled": False, "present": False, "downloading": False}}
+
+    def download_models(self) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to download a model for.")
 
     def made_from(self, path: str) -> dict[str, Any] | None:
         return None

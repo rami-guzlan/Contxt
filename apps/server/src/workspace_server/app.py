@@ -25,6 +25,7 @@ from .extractor import DocumentExtractor
 from .mcp.protocol import McpHandler
 from .outputs import Outputs
 from .routes import (
+    backups,
     brain,
     bus,
     captures,
@@ -159,6 +160,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         connections,
         runners,
         legacy,
+        backups,
         mcp,
     )
     for module in routers:

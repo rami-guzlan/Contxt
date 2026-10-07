@@ -112,6 +112,15 @@ class MCPServerTests(unittest.TestCase):
                                                 "session_id": session})
         self.assertIn("Already in this conversation", packet["content"][0]["text"])
 
+    def test_a_search_says_when_nothing_is_a_close_match(self):
+        # "clients" reaches two notes, both far below what a request would be handed
+        far = self.call("search_notes", {"query": "quantum pastry for clients next winter abroad"})
+        text = far["content"][0]["text"]
+        self.assertIn("No close match", text)
+        self.assertIn("rules-delivery-001", text)  # the nearest are still listed
+        near = self.call("search_notes", {"query": "how long web design projects take"})
+        self.assertNotIn("No close match", near["content"][0]["text"])
+
     def test_writes_and_refusals(self):
         proposal = self.call("propose_note", {"layer": "facts", "topic": "services",
                                               "scope": "company",

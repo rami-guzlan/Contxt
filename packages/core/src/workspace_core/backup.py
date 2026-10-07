@@ -1,10 +1,12 @@
 """One archive with the database, the files and a manifest; and its restore.
 
 The archive is a plain zip anyone can inspect: `manifest.json`, one JSON Lines file per table,
-the stored objects under their hashes, and optionally the Brain vault (its runtime cache is
-left out). Rows are written in a backend-neutral form, so a SQLite backup restores into
-PostgreSQL and back. Restore verifies every object hash and never writes into a workspace that
-already has data.
+the stored objects under their hashes, and optionally the Brain vault. Of the vault's runtime
+folder (`.brain`) it keeps only what exists nowhere else: the original bytes of filed
+documents (`library`) and files still waiting for review (`staging`). The rest is rebuilt or
+is history that stays on this computer (see docs/operations.md). Rows are written in a
+backend-neutral form, so a SQLite backup restores into PostgreSQL and back. Restore verifies
+every object hash and never writes into a workspace that already has data.
 """
 
 from __future__ import annotations
@@ -26,14 +28,23 @@ from workspace_core.storage.objects import ObjectStore
 from workspace_core.workspace import Workspace
 
 FORMAT = 1
-SKIP_DIRS = {".brain", ".git", "__pycache__"}
+SKIP_DIRS = {".git", "__pycache__"}
+RUNTIME_DIR = ".brain"
+# What a Brain's runtime folder holds that nothing can rebuild: originals and waiting files.
+KEPT_RUNTIME = ("library", "staging")
 
 
 def _vault_files(root: str) -> list[str]:
     out = []
     for base, dirs, files in os.walk(root):
+        here = os.path.relpath(base, root).replace("\\", "/")
+        if here == RUNTIME_DIR:
+            dirs[:] = [d for d in dirs if d in KEPT_RUNTIME]
+            files = []  # caches, the lock and the session ledger: rebuilt or local history
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for name in files:
+            if name.startswith(".probe-"):
+                continue  # a check in progress, not a file
             out.append(os.path.relpath(os.path.join(base, name), root).replace("\\", "/"))
     return sorted(out)
 
@@ -74,6 +85,9 @@ def backup(ws: Workspace, out_path: str, *, brain_vault: str | None = None) -> d
                 "included": bool(brain_files),
                 "source": brain_vault,
                 "files": len(brain_files),
+                "originals": sum(
+                    1 for rel in brain_files if rel.startswith(f"{RUNTIME_DIR}/library/")
+                ),
             },
         }
         archive.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))

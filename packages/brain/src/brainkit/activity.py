@@ -93,6 +93,8 @@ def requests(brain, *, limit=50, before=None, client=None, session=None):
     except Exception:  # an unreadable ledger is an empty page, not an error
         rows = []
     # The whole brain: its live notes, skills and filed documents.
+    from . import runtime
+    current = runtime.code_hash()  # the engine on disk now
     brain_tokens = (sum(n.tokens for n in st.index.notes.values())
                     + sum(s.tokens for s in st.index.skills.values())
                     + sum(r.tokens for r in st.index.references.values())) or 1
@@ -120,12 +122,16 @@ def requests(brain, *, limit=50, before=None, client=None, session=None):
                 data.get("note_ids") or data.get("standing_ids") or data.get("held_ids")
                 or data.get("section_ids")),
             "saved": saved.get(row["session_id"], []) if row.get("last_in_session") else [],
+            "engine": row.get("engine") or None,
+            # a conversation still on older engine code: its app needs a restart
+            "old_engine": bool(row.get("engine")) and row.get("engine") != current,
         })
         if len(out) >= limit:
             break
     apps = sorted({r["app"] for r in out})
     return _result(f"{len(out)} request(s).",
-                   {"requests": out, "brain_tokens": brain_tokens, "apps": apps})
+                   {"requests": out, "brain_tokens": brain_tokens, "apps": apps,
+                    "engine": current})
 
 
 def normal_path(path: str) -> str:

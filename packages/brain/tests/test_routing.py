@@ -351,6 +351,30 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(follow.data["candidates"], [])
         self.assertTrue(set(follow.data["topics"]) <= set(first.data["topics"]))
 
+    def test_editing_a_named_document_part_is_a_pure_edit(self):
+        # A side question between the draft and the edit does not make the edit new: it is
+        # compared with the request that started the draft. "Executive summary" is a part of
+        # the document, not a subject.
+        first = self.brain.context("Write a proposal for a new client's web design project")
+        session = first.data["session_id"]
+        side = self.brain.context("How long do projects run?", session_id=session)
+        self.assertFalse(side.data["followup"])
+        edit = self.brain.context("Make the executive summary warmer", session_id=session)
+        self.assertEqual(edit.data["followup"], "edit")
+        self.assertEqual(edit.data["candidates"], [])
+        self.assertEqual(edit.data["draft"], first.data["draft"])
+        self.assertIn("proposal", edit.data["draft"])
+
+    def test_naming_new_subject_matter_in_a_writing_task_still_continues_it(self):
+        first = self.brain.context("Write a headline for our web design service page")
+        later = self.brain.context("Now add a CTA to the brand sheet offer",
+                                   session_id=first.data["session_id"])
+        self.assertEqual(later.data["followup"], "continuation")
+        self.assertTrue(later.data["composing"])
+        executive = self.brain.context("Make the executive program warmer",
+                                       session_id=first.data["session_id"])
+        self.assertEqual(executive.data["followup"], "continuation")
+
     def test_continuation_reaches_past_the_previous_topics(self):
         # "Also, ..." carries on the conversation and asks something new: it is routed with
         # the conversation's subject, not held to what the first packet loaded.

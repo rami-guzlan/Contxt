@@ -5,10 +5,11 @@ import json
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from brainkit import activity
+from brainkit import activity, runtime
 from brainkit.api import Brain
 from brainkit.mcp_server import Server
 from tests import fixture
@@ -64,6 +65,21 @@ class ActivityTests(unittest.TestCase):
         self.assertEqual(activity.client_label("codex-mcp-client 0.4"), "Codex")
         self.assertEqual(activity.client_label("my-tool 3"), "my-tool")
         self.assertEqual(activity.client_label(""), "An AI app")
+
+    def test_each_request_names_its_engine_and_flags_an_old_one(self):
+        self.brain.context("How long do web projects take?")
+        data = self.brain.requests().data
+        (request,) = data["requests"]
+        self.assertEqual(request["engine"], runtime.STARTED_WITH)
+        self.assertFalse(request["old_engine"])
+        self.assertEqual(data["engine"], runtime.code_hash())
+        # the code on disk moved on: this conversation's app needs a restart
+        with mock.patch.object(runtime, "code_hash", return_value="0000newer000"):
+            (request,) = self.brain.requests().data["requests"]
+        self.assertTrue(request["old_engine"])
+        facts = self.brain.health().data["facts"]
+        self.assertTrue(any(f.startswith(f"engine {runtime.VERSION} ({runtime.STARTED_WITH})")
+                            for f in facts), facts)
 
     def test_paging_and_an_empty_ledger(self):
         self.assertEqual(self.brain.requests().data["requests"], [])

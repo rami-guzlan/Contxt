@@ -177,6 +177,8 @@ class DistillProposal:
     title: str
     # pending | approved | rejected | closed (decided outside the workspace)
     status: str
+    goal: str | None = None  # the owner's goal it serves, as the knowledge agent said
+    project_id: str | None = None  # the active project it belongs to
 
 
 @dataclass(frozen=True)
@@ -334,6 +336,8 @@ class Distillation:
                         id=e["subject_id"],
                         title=str((e["data"] or {}).get("title") or e["subject_id"]),
                         status=status(e["subject_id"]),
+                        goal=(e["data"] or {}).get("goal") or None,
+                        project_id=(e["data"] or {}).get("project_id") or None,
                     )
                     for e in proposed.get(t["id"], [])
                 ],

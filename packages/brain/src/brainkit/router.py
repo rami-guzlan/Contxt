@@ -176,7 +176,14 @@ EDIT_VOCABULARY = frozenset({
     "concrete", "specific", "personal", "conversational", "professional", "confident",
     "positive", "upbeat", "energetic", "readable", "plain", "fluff", "wordy", "awkward",
     "repetitive", "sound", "sounds", "read", "reads", "feel", "feels", "better", "good",
+    # parts of a document an edit names ("make the summary warmer")
+    "summary", "abstract", "body", "conclusion", "caption", "captions", "slide", "slides",
+    "cta", "ctas", "signoff",
 })
+# Parts of a document named in more than one word. Each counts whole, so "make the executive
+# summary warmer" is an edit while "executive program" stays what a request is about.
+EDIT_PHRASES = ("executive summary", "call to action", "calls to action", "subject line",
+                "subject lines", "sign off", "bullet points", "bullet point")
 # Verbs that ask for text to be written or changed; and verbs that make an artifact.
 WRITING_VERBS = frozenset({"write", "draft", "rewrite", "revise", "compose", "tighten",
                            "sharpen", "edit", "polish", "shorten", "proofread", "reword",
@@ -671,6 +678,7 @@ class Route:
     policy: object = None
     previous: dict = field(default_factory=dict)
     subject: str = ""                                 # what the conversation is about now
+    draft: str = ""                                   # the request that started its draft
     pointed_files: list = field(default_factory=list)  # files matched, not quoted: listed
     orientation: list = field(default_factory=list)   # the area map, for orientation
 
@@ -1017,6 +1025,7 @@ class Router:
                       scale=sig.scale, policy=self.policy)
         route.previous = previous
         route.subject = self._subject(sig, previous)
+        route.draft = self._draft(sig, previous)
         skills = self.admitted_skills(chain, partitions)
         focuses = self.admitted_focuses(chain, partitions)
 
@@ -1160,8 +1169,12 @@ class Router:
         paid?" asks something else)."""
         sig.followup = True
         sig.subject = str(previous.get("subject") or previous.get("request") or "").strip()
-        before = util.stems(util.terms(sig.subject))
-        new = util.stems(util.content_terms(sig.request)) - before - _EDIT_STEMS
+        # What the conversation already said: its subject, and the request that started the
+        # draft it is on (a side question in between does not make the draft's words new).
+        before = util.stems(util.terms(sig.subject)) | util.stems(
+            util.terms(previous.get("draft") or ""))
+        new = util.stems(util.content_terms(_without_edit_phrases(sig.request))) - before \
+            - _EDIT_STEMS
         sig.followup_kind = "edit" if EDIT_START.match(sig.text) and not new else "continuation"
         if sig.followup_kind == "continuation" and previous.get("composing") and not (
                 sig.question or "?" in sig.text):
@@ -1174,6 +1187,14 @@ class Router:
         on_demand = [n for n in notes if not n.standing and not self.config.is_focus(n)]
         ranked = self.score_notes(sig.request, on_demand)
         return bool(ranked) and ranked[0].score >= self.policy.lean_floor
+
+    @staticmethod
+    def _draft(sig: Signals, previous: dict) -> str:
+        """The request that started the writing task this conversation is on: a new writing
+        request starts one, and anything else keeps the one before."""
+        if sig.composing and not sig.followup:
+            return sig.request.strip()
+        return str(previous.get("draft") or "")
 
     def _subject(self, sig: Signals, previous: dict) -> str:
         """What the conversation is about after this request: an edit keeps the subject, a
@@ -1897,6 +1918,13 @@ class Router:
 
 
 _EDIT_STEMS = util.stems(EDIT_VOCABULARY | ANAPHORA | CONTINUATION_WORDS)
+_EDIT_PHRASES = re.compile(r"\b(?:" + "|".join(
+    re.escape(p).replace(r"\ ", r"[\s-]+") for p in EDIT_PHRASES) + r")\b", re.IGNORECASE)
+
+
+def _without_edit_phrases(text: str) -> str:
+    """The request with the document parts it names in several words taken out."""
+    return _EDIT_PHRASES.sub(" ", str(text or ""))
 
 
 def _refers_back(sig: Signals) -> str | None:

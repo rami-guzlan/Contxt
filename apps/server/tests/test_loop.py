@@ -83,7 +83,13 @@ def test_the_full_loop(owner, model, note):
     (request,) = owner.ok(owner.get(f"/api/notes/{note['id']}/remember"))
     assert request["summary"] == "One durable statement"
     assert request["proposals"] == [
-        {"id": proposal_id, "title": "Async reviews", "status": "pending"}
+        {
+            "id": proposal_id,
+            "title": "Async reviews",
+            "status": "pending",
+            "goal": None,
+            "project_id": None,
+        }
     ]
     review = owner.ok(owner.get("/api/brain/review"))
     (batch,) = [b for b in review["batches"] if b["task_id"] == task["id"]]
@@ -208,6 +214,42 @@ def test_model_proposals_wait_for_a_person(owner, model, runtime):
     home = owner.ok(owner.get("/api/home"))
     assert home["counts"]["brain_proposals"] == 1
     assert home["workspace"]["name"] == "Test workspace"
+
+
+def test_a_refused_proposal_is_an_mcp_error(model):
+    refused = model.tool(
+        "propose_brain_entry",
+        title="Friday reviews",
+        statement="Design reviews happen on Fridays.",
+        evidence="Client email, 28 Sep",
+        replaces=["no-such-entry-xyz"],
+    )
+    assert refused["isError"] is True
+    assert refused["structuredContent"]["proposal"]["status"] == "refused"
+    assert "refused" in refused["content"][0]["text"].lower()
+
+
+def test_a_retried_proposal_is_not_an_error(model):
+    first = model.tool(
+        "propose_brain_entry",
+        title="Friday reviews",
+        statement="Design reviews happen on Fridays.",
+        evidence="Client email, 28 Sep",
+        idempotency_key="friday-reviews-1",
+    )
+    again = model.tool(
+        "propose_brain_entry",
+        title="Friday reviews",
+        statement="Design reviews happen on Fridays.",
+        evidence="Client email, 28 Sep",
+        idempotency_key="friday-reviews-1",
+    )
+    assert (first["isError"], again["isError"]) == (False, False)
+    assert again["structuredContent"]["proposal"]["status"] == "duplicate"
+    assert (
+        again["structuredContent"]["proposal"]["proposal_id"]
+        == first["structuredContent"]["proposal"]["proposal_id"]
+    )
 
 
 def test_search_covers_the_brain_its_projects_and_your_notes(owner, note):

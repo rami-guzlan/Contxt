@@ -72,6 +72,13 @@ class SplitTests(unittest.TestCase):
                          "Prefers short answers.")
         self.assertEqual(movein.with_subject("Our studio is in Leeds.", "Alex"),
                          "Our studio is in Leeds.")
+        # an instruction stays one; a habit names the person
+        self.assertEqual(movein.with_subject("Never use exclamation marks.", "Alex"),
+                         "Never use exclamation marks.")
+        self.assertEqual(movein.with_subject("Always discuss scope first.", "Alex"),
+                         "Always discuss scope first.")
+        self.assertEqual(movein.with_subject("Never uses emojis.", "Alex"),
+                         "Alex never uses emojis.")
 
     def test_kinds(self):
         self.assertEqual(movein.kind_of("Is a designer.", "About me", "chatgpt"), "identity")
@@ -128,6 +135,44 @@ class AnalyzeTests(unittest.TestCase):
         self.assertEqual([s["ideas"] for s in data["sources"]], [6, 2])
         self.assertEqual(self.brain.state().fingerprint, before)
         self.assertFalse(self.brain.state().snapshot.proposals)
+
+    def test_ideas_are_sifted_against_the_goals_and_the_projects(self):
+        from brainkit import goals
+        goals.write(self.brain, {
+            "purpose": "Run the studio's client work without dropping details.",
+            "work": "Web design for small businesses and their launches.",
+            "leave_out": "Gossip about other studios, and small talk.",
+        })
+        paste = ("- The website redesign starts with the new navigation.\n"
+                 "- Alex has a cat named Biscuit at home.\n"
+                 "- Gossip about other studios from the conference small talk.\n"
+                 "- Prefers short answers with the conclusion first.\n"
+                 "- Client launches need a checklist so no details get dropped.\n")
+        data = self.brain.move_in([{"kind": "chatgpt", "text": paste}], name="Alex").data
+        by_text = {i["original"]: i for i in data["ideas"]}
+        redesign = by_text["The website redesign starts with the new navigation."]
+        self.assertTrue(redesign["fits"])
+        self.assertEqual(redesign["serves"]["project"]["id"], "state-focus-website-redesign")
+        cat = by_text["Alex has a cat named Biscuit at home."]
+        self.assertEqual((cat["fits"], cat["left_out"]),
+                         (False, "none of your goals or projects covers it"))
+        gossip = by_text["Gossip about other studios from the conference small talk."]
+        self.assertEqual((gossip["fits"], gossip["left_out"]),
+                         (False, "you asked to leave this kind of thing out"))
+        short = by_text["Prefers short answers with the conclusion first."]
+        self.assertTrue(short["fits"] and short["serves"]["about_you"])
+        checklist = by_text["Client launches need a checklist so no details get dropped."]
+        self.assertEqual(checklist["serves"]["goal"], "what your Brain is for")
+        stages = data["stages"]
+        self.assertTrue(stages["sifted"])
+        self.assertEqual((stages["left_out"], stages["to_keep"]), (2, stages["fits"]))
+        self.assertEqual(stages["for_projects"], {redesign["serves"]["project"]["title"]: 1})
+        self.assertIn("left_out", data["examples"])
+
+    def test_without_goals_nothing_is_left_out(self):
+        data = self.brain.move_in([{"kind": "chatgpt", "text": CHATGPT}], name="Alex").data
+        self.assertFalse(data["stages"]["sifted"])
+        self.assertTrue(all(i["fits"] for i in data["ideas"]))
 
     def test_an_idea_already_waiting_is_not_new(self):
         self.brain.propose(layer="facts", topic="services", scope="company",

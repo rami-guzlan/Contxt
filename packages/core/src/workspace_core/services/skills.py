@@ -167,9 +167,10 @@ def use_of(skill: BrainSkill, used_by: builtins.list[str]) -> str:
     return "run"
 
 
-def apply_edits(body: str, edits: builtins.list[dict[str, Any]]) -> str:
+def apply_edits(body: str, edits: builtins.list[dict[str, Any]], *, shown: str = "") -> str:
     """The procedure with each quoted passage replaced, in order. A passage must occur exactly
-    once, so an edit can never land somewhere it was not meant for."""
+    once, so an edit can never land somewhere it was not meant for. `shown` is the skill as an
+    AI reads it (a header above the procedure), so a quote from the header is named as such."""
     if len(edits) > MAX_EDITS:
         raise ValidationFailed(f"Send at most {MAX_EDITS} edits at a time.", field="edits")
     for number, edit in enumerate(edits, start=1):
@@ -179,6 +180,14 @@ def apply_edits(body: str, edits: builtins.list[dict[str, Any]]) -> str:
         if not find.strip():
             raise ValidationFailed(f"Edit {number} quotes nothing to find.", field="edits")
         found = body.count(find)
+        if not found and find.strip() in shown:
+            raise ValidationFailed(
+                f"Edit {number}: that passage is in the header shown above the procedure (its "
+                "name, Loads, Folder and the like), which an edit cannot change. Quote the "
+                "procedure itself, the text below the Folder line.",
+                field="edits",
+                find=find[:200],
+            )
         if found != 1:
             raise ValidationFailed(
                 f"Edit {number}: the passage to find occurs {found} times in the skill"
@@ -587,7 +596,8 @@ class Skills:
             current = self.rt.brain.skill_source(target)
             if current is None:
                 raise NotFound(f"No skill {target}.", name=target)
-            body = apply_edits(current, list(edits))
+            shown = self.rt.brain.skill(target)
+            body = apply_edits(current, list(edits), shown=shown.text if shown else "")
         body = str(body or "").strip()
         if not body:
             raise ValidationFailed(

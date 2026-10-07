@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from . import config as config_mod
 from . import kernel as kernel_mod
 from . import packets as packets_mod
+from . import runtime as runtime_mod
 from . import systemdocs, util
 from .index import Embedder, Index, Reranker, configured_model
 from .locking import Busy, WriteLock
@@ -111,6 +112,8 @@ class Brain:
         # The app this process serves (an MCP client's name from its handshake), recorded
         # on each conversation it starts.
         self.client = ""
+        self._write_depth = 0
+        self._unsaved: list[str] = []  # why this write's commit failed, if it did
         # Shared with every other process that writes this vault (locking.py).
         self._writes = WriteLock(os.path.join(self.vault.runtime_dir, "write.lock"))
 
@@ -170,12 +173,42 @@ class Brain:
 
     def _write(self, run) -> Result:
         """Run one change under the vault's write lock. A vault another process holds for
-        too long is an error the caller can retry, not a crash."""
+        too long is an error the caller can retry, not a crash. When the change is live but
+        its commit failed, the reply says so (and why), so nobody believes a change is in the
+        history when it is not."""
+        outermost = self._write_depth == 0
+        if outermost:
+            self._unsaved = []
+        self._write_depth += 1
         try:
             with self.writing():
-                return run()
+                result = run()
         except Busy as exc:
             return Result(str(exc), {"status": "busy"}, is_error=True)
+        finally:
+            self._write_depth -= 1
+        if outermost and self._unsaved and isinstance(result, Result):
+            reason = " ".join(self._unsaved[-1].split())[:300]
+            result.text = (str(result.text).rstrip() + "\n\nThis change is live, but saving it "
+                           f"to the brain's git history failed: {reason}. Its history is "
+                           "incomplete until the next change saves it; brain_health shows it "
+                           "until then.")
+            result.data = dict(result.data or {}, saved=False, commit_error=reason)
+        return result
+
+    def governed_folders(self) -> list[str]:
+        """The vault's governed folders, relative to the repository."""
+        from . import gitops
+        rel = os.path.relpath(self.vault.root, self.repo_root).replace("\\", "/")
+        return [name if rel in (".", "") else f"{rel}/{name}" for name in gitops.GOVERNED]
+
+    def unsaved(self) -> list[str]:
+        """Governed files whose changes are live but not in git (a commit that failed), when
+        this brain commits its changes."""
+        from . import gitops
+        if not (self.state().config.data.get("git") or {}).get("auto_commit", True):
+            return []
+        return gitops.uncommitted(self.repo_root, self.governed_folders())
 
     @property
     def config(self):
@@ -287,7 +320,8 @@ class Brain:
                 # fingerprint the client presented. Later calls need not repeat either.
                 items.append(("kernel", kernel_fp, kernel_fp,
                               0 if kernel_held else util.tokens(kernel_text)))
-            self.ledger.touch(session, chain[-1], label=self.client)
+            self.ledger.touch(session, chain[-1], label=self.client,
+                              engine=runtime_mod.STARTED_WITH)
             self.ledger.record(session, packet.id, str(request), route.mode, packet.text,
                                data, items)
         return Result("\n\n".join(parts), data)
@@ -501,8 +535,14 @@ class Brain:
         file_lines = [f"- {f['title']}: {f['label']} (`{f['path']}`, {f['score']:.2f})"
                       + (" [already in this conversation]" if f["held"] else "")
                       + f": {f['summary']}" for f in files]
+        # Close: the best note would make it into a packet for this as a request, or a file
+        # part passed the search's own bar. Otherwise the nearest notes are only nearest.
+        close = bool(files) or bool(hits and hits[0].score >= st.router.policy.lean_floor)
         parts = []
-        if lines:
+        if lines and not close:
+            parts.append(f"No close match for {query!r}: the nearest notes, none of them likely "
+                         "about it:\n" + "\n".join(lines))
+        elif lines:
             parts.append(f"Notes matching {query!r}, best first:\n" + "\n".join(lines)
                          + '\n\nOpen one with get_note(id="...").')
         if file_lines:
@@ -514,7 +554,8 @@ class Brain:
         else:
             text = (f"No notes or files match {query!r}. Try other words before concluding "
                     "the brain has nothing on it.")
-        return Result(text, {"hits": rows, "files": files, "query": query})
+        return Result(text, {"hits": rows, "files": files, "query": query,
+                             "close_match": close})
 
     def topics(self, *, principal=None) -> Result:
         caller = self.caller(principal)
@@ -983,7 +1024,17 @@ class Brain:
         kernel_outcome = self.write_kernel().data
         commit = None
         if (self.state().config.data.get("git") or {}).get("auto_commit", True):
+            # What an earlier failed commit left unsaved goes with this one: a retry.
+            earlier = gitops.uncommitted(self.repo_root, self.governed_folders())
             commit = gitops.commit(self.repo_root, list(paths) + [
-                os.path.join(self.repo_root, name) for name in kernel_outcome.get("written", [])],
-                message)
+                os.path.join(self.repo_root, name) for name in kernel_outcome.get("written", [])]
+                + [os.path.join(self.repo_root, p) for p in earlier], message)
+            if commit and commit.get("failed"):
+                reason = str(commit.get("reason") or "git failed")
+                self._unsaved.append(reason)
+                self.vault.append_decision({
+                    "at": util.now_iso(), "action": "unsaved", "reason": reason[:500],
+                    "message": str(message)[:300],
+                    "paths": [os.path.relpath(p, self.repo_root).replace("\\", "/")
+                              for p in paths if p][:50]})
         return {"kernel": kernel_outcome, "commit": commit}

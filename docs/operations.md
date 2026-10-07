@@ -61,8 +61,19 @@ docker compose cp app:/data/backups/today.zip .
 ```
 
 The archive is a plain zip: `manifest.json`, one JSON Lines file per table, the stored files
-under their hashes, and with `--with-brain` the Brain vault (without its rebuildable cache).
-Rows are backend-neutral, so an archive moves between SQLite and PostgreSQL.
+under their hashes, and with `--with-brain` the Brain vault. Rows are backend-neutral, so an
+archive moves between SQLite and PostgreSQL.
+
+What `--with-brain` keeps of the Brain's runtime folder (`.brain`), and what it leaves:
+
+| In `.brain` | In the backup | Why |
+| --- | --- | --- |
+| `library/`: the original bytes of every filed document | yes | nothing else holds them; the vault keeps only the converted text |
+| `staging/`: files still waiting for review | yes | they exist nowhere else until approved |
+| `embeddings.sqlite`, `models/` | no | rebuilt (the models download again) |
+| `sessions.sqlite`: what each AI asked and was handed | no | local history, kept for 90 days; Activity starts fresh after a restore |
+| `checkpoints/`: undo points | no | local history, like the vault's git history |
+| `write.lock`, sync state | no | rebuilt when the Brain next runs |
 
 Restore into an empty data folder; it refuses to overwrite and verifies every file's hash:
 

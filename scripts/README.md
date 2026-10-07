@@ -10,6 +10,7 @@ it before running it.
 | `health.sh` | checks `/api/health` |
 | `migrate-preview.sh` | shows pending migrations without applying them |
 | `mcp_check.py` | exercises a stdio MCP server the way a client launches it |
+| `fetch_test_models.py <folder>` | fetches the embedding and speech models the model tests use; set `BRAIN_TEST_MODELS` to that folder (CI caches it) |
 | `docker-smoke.sh` | starts a throwaway stack as you and proves an export, a committed Brain change and a restore work with folders you own (CI runs it; it never reads your `.env`) |
 
 Without Docker, call the CLI directly: `uv run contxt backup`, `contxt restore`,

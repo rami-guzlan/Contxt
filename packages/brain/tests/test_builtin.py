@@ -2,6 +2,7 @@
 point without overwriting a skill of the same name."""
 import os
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -65,7 +66,7 @@ class BuiltinTests(unittest.TestCase):
         self.assertEqual(sorted(copied), [n for n in NAMES if n != "teach"])
         with open(os.path.join(own, "SKILL.md"), encoding="utf-8") as handle:
             self.assertIn("# Mine", handle.read())
-        fixture.remove(vault)
+        shutil.rmtree(vault, ignore_errors=True)  # its own folder, nothing around it
 
 
 if __name__ == "__main__":

@@ -326,6 +326,18 @@ def merge(body: MergeIn, who: Who, ws: WS) -> Task:
 # ------------------------------------------------------------------------- keeping up
 
 
+@router.get("/models")
+def models(who: Who, ws: WS) -> dict[str, Any]:
+    """The local model that matches by meaning: here, being fetched, or not yet."""
+    return ws.brain.models(who)
+
+
+@router.post("/models/download", status_code=202)
+def download_models(who: Who, ws: WS) -> dict[str, Any]:
+    """Fetch the matching model (about 70 MB, once): the owner's call, never automatic."""
+    return ws.brain.download_models(who)
+
+
 @router.get("/catch-up")
 def catch_up(who: Who, ws: WS) -> dict[str, Any]:
     """What waits, as a plan: the recap, the health score, what was handled, the decisions,

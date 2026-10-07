@@ -18,7 +18,9 @@ from workspace_core.workspace import Workspace
 
 from . import render
 
-Handler = Callable[[Workspace, Principal, dict[str, Any]], tuple[str, dict[str, Any]]]
+# A handler answers (text, structured content); a third value True marks the answer an
+# error (a refused proposal: the same text and content, with isError set).
+Handler = Callable[[Workspace, Principal, dict[str, Any]], tuple[Any, ...]]
 
 KEY = {
     "type": "string",
@@ -244,7 +246,7 @@ def get_brain_reference(
 
 def propose_brain_entry(
     ws: Workspace, who: Principal, args: dict[str, Any]
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[str, dict[str, Any], bool]:
     result = ws.brain.propose(
         who,
         title=str(_str(args, "title", True)),
@@ -263,7 +265,9 @@ def propose_brain_entry(
         goal=_str(args, "goal"),
         project=_str(args, "project"),
     )
-    return result.message, {"proposal": asdict(result)}
+    # Refused is a failure the model must notice; a duplicate (the same proposal retried) is
+    # not.
+    return result.message, {"proposal": asdict(result)}, result.status == "refused"
 
 
 def save_digest(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -306,7 +310,7 @@ def save_skill_result(
 
 def propose_brain_skill(
     ws: Workspace, who: Principal, args: dict[str, Any]
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[str, dict[str, Any], bool]:
     edits = args.get("edits")
     if edits is not None and not isinstance(edits, list):
         raise ValidationFailed("edits is a list of {find, replace}.", field="edits")
@@ -328,7 +332,7 @@ def propose_brain_skill(
     text = result.message
     if result.status == "pending":
         text += " Now complete the task."
-    return text, {"proposal": asdict(result)}
+    return text, {"proposal": asdict(result)}, result.status == "refused"
 
 
 def _strings(args: dict[str, Any], name: str) -> list[str] | None:

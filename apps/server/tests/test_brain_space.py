@@ -295,7 +295,15 @@ def test_finding_what_to_remember_runs_from_notes_to_the_brain(owner, model, wor
 
     (request,) = owner.ok(owner.get("/api/brain/distill/requests"))
     assert (request["status"], request["items"]) == ("done", [n["id"] for n in working_notes])
-    assert request["proposals"] == [{"id": proposal_id, "title": "Launch day", "status": "pending"}]
+    assert request["proposals"] == [
+        {
+            "id": proposal_id,
+            "title": "Launch day",
+            "status": "pending",
+            "goal": None,
+            "project_id": None,
+        }
+    ]
     (waiting,) = owner.ok(owner.get("/api/brain/proposals"))
     assert waiting["task_id"] == task["id"]
     owner.ok(owner.post(f"/api/brain/proposals/{proposal_id}/decide", json={"approve": True}))

@@ -8,6 +8,7 @@ no proposal changes long-term context on its own (V1 acceptance).
 from __future__ import annotations
 
 import base64
+import logging
 import mimetypes
 import os
 import re
@@ -37,6 +38,9 @@ from workspace_core.ports import (
     BrainSkill,
     BrainTopic,
 )
+
+log = logging.getLogger(__name__)
+MATCHING_MB = 70  # the model that matches by meaning (bge-small, quantized), about this size
 
 # Sections of a Brain packet that serve a chat session rather than a workspace task: how to
 # call the Brain's own tools, session continuity, capture nudges, and an echo of the request.
@@ -188,9 +192,67 @@ class BrainKitAdapter:
             self.vault, principal=principal, embeddings=embeddings, local_models=True
         )
         self._lock = threading.Lock()
+        self._fetching = False  # the matching model is being downloaded
+        self._fetch_error: str | None = None
 
     def close(self) -> None:
         self.brain.close()
+
+    # ---------------------------------------------------------------- local models
+
+    def models(self) -> dict[str, Any]:
+        """The model that matches by meaning: here, being fetched, or not yet (the owner
+        downloads it; a server never does on its own)."""
+        embedder = self.brain.embedder
+        if embedder is None:
+            return {
+                "matching": {
+                    "enabled": False,
+                    "present": False,
+                    "downloading": False,
+                    "error": None,
+                    "model": None,
+                    "about_mb": MATCHING_MB,
+                }
+            }
+        return {
+            "matching": {
+                "enabled": True,
+                "model": embedder.model_name,
+                "present": embedder.present(),
+                "downloading": self._fetching,
+                "error": self._fetch_error,
+                "about_mb": MATCHING_MB,
+            }
+        }
+
+    def download_models(self) -> dict[str, Any]:
+        """Fetch the matching model into the Brain's model folder, in the background, with
+        the certificates the operating system trusts (a company network's TLS inspection)."""
+        embedder = self.brain.embedder
+        if embedder is None or self._fetching or embedder.present():
+            return self.models()
+        self._fetching, self._fetch_error = True, None
+
+        def fetch() -> None:
+            try:
+                try:
+                    import truststore
+
+                    truststore.inject_into_ssl()
+                except ImportError:
+                    pass
+                status = embedder.download()
+                if not status.get("available"):
+                    self._fetch_error = str(status.get("reason") or "The download failed.")
+            except Exception as exc:  # the network, the disk: say what went wrong
+                self._fetch_error = f"The model could not be downloaded: {exc}"
+                log.warning(self._fetch_error, exc_info=True)
+            finally:
+                self._fetching = False
+
+        threading.Thread(target=fetch, name="matching-model", daemon=True).start()
+        return self.models()
 
     # ---------------------------------------------------------------- reads
 
@@ -824,6 +886,7 @@ class BrainKitAdapter:
         project: str | None = None,
         status: str | None = None,
         origin: str = "app",
+        wait: bool = False,
     ) -> BrainProposal:
         with self._lock:
             result = self.brain.add_file(
@@ -835,6 +898,7 @@ class BrainKitAdapter:
                 project=project or None,
                 status=status or None,
                 origin=origin,
+                wait=wait,
                 source=f"{WORKSPACE_SOURCE}{proposer}",
             )
         found = result.data
@@ -1031,6 +1095,9 @@ class BrainKitAdapter:
                 row[key] = [p for p in row[key] if p["kind"] != "note" or p["id"] in seen]
         return data
 
+    def unsaved(self) -> list[str]:
+        return list(self.brain.unsaved())
+
     def made_from(self, path: str) -> dict[str, Any] | None:
         found = self.brain.made_from(path).data.get("found")
         if found is None:
@@ -1187,7 +1254,11 @@ class BrainKitAdapter:
             result = self.brain.decide(items, label=label, source=source)
         if "results" not in result.data:
             raise Conflict(result.text)
-        return {"results": result.data["results"], "checkpoint": result.data.get("checkpoint")}
+        out = {"results": result.data["results"], "checkpoint": result.data.get("checkpoint")}
+        if result.data.get("commit_error"):
+            # live, but not saved to git: the page says so
+            out["commit_error"] = result.data["commit_error"]
+        return out
 
     def checkpoints(self, limit: int = 50) -> list[dict[str, Any]]:
         scopes = self.brain.state().scopes

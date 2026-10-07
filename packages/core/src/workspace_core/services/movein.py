@@ -81,15 +81,22 @@ class MovingIn:
                 continue
             if wanted is not None and idea["id"] not in wanted:
                 continue
+            if wanted is None and idea.get("fits") is False:
+                continue  # left out by the sift; the person can still choose it
             if idea.get("secret"):
                 secrets += 1  # a password or a key: never kept
                 continue
             match = idea.get("match") or {}
-            extra = (
+            extra: dict[str, Any] = (
                 {"private": idea["private"], "classification": "confidential"}
                 if idea.get("private")
-                else None
+                else {}
             )
+            serves = idea.get("serves") or {}
+            if serves.get("goal"):
+                extra["goal"] = serves["goal"]
+            if (serves.get("project") or {}).get("id"):
+                extra["project_id"] = serves["project"]["id"]
             label = labels.get(idea["source"]) or "what an AI app knew"
             items.append(
                 {
@@ -104,7 +111,7 @@ class MovingIn:
                     "contradicts": [match["id"]]
                     if idea["status"] == "disagree" and match.get("id")
                     else None,
-                    "extra": extra,
+                    "extra": extra or None,
                 }
             )
             chosen.append(idea)

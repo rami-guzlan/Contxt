@@ -72,7 +72,7 @@ class Workspace:
         self.skills = Skills(rt, self.tasks, self.distill, self.brain, self.artifacts)
         self.onboarding = Onboarding(rt)
         self.legacy = Legacy(rt)
-        self.catch_up = CatchUp(rt, self.brain)
+        self.catch_up = CatchUp(rt, self.brain, self.legacy)
         self.move_in = MovingIn(rt)
 
     # ---------------------------------------------------------------- lifecycle
