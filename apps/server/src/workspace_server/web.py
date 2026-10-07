@@ -20,9 +20,10 @@ router = APIRouter()
 
 NO_UI = """<!doctype html><meta charset="utf-8"><title>Contxt</title>
 <body style="font-family:system-ui;margin:3rem;max-width:40rem;line-height:1.5">
-<h1>The API is running</h1>
-<p>The web app is not built yet. Run <code>npm run build --workspace apps/web</code>, or
-<code>npm run dev --workspace apps/web</code> for development, then reload.</p>
+<h1>Contxt is running</h1>
+<p>The web app is not here yet. Get this version's build with
+<code>uv run contxt web --download</code>, or build it yourself with Node.js 20+:
+<code>npm install</code>, then <code>npm run build</code>. Then reload this page.</p>
 <p>API documentation: <a href="/docs">/docs</a>.</p></body>"""
 
 

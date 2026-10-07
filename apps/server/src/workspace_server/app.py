@@ -17,7 +17,7 @@ from workspace_core.errors import WorkspaceError
 from workspace_core.ports import NoBrain
 from workspace_core.workspace import Workspace
 
-from . import web
+from . import web, webapp
 from .brain_adapter import BrainKitAdapter
 from .deps import error_response
 from .extractor import DocumentExtractor
@@ -142,15 +142,5 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     for module in routers:
         app.include_router(module.router)
     app.include_router(web.router)
-    web.mount_web(app, runtime.settings.web_dist or _default_dist())
+    web.mount_web(app, webapp.location(runtime.settings.web_dist))
     return app
-
-
-def _default_dist() -> str | None:
-    here = os.path.dirname(os.path.abspath(__file__))
-    for _ in range(6):
-        here = os.path.dirname(here)
-        candidate = os.path.join(here, "apps", "web", "dist")
-        if os.path.isdir(candidate):
-            return candidate
-    return None

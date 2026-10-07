@@ -17,7 +17,8 @@ Do it step by step, and show the person each result.
 2. `uv sync`. On Windows, "Failed to update Windows PE resources" is antivirus scanning a
    launcher uv wrote: run it again (each try gets further), or set `TMP` and `TEMP` to a
    folder inside the repository first.
-3. `npm install`, then `npm run build`.
+3. `uv run contxt web --download` for the built web app (or, with Node.js 20+:
+   `npm install`, then `npm run build`).
 4. Ask which starter they want (`uv run contxt starters`; `empty` for their own Brain), then
    `uv run contxt setup --brain <starter>`. Setup refuses to overwrite an existing `brain/`;
    never delete or move one to get past that. Ask the person.
@@ -26,7 +27,9 @@ Do it step by step, and show the person each result.
    any settings file for them.
 6. `uv run contxt serve` starts the app and prints a sign-in link. That link is the owner's
    key: tell them where to find it, but never paste it into a chat, a log or a file.
-7. Optional: `uv run contxt models --download` (about 550 MB, local models for matching by
+7. `uv run contxt check` confirms it all works and names the fix for anything missing. Show
+   the person its output.
+8. Optional: `uv run contxt models --download` (about 550 MB, local models for matching by
    meaning and for speech). Ask first.
 
 ## Layout

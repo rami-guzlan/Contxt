@@ -6,6 +6,8 @@
                                     claude-desktop, codex, cursor or other
     contxt demo STARTER             try a demo Brain, in demos/STARTER on a port of its own
     contxt starters                 the starter Brains: empty, and the demos
+    contxt check                    is this Contxt ready? what to fix, one line each
+    contxt web [--download]         the web app: is it built (--download fetches this version's)
     contxt models [--download]      the local models for matching by meaning and for speech
     contxt token                    print the owner sign-in link (--new: a fresh random token)
     contxt status                   one-screen state
@@ -35,7 +37,7 @@ from workspace_core.backup import backup, restore
 from workspace_core.db import migrate
 from workspace_core.db.engine import Database, sqlite_url
 
-from . import homes
+from . import doctor, homes, webapp
 from .settings import Settings, new_token
 
 
@@ -47,7 +49,7 @@ def _parser() -> argparse.ArgumentParser:
     p = sub.add_parser("setup", help="make this folder's Brain, data and outputs")
     p.add_argument("--brain", default="empty", help="the starter Brain (see: contxt starters)")
     p.add_argument("--name", help="what to call it (default: the starter's name)")
-    p.add_argument("--port", type=int, default=8787)
+    p.add_argument("--port", type=int, help="the app's port (default: 8787, or the next free one)")
     p.add_argument("--models", action="store_true", help="also download the local models")
     p = sub.add_parser("demo", help="try a demo Brain on a port of its own")
     p.add_argument("starter")
@@ -58,6 +60,9 @@ def _parser() -> argparse.ArgumentParser:
     p = sub.add_parser("connect", help="connect an AI app to your Brain")
     p.add_argument("client", nargs="?", choices=sorted(BRAIN_CLIENTS))
     p = sub.add_parser("models", help="the local models (--download fetches what is missing)")
+    p.add_argument("--download", action="store_true")
+    sub.add_parser("check", help="is this Contxt ready? what to fix")
+    p = sub.add_parser("web", help="the web app (--download fetches this version's build)")
     p.add_argument("--download", action="store_true")
     p = sub.add_parser("serve")
     p.add_argument("--host")
@@ -115,6 +120,10 @@ def main(argv: list[str] | None = None) -> int:
         return _connect(settings, args.client)
     if command == "models":
         return _models(settings, download=args.download)
+    if command == "check":
+        return _check(settings)
+    if command == "web":
+        return _web(settings, download=args.download)
     if command == "mcp":
         from .mcp import bridge
 
@@ -266,6 +275,8 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     print(f"The app's MCP endpoint, for the AI work it starts: {settings.base_url}/mcp")
     if settings.brain_vault:
         print("Connect an AI app to your Brain: uv run contxt connect")
+    if not webapp.built(webapp.location(settings.web_dist)):
+        print("The web app is not built yet: uv run contxt web --download")
     try:
         uvicorn.run(
             create_app(runtime=runtime),
@@ -292,18 +303,22 @@ def _home(args: argparse.Namespace) -> str:
 def _setup(args: argparse.Namespace) -> int:
     home = _home(args)
     starter = homes.find_starter(args.brain)
-    made = homes.create_home(home, starter, port=args.port, name=args.name)
+    made = homes.create_home(home, starter, port=args.port or homes.free_port(8787), name=args.name)
     print(f"Made a Brain from the {starter.id} starter ({starter.name}) in {made['brain']}")
     print(f"The app's data goes in {made['data']} and what your AI makes in {made['outputs']}.")
     print(f"Settings: {made['env']}\n")
+    settings = Settings.from_env(home=home)
     if args.models:
-        _models(Settings.from_env(home=home), download=True)
+        _models(settings, download=True)
     command = "uv run contxt" + (f' --home "{home}"' if args.home else "")
     print("Next:")
+    if not webapp.built(webapp.location(settings.web_dist)):
+        print(f"  {command} web --download   get the web app (or: npm install, npm run build)")
     print(f"  {command} serve      start the app (it prints your sign-in link)")
     print(f"  {command} connect    connect Claude Code, Claude Desktop, Codex or another AI app")
     if not args.models:
         print(f"  {command} models --download   match by meaning and transcribe speech, offline")
+    print(f"  {command} check      see that everything works")
     return 0
 
 
@@ -346,6 +361,41 @@ def _connect(settings: Settings, client: str | None) -> int:
         else:
             print(f"In {setup['file']}:\n{setup['config']}")
         print(setup["note"] + "\n")
+    return 0
+
+
+def _check(settings: Settings) -> int:
+    from workspace_core import __version__
+
+    env = os.path.abspath(".env")
+    print(f"Contxt {__version__}" + (f", settings from {env}" if os.path.isfile(env) else ""))
+    checks = doctor.run(settings)
+    print(doctor.render(checks))
+    return 1 if any(c.state == doctor.FAIL for c in checks) else 0
+
+
+def _web(settings: Settings, *, download: bool) -> int:
+    where = webapp.location(settings.web_dist)
+    if not download:
+        if webapp.built(where):
+            print(f"The web app is built: {where}")
+            return 0
+        print("The web app is not built yet. Get this version's build with:")
+        print("  uv run contxt web --download")
+        print("or build it yourself with Node.js 20+: npm install, then npm run build")
+        return 1
+    if not where:
+        print("Set CONTXT_WEB_DIST to the folder the web app should go in.", file=sys.stderr)
+        return 1
+    try:
+        got = webapp.download(where)
+    except webapp.WebAppError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(
+        f"Put the web app of {got['tag']} in {got['target']} ({got['bytes'] // 1024} KB,"
+        f" checksum verified). Restart the app if it is running."
+    )
     return 0
 
 
