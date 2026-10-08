@@ -714,8 +714,29 @@ class BrainKitAdapter:
             data[key] = [r for r in data[key] if r["a"] in visible and r["b"] in visible]
         for key in ("flagged", "recheck"):
             data[key] = [r for r in data[key] if r["id"] in visible]
+        data["went_in"] = [
+            r
+            for r in data.get("went_in") or []
+            if r["note"]["id"] in visible and r["with"]["id"] in visible
+        ]
         data["usage"] = {k: v for k, v in data["usage"].items() if k in visible}
         return data
+
+    def pending_checks(self, limit: int = 4) -> list[dict[str, Any]]:
+        return list(self.brain.pending_checks(limit).data.get("batches") or [])
+
+    def record_checks(self, verdicts: list[dict[str, Any]]) -> int:
+        return int(self.brain.record_checks(verdicts).data.get("kept") or 0)
+
+    def apply_scheduled(self) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.apply_scheduled()
+        if result.is_error:
+            raise Conflict(result.text)
+        return {
+            "applied": list(result.data.get("applied") or []),
+            "returned": list(result.data.get("returned") or []),
+        }
 
     def history(self, entry_id: str) -> list[dict[str, Any]]:
         rows = []

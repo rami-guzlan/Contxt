@@ -490,6 +490,21 @@ class BrainPort(Protocol):
         nothing."""
         ...
 
+    # ---- the baseline check: what a model should read side by side, and scheduled changes
+
+    def pending_checks(self, limit: int = 4) -> list[dict[str, Any]]:
+        """Statements a model should read beside the notes they may disagree with, oldest
+        first: [{"subject", "title", "text", "pairs": [{"key", "id", "title", "text"}]}]."""
+        ...
+
+    def record_checks(self, verdicts: list[dict[str, Any]]) -> int:
+        """Keep a model's verdicts on pairs: [{"key", "relation", "detail"}]."""
+        ...
+
+    def apply_scheduled(self) -> dict[str, Any]:
+        """Revisions the owner scheduled whose time has come go in: {"applied", "returned"}."""
+        ...
+
 
 class NoBrain:
     """The workspace without long-term context. Nothing breaks; nothing is remembered."""
@@ -540,7 +555,15 @@ class NoBrain:
         return BrainCatalog()
 
     def attention(self) -> dict[str, Any]:
-        return {"clashes": [], "twins": [], "flagged": [], "recheck": [], "usage": {}, "days": 7}
+        return {
+            "clashes": [],
+            "twins": [],
+            "flagged": [],
+            "recheck": [],
+            "went_in": [],
+            "usage": {},
+            "days": 7,
+        }
 
     def files(self) -> BrainFiles:
         return BrainFiles()
@@ -684,6 +707,15 @@ class NoBrain:
 
     def move_in(self, sources: list[dict[str, Any]], *, name: str = "") -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to move into.")
+
+    def pending_checks(self, limit: int = 4) -> list[dict[str, Any]]:
+        return []
+
+    def record_checks(self, verdicts: list[dict[str, Any]]) -> int:
+        return 0
+
+    def apply_scheduled(self) -> dict[str, Any]:
+        return {"applied": [], "returned": []}
 
 
 class TextExtractor(Protocol):

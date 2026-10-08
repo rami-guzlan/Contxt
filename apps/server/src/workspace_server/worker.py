@@ -1,9 +1,10 @@
 """The background worker: the server's clock.
 
 Each tick expires runs whose lease ran out (their tasks go back in the queue), wakes recurring
-tasks whose next occurrence has arrived, and hands AI work that waited for a model to the one
-that can now take it. The bus also expires and wakes lazily when a model asks for work, so a
-missed tick never loses anything.
+tasks whose next occurrence has arrived, hands AI work that waited for a model to the one
+that can now take it, and applies the Brain's scheduled revisions whose time has come. The
+bus also expires and wakes lazily when a model asks for work, so a missed tick never loses
+anything.
 """
 
 from __future__ import annotations
@@ -36,6 +37,13 @@ class Worker:
         woke = self.ws.bus.schedule_due()
         system = self.ws.system()
         assigned = self.ws.distill.assign_waiting(system)
+        try:
+            scheduled = self.ws.rt.brain.apply_scheduled()
+        except Exception:  # a Brain that cannot write now: the next tick tries again
+            log.warning("scheduled revisions could not be applied", exc_info=True)
+            scheduled = {"applied": []}
+        if scheduled.get("applied"):
+            log.info("%d scheduled revision(s) went in", len(scheduled["applied"]))
         if expired or woke or assigned:
             log.info(
                 "expired %d lease(s), %d task(s) came due, %d waiting request(s) assigned",

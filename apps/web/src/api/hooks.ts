@@ -325,7 +325,7 @@ export function useProposeEntry() {
 export function useBrainDecisions() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: { decisions: BrainDecision[]; label?: string; source?: Record<string, string> }) =>
+    mutationFn: (body: { decisions: BrainDecision[]; label?: string; source?: Record<string, string | number> }) =>
       post<DecisionOutcome>("/api/brain/decisions", body),
     onSettled: () => invalidate(keys.brain, keys.home, keys.events, keys.tasks, keys.notes),
   });

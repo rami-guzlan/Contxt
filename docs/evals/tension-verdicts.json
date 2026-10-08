@@ -1,0 +1,962 @@
+[
+ {
+  "set": "tuning",
+  "a": "Runway is 14 months at the current burn.",
+  "b": "Runway is 8 months at the current burn.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Runway is 8 months at the current burn.",
+   "existing": "Runway is 14 months at the current burn.",
+   "settle": "Recompute runway from the latest cash balance and monthly burn; keep the current figure and date it."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Send the investor update on the 5th of each month.",
+  "b": "Send the investor update on the 1st of each month.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Send the investor update on the 1st of each month.",
+   "existing": "Send the investor update on the 5th of each month.",
+   "settle": "Confirm which day of the month the investor update actually goes out, and drop the other date."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Never deploy on a Friday.",
+  "b": "Fridays are fine for deploys when the change is small.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Fridays are fine for deploys when the change is small.",
+   "existing": "Never deploy on a Friday.",
+   "settle": "Decide whether the Friday ban is absolute or allows a small-change exception, and rewrite the note to match."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Ollie is allergic to peanuts.",
+  "b": "Ollie can eat peanut butter now.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Ollie can eat peanut butter now.",
+   "existing": "Ollie is allergic to peanuts.",
+   "settle": "Confirm with Ollie or their doctor whether the peanut allergy has been outgrown or cleared, then update or remove the old note."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "The monthly grocery budget is $900.",
+  "b": "The monthly grocery budget is $1,100.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "The monthly grocery budget is $1,100.",
+   "existing": "The monthly grocery budget is $900.",
+   "settle": "Confirm the current budget figure and replace the outdated one."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Trains over flights when the trip is under four hours.",
+  "b": "Always fly, even for short trips.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Always fly, even for short trips.",
+   "existing": "Trains over flights when the trip is under four hours.",
+   "settle": "Decide which rule governs trips under four hours and keep only that one."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Only double opt-in introductions: ask the other person first, then connect.",
+  "b": "Send introductions straight away; there is no need to ask anyone first.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Send introductions straight away; there is no need to ask anyone first.",
+   "existing": "Only double opt-in introductions: ask the other person first, then connect.",
+   "settle": "Decide one intro policy: double opt-in or send immediately."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Nothing external goes out until Morgan Hale approves it.",
+  "b": "Social posts can go out without anyone's approval.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Social posts can go out without anyone's approval.",
+   "existing": "Nothing external goes out until Morgan Hale approves it.",
+   "settle": "Ask Morgan Hale whether social posts are exempt from the approval rule."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Do not target companies under 100 employees.",
+  "b": "Machine shops under 50 people are now a priority segment.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Machine shops under 50 people are now a priority segment.",
+   "existing": "Do not target companies under 100 employees.",
+   "settle": "Confirm whether machine shops are a carve-out from the under-100-employee rule or whether that rule is being dropped."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "On school nights, evening plans end by 9:30 PM.",
+  "b": "On school nights, evening plans can run until 11:00 PM.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "On school nights, evening plans can run until 11:00 PM.",
+   "existing": "On school nights, evening plans end by 9:30 PM.",
+   "settle": "Confirm which school-night cutoff applies now: 9:30 PM or 11:00 PM."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Carry-on bags only.",
+  "b": "Check a bag on every trip.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Check a bag on every trip.",
+   "existing": "Carry-on bags only.",
+   "settle": "Decide which baggage policy holds going forward and keep only that one."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Webinar leads go to Sam Okafor.",
+  "b": "Webinar leads now go to Priya Raman.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Webinar leads now go to Priya Raman.",
+   "existing": "Webinar leads go to Sam Okafor.",
+   "settle": "Confirm the current webinar lead owner and update the note to Priya Raman if the handoff is done."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "The price is $49 per seat per month.",
+  "b": "The price is $59 per seat per month.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "The price is $59 per seat per month.",
+   "existing": "The price is $49 per seat per month.",
+   "settle": "Check the current price list or pricing page to confirm which figure is in effect."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Loopline MRR was $38,400 at the end of September.",
+  "b": "Loopline MRR was $41,200 at the end of September.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Loopline MRR was $41,200 at the end of September.",
+   "existing": "Loopline MRR was $38,400 at the end of September.",
+   "settle": "Check the September-close MRR figure in the billing/revenue report and keep the one matching it."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Use tabs for indentation.",
+  "b": "Use two spaces for indentation and never tabs.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Use two spaces for indentation and never tabs.",
+   "existing": "Use tabs for indentation.",
+   "settle": "Pick one indentation style and record it in an editorconfig or style guide."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "The launch date is November 12.",
+  "b": "The launch date is December 3.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "The launch date is December 3.",
+   "existing": "The launch date is November 12.",
+   "settle": "Confirm the current launch date with the schedule owner and update the note."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Riley reviews and sends the investor update personally.",
+  "b": "The assistant sends the investor update as soon as it is drafted.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "The assistant sends the investor update as soon as it is drafted.",
+   "existing": "Riley reviews and sends the investor update personally.",
+   "settle": "Confirm with Riley whether they still send the update themselves or have delegated sending to the assistant."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "We do not run ads in Canada.",
+  "b": "Expand the ad campaign into Canada this quarter.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Expand the ad campaign into Canada this quarter.",
+   "existing": "We do not run ads in Canada.",
+   "settle": "Confirm whether the no-Canada-ads policy has been lifted for this quarter; if so, update or retire note-1."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "The team standup is at 9:15 every weekday.",
+  "b": "The team standup is at 10:00 every weekday.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "The team standup is at 10:00 every weekday.",
+   "existing": "The team standup is at 9:15 every weekday.",
+   "settle": "Confirm the current standup time on the team calendar and keep only that one."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Keep the free tier.",
+  "b": "Remove the free tier next month.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Remove the free tier next month.",
+   "existing": "Keep the free tier.",
+   "settle": "Confirm with the product owner whether the free tier is being retired next month."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Every code change needs a review from one teammate.",
+  "b": "Small changes can merge without a review.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Small changes can merge without a review.",
+   "existing": "Every code change needs a review from one teammate.",
+   "settle": "Decide whether the review rule is universal or has a small-change exemption, and if exempt, define the size threshold."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "The brand color is navy, #1B2A4A.",
+  "b": "The brand color is forest green, #1E4D2B.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "The brand color is forest green, #1E4D2B.",
+   "existing": "The brand color is navy, #1B2A4A.",
+   "settle": "Check the current brand guidelines for the official brand color hex."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Fun money is $150 each per month.",
+  "b": "Fun money is $200 each per month.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Fun money is $200 each per month.",
+   "existing": "Fun money is $150 each per month.",
+   "settle": "Confirm the current monthly fun money amount and replace the old figure."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Shared secrets live in the team's secret manager.",
+  "b": "Put the shared API keys in the repository's config file.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Put the shared API keys in the repository's config file.",
+   "existing": "Shared secrets live in the team's secret manager.",
+   "settle": "Decide the single storage location for shared secrets: secret manager or repo config file."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Send the investor update on the 5th of each month.",
+  "b": "When the 5th falls on a weekend, send the investor update the next Monday.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "When the 5th falls on a weekend, send the investor update the next Monday.",
+   "existing": "Send the investor update on the 5th of each month.",
+   "settle": "Keep both: the 5th is the default, with weekend 5ths shifting to the following Monday."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Deploy Tuesday to Thursday between 10:00 and 15:00 only.",
+  "b": "During the December code freeze there are no deploys at all.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "During the December code freeze there are no deploys at all.",
+   "existing": "Deploy Tuesday to Thursday between 10:00 and 15:00 only.",
+   "settle": "Note that the Tue-Thu window applies outside the December freeze, when no deploys happen."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Aisle seats.",
+  "b": "On overnight flights, Taylor takes a window seat to sleep.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "On overnight flights, Taylor takes a window seat to sleep.",
+   "existing": "Aisle seats.",
+   "settle": "Confirm the note is Taylor's general seat preference, then record overnight flights as the window-seat exception."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Every statistic we publish must come from the research library.",
+  "b": "Internal drafts may use rough estimates if they are labeled as estimates.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "Internal drafts may use rough estimates if they are labeled as estimates.",
+   "existing": "Every statistic we publish must come from the research library.",
+   "settle": "Confirm internal drafts aren't counted as 'published'; if they are, the estimate allowance conflicts with the library-only rule."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Screens off after 10:00 PM.",
+  "b": "On Fridays, the movie can run until 10:30 PM.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "On Fridays, the movie can run until 10:30 PM.",
+   "existing": "Screens off after 10:00 PM.",
+   "settle": "Confirm the Friday movie is the intended exception to the 10:00 PM screens-off rule rather than a replacement of it."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Only double opt-in introductions.",
+  "b": "Introductions between two people who already asked to meet can go straight out.",
+  "relation": "narrows",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Introductions between two people who already asked to meet can go straight out.",
+   "existing": "Only double opt-in introductions.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Do not target plants outside the US.",
+  "b": "US-owned plants in Canada can be included in account lists.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "US-owned plants in Canada can be included in account lists.",
+   "existing": "Do not target plants outside the US.",
+   "settle": "Confirm the rule keys on US ownership rather than physical location, and restate note-1 as excluding non-US plants except US-owned ones."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Every code change needs a review from one teammate.",
+  "b": "Changes to the payments service need two reviewers.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "Changes to the payments service need two reviewers.",
+   "existing": "Every code change needs a review from one teammate.",
+   "settle": "Confirm the payments service is an exception requiring a second reviewer on top of the general one-reviewer rule."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Flag any new subscription over $20 a month.",
+  "b": "For software subscriptions, also check whether a family plan exists.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "For software subscriptions, also check whether a family plan exists.",
+   "existing": "Flag any new subscription over $20 a month.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Sections of the investor update: highlights, lowlights, the numbers table and up to three asks.",
+  "b": "Add a one-line thank-you to investors who helped that month.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "Add a one-line thank-you to investors who helped that month.",
+   "existing": "Sections of the investor update: highlights, lowlights, the numbers table and up to three asks.",
+   "settle": "Confirm the section list is open-ended rather than exhaustive, and note where the thank-you line goes."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Hotels or apartments with a kitchen when traveling with Ollie.",
+  "b": "Prefer places with a washing machine for trips longer than five days.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "Prefer places with a washing machine for trips longer than five days.",
+   "existing": "Hotels or apartments with a kitchen when traveling with Ollie.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Anything a customer sees ships behind a feature flag.",
+  "b": "Remove the flag two weeks after a feature is fully rolled out.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "Remove the flag two weeks after a feature is fully rolled out.",
+   "existing": "Anything a customer sees ships behind a feature flag.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Morgan Hale approves everything external.",
+  "b": "Send Morgan drafts by Wednesday for anything going out the next week.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "Send Morgan drafts by Wednesday for anything going out the next week.",
+   "existing": "Morgan Hale approves everything external.",
+   "settle": "Confirm the Wednesday deadline is the timing rule for Morgan's existing approval role, not a separate review step."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Bad news goes in plainly and early.",
+  "b": "Pair each piece of bad news with what we are doing about it.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "Pair each piece of bad news with what we are doing about it.",
+   "existing": "Bad news goes in plainly and early.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Every intro email gets three lines: who, why now, and the one ask.",
+  "b": "Put both people's LinkedIn profiles under the three lines.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "Put both people's LinkedIn profiles under the three lines.",
+   "existing": "Every intro email gets three lines: who, why now, and the one ask.",
+   "settle": "Confirm the three-line rule is a minimum, not a cap, so added profile links are allowed."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Lights out by 10:00 PM before a long run.",
+  "b": "Lay out running clothes the night before a long run.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "Lay out running clothes the night before a long run.",
+   "existing": "Lights out by 10:00 PM before a long run.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Never deploy on a Friday.",
+  "b": "No deploys on Fridays.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "No deploys on Fridays.",
+   "existing": "Never deploy on a Friday.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Ollie is allergic to peanuts.",
+  "b": "Peanuts are off-limits for Ollie.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Peanuts are off-limits for Ollie.",
+   "existing": "Ollie is allergic to peanuts.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Aisle seats.",
+  "b": "Taylor prefers the aisle seat.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Taylor prefers the aisle seat.",
+   "existing": "Aisle seats.",
+   "settle": "Confirm the fragment 'Aisle seats.' refers to Taylor's seat preference; if it is about someone or something else, this is unrelated."
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "The monthly grocery budget is $900.",
+  "b": "We budget $900 a month for groceries.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "We budget $900 a month for groceries.",
+   "existing": "The monthly grocery budget is $900.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Send the investor update on the 5th of each month.",
+  "b": "The monthly investor update goes out on the 5th.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "The monthly investor update goes out on the 5th.",
+   "existing": "Send the investor update on the 5th of each month.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Nothing external goes out until Morgan Hale approves it.",
+  "b": "Morgan signs off on every external piece before it is published.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Morgan signs off on every external piece before it is published.",
+   "existing": "Nothing external goes out until Morgan Hale approves it.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Do not target companies under 100 employees.",
+  "b": "Companies with fewer than 100 employees are out of scope.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Companies with fewer than 100 employees are out of scope.",
+   "existing": "Do not target companies under 100 employees.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Carry-on bags only.",
+  "b": "Taylor never checks a bag.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Taylor never checks a bag.",
+   "existing": "Carry-on bags only.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Keep secrets out of code, logs and chats.",
+  "b": "Secrets never go in code, logs or chat messages.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Secrets never go in code, logs or chat messages.",
+   "existing": "Keep secrets out of code, logs and chats.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "The team standup is at 9:15 every weekday.",
+  "b": "Standup happens at 9:15 on weekdays.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Standup happens at 9:15 on weekdays.",
+   "existing": "The team standup is at 9:15 every weekday.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Never deploy on a Friday.",
+  "b": "Use Postgres for the analytics store.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "Use Postgres for the analytics store.",
+   "existing": "Never deploy on a Friday.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Ollie is allergic to peanuts.",
+  "b": "Soccer practice is on Saturdays at 9:00 AM.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "Soccer practice is on Saturdays at 9:00 AM.",
+   "existing": "Ollie is allergic to peanuts.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "The monthly grocery budget is $900.",
+  "b": "The car registration renews in March.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "The car registration renews in March.",
+   "existing": "The monthly grocery budget is $900.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Send the investor update on the 5th of each month.",
+  "b": "Riley angel invests $25,000 checks in climate startups.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "Riley angel invests $25,000 checks in climate startups.",
+   "existing": "Send the investor update on the 5th of each month.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Nothing external goes out until Morgan Hale approves it.",
+  "b": "The podcast records on Thursdays.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "The podcast records on Thursdays.",
+   "existing": "Nothing external goes out until Morgan Hale approves it.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Do not target companies under 100 employees.",
+  "b": "The brand font is Source Sans.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "The brand font is Source Sans.",
+   "existing": "Do not target companies under 100 employees.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Use tabs for indentation.",
+  "b": "The on-call rotation changes every Monday.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "The on-call rotation changes every Monday.",
+   "existing": "Use tabs for indentation.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Trains over flights when the trip is under four hours.",
+  "b": "Passports expire in 2029.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "Passports expire in 2029.",
+   "existing": "Trains over flights when the trip is under four hours.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "The price is $49 per seat per month.",
+  "b": "The office closes at 6 PM on Fridays.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "The office closes at 6 PM on Fridays.",
+   "existing": "The price is $49 per seat per month.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "tuning",
+  "a": "Runway is 14 months at the current burn.",
+  "b": "Hire a first account executive in Q1.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "Hire a first account executive in Q1.",
+   "existing": "Runway is 14 months at the current burn.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "The newsletter goes out every other Tuesday.",
+  "b": "The newsletter goes out every Monday.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "The newsletter goes out every Monday.",
+   "existing": "The newsletter goes out every other Tuesday.",
+   "settle": "Check the actual send schedule in the newsletter tool to confirm day and frequency."
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Budget for the offsite is $12,000.",
+  "b": "The offsite budget is capped at $8,000.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "The offsite budget is capped at $8,000.",
+   "existing": "Budget for the offsite is $12,000.",
+   "settle": "Confirm the current approved offsite budget figure with whoever owns it."
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Kai reviews every pull request touching payments.",
+  "b": "Payments pull requests no longer need Kai's review.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Payments pull requests no longer need Kai's review.",
+   "existing": "Kai reviews every pull request touching payments.",
+   "settle": "Confirm with the team whether Kai is still a required reviewer on payments PRs, and drop the old rule if not."
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Office hours are 9 to 5 on weekdays.",
+  "b": "Office hours are 8 to 4 on weekdays.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Office hours are 8 to 4 on weekdays.",
+   "existing": "Office hours are 9 to 5 on weekdays.",
+   "settle": "Confirm the current weekday office hours with whoever sets them and keep one version."
+  }
+ },
+ {
+  "set": "held out",
+  "a": "We only sell to banks in the US.",
+  "b": "Start selling to credit unions in Canada next quarter.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Start selling to credit unions in Canada next quarter.",
+   "existing": "We only sell to banks in the US.",
+   "settle": "Confirm whether the US-banks-only policy is being replaced or whether Canadian credit unions are an approved expansion."
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Code freeze starts December 15.",
+  "b": "Code freeze starts December 1.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Code freeze starts December 1.",
+   "existing": "Code freeze starts December 15.",
+   "settle": "Confirm the actual code freeze start date with the release owner."
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Taylor's flights must have an aisle seat.",
+  "b": "Book Taylor a window seat on every flight.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "Book Taylor a window seat on every flight.",
+   "existing": "Taylor's flights must have an aisle seat.",
+   "settle": "Ask Taylor which seat they actually prefer and keep only that rule."
+  }
+ },
+ {
+  "set": "held out",
+  "a": "The annual plan costs $480.",
+  "b": "The annual plan costs $520.",
+  "relation": "contradicts",
+  "model": "contradicts",
+  "detail": {
+   "proposed": "The annual plan costs $520.",
+   "existing": "The annual plan costs $480.",
+   "settle": "Check the current published price for the annual plan and keep the newer figure."
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Deploy on weekdays only.",
+  "b": "During the holiday week, deploy only on Tuesday.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "During the holiday week, deploy only on Tuesday.",
+   "existing": "Deploy on weekdays only.",
+   "settle": "Tuesday is a weekday, so the new rule is a holiday-week restriction of the general policy; note that it applies only during the holiday week."
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Every invoice needs a PO number.",
+  "b": "Invoices under $100 do not need a PO number.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "Invoices under $100 do not need a PO number.",
+   "existing": "Every invoice needs a PO number.",
+   "settle": "Confirm the $100 threshold is an intended exemption, then reword the note as 'Every invoice of $100 or more needs a PO number.'"
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Send the agenda a day before the meeting.",
+  "b": "Put the decisions we need at the top of the agenda.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "Put the decisions we need at the top of the agenda.",
+   "existing": "Send the agenda a day before the meeting.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Use the brand font in every deck.",
+  "b": "Use the brand font in every deck, at 14 points or larger for body text.",
+  "relation": "extends",
+  "model": "extends",
+  "detail": {
+   "proposed": "Use the brand font in every deck, at 14 points or larger for body text.",
+   "existing": "Use the brand font in every deck.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Never share client data in public channels.",
+  "b": "Client data stays out of public channels.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Client data stays out of public channels.",
+   "existing": "Never share client data in public channels.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "The rent is $2,400 a month.",
+  "b": "We pay $2,400 in rent each month.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "We pay $2,400 in rent each month.",
+   "existing": "The rent is $2,400 a month.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Ollie's soccer practice is on Saturdays.",
+  "b": "Soccer practice for Ollie happens every Saturday.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Soccer practice for Ollie happens every Saturday.",
+   "existing": "Ollie's soccer practice is on Saturdays.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Standups are 15 minutes.",
+  "b": "Keep standups to 15 minutes.",
+  "relation": "agrees",
+  "model": "agrees",
+  "detail": {
+   "proposed": "Keep standups to 15 minutes.",
+   "existing": "Standups are 15 minutes.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "The car insurance renews in June.",
+  "b": "Pick up the dry cleaning on Friday.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "Pick up the dry cleaning on Friday.",
+   "existing": "The car insurance renews in June.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Lead with runway in investor updates.",
+  "b": "The office wifi password changes monthly.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "The office wifi password changes monthly.",
+   "existing": "Lead with runway in investor updates.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Tests must pass before merging.",
+  "b": "The design review is on Thursdays.",
+  "relation": "unrelated",
+  "model": "unrelated",
+  "detail": {
+   "proposed": "The design review is on Thursdays.",
+   "existing": "Tests must pass before merging.",
+   "settle": ""
+  }
+ },
+ {
+  "set": "held out",
+  "a": "Reply to customer emails within one day.",
+  "b": "Reply to enterprise customers within four hours.",
+  "relation": "narrows",
+  "model": "narrows",
+  "detail": {
+   "proposed": "Reply to enterprise customers within four hours.",
+   "existing": "Reply to customer emails within one day.",
+   "settle": "Keep one day as the general rule and note the four-hour target for enterprise customers."
+  }
+ }
+]

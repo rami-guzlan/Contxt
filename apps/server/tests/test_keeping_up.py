@@ -152,7 +152,9 @@ def test_two_entries_are_merged_by_a_model_and_compared_before_anything_changes(
     )
     assert not reply["isError"], reply
     (card,) = owner.ok(owner.get("/api/brain/catch-up"))["judgment"]
-    assert card["type"] == "change" and card["with"]["id"] == "rules-style-001"
+    # A rule is a baseline: its new version is compared side by side and needs a reason.
+    assert card["type"] == "baseline" and card["with"]["id"] == "rules-style-001"
+    assert card["baseline"]["change"] == "revise" and "both_hold" not in card["actions"]
 
 
 def test_a_preset_is_chosen_over_rest(owner):

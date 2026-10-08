@@ -12,20 +12,35 @@ from). Nearness between two proposals is a cosine over their words, weighted by 
 each word is among the Brain's entries, so two notes about the same business are not
 duplicates merely for sharing its vocabulary.
 
-The analysis is kept until the vault changes: a review page can ask for it on every render.
+THE BASELINE CHECK. Each note proposal is read against the notes baseline.candidates picks
+(the most relevant, the baselines where it goes, the notes giving a figure for the same
+thing): checks 1 and 2 (tension.py) at once, and a model (check 3) when the app has one to
+ask, its verdicts kept in the ledger. What may disagree is listed under `tensions`; a proposal
+that changes, retires, replaces or disagrees with a baseline carries that baseline, with its
+impact when it is a rule, a standing note or a must-hold (`baseline`).
+
+The analysis is kept until the vault changes or a model's verdict comes in: a review page can
+ask for it on every render.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import math
 import re
 from collections import Counter
 
-from . import governance, util
+from . import baseline, governance, tension, util
 
 OVERLAP = 0.6     # a live entry this near is worth showing beside the proposal
 CLOSE = 0.75      # this near, it may well say the same thing
 DUPLICATE = 0.6   # two waiting proposals this alike probably say one thing twice
 BODY_LIMIT = 4000
+# What a model may say about two notes (check 3): the proposal contradicts the note, narrows
+# it (an exception or a narrower case), extends it (adds to it), agrees with it, or is about
+# something else.
+RELATIONS = ("contradicts", "narrows", "extends", "agrees", "unrelated")
+CLEARS = ("extends", "agrees", "unrelated")  # a model's reading that settles checks 1 and 2
+WENT_IN_DAYS = 14  # what went in on its own is read by a model for this long afterwards
 
 
 def _result(message, data=None, is_error=False):
@@ -146,10 +161,48 @@ def _text(proposal) -> str:
                      if v)
 
 
+def _verdict(found) -> dict | None:
+    """A model's kept verdict on a pair, as the review shows it."""
+    if not found or found.get("relation") not in RELATIONS:
+        return None
+    detail = found.get("detail") or {}
+    return {"relation": found["relation"], "proposed": str(detail.get("proposed") or ""),
+            "existing": str(detail.get("existing") or ""),
+            "settle": str(detail.get("settle") or ""), "at": found.get("at")}
+
+
+def _baseline_row(brain, note, why, used, *, change, tension_why="") -> dict:
+    """A baseline a proposal would change, as the card that settles it needs it."""
+    meta = note.meta
+    return {"id": note.id, "title": note.title, "body": note.body[:BODY_LIMIT],
+            "kind": note.kind, "load": note.load, "why": why, "change": change,
+            "tension": tension_why, "approved_by": str(meta.get("approved_by") or ""),
+            "approved_at": str(meta.get("approved_at") or "")[:10], "added": note.added,
+            "revised": str(meta.get("revised") or "")[:10], "verified": note.verified,
+            "uses": int(used.get(note.id, 0)), "weighty": baseline.weighty(note),
+            "impact": baseline.impact(brain, note) if baseline.weighty(note) else None,
+            "previous_reason": baseline.previous_reason(brain, note.id),
+            "min_words": baseline.REASON_WORDS}
+
+
+def _partitions(st, target, chain) -> list:
+    if target.get("partition"):
+        return st.scopes.partition_chain(str(target["partition"]), chain) or []
+    return []
+
+
+def _stamp(brain) -> str:
+    try:
+        return brain.ledger.verdicts_stamp()
+    except Exception:
+        return ""
+
+
 def analyze(brain, **_ignored):
     st = brain.state()
+    stamp = _stamp(brain)
     cached = getattr(brain, "_review", None)
-    if cached is not None and cached[0] == st.fingerprint:
+    if cached is not None and cached[0] == (st.fingerprint, stamp):
         return cached[1]
     caller = brain.caller(st=st)
     if not isinstance(caller, tuple):
@@ -162,6 +215,7 @@ def analyze(brain, **_ignored):
     idf = dict(getattr(bm25, "idf", {}) or {})
     unseen = float(getattr(bm25, "unseen_idf", 1.0) or 1.0)
     texts = {p.id: _text(p) for p in proposals}
+    used = baseline.uses(brain) if proposals else {}
     replaced_by: dict[str, list[str]] = {}
     rows = []
     for proposal in proposals:
@@ -175,7 +229,9 @@ def analyze(brain, **_ignored):
                           else "retire" if kind == "note.archive"
                           else "file" if kind == "file.add" else "skill"),
                "replaces": [], "conflicts": [], "overlaps": [], "duplicates": [],
-               "new_topic": False, "suggested": [], "base_changed": False, "problems": []}
+               "tensions": [], "baseline": None, "checks": None, "scheduled": None,
+               "held": None, "new_topic": False, "suggested": [], "base_changed": False,
+               "problems": []}
         named = []
         if kind in ("note.update", "note.archive"):
             named = [str(target.get("id") or "")]
@@ -230,24 +286,70 @@ def analyze(brain, **_ignored):
                         row["base_changed"] = True
                         row["problems"].append("The skill changed since this was proposed; "
                                                "compare the current text before approving.")
+        partitions = _partitions(st, target, chain)
+        skip = set(named) | {c["id"] for c in row["conflicts"]}
+        cleared: set[str] = set()
+        if kind in ("note.create", "note.update") and proposal.body.strip():
+            pairs = baseline.candidates(brain, proposal.body, area=area or "",
+                                        topic=str(target.get("topic") or ""), chain=chain,
+                                        partitions=partitions, exclude=skip)
+            asked = {r["note"].id: baseline.pair_key(proposal.body, r["note"].body)
+                     for r in pairs[:baseline.MODEL_PAIRS]}
+            verdicts = _known(brain, asked.values())
+            for pair in pairs:
+                note = pair["note"]
+                found = tension.tension(proposal.body, note.body)
+                verdict = _verdict(verdicts.get(asked.get(note.id, "")))
+                if verdict and verdict["relation"] in CLEARS:
+                    cleared.add(note.id)
+                if (found and note.id not in cleared) or (
+                        verdict and verdict["relation"] in ("contradicts", "narrows")):
+                    row["tensions"].append(_entry(
+                        note, why=found or "", found_by=pair["found_by"],
+                        baseline=pair["baseline"], model=verdict))
+            row["tensions"].sort(key=lambda t: (not t["baseline"], t["id"]))
+            row["checks"] = {"pairs": len(asked),
+                             "read": sum(1 for key in asked.values() if key in verdicts),
+                             "model": ("none" if not asked else "done"
+                                       if all(key in verdicts for key in asked.values())
+                                       else "waiting")}
+        revised = baseline.revised(brain, kind, target)
+        if revised:
+            row["baseline"] = _baseline_row(
+                brain, revised[0], revised[1], used,
+                change="retire" if kind == "note.archive" else "revise")
+        else:
+            hit = next((t for t in row["tensions"] if t["baseline"]), None)
+            if hit is not None and index.note(hit["id"]) is not None:
+                settle = (hit.get("model") or {}).get("settle") or ""
+                row["baseline"] = _baseline_row(brain, index.note(hit["id"]), hit["baseline"],
+                                                used, change="disagree",
+                                                tension_why=hit["why"] or settle)
+        if proposal.meta.get("scheduled_for"):
+            row["scheduled"] = {"for": str(proposal.meta["scheduled_for"]),
+                                "by": str(proposal.meta.get("scheduled_by") or ""),
+                                "reason": str(proposal.meta.get("scheduled_reason") or "")}
+        if proposal.meta.get("tension"):
+            row["held"] = {"id": str(proposal.meta["tension"]),
+                           "why": str(proposal.meta.get("tension_why") or "")}
         if kind == "note.create" and texts[proposal.id]:
-            partitions = []
-            if target.get("partition"):
-                partitions = st.scopes.partition_chain(str(target["partition"]), chain) or []
-            skip = set(named) | {c["id"] for c in row["conflicts"]}
             notes = [n for n in st.router.admitted_notes(chain, partitions)
                      if n.id not in skip and not st.config.is_focus(n)]
+            tensions = {t["id"]: t for t in row["tensions"]}
             for scored in st.router.score_notes(texts[proposal.id], notes)[:3]:
                 if scored.score >= OVERLAP:
-                    clash = contradiction(proposal.body, scored.item.body)
+                    found = tensions.get(scored.item.id)
+                    clash = (found or {}).get("why") or ""
                     row["overlaps"].append(_entry(scored.item, score=round(scored.score, 3),
                                                   close=scored.score >= CLOSE,
-                                                  may_contradict=bool(clash),
-                                                  contradiction=clash or ""))
-                    if clash:
-                        row["problems"].append(
-                            f"It may contradict \u201c{scored.item.title}\u201d: {clash}. "
-                            "Decide which is current before approving.")
+                                                  may_contradict=found is not None,
+                                                  contradiction=clash))
+            for found in row["tensions"]:
+                clash = found["why"] or (found.get("model") or {}).get("settle") or ""
+                row["problems"].append(
+                    f"It may contradict \u201c{found['title']}\u201d"
+                    + (f": {clash}" if clash else "") + ". Decide which is current before "
+                    "approving.")
             row["new_topic"] = bool(route_key) and route_key not in topics
             if row["new_topic"] or row["placement"] == "guessed":
                 row["suggested"] = [s for s in governance.suggest_placement(
@@ -272,5 +374,116 @@ def analyze(brain, **_ignored):
                 by_id[proposal_id]["problems"].append(
                     f"{note_id} is also replaced by {others}; approve only one of them.")
     result = _result(f"{len(rows)} proposal(s) analyzed.", {"proposals": rows})
-    brain._review = (st.fingerprint, result)
+    brain._review = ((st.fingerprint, stamp), result)
     return result
+
+
+def _known(brain, keys) -> dict:
+    try:
+        return brain.ledger.verdicts(keys)
+    except Exception:
+        return {}
+
+
+def went_in(brain, *, days=WENT_IN_DAYS) -> list:
+    """Live notes that went in on their own (own scope, or a capture the policy let in) in
+    the last `days` days, newest first: a model reads them against the Brain afterwards."""
+    since = (util.now() - _dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    st = brain.state()
+    out, seen = [], set()
+    for record in reversed(brain.vault.decisions()):
+        if str(record.get("at") or "") < since:
+            break
+        if record.get("action") != "auto-applied" or record.get("kind") not in (
+                "note.create", "note.update"):
+            continue
+        note = st.index.note(str(record.get("note") or ""))
+        if note is not None and note.id not in seen and not st.config.is_focus(note):
+            seen.add(note.id)
+            out.append((note, record))
+    return out
+
+
+def _went_in_pairs(brain, note, chain) -> dict:
+    st = brain.state()
+    pairs = baseline.candidates(brain, note.body, area=note.area, topic=note.topic,
+                                chain=chain, partitions=_partitions(st, note.meta, chain),
+                                exclude={note.id})
+    return {baseline.pair_key(note.body, r["note"].body): r for r in
+            pairs[:baseline.MODEL_PAIRS]}
+
+
+def pending_checks(brain, *, limit: int = 4) -> list[dict]:
+    """What a model should read next (check 3), oldest first: [{"subject", "title", "text",
+    "pairs": [{"key", "id", "title", "text"}]}]. Waiting note proposals come first, then
+    what went in on its own lately; a pair already read is not asked again."""
+    st = brain.state()
+    caller = brain.caller(st=st)
+    if not isinstance(caller, tuple):
+        return []
+    chain, _ = caller
+    out: list[dict] = []
+
+    def add(subject, title, text, found):
+        known = _known(brain, found)
+        todo = [{"key": key, "id": r["note"].id, "title": r["note"].title,
+                 "text": r["note"].body[:BODY_LIMIT]}
+                for key, r in found.items() if key not in known]
+        if todo:
+            out.append({"subject": subject, "title": title, "text": text[:BODY_LIMIT],
+                        "pairs": todo})
+
+    for proposal in sorted(st.snapshot.proposals.values(), key=lambda p: (p.created, p.id)):
+        if len(out) >= limit:
+            return out
+        if proposal.kind not in ("note.create", "note.update") or not proposal.body.strip():
+            continue
+        target = proposal.target
+        skip = set(_ids(target.get("supersedes"))) | set(_ids(proposal.meta.get("conflicts")))
+        if proposal.kind == "note.update":
+            skip.add(str(target.get("id") or ""))
+        pairs = baseline.candidates(
+            brain, proposal.body, area=str(target.get("area") or target.get("layer") or ""),
+            topic=str(target.get("topic") or ""), chain=chain,
+            partitions=_partitions(st, target, chain), exclude=skip)
+        add(f"proposal:{proposal.id}", str(target.get("title") or proposal.id), proposal.body,
+            {baseline.pair_key(proposal.body, r["note"].body): r
+             for r in pairs[:baseline.MODEL_PAIRS]})
+    for note, _record in went_in(brain):
+        if len(out) >= limit:
+            break
+        add(f"note:{note.id}", note.title, note.body, _went_in_pairs(brain, note, chain))
+    return out
+
+
+def went_in_disagreements(brain) -> list[dict]:
+    """What went in on its own that a model then read as contradicting a note: the note,
+    the one it disagrees with, the model's reading, and the undo point that takes it back."""
+    from .recap import _undo_points
+    st = brain.state()
+    caller = brain.caller(st=st)
+    if not isinstance(caller, tuple):
+        return []
+    chain, _ = caller
+    found = went_in(brain)
+    if not found:
+        return []
+    points = None
+    out = []
+    for note, record in found:
+        pairs = _went_in_pairs(brain, note, chain)
+        verdicts = _known(brain, pairs)
+        for key, pair in pairs.items():
+            verdict = _verdict(verdicts.get(key))
+            if not verdict or verdict["relation"] != "contradicts":
+                continue
+            if points is None:
+                points = _undo_points(brain)
+            other = pair["note"]
+            out.append({"key": f"wentin:{note.id}|{other.id}",
+                        "note": _entry(note, at=str(record.get("at") or "")),
+                        "with": _entry(other, baseline=pair["baseline"]),
+                        "model": verdict,
+                        "checkpoint": points.get(str(record.get("proposal") or ""))})
+            break
+    return out

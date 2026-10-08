@@ -41,6 +41,7 @@ from __future__ import annotations
 import fnmatch
 import re
 
+from . import frontmatter as fm
 from . import uploads, util
 from .model import CONFIDENCE, LEGACY_KINDS, LOADS, MAX_CRITICAL, MUST_HOLD, listish
 from .scopes import Scopes
@@ -313,7 +314,7 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     caller = brain.caller(who)
     if not isinstance(caller, tuple):
         return caller
-    chain, _ = caller
+    chain, seen = caller
     base = None
     if target_id:
         base = st.index.note(target_id)
@@ -479,6 +480,18 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
             named["conflicts"] or supersedes or util.text_flags(text)
             or any(s["score"] >= CLOSE for s in similar)):
         applies = captures_apply(brain, who, capture, capture_origin)
+    held = None
+    if applies and not force_pending:
+        # Nothing goes in on its own over a note it may disagree with, or over a baseline:
+        # checks 1 and 2 read it first, and what they find waits for the owner.
+        from . import baseline
+        held = baseline.guard(brain, kind, text, base=base, area=area, topic=topic,
+                              chain=chain, partitions=seen or (),
+                              supersedes=supersedes or "", note_id=note_id)
+        if held:
+            applies = False
+            header["tension"] = held["id"]
+            header["tension_why"] = held["why"]
     if applies and not force_pending:
         from . import checkpoints
         label = f"Went in on its own: {target.get('title') or note_id}"
@@ -504,10 +517,12 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     return _result(
         f"Proposed {note_id} ({area}/{topic}, {scope}) for review by "
         f"{config.governance.get('approver') or config.owner}. It is not live until approved."
+        + (f" It would have applied at once, but it waits: {held['why']} "
+           f"(“{held['title']}”, {held['id']})." if held else "")
         + (f" Similar existing notes: {header['similar']}." if similar else "")
         + placement_note,
         {"status": "pending", "proposal_id": proposal_id, "id": note_id, "path": relpath,
-         "similar": similar, "suggested": header.get("suggested"),
+         "similar": similar, "suggested": header.get("suggested"), "held": held,
          "commit": outcome.get("commit")})
 
 
@@ -654,7 +669,10 @@ def _require_approver(brain, actor):
     return who, None
 
 
-def approve(brain, proposal_id, *, actor=None, edits=None, body=None):
+def approve(brain, proposal_id, *, actor=None, edits=None, body=None, reason=""):
+    """The owner keeps a proposal. One that revises or retires a baseline needs a `reason`
+    (baseline.reason_problem), and with `revision_delay` on, a revision of a rule, a standing
+    note or a must-hold is scheduled for DELAY_HOURS later instead of applied now."""
     who, refusal = _require_approver(brain, actor)
     if refusal:
         return refusal
@@ -683,8 +701,113 @@ def approve(brain, proposal_id, *, actor=None, edits=None, body=None):
                 f"{current.id} changed since this proposal was written. Review the current text "
                 "and approve with an explicit body, or reject.", {"status": "conflict",
                                                                   "current": current.body}, True)
+    from . import baseline
+    revision = None
+    found = baseline.revised(brain, proposal.kind, target)
+    if found:
+        note, why = found
+        problem = baseline.reason_problem(brain, note, reason)
+        if problem:
+            return _result(f"“{note.title}” is a baseline ({why}). {problem}",
+                           {"status": "needs_reason", "note": note.id, "baseline": why}, True)
+        revision = {"note": note.id, "why": why, "reason": " ".join(str(reason).split())}
+        if delays(st.config) and baseline.weighty(note):
+            return _schedule(brain, proposal, target, text, revision, who)
     return _apply(brain, proposal.id, dict(proposal.meta), target, text, actor=who,
-                  proposal_path=proposal.path)
+                  proposal_path=proposal.path, revision=revision)
+
+
+DELAY_HOURS = 24  # how long a scheduled revision of a rule or must-hold waits
+
+
+def delays(config) -> bool:
+    """Does the owner want a day to think before a rule or a must-hold changes?"""
+    return bool(config.governance.get("revision_delay"))
+
+
+def _schedule(brain, proposal, target, text, revision, who):
+    """Keep the decision, apply it DELAY_HOURS from now: the proposal waits, marked with when
+    it goes in, who decided and why, until `apply_scheduled` applies it or the owner cancels
+    (`unschedule`)."""
+    import datetime as dt
+    due = (util.now() + dt.timedelta(hours=DELAY_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    header = dict(proposal.meta, scheduled_for=due, scheduled_by=who,
+                  scheduled_reason=revision["reason"])
+    relpath = brain.vault.write_proposal(proposal.id, header, target, text)
+    record = {"at": util.now_iso(), "action": "scheduled", "by": who, "proposal": proposal.id,
+              "kind": proposal.kind, "note": revision["note"], "due": due,
+              "reason": revision["reason"]}
+    decisions = brain.vault.append_decision(record)
+    outcome = brain.after_write([brain.vault.path(relpath), brain.vault.path(decisions)],
+                                f"Scheduled {proposal.id} for {due}")
+    title = str(target.get("title") or target.get("id") or proposal.id)
+    return _result(f"Scheduled: “{title}” goes in at {due} unless you cancel it "
+                   "before then.",
+                   {"status": "scheduled", "id": str(target.get("id") or ""), "due": due,
+                    "title": title, "commit": outcome.get("commit")})
+
+
+def unschedule(brain, proposal_id, *, actor=None):
+    """The owner cancels a scheduled revision: the proposal waits for a decision again."""
+    who, refusal = _require_approver(brain, actor)
+    if refusal:
+        return refusal
+    proposal = brain.state().snapshot.proposals.get(str(proposal_id))
+    if proposal is None or not proposal.meta.get("scheduled_for"):
+        return _result(f"Nothing scheduled for {proposal_id!r}.", {"status": "missing"}, True)
+    header = {k: v for k, v in proposal.meta.items() if not str(k).startswith("scheduled_")}
+    relpath = brain.vault.write_proposal(proposal.id, header, dict(proposal.target),
+                                         proposal.body)
+    record = {"at": util.now_iso(), "action": "unscheduled", "by": who,
+              "proposal": proposal.id, "kind": proposal.kind}
+    decisions = brain.vault.append_decision(record)
+    outcome = brain.after_write([brain.vault.path(relpath), brain.vault.path(decisions)],
+                                f"Cancelled the scheduled {proposal.id}")
+    title = str(proposal.target.get("title") or proposal.id)
+    return _result(f"Cancelled: “{title}” waits for your decision again.",
+                   {"status": "unscheduled", "id": proposal.id, "title": title,
+                    "commit": outcome.get("commit")})
+
+
+def apply_scheduled(brain, *, now=None):
+    """Scheduled revisions whose time has come go in, each as an undo point of its own. One
+    whose note changed or went since waits for a decision again."""
+    from . import baseline, checkpoints
+    moment = (now or util.now()).strftime("%Y-%m-%dT%H:%M:%SZ")
+    st = brain.state()
+    due = sorted((p for p in st.snapshot.proposals.values()
+                  if str(p.meta.get("scheduled_for") or "")
+                  and str(p.meta["scheduled_for"]) <= moment),
+                 key=lambda p: (str(p.meta["scheduled_for"]), p.id))
+    applied, returned = [], []
+    for proposal in due:
+        who = str(proposal.meta.get("scheduled_by") or "")
+        target = dict(proposal.target)
+        header = {k: v for k, v in proposal.meta.items() if not str(k).startswith("scheduled_")}
+        current = (brain.state().index.note(target.get("id"))
+                   if proposal.kind in ("note.update", "note.archive") else None)
+        base = proposal.meta.get("base_hash")
+        if proposal.kind in ("note.update", "note.archive") and (
+                current is None or (base and current.body_hash != base)):
+            unschedule(brain, proposal.id, actor=who)
+            returned.append(proposal.id)
+            continue
+        found = baseline.revised(brain, proposal.kind, target)
+        revision = ({"note": found[0].id, "why": found[1],
+                     "reason": str(proposal.meta.get("scheduled_reason") or "")}
+                    if found else None)
+        title = str(target.get("title") or target.get("id") or proposal.id)
+        with checkpoints.batch(brain, actor=who, label=f"Went in as scheduled: {title}") as batch:
+            result = _apply(brain, proposal.id, header, target, proposal.body, actor=who,
+                            proposal_path=proposal.path, revision=revision)
+            if not result.is_error:
+                batch.decisions.append(_summary("approve", proposal.id, proposal, result.data))
+        if not result.is_error:
+            applied.append(proposal.id)
+    return _result(f"{len(applied)} scheduled change(s) went in."
+                   + (f" {len(returned)} wait(s) for a decision again: the note changed."
+                      if returned else ""),
+                   {"applied": applied, "returned": returned})
 
 
 def reject(brain, proposal_id, reason="", *, actor=None):
@@ -711,7 +834,8 @@ def reject(brain, proposal_id, reason="", *, actor=None):
                                                 "commit": outcome.get("commit")})
 
 
-def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, proposal_path=None):
+def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, proposal_path=None,
+           revision=None):
     st = brain.state()
     config = st.config
     kind = str(header.get("kind") or "note.create")
@@ -776,6 +900,9 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
         record["previous_hash"] = current.body_hash
     if header.get("reason"):
         record["reason"] = str(header["reason"])
+    if revision:
+        # A baseline revised: which note, why it was a baseline, and the owner's reason.
+        record["baseline_revised"] = dict(revision)
     decisions = brain.vault.append_decision(record)
     touched.append(brain.vault.path(decisions))
     if proposal_path:
@@ -796,7 +923,8 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
 def decide(brain, decisions, *, actor=None, label=None, source=None):
     """Apply a batch as one undo point: [{"id", "action", "reason", "edits", "body"}].
 
-    `action` is approve or reject (`id` a proposal); or, for an entry (`id` a note): archive,
+    `action` is approve (with a `reason` when it revises a baseline), reject or unschedule
+    (a scheduled revision) (`id` a proposal); or, for an entry (`id` a note): archive,
     edit (`body`, `edits` title and summary), restore (`ref`, a version from `history`),
     unarchive, update (`fields`, see FIELDS), verify (`confidence`), or mark (`state` stale
     or disputed, with a `reason`). The result carries each outcome and the undo point
@@ -815,7 +943,9 @@ def decide(brain, decisions, *, actor=None, label=None, source=None):
                 proposal = brain.state().snapshot.proposals.get(item_id)
                 if action == "approve":
                     res = approve(brain, item_id, actor=who, edits=item.get("edits"),
-                                  body=item.get("body"))
+                                  body=item.get("body"), reason=item.get("reason") or "")
+                elif action == "unschedule":
+                    res = unschedule(brain, item_id, actor=who)
                 elif action == "reject":
                     res = reject(brain, item_id, item.get("reason") or "", actor=who)
                 elif action == "archive":
@@ -858,7 +988,10 @@ def _summary(action, item_id, proposal, data) -> dict:
     """One decision as an undo point lists it: what was decided, and what it was called."""
     done = {"approve": "approved", "reject": "rejected", "archive": "archived",
             "edit": "edited", "restore": "restored", "unarchive": "unarchived",
-            "update": "updated", "verify": "verified", "mark": "marked"}[action]
+            "update": "updated", "verify": "verified", "mark": "marked",
+            "unschedule": "unscheduled"}[action]
+    if data.get("status") == "scheduled":
+        done = "scheduled"
     out = {"action": done}
     if proposal is not None:
         target = proposal.target
@@ -902,7 +1035,10 @@ def edit(brain, note_id, text, *, title=None, summary=None, reason="", actor=Non
     """The owner rewrites a live note in place: same id, same file, new words. The journal
     keeps what it said before, and an undo point (when inside a batch) can put it back.
 
-    A `minor` edit (a typo, a cleanup) is not new knowledge: it does not renew freshness."""
+    A `minor` edit (a typo, a cleanup) is not new knowledge: it does not renew freshness. A
+    new text for a baseline is a revision: it needs a `reason` (baseline.reason_problem),
+    which the journal keeps with it."""
+    from . import baseline
     who, refusal = _require_approver(brain, actor)
     if refusal:
         return refusal
@@ -912,6 +1048,16 @@ def edit(brain, note_id, text, *, title=None, summary=None, reason="", actor=Non
     text = str(text or "").strip()
     if not text:
         return _result("An edit needs the note's new text.", {"status": "invalid"}, True)
+    revision = None
+    if not minor and util.canonical(text) != util.canonical(note.body):
+        why = baseline.why(note, brain.state().config, baseline.uses(brain).get(note.id, 0))
+        if why:
+            problem = baseline.reason_problem(brain, note, reason)
+            if problem:
+                return _result(f"“{note.title}” is a baseline ({why}). {problem}",
+                               {"status": "needs_reason", "note": note.id, "baseline": why},
+                               True)
+            revision = {"note": note.id, "why": why, "reason": " ".join(str(reason).split())}
     meta = dict(note.meta, updated=util.today())
     if not minor and util.canonical(text) != util.canonical(note.body):
         meta["revised"] = util.now_iso()
@@ -925,6 +1071,8 @@ def edit(brain, note_id, text, *, title=None, summary=None, reason="", actor=Non
               "path": note.path, "reason": str(reason or "").strip(), "previous": note.body,
               "minor": bool(minor), "hash": util.sha256(text.strip()),
               "previous_hash": note.body_hash, "file_hash": brain.vault.file_hash(note.path)}
+    if revision:
+        record["baseline_revised"] = revision
     decisions = brain.vault.append_decision(record)
     outcome = brain.after_write([brain.vault.path(note.path), brain.vault.path(decisions)],
                                 f"Edited {note.id}" + (f": {reason}" if reason else ""))
@@ -1022,7 +1170,7 @@ def unarchive(brain, note_id, *, reason="", actor=None):
 # What the owner sets on an entry directly: who answers for it, how often it is checked, how
 # sensitive it is, and where it is filed. An empty value clears the field.
 FIELDS = ("owner", "review_days", "review_by", "classification", "area", "topic", "aliases",
-          "load", "applies_to", "triggers", "must_text", "critical")
+          "load", "applies_to", "triggers", "must_text", "critical", "baseline")
 # When a note reaches a model: in every session, whenever its domain comes up (a must-hold),
 # when relevant, or only when asked for. Set together and checked by must_hold_fields.
 MUST_FIELDS = ("load", "applies_to", "triggers", "must_text", "critical")
@@ -1078,6 +1226,13 @@ def update(brain, note_id, fields, *, reason="", actor=None):
             meta[key] = value
     for key, value in wanted.items():
         if key in ("area", "topic") or key in MUST_FIELDS:
+            continue
+        if key == "baseline":
+            # Marked a baseline by the owner: a change to it waits, with a reason.
+            if fm.as_bool(value):
+                meta[key] = True
+            else:
+                meta.pop(key, None)
             continue
         if key == "aliases":
             # Other names for it, comma separated: a project is found by any of them.
@@ -1211,6 +1366,11 @@ POLICY = {
     "retention_days": ("sessions", "retention_days", "count"),
     "capture": ("governance", "capture", "capture"),
     "preset": ("governance", "preset", "preset"),
+    # A day to think before a rule, a standing note or a must-hold changes (off by default).
+    "revision_delay": ("governance", "revision_delay", "bool"),
+    # The owner's own AI reads possible disagreements side by side (check 3), when one is
+    # connected; on by default.
+    "model_checks": ("governance", "model_checks", "bool"),
 }
 
 
@@ -1234,6 +1394,8 @@ def policies(brain) -> dict:
         "kinds": config.kind_order(),
         "scopes": sorted(brain.state().scopes.declared),
         "capture": capture_policy(config),
+        "revision_delay": delays(config),
+        "model_checks": bool(data["governance"].get("model_checks", True)),
         "capture_types": list(CAPTURE_TYPES),
         "capture_origins": list(CAPTURE_ORIGINS),
     }

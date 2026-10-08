@@ -50,6 +50,16 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   offered in Catch up for rules that read like safety, health, legal, privacy or money lines,
   and proposed by the knowledge agent. In the demo Brains they take constraint recall on
   requests that never name the rule from 47% to 100% (`docs/evals/`).
+- The baseline check: every note proposal is read against the notes it may disagree with,
+  by words, figures, names and polarity at once, and by the owner's own AI (Claude Code, no
+  tools) in the background. Nothing goes in on its own over a note it may disagree with or
+  over a baseline (a rule, a must-hold, a standing note, a note you confirmed or AIs use a
+  lot); what went in and the AI then reads as disagreeing comes back in Catch up with one tap
+  to take it back. Revising a baseline takes a reason, kept in the journal, and a rule or a
+  must-hold shows what it reaches first; a day to think is one setting away. Catch up adds
+  "Changes a baseline" cards, a plain word after a run of quick yeses, "Still right?" spot
+  checks, and Home shows how many approvals were taken back within a month.
 - Safeguard evaluations (`scripts/safeguards_eval.py`): must-hold recall with decoys and
-  held-out requests, disagreement detection on labeled pairs, and dated values.
+  held-out requests, disagreement detection on labeled and held-out pairs (with your own
+  AI's verdicts, `--ask-model`), false alarms on the demo Brains, and dated values.
 - Source-available under the PolyForm Shield License 1.0.0.

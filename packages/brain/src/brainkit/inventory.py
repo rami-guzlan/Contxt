@@ -11,7 +11,8 @@ their origin is read from it (`origin_of`), so nothing has to be rewritten.
 """
 from __future__ import annotations
 
-from . import history, util
+from . import baseline, history, util
+from . import frontmatter as fm
 
 ORIGIN_KINDS = {
     "conversation": "An AI conversation",
@@ -86,6 +87,10 @@ def note_row(st, note, *, created=None, changes=0, use=None) -> dict:
         "triggers": note.triggers if note.must_hold else [],
         "must_text": note.must_text if note.must_hold else "",
         "critical": bool(note.must_hold and note.critical),
+        # why a change to it waits for a reason (baseline.py), or ""; marked by the owner
+        "baseline": (baseline.why(note, config, int(use.get("d30") or 0)) or "")
+        if note.live else "",
+        "baseline_marked": bool(fm.as_bool(note.meta.get("baseline"))),
         "added": note.added, "updated": str(note.meta.get("updated") or "")[:10],
         "revised": str(note.meta.get("revised") or "")[:10],
         "verified": note.verified, "confidence": note.confidence,

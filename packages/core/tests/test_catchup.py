@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from workspace_core.errors import PermissionDenied, ValidationFailed
-from workspace_core.services.catchup import QUOTA, health, judgment_kind, offers
+from workspace_core.services.catchup import QUOTA, drift, health, judgment_kind, offers
 
 
 def propose(ws, who, title, **fields):
@@ -231,3 +231,80 @@ def test_must_hold_fields_are_details_a_person_can_set(ws, owner):
         [{"action": "update", "entry_id": "voice-guide", "fields": {"triggers": long}}],
     )
     assert out["results"][0]["ok"]
+
+
+def test_a_change_to_a_baseline_is_a_card_of_its_own_never_a_quick_yes(ws, owner, brain):
+    made = propose(ws, owner, "Headlines in title case", kind="rule", topic="brand/voice")
+    brain.analysis[made.proposal_id] = {
+        "route_key": "brand/voice",
+        "tensions": [
+            {
+                "id": "voice-guide",
+                "title": "Voice guide",
+                "body": "Write plainly. No hype.",
+                "why": "one rules out what the other allows",
+                "baseline": "it is a rule",
+                "found_by": "close to it",
+                "model": None,
+            }
+        ],
+        "baseline": {
+            "id": "voice-guide",
+            "title": "Voice guide",
+            "body": "Write plainly. No hype.",
+            "change": "disagree",
+            "why": "it is a rule",
+            "tension": "one rules out what the other allows",
+            "uses": 0,
+            "impact": {"conversations": 0, "recent": [], "domains": []},
+        },
+        "checks": {"pairs": 1, "read": 0, "model": "waiting"},
+    }
+    plan = ws.catch_up.plan(owner)
+    assert plan["quick"] == []
+    (card,) = plan["judgment"]
+    assert (card["type"], card["tag"]) == ("baseline", "Changes a baseline")
+    assert card["actions"] == ["revise", "keep_mine", "both_hold", "later"]
+    assert card["baseline"]["id"] == "voice-guide" and card["check"]["model"] == "waiting"
+    assert "a baseline: it is a rule" in card["why"]
+    assert card["recommend"]["action"] == "revise"  # the person wrote it, in the app
+    assert plan["seconds"] == 60
+
+
+def test_what_went_in_on_its_own_comes_back_once_as_a_spot_check(ws, owner, brain, clock):
+    brain.events.insert(
+        0,
+        {
+            "at": (clock.now() - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "action": "auto-applied",
+            "note": "voice-guide",
+        },
+    )
+    plan = ws.catch_up.plan(owner)
+    (spot,) = [c for c in plan["upkeep"] if c["type"] == "spot"]
+    assert spot["key"] == "spot:voice-guide" and "went in on its own" in spot["why"]
+    ws.brain.decide_many(
+        owner,
+        [{"action": "verify", "entry_id": "voice-guide"}],
+        source={"catch_up": "spot:voice-guide", "seconds": 9},
+    )
+    for _ in range(QUOTA["spot"] - 1):
+        brain.points.insert(0, {"at": brain.points[0]["at"], "source": {"catch_up": "spot:x"}})
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "spot"]  # this week's dose is used
+
+
+def test_drift_is_the_share_of_approvals_taken_back_within_a_month():
+    now = datetime(2026, 10, 8, tzinfo=UTC)
+    points = [
+        {
+            "at": "2026-10-01T10:00:00Z",
+            "decisions": [{"action": "approved"}],
+            "undone_at": "2026-10-03T10:00:00Z",
+        },
+        {"at": "2026-09-20T10:00:00Z", "decisions": [{"action": "approved"}], "undone_at": None},
+        {"at": "2026-09-15T10:00:00Z", "decisions": [{"action": "rejected"}]},
+        {"at": "2026-10-04T10:00:00Z", "decisions": [], "undoes": "cp-1"},
+        {"at": "2026-06-01T10:00:00Z", "decisions": [{"action": "approved"}]},
+    ]
+    assert drift(points, now) == {"approvals": 2, "undone": 1, "share": 0.5, "days": 30}

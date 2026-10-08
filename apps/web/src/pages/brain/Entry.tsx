@@ -146,17 +146,27 @@ function About({
   const [editing, setEditing] = useState(false);
   const [minor, setMinor] = useState(false);
   const [changingDetails, setChangingDetails] = useState(false);
+  // A new text for a baseline is a revision: it says why, in a few words.
+  const [why, setWhy] = useState("");
+  const [editProblem, setEditProblem] = useState<string | null>(null);
   const approver = policies?.approver ?? "";
+  const baseline = details?.baseline ?? "";
 
   function save(changed: { title: string; summary: string; body: string }) {
     const initial = { title: entry.title, summary: entry.summary, body: entry.text };
+    const revises = !!baseline && !minor && changed.body.trim() !== entry.text.trim();
+    if (revises && (why.match(/[\w'-]+/g) ?? []).length < 4) {
+      setEditProblem(`This note is a baseline (${baseline}): say in a few words (four at least) why it changes.`);
+      return;
+    }
+    setEditProblem(null);
     decide.mutate(
       {
         decisions: [
           {
             action: "edit",
             entry_id: id,
-            reason: "Edited on its page",
+            reason: revises ? why.trim() : "Edited on its page",
             ...changes(initial, changed),
             body: changed.body.trim(),
             ...(minor ? { minor: true } : {}),
@@ -165,11 +175,24 @@ function About({
       },
       {
         onSuccess: (outcome) => {
+          const refused = outcome.results.find((r) => !r.ok);
+          if (refused) {
+            setEditProblem(refused.message);
+            return;
+          }
           setEditing(false);
           setMinor(false);
+          setWhy("");
           onDecided(describeOutcome(outcome));
         },
       },
+    );
+  }
+
+  function markBaseline(on: boolean) {
+    decide.mutate(
+      { decisions: [{ action: "update", entry_id: id, fields: { baseline: on ? "true" : "" } }] },
+      { onSuccess: (outcome) => onDecided(describeOutcome(outcome)) },
     );
   }
 
@@ -214,6 +237,16 @@ function About({
             <input type="checkbox" checked={minor} onChange={(event) => setMinor(event.target.checked)} /> A small fix (a typo,
             the wording): not new knowledge, so models are not told it changed
           </label>
+          {baseline && !minor ? (
+            <Field label="Why does it change?" hint={`It is a baseline (${baseline}): the reason is kept with the change.`}>
+              <input value={why} onChange={(event) => setWhy(event.target.value)} />
+            </Field>
+          ) : null}
+          {editProblem ? (
+            <p className="warning small" role="alert">
+              {editProblem}
+            </p>
+          ) : null}
         </div>
       ) : (
         <div className="document">
@@ -263,6 +296,7 @@ function About({
                 ["Last checked", details ? (details.checked ? day(details.verified) : "not yet") : day(entry.verified)],
                 ["Next check", details ? nextCheck(details) : null],
                 ["Confidence", entry.confidence ? label(entry.confidence) : null],
+                ["Baseline", baseline ? `Yes: ${baseline}` : null],
                 ["Sensitivity", details?.classification ? label(details.classification) : null],
                 ["Used", details ? `${plural(details.uses.d30, "time")} in 30 days` : null],
                 ["Source", entry.source],
@@ -270,6 +304,20 @@ function About({
               ]}
             />
           )}
+          {details && !changingDetails ? (
+            <p className="small">
+              {details.baseline_marked ? (
+                <button type="button" className="link small" disabled={decide.isPending} onClick={() => markBaseline(false)}>
+                  Not a baseline you marked any more
+                </button>
+              ) : !baseline ? (
+                <button type="button" className="link small" disabled={decide.isPending} onClick={() => markBaseline(true)}>
+                  Mark it a baseline
+                </button>
+              ) : null}
+              {!baseline ? <span className="muted"> A change to a baseline waits for you, with a reason.</span> : null}
+            </p>
+          ) : null}
           {details?.supersedes?.length ? (
             <p className="small">
               It replaced:{" "}

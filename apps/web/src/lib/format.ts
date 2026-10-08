@@ -69,6 +69,7 @@ const VERBS: Record<string, string> = {
   "brain.updated": "changed an entry's details",
   "brain.verified": "confirmed an entry is still true",
   "brain.marked": "marked an entry as needing a look",
+  "brain.unscheduled": "cancelled a scheduled change",
   "brain.undone": "took back a batch of decisions",
   "brain.filed": "filed a document in the Brain",
   "brain.project_started": "started a project",

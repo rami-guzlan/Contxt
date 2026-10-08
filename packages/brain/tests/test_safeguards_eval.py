@@ -89,6 +89,37 @@ class MustHoldBarsTest(unittest.TestCase):
         self.assertGreaterEqual(result["held_out_recall"], 0.79, result["misses"])
 
 
+class BaselineCheckBarsTest(unittest.TestCase):
+    """Phase B's bars. Checks 1 and 2 stay precise and hold few ordinary notes; with your own
+    AI's saved verdicts on the same pairs (check 3, docs/evals/tension-verdicts.json),
+    contradictions are found at the spec's bar on the tuning and the held-out pairs."""
+
+    def test_checks_one_and_two_are_precise_and_hold_few_ordinary_notes(self):
+        from brainkit import tension
+        result = se.tension_eval(_spec("tension_pairs.json")["pairs"],
+                                 lambda a, b: tension.tension(b, a))
+        # Measured 58% recall at 100% precision on October 8, 2026.
+        self.assertGreaterEqual(result["recall"], 0.58, result["missed"])
+        self.assertEqual(result["precision"], 1.0, result["false_alarms"])
+        ordinary = se.held_ordinary(BRAINS)
+        # Measured 4 of 81 (5%); before the overlap bar it was 32 of 81.
+        self.assertLessEqual(ordinary["rate"], 0.1, ordinary["held"])
+
+    def test_with_your_own_ais_verdicts_contradictions_are_found(self):
+        import json
+
+        from brainkit import tension
+        with open(os.path.join(ROOT, "docs", "evals", "tension-verdicts.json"),
+                  encoding="utf-8") as handle:
+            saved = {(row["a"], row["b"]): row["model"] for row in json.load(handle)}
+        for name in ("tension_pairs.json", "tension_holdout.json"):
+            found = se.verdicts_eval(_spec(name)["pairs"], saved,
+                                     lambda a, b: tension.tension(b, a))
+            self.assertEqual(found["read"], len(_spec(name)["pairs"]), name)
+            self.assertGreaterEqual(found["combined"]["recall"], 0.9, name)
+            self.assertGreaterEqual(found["combined"]["precision"], 0.8, name)
+
+
 def brain_meta(vault, note_id):
     from brainkit import frontmatter as fm
     from brainkit import util

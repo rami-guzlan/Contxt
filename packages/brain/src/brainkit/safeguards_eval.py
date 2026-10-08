@@ -12,7 +12,11 @@ note to `load: on-demand` in the copy, which measures what relevance alone does.
 
 DISAGREEMENT. Labeled pairs of statements (contradicts, narrows, extends, agrees, unrelated).
 A detector says whether the second disagrees with the first; recall and precision are over
-"contradicts".
+"contradicts". A model's verdicts on the same pairs (check 3) are read from a file, and
+scored alone and as the app decides: the model's reading wins where it has one. Pairs are
+short and close, so they say little about false alarms in a lived-in Brain: `held_ordinary`
+proposes every live note of each demo Brain against the rest of its Brain and counts how many
+checks 1 and 2 would hold.
 
 DATED VALUES. Two or more dated notes give a figure for the same subject; a request asks for
 it. The packet should carry the newest and leave the older ones out, or mark them as older.
@@ -222,6 +226,58 @@ def tension_eval(pairs, detect) -> dict:
     return {"recall": round(recall, 3), "precision": round(precision, 3),
             "pairs": len(pairs), "contradictions": tp + fn, "missed": missed,
             "false_alarms": wrong}
+
+
+def app_decides(verdict: str | None, cheap: bool) -> bool:
+    """The app's call on a pair: a model's reading wins when there is one (only
+    "contradicts" counts here; "narrows" is shown as a narrower case), else checks 1 and 2."""
+    if verdict:
+        return verdict == "contradicts"
+    return cheap
+
+
+def verdicts_eval(pairs, verdicts, cheap) -> dict:
+    """Check 3 alone and as the app decides, from `verdicts` ({(a, b): relation})."""
+    model = tension_eval(pairs, lambda a, b: verdicts.get((a, b)) == "contradicts")
+    combined = tension_eval(pairs, lambda a, b: app_decides(verdicts.get((a, b)),
+                                                            bool(cheap(a, b))))
+    read = sum(1 for p in pairs if verdicts.get((p["a"], p["b"])))
+    exact = sum(1 for p in pairs if verdicts.get((p["a"], p["b"])) == p["relation"])
+    return {"model": model, "combined": combined, "read": read, "exact": exact}
+
+
+DEMO_BRAINS = ("personal", "entrepreneur", "programmer", "knowledge-company")
+
+
+def held_ordinary(brains_root: str, names=DEMO_BRAINS) -> dict:
+    """Every live note of each demo Brain, proposed against the rest of its Brain: how many
+    checks 1 and 2 would hold. The demo notes do not disagree with each other, so each one
+    held is a false alarm a person would have to clear."""
+    from . import baseline
+    total, held = 0, []
+    for name in names:
+        vault = copy_vault(os.path.join(brains_root, name, "vault"))
+        try:
+            brain = open_brain(vault)
+            try:
+                st = brain.state()
+                chain, partitions = brain.caller(st=st)
+                for note in sorted(st.index.notes.values(), key=lambda n: n.id):
+                    if st.config.is_focus(note):
+                        continue
+                    total += 1
+                    found = baseline.tensions(brain, note.body, area=note.area,
+                                              topic=note.topic, chain=chain,
+                                              partitions=partitions, exclude={note.id})
+                    if found:
+                        held.append({"brain": name, "note": note.id, "with": found[0]["id"],
+                                     "why": found[0]["why"]})
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+    return {"notes": total, "held": held,
+            "rate": round(len(held) / total, 3) if total else 0.0}
 
 
 # ---------------------------------------------------------------------------- dated values

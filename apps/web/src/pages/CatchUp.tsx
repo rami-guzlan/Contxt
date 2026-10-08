@@ -4,6 +4,11 @@
 // weekly dose of upkeep, and offers to decide once. Keys: Enter takes the recommendation, 1 to
 // 5 pick an action, L is later. On a touch screen, swipe right for the recommendation and left
 // for later. Everything is undoable; "Review everything" stays one click away.
+//
+// A suggestion that changes a baseline (a rule, a must-hold, a note you confirmed or AIs use a
+// lot) gets a card of its own: its choices open only after the two are compared, and revising
+// the baseline takes a reason of a few words. Kept quickly, card after card, and the next card
+// says so plainly. Each decision records how long its card was shown.
 
 import { ArrowLeft, Check, ListChecks } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -20,12 +25,27 @@ import {
   useSetAside,
   useSetBrainPolicies,
 } from "../api/hooks";
-import type { BrainDecision, CardAction, CatchUpPlan, JudgmentCard, LegacyOffer, Nudge, Offer, QuickGroup, Serves, UpkeepCard, WentIn } from "../api/types";
+import type {
+  BrainDecision,
+  CardAction,
+  CardBaseline,
+  CatchUpPlan,
+  JudgmentCard,
+  LegacyOffer,
+  ModelVerdict,
+  Nudge,
+  Offer,
+  QuickGroup,
+  ScheduledRevision,
+  Serves,
+  UpkeepCard,
+  WentIn,
+} from "../api/types";
 import { type Item, minutes, queueOf } from "../lib/catchup";
 import { Compare } from "../components/Diff";
 import { ErrorNote, Loading } from "../components/ui";
 import { onDay, plural, when } from "../lib/format";
-import { entryUrl } from "./brain/shared";
+import { day, entryUrl } from "./brain/shared";
 
 /** What the person did with each card, for the finish. */
 interface Done {
@@ -57,6 +77,7 @@ export function CatchUpPage() {
     return (
       <Run
         queue={queue}
+        pace={plan.pace ?? DEFAULT_PACE}
         onDone={(record) => setDone((current) => [...current, record])}
         onFinish={() => {
           seen.mutate();
@@ -137,6 +158,7 @@ function StartScreen({ plan, onStart, onRecap, onSeen }: { plan: CatchUpPlan; on
           <Handled items={plan.handled} total={plan.counts.handled} />
         </>
       )}
+      <Scheduled items={plan.scheduled ?? []} />
       <p className="muted small">
         {plan.counts.snoozed ? `${plural(plan.counts.snoozed, "item")} set for later. ` : ""}
         <button type="button" className="link small" onClick={onSeen}>
@@ -296,17 +318,38 @@ function Finish({ plan, done }: { plan: CatchUpPlan; done: Done[] }) {
 
 // ---------------------------------------------------------------- the run, one card at a time
 
-function Run({ queue, onDone, onFinish }: { queue: Item[]; onDone: (d: Done) => void; onFinish: () => void }) {
+const DEFAULT_PACE = { cards: 5, seconds: 6 };
+
+function Run({
+  queue,
+  pace,
+  onDone,
+  onFinish,
+}: {
+  queue: Item[];
+  pace: { cards: number; seconds: number };
+  onDone: (d: Done) => void;
+  onFinish: () => void;
+}) {
   const [index, setIndex] = useState(0);
+  // When each recent judgment was kept in under `pace.seconds`: a run of them earns a plain word.
+  const [fast, setFast] = useState<number[]>([]);
+  const shownAt = useRef(Date.now());
   const item = queue[index];
   const next = useCallback(() => {
     if (index + 1 >= queue.length) onFinish();
     else setIndex(index + 1);
   }, [index, queue.length, onFinish]);
   useEffect(() => {
+    shownAt.current = Date.now();
+  }, [index]);
+  useEffect(() => {
     if (!item) onFinish();
   }, [item, onFinish]);
   if (!item) return <Loading />;
+  const now = Date.now();
+  const recent = fast.filter((t) => now - t < 60_000).length;
+  const paceNote = item.kind === "judgment" && recent >= pace.cards ? `You've kept ${recent} in a minute.` : null;
   return (
     <div className="page catch-up run">
       <div className="run-head">
@@ -320,20 +363,44 @@ function Run({ queue, onDone, onFinish }: { queue: Item[]; onDone: (d: Done) => 
       <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={queue.length} aria-valuenow={index}>
         <span style={{ width: `${(100 * index) / queue.length}%` }} />
       </div>
-      <ItemCard key={item.key} item={item} onDone={(what, checkpoint) => {
-        onDone({ key: item.key, what, checkpoint });
-        next();
-      }} onSkip={next} />
+      <ItemCard
+        key={item.key}
+        item={item}
+        paceNote={paceNote}
+        onDone={(what, checkpoint) => {
+          if (item.kind === "judgment") {
+            const at = Date.now();
+            const quick = (at - shownAt.current) / 1000 < pace.seconds;
+            setFast((list) => (quick ? [...list.filter((t) => at - t < 60_000), at] : []));
+          }
+          onDone({ key: item.key, what, checkpoint });
+          next();
+        }}
+        onSkip={next}
+      />
     </div>
   );
 }
 
-function ItemCard({ item, onDone, onSkip }: { item: Item; onDone: (what: string, checkpoint?: string | null) => void; onSkip: () => void }) {
+function ItemCard({
+  item,
+  paceNote,
+  onDone,
+  onSkip,
+}: {
+  item: Item;
+  paceNote?: string | null;
+  onDone: (what: string, checkpoint?: string | null) => void;
+  onSkip: () => void;
+}) {
   switch (item.kind) {
     case "legacy":
       return <LegacyCard offer={item.offer} onDone={onDone} onSkip={onSkip} />;
     case "judgment":
-      return <Judgment card={item.card} onDone={onDone} onSkip={onSkip} />;
+      if (item.card.type === "baseline" && item.card.baseline)
+        return <BaselineCard card={item.card} baseline={item.card.baseline} paceNote={paceNote} onDone={onDone} onSkip={onSkip} />;
+      if (item.card.type === "went_in") return <WentInCard card={item.card} onDone={onDone} onSkip={onSkip} />;
+      return <Judgment card={item.card} paceNote={paceNote} onDone={onDone} onSkip={onSkip} />;
     case "quick":
       return <Quick group={item.group} onDone={onDone} onSkip={onSkip} />;
     case "upkeep":
@@ -362,6 +429,7 @@ function CardFrame({
   recommend,
   choices,
   busy,
+  locked = false,
   error,
 }: {
   tag: string;
@@ -371,6 +439,8 @@ function CardFrame({
   recommend?: { label: string; reason: string } | null;
   choices: Choice[];
   busy: boolean;
+  /** The choices wait for something first (comparing the two). */
+  locked?: boolean;
   error?: unknown;
 }) {
   const primary = choices.find((c) => c.primary) ?? choices[0];
@@ -379,7 +449,7 @@ function CardFrame({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (busy || (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) || target?.isContentEditable) return;
+      if (busy || locked || (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) || target?.isContentEditable) return;
       if (event.key === "Enter" && target?.tagName !== "BUTTON" && target?.tagName !== "A") {
         event.preventDefault();
         primary?.run();
@@ -396,7 +466,7 @@ function CardFrame({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, choices, later, primary]);
+  }, [busy, locked, choices, later, primary]);
   return (
     <article
       className="catch-card"
@@ -405,7 +475,7 @@ function CardFrame({
         if (event.pointerType === "touch") start.current = event.clientX;
       }}
       onPointerUp={(event) => {
-        if (start.current === null || busy) return;
+        if (start.current === null || busy || locked) return;
         const dx = event.clientX - start.current;
         start.current = null;
         if (dx > 80) primary?.run();
@@ -434,7 +504,7 @@ function CardFrame({
             key={choice.id}
             type="button"
             className={choice === primary ? "primary" : choice.id === "later" ? "link" : undefined}
-            disabled={busy}
+            disabled={busy || (locked && choice.id !== "later")}
             onClick={choice.run}
             title={`Key ${i + 1}`}
           >
@@ -449,6 +519,9 @@ function CardFrame({
 }
 
 const ACTION_LABELS: Record<CardAction, string> = {
+  revise: "Revise the baseline",
+  both_hold: "Both hold",
+  undo: "Take it back",
   keep_mine: "Keep my note",
   use_this: "Use this instead",
   keep_both: "Keep both",
@@ -461,31 +534,51 @@ const ACTION_LABELS: Record<CardAction, string> = {
   compare: "Compare",
 };
 
-/** Decisions from this page carry the card they came from, so upkeep counts per week. */
+/** Decisions from this page carry the card they came from, so upkeep counts per week, and how
+ * many seconds the card was shown first, so quick yeses can be checked again later. A decision
+ * the Brain refuses (a baseline revised without a reason) says why. */
 function useDecide(key: string) {
   const decide = useBrainDecisions();
-  const run = (decisions: BrainDecision[], label: string, onDone: (what: string, checkpoint?: string | null) => void, what: string) =>
+  const shown = useRef(Date.now());
+  const [failed, setFailed] = useState<string | null>(null);
+  const run = (decisions: BrainDecision[], label: string, onDone: (what: string, checkpoint?: string | null) => void, what: string) => {
+    setFailed(null);
     decide.mutate(
-      { decisions, label, source: { catch_up: key } },
+      { decisions, label, source: { catch_up: key, seconds: Math.round((Date.now() - shown.current) / 1000) } },
       {
         onSuccess: (outcome) => {
-          const failed = outcome.results.filter((r) => !r.ok);
-          if (failed.length && failed.length === outcome.results.length) return;
-          onDone(what, outcome.checkpoint?.id ?? null);
+          const refused = outcome.results.filter((r) => !r.ok);
+          if (refused.length && refused.length === outcome.results.length) {
+            setFailed(refused[0]?.message ?? "Nothing changed.");
+            return;
+          }
+          const scheduled = outcome.results.some((r) => r.data?.status === "scheduled");
+          onDone(scheduled ? `${what}: scheduled for a day from now, and you can cancel it until then` : what, outcome.checkpoint?.id ?? null);
         },
       },
     );
-  return { decide, run };
+  };
+  return { decide, run, failed };
 }
 
-function Judgment({ card, onDone, onSkip }: { card: JudgmentCard; onDone: (what: string, checkpoint?: string | null) => void; onSkip: () => void }) {
-  const { decide, run } = useDecide(card.key);
+function Judgment({
+  card,
+  paceNote,
+  onDone,
+  onSkip,
+}: {
+  card: JudgmentCard;
+  paceNote?: string | null;
+  onDone: (what: string, checkpoint?: string | null) => void;
+  onSkip: () => void;
+}) {
+  const { decide, run, failed } = useDecide(card.key);
   const aside = useSetAside();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(card.body);
   const [comparing, setComparing] = useState(false);
-  const id = card.proposal_id;
+  const id = card.proposal_id ?? "";
   const others = card.duplicates.filter((d) => d !== id);
   const act = (action: CardAction) => {
     switch (action) {
@@ -518,6 +611,8 @@ function Judgment({ card, onDone, onSkip }: { card: JudgmentCard; onDone: (what:
         return navigate(`/review?proposal=${encodeURIComponent(id)}`);
       case "later":
         return aside.mutate({ key: card.key, later: true }, { onSuccess: onSkip });
+      default:
+        return undefined;
     }
   };
   const ordered = [card.recommend.action as CardAction, ...card.actions.filter((a) => a !== card.recommend.action)].filter((a) =>
@@ -539,10 +634,22 @@ function Judgment({ card, onDone, onSkip }: { card: JudgmentCard; onDone: (what:
       busy={decide.isPending || aside.isPending}
       error={decide.error ?? aside.error}
     >
+      {paceNote ? (
+        <p className="pace-note" role="note">
+          {paceNote}
+        </p>
+      ) : null}
       <p className="muted small">
         From {card.source}
         {card.at ? `, ${when(card.at)}` : ""}. {card.why}
       </p>
+      {card.held ? <p className="small">It would have gone in on its own, but it waits for you: {card.held.why}.</p> : null}
+      <CheckLine check={card.check} />
+      {failed ? (
+        <p className="warning small" role="alert">
+          {failed}
+        </p>
+      ) : null}
       {editing ? (
         <div className="stack-tight">
           <label className="field">
@@ -573,6 +680,297 @@ function Judgment({ card, onDone, onSkip }: { card: JudgmentCard; onDone: (what:
         <blockquote className="suggestion-text">{card.body || card.summary}</blockquote>
       )}
     </CardFrame>
+  );
+}
+
+const RELATION_WORDS: Record<ModelVerdict["relation"], string> = {
+  contradicts: "they disagree",
+  narrows: "this one is a narrower case of your note, or an exception to it",
+  extends: "this one adds to your note",
+  agrees: "they say the same thing",
+  unrelated: "they are about different things",
+};
+
+/** What your own AI made of the two, side by side, or that it has not read them yet. */
+function CheckLine({ check }: { check?: JudgmentCard["check"] }) {
+  if (!check || check.model === "none") return null;
+  if (!check.verdict) {
+    return check.model === "waiting" ? (
+      <p className="muted small">Checked by words and figures; your AI has not read the two side by side yet.</p>
+    ) : null;
+  }
+  return (
+    <p className="small check-line">
+      Your AI read both: {RELATION_WORDS[check.verdict.relation]}.{check.verdict.settle ? ` ${check.verdict.settle}` : ""}
+    </p>
+  );
+}
+
+function wordCount(text: string): number {
+  return (text.match(/[\w'-]+/g) ?? []).length;
+}
+
+/** What a rule or a must-hold reaches, before it changes. */
+function Impact({ impact }: { impact: NonNullable<CardBaseline["impact"]> }) {
+  const domains = impact.domains.map((d) => (d === "*" ? "every task" : d));
+  return (
+    <div className="impact small">
+      <p>
+        <strong>What it reaches.</strong> It went into {plural(impact.conversations, "conversation")} in the last 30 days
+        {domains.length ? `, and goes first into every brief about ${domains.join(", ")}` : ""}.
+      </p>
+      {impact.recent.length ? (
+        <>
+          <p className="muted">The latest requests that got it:</p>
+          <ul>
+            {impact.recent.map((r) => (
+              <li key={`${r.at}-${r.request}`}>
+                “{r.request.length > 140 ? `${r.request.slice(0, 139)}…` : r.request}”{r.client ? <span className="muted"> ({r.client})</span> : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/** A suggestion that changes, retires or disagrees with a baseline: the two side by side first,
+ * then the choices, and a reason of a few words to revise it. Never part of a quick group. */
+function BaselineCard({
+  card,
+  baseline,
+  paceNote,
+  onDone,
+  onSkip,
+}: {
+  card: JudgmentCard;
+  baseline: CardBaseline;
+  paceNote?: string | null;
+  onDone: (what: string, checkpoint?: string | null) => void;
+  onSkip: () => void;
+}) {
+  const { decide, run, failed } = useDecide(card.key);
+  const aside = useSetAside();
+  const [compared, setCompared] = useState(false);
+  const [mode, setMode] = useState<"revise" | "both" | null>(null);
+  const [reason, setReason] = useState("");
+  const id = card.proposal_id ?? "";
+  const retire = baseline.change === "retire";
+  const repeated = !!baseline.previous_reason && reason.trim().toLowerCase() === baseline.previous_reason.trim().toLowerCase();
+  const enough = wordCount(reason) >= baseline.min_words && !repeated;
+  const labelOf = (action: CardAction) =>
+    action === "revise" ? (retire ? "Retire it" : "Revise the baseline") : action === "keep_mine" ? (retire ? "Keep it" : "Keep the baseline") : (ACTION_LABELS[action] ?? action);
+  const act = (action: CardAction) => {
+    switch (action) {
+      case "revise":
+        return setMode("revise");
+      case "both_hold":
+        return setMode("both");
+      case "keep_mine":
+        return run([{ action: "reject", proposal_id: id, reason: "Kept the baseline" }], `Kept the baseline “${baseline.title}”`, onDone, `Kept your baseline “${baseline.title}”`);
+      case "later":
+        return aside.mutate({ key: card.key, later: true }, { onSuccess: onSkip });
+      default:
+        return undefined;
+    }
+  };
+  const submit = () => {
+    const why = reason.trim();
+    if (mode === "revise") {
+      const replaces = baseline.change === "disagree" ? [baseline.id] : undefined;
+      run(
+        [{ action: "approve", proposal_id: id, reason: why, replaces }],
+        `${retire ? "Retired" : "Revised"} the baseline “${baseline.title}”`,
+        onDone,
+        retire ? `Retired “${baseline.title}”` : `Revised “${baseline.title}”`,
+      );
+    } else if (mode === "both") {
+      run([{ action: "approve", proposal_id: id, reason: `Both hold: ${why}` }], `Kept both: “${card.title}”`, onDone, `Kept “${card.title}” beside “${baseline.title}”`);
+    }
+  };
+  const ordered = [card.recommend.action as CardAction, ...card.actions.filter((a) => a !== card.recommend.action)].filter((a) =>
+    card.actions.includes(a),
+  );
+  const choices: Choice[] = ordered.map((action) => ({
+    id: action,
+    label: labelOf(action),
+    run: () => act(action),
+    primary: action === card.recommend.action,
+  }));
+  return (
+    <CardFrame
+      tag={card.tag}
+      title={card.title}
+      serves={card}
+      recommend={{ label: labelOf(card.recommend.action as CardAction).toLowerCase(), reason: card.recommend.reason }}
+      choices={choices}
+      busy={decide.isPending || aside.isPending}
+      locked={!compared}
+      error={decide.error ?? aside.error}
+    >
+      {paceNote ? (
+        <p className="pace-note" role="note">
+          {paceNote} This one changes a baseline.
+        </p>
+      ) : null}
+      <p className="muted small">
+        From {card.source}
+        {card.at ? `, ${when(card.at)}` : ""}. {card.why}
+      </p>
+      {card.held ? <p className="small">It would have gone in on its own, but it waits for you.</p> : null}
+      {compared ? (
+        <>
+          <Compare
+            before={{ label: `Your baseline: ${baseline.why}`, title: baseline.title, body: baseline.body }}
+            after={{ label: retire ? "It would retire it" : "The suggestion", title: card.title, body: retire ? card.summary || card.title : card.body }}
+            marks={baseline.change === "revise"}
+          />
+          <ul className="baseline-facts small muted">
+            <li>
+              Your note: added {day(baseline.added) || "earlier"}
+              {baseline.revised ? `, last changed ${day(baseline.revised)}` : ""}
+              {baseline.approved_by ? `, approved by ${baseline.approved_by}` : ""}
+              {baseline.verified ? `, last checked ${day(baseline.verified)}` : ""}. AIs used it in {plural(baseline.uses, "chat")} this month.
+            </li>
+            <li>
+              The suggestion: from {card.source}
+              {card.at ? `, ${when(card.at)}` : ""}.
+            </li>
+          </ul>
+          {baseline.impact ? <Impact impact={baseline.impact} /> : null}
+          <CheckLine check={card.check} />
+        </>
+      ) : (
+        <div className="row">
+          <button type="button" className="primary" onClick={() => setCompared(true)} autoFocus>
+            Compare the two
+          </button>
+          <span className="muted small">The choices open once you have read both.</span>
+        </div>
+      )}
+      {mode ? (
+        <div className="stack-tight">
+          <label className="field">
+            <span className="field-label">
+              {mode === "revise" ? (retire ? "Why does it go?" : "Why does it change?") : "Which client, period or scope does each cover?"}
+            </span>
+            <textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} autoFocus />
+            <span className="muted small">
+              At least {baseline.min_words} words, kept with the change in your Brain's history.
+              {repeated ? " That was the reason last time; say what is different now." : ""}
+            </span>
+          </label>
+          <div className="row">
+            <button type="button" className="primary" disabled={!enough || decide.isPending} onClick={submit}>
+              {mode === "revise" ? (retire ? "Retire it, with this reason" : "Revise it, with this reason") : "Keep both, with this note"}
+            </button>
+            <button
+              type="button"
+              className="link"
+              onClick={() => {
+                setMode(null);
+                setReason("");
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {failed ? (
+        <p className="warning small" role="alert">
+          {failed}
+        </p>
+      ) : null}
+    </CardFrame>
+  );
+}
+
+/** Something that went in on its own, which your AI then read as disagreeing with a note. */
+function WentInCard({ card, onDone, onSkip }: { card: JudgmentCard; onDone: (what: string, checkpoint?: string | null) => void; onSkip: () => void }) {
+  const undo = useBrainUndo();
+  const aside = useSetAside();
+  const navigate = useNavigate();
+  const act = (action: CardAction) => {
+    switch (action) {
+      case "undo":
+        if (card.checkpoint) undo.mutate(card.checkpoint, { onSuccess: () => onDone(`Took back “${card.title}”`) });
+        return undefined;
+      case "keep_both":
+        return aside.mutate({ key: card.key }, { onSuccess: () => onDone(`Kept “${card.title}” beside “${card.with?.title ?? "your note"}”`) });
+      case "review":
+        return navigate(entryUrl(card.entry_id ?? ""));
+      case "later":
+        return aside.mutate({ key: card.key, later: true }, { onSuccess: onSkip });
+      default:
+        return undefined;
+    }
+  };
+  const ordered = [card.recommend.action as CardAction, ...card.actions.filter((a) => a !== card.recommend.action)].filter((a) =>
+    card.actions.includes(a),
+  );
+  const labels: Partial<Record<CardAction, string>> = { keep_both: "Keep both", review: "Open it" };
+  const choices: Choice[] = ordered.map((action) => ({
+    id: action,
+    label: labels[action] ?? ACTION_LABELS[action] ?? action,
+    run: () => act(action),
+    primary: action === card.recommend.action,
+  }));
+  return (
+    <CardFrame
+      tag={card.tag}
+      title={card.title}
+      recommend={{ label: (labels[card.recommend.action as CardAction] ?? ACTION_LABELS[card.recommend.action as CardAction] ?? card.recommend.action).toLowerCase(), reason: card.recommend.reason }}
+      choices={choices}
+      busy={undo.isPending || aside.isPending}
+      error={undo.error ?? aside.error}
+    >
+      <p className="muted small">
+        {card.source}
+        {card.at ? `, ${when(card.at)}` : ""}. {card.why}
+      </p>
+      {card.with ? (
+        <Compare
+          before={{ label: "Your note", title: card.with.title, body: card.with.body }}
+          after={{ label: "What went in", title: card.title, body: card.body }}
+          marks={false}
+        />
+      ) : null}
+      <CheckLine check={card.check} />
+    </CardFrame>
+  );
+}
+
+/** Revisions you decided, going in a day later: each can be cancelled until then. */
+function Scheduled({ items }: { items: ScheduledRevision[] }) {
+  const decide = useBrainDecisions();
+  if (!items.length) return null;
+  return (
+    <section className="scheduled stack-tight" aria-label="Scheduled changes">
+      <h2 className="h3">Scheduled</h2>
+      <ul className="list">
+        {items.map((item) => (
+          <li key={item.proposal_id} className="row">
+            <span>
+              “{item.title}” goes in {when(item.at)}
+              {item.reason ? <span className="muted small"> · {item.reason}</span> : null}
+            </span>
+            <button
+              type="button"
+              className="link small"
+              disabled={decide.isPending}
+              onClick={() =>
+                decide.mutate({ decisions: [{ action: "unschedule", proposal_id: item.proposal_id }], label: `Cancelled the scheduled change to ${item.title}` })
+              }
+            >
+              Cancel it
+            </button>
+          </li>
+        ))}
+      </ul>
+      <ErrorNote error={decide.error} />
+    </section>
   );
 }
 
@@ -737,6 +1135,39 @@ function Upkeep({ card, onDone, onSkip }: { card: UpkeepCard; onDone: (what: str
       >
         <p>{card.summary}</p>
         {triggers ? <p className="muted small">It would come in when a request mentions: {triggers}. You can change these words on the note.</p> : null}
+      </CardFrame>
+    );
+  }
+  if (card.type === "spot") {
+    return (
+      <CardFrame
+        tag="Still right?"
+        title={card.title}
+        recommend={null}
+        busy={busy}
+        error={error}
+        choices={[
+          {
+            id: "yes",
+            label: "Still right",
+            primary: true,
+            run: () => run([{ action: "verify", entry_id: card.id }], `Still right: ${card.title}`, onDone, `Confirmed “${card.title}”`),
+          },
+          { id: "edit", label: "Change it", run: () => window.open(entryUrl(card.id), "_self") },
+          {
+            id: "no",
+            label: "Take it out",
+            run: () =>
+              run([{ action: "archive", entry_id: card.id, reason: "Not right on a second look" }], `Took out ${card.title}`, onDone, `Took out “${card.title}”`),
+          },
+          later,
+        ]}
+      >
+        <p>{card.summary}</p>
+        <p className="muted small">
+          {card.why} A second look now and then keeps quick yeses honest.
+          {card.uses ? ` Used in ${plural(card.uses, "chat")} this month.` : ""}
+        </p>
       </CardFrame>
     );
   }

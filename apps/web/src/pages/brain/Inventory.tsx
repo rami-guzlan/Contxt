@@ -406,6 +406,11 @@ function ItemTitle({ item }: { item: InventoryItem }) {
             {item.critical ? "Must hold, critical" : "Must hold"}
           </span>
         ) : null}
+        {item.baseline && item.load !== "domain" && item.load !== "standing" ? (
+          <span className="chip" title={`A baseline: ${item.baseline}. A change to it waits for you, with a reason.`}>
+            Baseline
+          </span>
+        ) : null}
         {!item.live ? <span className="chip chip-archived">Archived</span> : null}
         {item.partition ? <span className="chip">{item.partition}</span> : null}
       </span>

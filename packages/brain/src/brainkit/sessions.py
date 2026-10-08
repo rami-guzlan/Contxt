@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS ledger_meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS outputs (
     path TEXT PRIMARY KEY, session_id TEXT, at TEXT, title TEXT, client TEXT);
 CREATE TABLE IF NOT EXISTS dismissed (key TEXT PRIMARY KEY, at TEXT);
+CREATE TABLE IF NOT EXISTS verdicts (
+    key TEXT PRIMARY KEY, relation TEXT, detail TEXT, at TEXT);
 """
 
 # How an item reached a conversation: the usage_daily column each way counts in.
@@ -327,6 +329,79 @@ class Ledger:
             row["via"] = ("work" if row["packet_id"] == WORK else
                           "opened" if row["packet_id"] == FOLLOWUP else "packet")
         return {"daily": daily, "recent": recent}
+
+    def reach(self, item: str, *, days: int = 30, limit: int = 3) -> dict:
+        """How far one note reaches, from the detail window: the conversations it went into
+        in the last `days` days (as a note or as a must-hold's line) and the most recent
+        requests that received it, newest first."""
+        since = (util.now() - _dt.timedelta(days=max(1, int(days)))
+                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._connect() as conn:
+            count = conn.execute(
+                "SELECT COUNT(DISTINCT session_id) AS n FROM deliveries WHERE item = ? AND "
+                "kind IN ('note', 'must') AND at >= ?", (item, since)).fetchone()
+            rows = conn.execute(
+                "SELECT p.request, MAX(d.at) AS at, s.label AS client FROM deliveries d "
+                "JOIN packets p ON p.id = d.packet_id LEFT JOIN sessions s ON s.id = p.session_id "
+                "WHERE d.item = ? AND d.kind IN ('note', 'must') AND COALESCE(p.request, '') != '' "
+                "GROUP BY p.request ORDER BY MAX(d.at) DESC LIMIT ?",
+                (item, max(1, int(limit)))).fetchall()
+        return {"conversations": int(count["n"] or 0),
+                "recent": [{"request": r["request"], "at": r["at"], "client": r["client"] or ""}
+                           for r in rows]}
+
+    # ------------------------------------------------------------------ model checks
+    def verdicts(self, keys) -> dict[str, dict]:
+        """What a model already said about pairs of texts, by pair key: {"relation",
+        "detail", "at"}. A pair is asked about once; a new text is a new pair."""
+        keys = [str(k) for k in keys or [] if k]
+        if not keys:
+            return {}
+        out = {}
+        with self._connect() as conn:
+            for start in range(0, len(keys), 500):
+                chunk = keys[start:start + 500]
+                marks = ",".join("?" * len(chunk))
+                for row in conn.execute(
+                        f"SELECT key, relation, detail, at FROM verdicts WHERE key IN ({marks})",
+                        chunk):
+                    try:
+                        detail = json.loads(row["detail"] or "{}")
+                    except ValueError:
+                        detail = {}
+                    out[row["key"]] = {"relation": row["relation"], "detail": detail,
+                                       "at": row["at"]}
+        return out
+
+    def record_verdicts(self, rows) -> int:
+        """Keep a model's verdicts: [{"key", "relation", "detail"}]."""
+        now = util.now_iso()
+        kept = 0
+        with self._connect() as conn:
+            for row in rows or []:
+                if not row.get("key") or not row.get("relation"):
+                    continue
+                conn.execute(
+                    "INSERT INTO verdicts (key, relation, detail, at) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET relation = excluded.relation, "
+                    "detail = excluded.detail, at = excluded.at",
+                    (str(row["key"]), str(row["relation"]),
+                     json.dumps(row.get("detail") or {}, ensure_ascii=False), now))
+                kept += 1
+        return kept
+
+    def verdicts_stamp(self) -> str:
+        """Changes when a verdict comes in: what a cached review is checked against."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS n, MAX(at) AS at FROM verdicts").fetchone()
+        return f"{row['n']}:{row['at'] or ''}"
+
+    def verdicts_since(self, since: str) -> int:
+        """Pairs a model was asked about since an ISO moment: what a daily cap counts."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS n FROM verdicts WHERE at >= ?",
+                               (since,)).fetchone()
+        return int(row["n"] or 0)
 
     def handouts(self, kind: str, item: str) -> list[dict]:
         """Every delivery of one item still in the detail window, oldest first: session,

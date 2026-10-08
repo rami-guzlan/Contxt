@@ -81,12 +81,12 @@ class ProposalIn(Body):
 
 
 class DecisionItem(Body):
-    # approve | reject (a proposal); archive | edit | restore | unarchive | update | verify |
-    # mark (an entry)
+    # approve | reject | unschedule (a proposal); archive | edit | restore | unarchive |
+    # update | verify | mark (an entry)
     action: str
     proposal_id: str | None = None
     entry_id: str | None = None  # the entry the entry actions act on
-    reason: str = ""
+    reason: str = ""  # approve: required, in a few words, when it revises a baseline
     replaces: list[str] | None = None  # approve: entries it replaces, archived as it lands
     topic: str | None = None  # approve: file it under another area/topic
     title: str | None = None  # approve or edit: a better title
@@ -104,7 +104,9 @@ class DecisionItem(Body):
 class DecisionsIn(Body):
     decisions: list[DecisionItem] = Field(min_length=1, max_length=200)
     label: str | None = None
-    source: dict[str, str] | None = None  # what the batch came from, as the page shows it
+    # What the batch came from, as the page shows it: {"catch_up": <item>}, and how many
+    # seconds the card was shown before the decision (`seconds`).
+    source: dict[str, str | int | float] | None = None
 
 
 class PoliciesIn(Body):
@@ -119,6 +121,8 @@ class PoliciesIn(Body):
     # What the owner's own captures do, by type and origin: {"file": {"chat": "wait"}}.
     capture: dict[str, dict[str, str]] | None = None
     preset: str | None = None  # personal, careful or regulated: a fresh start
+    revision_delay: bool | None = None  # a day to think before a rule or must-hold changes
+    model_checks: bool | None = None  # your own AI reads possible disagreements
 
 
 class CatchUpItemIn(Body):

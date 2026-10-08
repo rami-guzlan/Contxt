@@ -131,6 +131,12 @@ function Hero({ plan }: { plan: CatchUpPlan }) {
             ))}
           </ul>
         ) : null}
+        {health.drift && health.drift.approvals >= 5 ? (
+          <p className="muted small">
+            Taken back within {health.drift.days} days: {health.drift.undone} of {plural(health.drift.approvals, "approval")}
+            {health.drift.share !== null ? ` (${Math.round(health.drift.share * 100)}%)` : ""}. Many would mean approvals drift.
+          </p>
+        ) : null}
       </div>
     </section>
   );

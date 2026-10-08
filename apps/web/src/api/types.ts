@@ -286,7 +286,7 @@ export interface BrainCheckpoint {
 }
 
 export interface BrainDecision {
-  action: "approve" | "reject" | "archive" | "edit" | "restore" | "unarchive" | "update" | "verify" | "mark";
+  action: "approve" | "reject" | "unschedule" | "archive" | "edit" | "restore" | "unarchive" | "update" | "verify" | "mark";
   proposal_id?: string;
   entry_id?: string; // every action but approve and reject acts on an entry
   reason?: string;
@@ -316,7 +316,8 @@ export type EntryField =
   | "applies_to"
   | "triggers"
   | "must_text"
-  | "critical";
+  | "critical"
+  | "baseline";
 
 // ---- the context supply chain
 
@@ -359,6 +360,9 @@ export interface InventoryItem {
   triggers?: string[]; // words that bring a must-hold's domain into play
   must_text?: string; // a must-hold's one line
   critical?: boolean; // its line also goes in every session's startup context
+  /** Why a change to it waits for a reason (a rule, a must-hold, confirmed, much used), or "". */
+  baseline?: string;
+  baseline_marked?: boolean; // you marked it a baseline
   added?: string;
   updated?: string;
   revised?: string;
@@ -512,6 +516,10 @@ export interface BrainPolicies {
   capture?: Record<CaptureType, Record<CaptureOrigin, "apply" | "wait">>;
   capture_types?: CaptureType[];
   capture_origins?: CaptureOrigin[];
+  /** A day to think before a rule, a standing note or a must-hold changes. */
+  revision_delay?: boolean;
+  /** Your own AI reads possible disagreements side by side, when one is connected. */
+  model_checks?: boolean;
 }
 
 export interface DecisionOutcome {
@@ -1089,13 +1097,75 @@ export interface Serves {
   project: { id: string; title: string } | null;
 }
 
-export type CardType = "conflict" | "close" | "duplicate" | "private" | "change" | "retire" | "replace" | "skill" | "problem";
-export type CardAction = "keep_mine" | "use_this" | "keep_both" | "edit" | "later" | "keep_one" | "not_this" | "keep" | "review" | "compare";
+export type CardType =
+  | "baseline"
+  | "went_in"
+  | "conflict"
+  | "close"
+  | "duplicate"
+  | "private"
+  | "change"
+  | "retire"
+  | "replace"
+  | "skill"
+  | "problem";
+export type CardAction =
+  | "keep_mine"
+  | "use_this"
+  | "keep_both"
+  | "edit"
+  | "later"
+  | "keep_one"
+  | "not_this"
+  | "keep"
+  | "review"
+  | "compare"
+  | "revise"
+  | "both_hold"
+  | "undo";
+
+/** What your own AI said after reading two notes side by side (check 3). */
+export interface ModelVerdict {
+  relation: "contradicts" | "narrows" | "extends" | "agrees" | "unrelated";
+  proposed: string;
+  existing: string;
+  settle: string;
+  at: string | null;
+}
+
+/** A note a change must not quietly overturn, as a "Changes a baseline" card shows it. */
+export interface CardBaseline {
+  id: string;
+  title: string;
+  body: string;
+  kind: string;
+  load: string;
+  /** Why it is a baseline, in plain words. */
+  why: string;
+  /** A new version of it, its retirement, or a suggestion that disagrees with it. */
+  change: "revise" | "retire" | "disagree";
+  tension: string;
+  approved_by: string;
+  approved_at: string;
+  added: string;
+  revised: string;
+  verified: string;
+  uses: number;
+  /** A rule, a standing note or a must-hold: its impact comes first. */
+  weighty: boolean;
+  impact: { conversations: number; recent: { request: string; at: string; client: string }[]; domains: string[] } | null;
+  previous_reason: string;
+  min_words: number;
+}
 
 /** One decision that needs the person, in plain words, with a recommendation. */
 export interface JudgmentCard extends Serves {
   key: string;
-  proposal_id: string;
+  /** None for something that already went in (`went_in`): it names its entry instead. */
+  proposal_id: string | null;
+  entry_id?: string;
+  /** The undo point that takes a change that went in on its own back. */
+  checkpoint?: string | null;
   type: CardType;
   kind: string;
   tag: string;
@@ -1113,6 +1183,20 @@ export interface JudgmentCard extends Serves {
   why: string;
   recommend: Advice;
   actions: CardAction[];
+  baseline?: CardBaseline | null;
+  /** Whether your own AI read the pair yet, and what it said. */
+  check?: { model: "done" | "waiting" | "none"; verdict: ModelVerdict | null };
+  /** It would have gone in on its own, but waits: what it may disagree with. */
+  held?: { id: string; why: string } | null;
+}
+
+/** A revision you decided, going in a day later unless you cancel it. */
+export interface ScheduledRevision {
+  proposal_id: string;
+  title: string;
+  at: string;
+  reason: string;
+  baseline: string | null;
 }
 
 /** Suggestions nothing disagrees with, kept with one tap. */
@@ -1142,7 +1226,8 @@ export type UpkeepCard =
   | { key: string; type: "duplicate"; score: number | null; a: UpkeepSide; b: UpkeepSide; recommend: Advice }
   | { key: string; type: "tidy"; id: string; title: string; why: string }
   | { key: string; type: "unused"; count: number; days: number; items: { id: string; title: string; last_used: string | null; topic: string }[] }
-  | { key: string; type: "musthold"; id: string; title: string; summary: string; area: string; area_label: string; triggers: string[]; recommend: Advice };
+  | { key: string; type: "musthold"; id: string; title: string; summary: string; area: string; area_label: string; triggers: string[]; recommend: Advice }
+  | { key: string; type: "spot"; id: string; title: string; summary: string; why: string; uses: number; last_used: string | null };
 
 /** After a run of the same yes: let this kind go straight in? */
 export interface Offer {
@@ -1183,6 +1268,8 @@ export interface BrainHealth {
   factors: HealthFactor[];
   /** Governed files live but not saved to git (a commit failed). */
   unsaved: string[];
+  /** Approvals taken back within `days`: the sign that approvals drift. */
+  drift?: { approvals: number; undone: number; share: number | null; days: number };
 }
 
 /** Something that went in on its own (the capture policy, your own scope). */
@@ -1233,6 +1320,9 @@ export interface CatchUpPlan {
   judgment: JudgmentCard[];
   quick: QuickGroup[];
   upkeep: UpkeepCard[];
+  scheduled?: ScheduledRevision[];
+  /** This many judgment cards kept this fast each earns a plain word on the next card. */
+  pace?: { cards: number; seconds: number };
   offers: Offer[];
   legacy: LegacyOffer | null;
   nudges: Nudge[];

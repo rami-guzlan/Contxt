@@ -91,7 +91,10 @@ AGENT_TOOLS = [
                     "in an existing area/topic when one fits; the reply names the closest "
                     "topics when yours is new. Your own scope applies at once; shared knowledge "
                     "applies or waits for the owner as their policy says (the reply tells you "
-                    "which). The same text twice returns the waiting proposal.",
+                    "which). Anything that may disagree with a note, or changes a baseline (a "
+                    "rule, a must-hold, a note the owner confirmed), waits for the owner "
+                    "whatever the policy, and the reply says why. The same text twice returns "
+                    "the waiting proposal.",
      "inputSchema": {"type": "object", "properties": {
          "area": {"type": "string", "description": "Where it is filed, for example brand, "
                   "customers, sales, operations, people, projects."},

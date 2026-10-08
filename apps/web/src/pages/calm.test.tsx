@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { SeeTheDifference } from "../components/Difference";
 import { apps, goals, judgment, plan, quick, request, stamp } from "../test/fixtures";
+import type { JudgmentCard } from "../api/types";
 import { mockApi, renderAt, workspace } from "../test/render";
 import { AiActivityPage } from "./Activity";
 import { CatchUpPage } from "./CatchUp";
@@ -109,6 +110,118 @@ describe("catch up", () => {
     expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toMatchObject({
       decisions: [{ action: "update", entry_id: "nut-rule", fields: { load: "domain", applies_to: "family", triggers: "peanuts, school" } }],
       source: { catch_up: "musthold:nut-rule" },
+    });
+  });
+
+  it("opens a baseline's choices only after the two are compared, and revising it takes a reason", async () => {
+    const card: JudgmentCard = {
+      ...judgment,
+      key: "proposal:p9",
+      proposal_id: "p9",
+      type: "baseline",
+      tag: "Changes a baseline",
+      title: "Webinars run 45 minutes",
+      body: "Webinars run 45 minutes, questions included.",
+      why: "May disagree with “Webinar length”, a baseline: it is a rule.",
+      recommend: { action: "keep_mine", reason: "AIs used your note in 12 chats this month, and nothing says it changed." },
+      actions: ["revise", "keep_mine", "both_hold", "later"],
+      baseline: {
+        id: "webinar-length",
+        title: "Webinar length",
+        body: "Webinars run 30 minutes.",
+        kind: "rule",
+        load: "on-demand",
+        why: "it is a rule",
+        change: "disagree",
+        tension: "",
+        approved_by: "person:owner",
+        approved_at: "2026-09-01",
+        added: "2026-08-01",
+        revised: "",
+        verified: "2026-09-01",
+        uses: 12,
+        weighty: true,
+        impact: { conversations: 12, recent: [{ request: "Draft the webinar invite", at: "2026-10-01T10:00:00Z", client: "Claude Code" }], domains: [] },
+        previous_reason: "",
+        min_words: 4,
+      },
+      check: { model: "done", verdict: { relation: "contradicts", proposed: "", existing: "", settle: "Say which length is current.", at: null } },
+      held: null,
+    };
+    const calls = mockApi({
+      "GET /api/brain/catch-up": plan({ judgment: [card], quick: [], upkeep: [] }),
+      "POST /api/brain/decisions": decided,
+      "POST /api/brain/catch-up/seen": {},
+    });
+    const user = userEvent.setup();
+    renderAt(<CatchUpPage />, { path: "/catch-up", route: "/catch-up" });
+    await user.click(await screen.findByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Changes a baseline")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keep the baseline" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Revise the baseline" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Compare the two" }));
+    expect(screen.getByText(/It went into 12 conversations in the last 30 days/)).toBeInTheDocument();
+    expect(screen.getByText(/Draft the webinar invite/)).toBeInTheDocument();
+    expect(screen.getByText("Your AI read both: they disagree. Say which length is current.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Revise the baseline" }));
+    const why = screen.getByRole("textbox", { name: /Why does it change\?/ });
+    await user.type(why, "Shorter");
+    const submit = screen.getByRole("button", { name: "Revise it, with this reason" });
+    expect(submit).toBeDisabled();
+    await user.type(why, " webinars convert better");
+    await user.click(submit);
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/decisions")).toBe(true));
+    const body = calls.find((c) => c.path === "/api/brain/decisions")?.body as { source: Record<string, unknown> };
+    expect(body).toMatchObject({
+      decisions: [{ action: "approve", proposal_id: "p9", reason: "Shorter webinars convert better", replaces: ["webinar-length"] }],
+      source: { catch_up: "proposal:p9" },
+    });
+    expect(typeof body.source.seconds).toBe("number");
+  });
+
+  it("asks once more about what went in on its own", async () => {
+    const card = {
+      key: "spot:n1",
+      type: "spot" as const,
+      id: "n1",
+      title: "Webinar day",
+      summary: "Webinars are on Tuesdays.",
+      why: "It went in on its own on 2026-10-01.",
+      uses: 3,
+      last_used: null,
+    };
+    const calls = mockApi({
+      "GET /api/brain/catch-up": plan({ judgment: [], quick: [], upkeep: [card] }),
+      "POST /api/brain/decisions": decided,
+      "POST /api/brain/catch-up/seen": {},
+    });
+    const user = userEvent.setup();
+    renderAt(<CatchUpPage />, { path: "/catch-up", route: "/catch-up" });
+    await user.click(await screen.findByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Still right?")).toBeInTheDocument();
+    expect(screen.getByText(/It went in on its own on 2026-10-01\./)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Still right" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/decisions")).toBe(true));
+    expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toMatchObject({
+      decisions: [{ action: "verify", entry_id: "n1" }],
+      source: { catch_up: "spot:n1" },
+    });
+  });
+
+  it("lists a scheduled revision with a way to cancel it", async () => {
+    const calls = mockApi({
+      "GET /api/brain/catch-up": plan({
+        scheduled: [{ proposal_id: "p7", title: "Headlines", at: "2099-10-09T15:00:00Z", reason: "Twelve words fit the new layouts", baseline: "Headlines" }],
+      }),
+      "POST /api/brain/decisions": decided,
+    });
+    const user = userEvent.setup();
+    renderAt(<CatchUpPage />, { path: "/catch-up", route: "/catch-up" });
+    expect(await screen.findByText(/“Headlines” goes in/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel it" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/decisions")).toBe(true));
+    expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toMatchObject({
+      decisions: [{ action: "unschedule", proposal_id: "p7" }],
     });
   });
 

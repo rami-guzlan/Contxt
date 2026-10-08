@@ -36,6 +36,7 @@ MAX_FILE = 10 * 1024 * 1024  # the Brain's own ceiling for one document or asset
 ACTIONS = (
     "approve",
     "reject",
+    "unschedule",  # a scheduled revision waits for a decision again
     "archive",
     "edit",
     "restore",
@@ -64,6 +65,7 @@ ENTRY_FIELDS = (
     "triggers",
     "must_text",
     "critical",
+    "baseline",  # the owner marks it a baseline: a change to it waits, with a reason
 )
 FIELD_LIMITS = {"triggers": 1200, "applies_to": 600}  # characters; other fields take 200
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,80}$")  # a version: a commit, or "current"
@@ -758,6 +760,7 @@ class Brain:
                     {
                         "approve": "brain.approved",
                         "reject": "brain.rejected",
+                        "unschedule": "brain.unscheduled",
                         "archive": "brain.archived",
                         "edit": "brain.edited",
                         "restore": "brain.restored",

@@ -782,10 +782,32 @@ class Brain:
             usage = self.ledger.usage(since)
         except Exception:
             usage = {}
-        total = len(clashes) + len(twins) + len(flagged) + len(recheck)
+        went_in = review.went_in_disagreements(self)
+        total = len(clashes) + len(twins) + len(flagged) + len(recheck) + len(went_in)
         return Result(f"{total} thing(s) want a look." if total else "Nothing wants a look.",
                       {"clashes": clashes, "twins": twins, "flagged": flagged,
-                       "recheck": recheck, "usage": usage, "days": days})
+                       "recheck": recheck, "went_in": went_in, "usage": usage, "days": days})
+
+    def pending_checks(self, limit: int = 4) -> Result:
+        """Pairs of notes a model should read side by side next (check 3 of the baseline
+        check): waiting proposals first, then what went in on its own lately (review.py)."""
+        from . import review
+        batches = review.pending_checks(self, limit=limit)
+        return Result(f"{sum(len(b['pairs']) for b in batches)} pair(s) to read.",
+                      {"batches": batches})
+
+    def record_checks(self, verdicts) -> Result:
+        """Keep what a model read in pairs of notes: [{"key", "relation", "detail"}]."""
+        from . import review
+        rows = [v for v in verdicts or [] if isinstance(v, dict)
+                and v.get("relation") in review.RELATIONS]
+        kept = self.ledger.record_verdicts(rows)
+        return Result(f"{kept} verdict(s) kept.", {"kept": kept})
+
+    def apply_scheduled(self, **kwargs) -> Result:
+        """Scheduled revisions whose time has come go in (governance.apply_scheduled)."""
+        from . import governance
+        return self._write(lambda: governance.apply_scheduled(self, **kwargs))
 
     def health(self) -> Result:
         from . import health
