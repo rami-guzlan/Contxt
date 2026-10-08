@@ -178,6 +178,52 @@ class RoutingTests(unittest.TestCase):
         exact = self.ctx("/brand-sheet").data
         self.assertEqual((exact["procedure"], exact["skill_id"]), ("executable", "brand-sheet"))
 
+    def test_a_model_with_no_tools_is_never_asked_to_call_one(self):
+        # One side of a comparison runs with no tools at all: told to call one, it writes the
+        # call out instead of the answer. It gets the procedure it would open, in full.
+        calls = ("get_task_context", "get_skill", "get_note", "get_reference", "search_notes",
+                 "propose_note", "propose_skill", "add_file", "create_focus",
+                 "record_focus_update", "record_output", "fallback", "session_id", "fresh=true")
+        kernel = self.brain.kernel(tools=False).text
+        self.assertIn("Nothing goes to a client before Alex approves it.", kernel)
+        self.assertNotIn("## Skills", kernel)
+        candidate = self.brain.preview("Create a brand sheet for the new client", tools=False)
+        self.assertEqual(candidate.data["skill_included"], "brand-sheet")
+        self.assertIn("Write the voice lines in plain language.", candidate.text)
+        self.assertIn("(the closest for this task; follow it if it fits)", candidate.text)
+        self.assertNotIn("## Skill candidates", candidate.text)
+        routed = self.brain.preview("/brand-sheet", tools=False)
+        self.assertIn("### /brand-sheet (routed for this task)", routed.text)
+        self.assertIn("Export a one-page PDF.", routed.text)
+        texts = {"kernel": kernel}
+        for request in ("Write a headline for our web design service page",
+                        "Create a brand sheet for the new client", "/brand-sheet",
+                        "Where are we with the website redesign?",
+                        "The Figma prototype was approved by the client, record that",
+                        "I'm new here. What do I need to know before I write anything?",
+                        "What is active in my brain?", "When do invoices go out?",
+                        "Write the brand sheet copy; we always use sentence case from now on"):
+            texts[request] = self.ctx(request, tools=False).text
+        import dataclasses
+        router = self.brain.state().router
+        policy = router.policy
+        router.policy = dataclasses.replace(policy, lean_floor=0.95)
+        try:
+            lean = self.ctx("Who owns the motion budget next year?", tools=False)
+        finally:
+            router.policy = policy
+        self.assertEqual(lean.data["mode"], "lean")
+        self.assertIn("answer from general knowledge", lean.text)
+        texts["lean"] = lean.text
+        for name, text in texts.items():
+            for call in calls:
+                self.assertNotIn(call, text, (name, call))
+        # A model that can call the brain still gets the pointer, not the text.
+        normal = self.brain.preview("Create a brand sheet for the new client")
+        self.assertIsNone(normal.data["skill_included"])
+        self.assertIn("get_skill", normal.text)
+        self.assertNotIn("Write the voice lines", normal.text)
+
     def test_intent_includes_topic(self):
         data = self.ctx("When do invoices go out?").data
         self.assertIn("billing-question", data["intents"])

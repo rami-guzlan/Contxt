@@ -492,7 +492,7 @@ class FakeBrain:
         self.updates.append(made)
         return {"id": project_id, "seq": len(self.updates)}
 
-    def preview(self, request, *, project=None):
+    def preview(self, request, *, project=None, tools=True):
         self.previewed.append((request, project))
         return {
             "text": f"## Task\n\n{request}",
@@ -631,7 +631,7 @@ class FakeBrain:
     def work_given(self, run_id):
         return [{"kind": "note", "id": "voice-guide", "title": "Voice guide", "tokens": 5}]
 
-    def kernel(self):
+    def kernel(self, *, tools=True):
         return {"text": "# Startup\nWrite plainly.", "tokens": 6}
 
     def requests(self, *, limit=50, before=None, client=None):

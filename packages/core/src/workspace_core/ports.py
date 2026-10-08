@@ -349,10 +349,14 @@ class BrainPort(Protocol):
         """Record progress on a project: one append-only update, never a rewrite."""
         ...
 
-    def preview(self, request: str, *, project: str | None = None) -> dict[str, Any]:
+    def preview(
+        self, request: str, *, project: str | None = None, tools: bool = True
+    ) -> dict[str, Any]:
         """What an AI would be handed for this request, and why each piece is there,
         recording nothing: {"text", "mode", "tokens", "project", "procedure", "notes",
-        "sections", "related"}."""
+        "sections", "related", "skill_included"}. Without `tools`, as a model that cannot
+        call the Brain needs it: nothing in the text asks for a tool, and the procedure it
+        would open comes in full (`skill_included` names it)."""
         ...
 
     # ---- the supply chain: what the Brain holds, where it came from, where it went
@@ -428,8 +432,9 @@ class BrainPort(Protocol):
         [{"start", "end", "conversations", "packets"}]."""
         ...
 
-    def kernel(self) -> dict[str, Any]:
-        """The startup context every conversation gets once: {"text", "tokens"}."""
+    def kernel(self, *, tools: bool = True) -> dict[str, Any]:
+        """The startup context every conversation gets once: {"text", "tokens"}. Without
+        `tools`, as a model that cannot call the Brain needs it: nothing asks for a tool."""
         ...
 
     def unsaved(self) -> list[str]:
@@ -573,13 +578,16 @@ class NoBrain:
     def project_update(self, project_id: str, **_: Any) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to follow projects in.")
 
-    def preview(self, request: str, *, project: str | None = None) -> dict[str, Any]:
+    def preview(
+        self, request: str, *, project: str | None = None, tools: bool = True
+    ) -> dict[str, Any]:
         return {
             "text": "",
             "mode": "none",
             "tokens": 0,
             "project": None,
             "procedure": None,
+            "skill_included": None,
             "notes": [],
             "sections": [],
             "related": [],
@@ -639,7 +647,7 @@ class NoBrain:
     def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
         return []
 
-    def kernel(self) -> dict[str, Any]:
+    def kernel(self, *, tools: bool = True) -> dict[str, Any]:
         return {"text": "", "tokens": 0}
 
     def unsaved(self) -> list[str]:

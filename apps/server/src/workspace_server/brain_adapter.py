@@ -989,8 +989,10 @@ class BrainKitAdapter:
             raise Conflict(result.text)
         return found
 
-    def preview(self, request: str, *, project: str | None = None) -> dict[str, Any]:
-        result = self.brain.preview(request, focus=project or None)
+    def preview(
+        self, request: str, *, project: str | None = None, tools: bool = True
+    ) -> dict[str, Any]:
+        result = self.brain.preview(request, focus=project or None, tools=tools)
         if result.is_error:
             raise ValidationFailed(result.text)
         data: dict[str, Any] = dict(result.data)
@@ -1115,8 +1117,8 @@ class BrainKitAdapter:
         pieces = self.brain.work_given(run_id).data.get("pieces") or []
         return [p for p in pieces if p["kind"] != "note" or p["id"] in seen]
 
-    def kernel(self) -> dict[str, Any]:
-        found = self.brain.kernel()
+    def kernel(self, *, tools: bool = True) -> dict[str, Any]:
+        found = self.brain.kernel(tools=tools)
         return {"text": found.text, "tokens": int(found.data.get("tokens") or 0)}
 
     def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:

@@ -981,9 +981,10 @@ class Brain:
         return made
 
     def preview(
-        self, who: Principal, request: str, *, project: str | None = None
+        self, who: Principal, request: str, *, project: str | None = None, tools: bool = True
     ) -> dict[str, Any]:
-        """What an AI would be handed for this request, and why, recording nothing."""
+        """What an AI would be handed for this request, and why, recording nothing. Without
+        `tools`, as a model that cannot call the Brain needs it (see BrainPort.preview)."""
         who.require("brain.read")
         text = str(request or "").strip()
         if not text:
@@ -992,7 +993,7 @@ class Brain:
             raise ValidationFailed(
                 f"A request to preview is at most {MAX_REQUEST:,} characters.", field="request"
             )
-        return self.rt.brain.preview(text, project=str(project or "").strip() or None)
+        return self.rt.brain.preview(text, project=str(project or "").strip() or None, tools=tools)
 
     def propose(
         self,

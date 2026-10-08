@@ -4,8 +4,12 @@ context changed, each difference with the piece behind it.
 
 Fair by construction: the same model, the same request, the same settings (Claude Code on
 this computer, with no tools and no MCP server, so neither side can look anything up); the
-only difference is the context. A third, short pass compares the two answers with the pieces
-the second one got and names each difference with the piece that caused it.
+only difference is the context. That context is what a connected AI reads before it writes,
+put the way a model with no tools needs it: the startup context and the packet without the
+lines that ask it to call the Brain (it would only write out calls it cannot make), and the
+procedure the packet points to in full instead of its pointer. A third, short pass compares
+the two answers with the pieces the second one got and names each difference with the piece
+that caused it.
 
 A comparison runs in the background (a minute or two) and is kept in memory until the server
 stops: it is shown, then kept as an example by the person if they want it.
@@ -134,7 +138,7 @@ class Differences:
             raise ValidationFailed(
                 f"Keep the request under {MAX_REQUEST:,} characters.", field="request"
             )
-        preview = self.ws.brain.preview(who, text, project=project)
+        preview = self.ws.brain.preview(who, text, project=project, tools=False)
         pieces = [
             {"kind": "note", "id": n["id"], "title": n["title"], "why": n.get("why") or ""}
             for n in preview.get("notes") or []
@@ -147,6 +151,11 @@ class Differences:
             }
             for s in preview.get("sections") or []
         ]
+        if preview.get("skill_included"):
+            name = str(preview["skill_included"])
+            pieces.append(
+                {"kind": "skill", "id": name, "title": f"/{name}", "why": "the procedure to follow"}
+            )
         if preview.get("project"):
             pieces.insert(
                 0,
@@ -162,8 +171,10 @@ class Differences:
             int(r.get("tokens") or 0) for r in self.ws.brain.inventory(who) if r.get("live")
         )
         # A conversation with the Brain gets its startup context once, then the context for
-        # each request: the comparison hands over both, as the first request of a chat would.
+        # each request: the comparison hands over both, as the first request of a chat would,
+        # without what needs a tool. Its size is still that of the one every chat gets.
         kernel = self.ws.rt.brain.kernel()
+        startup = self.ws.rt.brain.kernel(tools=False)
         job = Comparison(
             id=new_id("cmp", self.ws.rt.clock.now()),
             request=text,
@@ -179,7 +190,9 @@ class Differences:
             for old in sorted(self.jobs.values(), key=lambda j: j.started_at)[:-KEEP]:
                 self.jobs.pop(old.id, None)
         context = "\n\n".join(
-            part for part in (str(kernel.get("text") or ""), str(preview.get("text") or "")) if part
+            part
+            for part in (str(startup.get("text") or ""), str(preview.get("text") or ""))
+            if part
         )
         threading.Thread(
             target=self._run, args=(who, job, context), daemon=True, name="difference"

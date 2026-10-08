@@ -73,6 +73,9 @@ FILE_ALLOWED = (
     "Bash(py:*)",
 )
 SKIPPED = shutil.ignore_patterns("__pycache__", "*.pyc", ".git", ".DS_Store")
+# Added to Claude Code's own instructions when it answers with no tools at all: those describe
+# tools, and without this line it writes out calls it cannot make instead of the answer.
+NO_TOOLS = "You have no tools in this conversation. Reply once, with the finished answer only."
 # In a run's folder while it runs: its task and what was copied in, so a folder a stopped server
 # left behind can still be tidied (the copies removed, what it made listed with its task).
 MARKER = ".run.json"
@@ -578,9 +581,9 @@ class Runners:
 
     def ask(self, who: Principal, prompt: str, *, timeout: float = 180.0) -> str:
         """One answer from Claude Code on this computer, with no tools and no MCP server at
-        all, so it knows only what the prompt says: one side of a comparison with and without
-        the Brain, or a follow-up question in the goals interview. In an empty temporary
-        folder, restricted, with no saved session."""
+        all, and told so, so it knows only what the prompt says: one side of a comparison with
+        and without the Brain, or a follow-up question in the goals interview. In an empty
+        temporary folder, restricted, with no saved session."""
         who.require("workspace.admin")
         spec = RUNNERS["claude"]
         status = self.status(spec)
@@ -607,6 +610,8 @@ class Runners:
             "--permission-mode",
             "dontAsk",
             "--no-session-persistence",
+            "--append-system-prompt",
+            NO_TOOLS,
         ]
         try:
             try:

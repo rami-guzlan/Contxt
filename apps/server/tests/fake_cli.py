@@ -1,5 +1,6 @@
 """A stand-in for the Claude Code CLI in tests: the commands the workspace calls, the
-stream-json lines it reads, and a report of exactly how it was started.
+stream-json lines it reads, and a report of exactly how it was started. Asked for one answer
+(`--output-format json`), the report is the answer.
 
 FAKE_CLI_SIGNED_IN=0 answers as signed out. FAKE_CLI_MODE is ok (default), hang (waits to be
 stopped) or fail (exits with an error on stderr). FAKE_CLI_MAKE names files (comma-separated,
@@ -24,6 +25,10 @@ mode = os.environ.get("FAKE_CLI_MODE", "ok")
 prompt = sys.stdin.read()
 with open(args[args.index("--mcp-config") + 1], encoding="utf-8") as handle:
     config = json.load(handle)
+if args[args.index("--output-format") + 1] == "json":
+    started = {"argv": args, "cwd": os.getcwd(), "prompt": prompt, "config": config}
+    print(json.dumps({"type": "result", "is_error": False, "result": json.dumps(started)}))
+    sys.exit(0)
 
 
 def emit(message):

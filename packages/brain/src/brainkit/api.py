@@ -247,13 +247,16 @@ class Brain:
         return chain, partitions
 
     # ------------------------------------------------------------------ kernel
-    def kernel(self, principal=None, via=None) -> Result:
+    def kernel(self, principal=None, via=None, tools=True) -> Result:
+        """The startup context. Without `tools`, as a model that cannot call the brain needs
+        it: nothing in it asks for a tool (its fingerprint is then of that text)."""
         caller = self.caller(principal, via)
         if isinstance(caller, Result):
             return caller
         chain, partitions = caller
         st = self.state()
-        text, fingerprint = kernel_mod.render(st.config, st.index, st.scopes, chain, partitions)
+        text, fingerprint = kernel_mod.render(st.config, st.index, st.scopes, chain, partitions,
+                                              tools=tools)
         return Result(text, {"fingerprint": fingerprint, "scope_chain": chain,
                              "tokens": util.tokens(text),
                              "budget": st.config.budgets.get("kernel_tokens")})
@@ -276,8 +279,12 @@ class Brain:
     def context(self, request, *, principal=None, via=None, partition=None,
                 session_id=None, fresh=False, focus=None, task_type=None,
                 startup_fingerprint=None, explain=False, record=True,
-                include_kernel=None) -> Result:
-        """Route one request and return one bounded context packet."""
+                include_kernel=None, tools=True) -> Result:
+        """Route one request and return one bounded context packet.
+
+        Without `tools`, the packet for a model that cannot call the brain at all: it holds
+        nothing from before and cannot continue a session, so nothing in the text asks for a
+        tool, the procedure comes in full, and nothing is recorded."""
         if not str(request or "").strip():
             return error("get_task_context needs the request text.")
         st = self.state()
@@ -295,28 +302,32 @@ class Brain:
                                 task_type_override=task_type, previous=previous)
         packet = packets_mod.build(route, config=st.config, index=st.index,
                                    delivered=delivered, fresh=bool(fresh), session_id=session,
-                                   partition=partition, explain=explain)
+                                   partition=partition, explain=explain, tools=tools)
         kernel_text, kernel_fp = kernel_mod.render(st.config, st.index, st.scopes, chain,
                                                    partitions)
-        kernel_held = (("kernel", kernel_fp) in delivered) or (
-            str(startup_fingerprint or "").strip() == kernel_fp)
+        kernel_held = tools and (("kernel", kernel_fp) in delivered or (
+            str(startup_fingerprint or "").strip() == kernel_fp))
         if include_kernel is not None:
             kernel_held = not include_kernel
         parts = []
-        if not kernel_held:
+        if not kernel_held and tools:
             parts.append("# Startup context (kernel " + kernel_fp + ")\n\n" + kernel_text)
+        elif not kernel_held:
+            parts.append("# Startup context\n\n" + kernel_mod.render(
+                st.config, st.index, st.scopes, chain, partitions, tools=False)[0])
         parts.append("# Task context\n\n" + packet.text)
         status = "continuing" if continuing else "new"
-        parts.append(
-            "## Continuity\n\n"
-            f"session_id: {session} ({status}). When a later message asks for something "
-            "new, call get_task_context again with this session_id; it sends only what is new. "
-            "Pass it on every other call too, and fresh=true after a compaction.\n"
-            f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n")
+        if tools:
+            parts.append(
+                "## Continuity\n\n"
+                f"session_id: {session} ({status}). When a later message asks for something "
+                "new, call get_task_context again with this session_id; it sends only what is "
+                "new. Pass it on every other call too, and fresh=true after a compaction.\n"
+                f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n")
         data = dict(packet.data)
         data.update({"kernel_fingerprint": kernel_fp, "kernel_included": not kernel_held,
                      "session_status": status, "vault_fingerprint": st.fingerprint[:12]})
-        if record:
+        if record and tools:
             items = list(packet.items)
             if ("kernel", kernel_fp) not in delivered:
                 # Held from now on either way: delivered in this packet, or proven by the
@@ -329,12 +340,16 @@ class Brain:
                                data, items)
         return Result("\n\n".join(parts), data)
 
-    def preview(self, request, *, principal=None, focus=None, partition=None) -> Result:
+    def preview(self, request, *, principal=None, focus=None, partition=None,
+                tools=True) -> Result:
         """What an AI would be handed for this request, and why each piece is there, without
         recording a delivery: the packet as a conversation would get it (its kernel aside) and
-        a plain account of the project, procedure, notes and file sections it chose."""
+        a plain account of the project, procedure, notes and file sections it chose. Without
+        `tools`, the packet as a model that cannot call the brain needs it (one side of a
+        comparison): nothing in it asks for a tool, and the procedure it would open comes in
+        full (`skill_included` names it)."""
         result = self.context(request, principal=principal, focus=focus, partition=partition,
-                              explain=True, record=False, include_kernel=False)
+                              explain=True, record=False, include_kernel=False, tools=tools)
         if result.is_error:
             return result
         st = self.state()
@@ -364,6 +379,7 @@ class Brain:
             "tokens": data.get("token_count"),
             "project": ({"id": found.id, "title": found.title} if found is not None else None),
             "procedure": data.get("skill_id"), "candidates": data.get("candidates") or [],
+            "skill_included": data.get("skill_included"),
             "notes": notes, "sections": sections,
             "related": data.get("related_ids") or [], "log": trace.get("route_log") or []})
 

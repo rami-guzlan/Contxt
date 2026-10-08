@@ -184,9 +184,13 @@ def _quote(text: str, max_tokens: int) -> tuple[str, bool]:
 
 
 def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str,
-          partition: str | None = None, explain: bool = False) -> Packet:
+          partition: str | None = None, explain: bool = False, tools: bool = True) -> Packet:
+    """The packet for one route. Without `tools`, for a model that cannot call the brain at
+    all (one side of a comparison): it holds nothing from before and can open nothing, so
+    everything goes in the text, the procedure's own text in place of its pointer, and
+    nothing in it asks for a tool."""
     packet_id = "pkt-" + secrets.token_hex(6)
-    delivered = {} if fresh else dict(delivered or {})
+    delivered = {} if fresh or not tools else dict(delivered or {})
     budget = note_budget(config, route)
     chosen = []            # notes whose bodies go in the packet
     held = []              # notes relevant but already held by this session
@@ -345,9 +349,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                 lines += [f"#### {section.label}", "", text, ""]
                 if clipped:
                     lines += ["(Cut short here; the rest is in the whole file.)", ""]
-            ref = index.references.get(path)
-            size = f", about {ref.tokens:,} tokens" if ref is not None else ""
-            lines += [f'Whole file: get_reference(path="{path}"){size}.', ""]
+            if tools:
+                ref = index.references.get(path)
+                size = f", about {ref.tokens:,} tokens" if ref is not None else ""
+                lines += [f'Whole file: get_reference(path="{path}"){size}.', ""]
     if route.system_docs:
         lines += ["## Brain system", ""]
         for scored in route.system_docs:
@@ -360,7 +365,17 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             note = scored.item
             lines.append(f"- `{note.id}`: {note.startup_text or util.excerpt(note.body, 200)}")
         lines.append("")
-    if route.skill is not None:
+    included = None  # without tools: the procedure it would open, here in full
+    if not tools:
+        included = route.skill or (route.candidates[0].item if route.candidates else None)
+    if included is not None:
+        how = ("routed for this task" if included is route.skill
+               else "the closest for this task; follow it if it fits")
+        lines += ["## Procedure", "", f"### /{included.name} ({how})", "",
+                  included.body.strip(), ""]
+        if included.quality_gates:
+            lines += ["Gates before reporting done: " + ", ".join(included.quality_gates), ""]
+    elif route.skill is not None:
         skill = route.skill
         lines += ["## Procedure", "", f"### /{skill.name} (routed for this task)", ""]
         if skill.when_to_use or skill.description:
@@ -375,7 +390,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             skill = scored.item
             lines.append(f"- /{skill.name}: {util.excerpt(skill.summary, 160)}")
         lines.append("")
-    if route.references:
+    if route.references and tools:
         lines += ["## Reference documents", ""]
         for path in route.references:
             ref = index.references.get(path)
@@ -385,19 +400,21 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         lines.append("")
     chosen_ids = {n.id for n in chosen} | {n.id for n in held}
     related = [r for r in route.related if r.item.id not in chosen_ids]
-    if related and route.mode == "lean":
+    # Notes it would open by name: listed only for a model that can open them.
+    listed = related if tools else []
+    if listed and route.mode == "lean":
         lines += ["## Closest notes (not included)", "",
                   "Nothing in the brain is specific enough to include for this request. These "
                   "come closest; open one with get_note if it fits:", ""]
-        for scored in related:
+        for scored in listed:
             note = scored.item
             name = note.title if note.meta.get("title") else note.id
             lines.append(f"- {name} (`{note.id}`, {note.route_key}): "
                          f"{util.excerpt(note.summary, 140)}")
         lines.append("")
-    if related and route.mode in ("standard", "exact-skill"):
+    if listed and route.mode in ("standard", "exact-skill"):
         lines += ["## Also relevant (not included)", ""]
-        for scored in related:
+        for scored in listed:
             note = scored.item
             named = (f", named by `{scored.detail['linked_from']}`"
                      if scored.detail.get("linked_from") else "")
@@ -415,12 +432,16 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                   "Delivered earlier in this session and unchanged: "
                   + ", ".join(names)
                   + ". Pass fresh=true if you no longer have them.", ""]
-    candidates = ([] if route.mode in ("exact-note", "exact-skill", "focus-update")
+    candidates = ([] if not tools or route.mode in ("exact-note", "exact-skill", "focus-update")
                   else capture.detect(route.request))
     if candidates:
         lines += ["## Capture", "", capture.nudge(candidates), ""]
     next_line = None
-    if route.mode == "focus-update" and focus is not None:
+    if not tools:
+        if route.mode == "lean":
+            next_line = ("Nothing in the brain matches this request: answer from general "
+                         "knowledge and say that the brain had nothing on it.")
+    elif route.mode == "focus-update" and focus is not None:
         next_line = (f'Record this progress with record_focus_update(focus="{focus.id}", '
                      'summary="<one line>", changes={"current": ..., "blockers": ..., '
                      '"next": ...}). Only fields that changed. Never rewrite the baseline.')
@@ -457,6 +478,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
               for section, text, _clipped, reason in quoted]
     if focus is not None:
         items.append(("focus", focus.id, util.sha256(str(focus.current())), 0))
+    if included is not None:
+        items.append(("skill", included.name, included.body_hash, included.tokens))
     data = {
         "packet_id": packet_id,
         "session_id": session_id,
@@ -468,6 +491,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         "focus_id": focus.id if focus is not None else None,
         "skill_id": route.skill.name if route.skill is not None else None,
         "candidates": [s.item.name for s in route.candidates],
+        "skill_included": included.name if included is not None else None,
         "topics": list(route.topics),
         "note_ids": [n.id for n in chosen],
         "related_ids": [r.item.id for r in related],

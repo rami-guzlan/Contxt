@@ -158,6 +158,19 @@ def test_a_cli_that_fails_says_why(owner, ready_task, monkeypatch):
     assert done["events"][-1]["kind"] == "done" and done["events"][-1]["ok"] is False
 
 
+def test_one_answer_is_asked_for_with_no_tools_and_says_so(client, runtime):
+    # Claude Code's own instructions describe tools: not told it has none, it writes out
+    # calls it cannot make (a Bash call, get_skill) instead of the answer.
+    seen = json.loads(runtime.runners.ask(runtime.ws.owner(), "Draft the update"))
+    argv = seen["argv"]
+    assert argv[argv.index("--append-system-prompt") + 1] == runners_module.NO_TOOLS
+    assert "no tools" in runners_module.NO_TOOLS
+    assert argv[argv.index("--tools") + 1] == "" and "--strict-mcp-config" in argv
+    assert argv[argv.index("--output-format") + 1] == "json" and "--restricted" in argv
+    assert seen["config"] == {"mcpServers": {}} and seen["prompt"] == "Draft the update"
+    assert not os.path.exists(seen["cwd"])  # its empty folder is gone
+
+
 def test_any_shape_of_output_is_read_without_error():
     """Claude Code says some things as plain text, and a tool's result can hold an image it
     looked at (a preview it rendered): each reads, nothing raises."""

@@ -392,7 +392,7 @@ describe("outputs", () => {
 });
 
 describe("see the difference", () => {
-  it("runs a request both ways on this computer and links each difference to its note", async () => {
+  it("runs a request both ways on this computer and links each difference to the piece behind it", async () => {
     let polls = 0;
     const done = {
       id: "cmp_1",
@@ -403,8 +403,14 @@ describe("see the difference", () => {
       step: "done",
       without: "Exciting news!",
       with_context: "57% of new supervisors got under 8 hours.",
-      differences: [{ what: "It opens with a sourced number", item: "linkedin-rules" }],
-      pieces: [{ kind: "note", id: "linkedin-rules", title: "LinkedIn posting rules" }],
+      differences: [
+        { what: "It opens with a sourced number", item: "linkedin-rules" },
+        { what: "It ends with one question", item: "linkedin-post" },
+      ],
+      pieces: [
+        { kind: "note", id: "linkedin-rules", title: "LinkedIn posting rules" },
+        { kind: "skill", id: "linkedin-post", title: "/linkedin-post" },
+      ],
       tokens: 640,
       kernel_tokens: 780,
       brain_tokens: 6200,
@@ -426,6 +432,7 @@ describe("see the difference", () => {
     expect(await screen.findByText("With your Brain", {}, { timeout: 6000 })).toBeInTheDocument();
     expect(screen.getByText("Exciting news!")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "LinkedIn posting rules" })).toHaveAttribute("href", "/brain/entries/linkedin-rules");
+    expect(screen.getByRole("link", { name: "/linkedin-post" })).toHaveAttribute("href", "/skills/linkedin-post");
     expect(screen.getByText(/It got 640 tokens, about a tenth of your Brain\./)).toBeInTheDocument();
     expect(calls.find((c) => c.path === "/api/brain/difference")?.body).toEqual({ request: "Write a post" });
   }, 15_000);

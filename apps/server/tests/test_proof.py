@@ -59,6 +59,44 @@ def test_a_comparison_answers_twice_and_names_what_changed(owner, model, runtime
     assert model.post("/api/brain/difference", json={"request": "x"}).status_code == 403
 
 
+def test_the_answer_with_the_brain_gets_the_procedure_and_no_tool_to_call(
+    owner, runtime, monkeypatch
+):
+    # Both sides run with no tools: a context that tells the model to call get_skill or the
+    # CLI gets those calls written out instead of a draft. The procedure the packet points
+    # to comes in full instead.
+    asked = []
+
+    def ask(who, prompt, timeout=180.0):
+        asked.append(prompt)
+        return '{"differences": []}' if len(asked) == 3 else "A draft."
+
+    monkeypatch.setattr(runtime.runners, "ask", ask)
+    request = "Create a brand sheet for the new client"
+    started = owner.ok(owner.post("/api/brain/difference", json={"request": request}), 202)
+    found = wait_for(owner, f"/api/brain/difference/{started['id']}")
+    assert found["status"] == "done", found
+    without, with_brain, compare = asked
+    assert without == request
+    assert with_brain.endswith(request)
+    assert "Nothing goes to a client before Alex approves it." in with_brain  # startup context
+    assert "Write the voice lines in plain language." in with_brain  # the skill's own steps
+    for call in (
+        "get_task_context",
+        "get_skill",
+        "get_note",
+        "get_reference",
+        "search_notes",
+        "propose_note",
+        "record_output",
+        "fallback",
+    ):
+        assert call not in with_brain, call
+    skill = next(p for p in found["pieces"] if p["kind"] == "skill")
+    assert (skill["id"], skill["title"]) == ("brand-sheet", "/brand-sheet")
+    assert "- brand-sheet: /brand-sheet" in compare  # the comparison knows it was handed over
+
+
 def test_a_comparison_that_cannot_run_says_why(owner, runtime, monkeypatch):
     def ask(who, prompt, timeout=180.0):
         raise Conflict("Claude Code is not installed on this computer: npm install")
