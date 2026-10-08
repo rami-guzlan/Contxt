@@ -115,12 +115,21 @@ def _delivered(brain, data) -> set[str]:
 
 # ---------------------------------------------------------------------------- must-holds
 def must_hold_eval(brain, cases) -> dict:
-    """Recall over in-domain requests and the inclusion rate over decoys, per note and in all."""
+    """Recall over in-domain requests and the inclusion rate over decoys, per note and in all.
+    Held-out requests (written after a must-hold's triggers were fixed) are scored apart."""
     rows, misses, decoy_hits = [], [], []
-    hit = total = decoy_in = decoys = 0
+    hit = total = decoy_in = decoys = held_hit = held_total = 0
     for case in cases:
         note = case["note"]
         got = 0
+        for request in case.get("held_out") or []:
+            data = brain.context(request, record=False, include_kernel=False).data
+            held_total += 1
+            if note in _delivered(brain, data):
+                held_hit += 1
+            else:
+                misses.append({"note": note, "request": request, "held_out": True,
+                               "listed": note in set(data.get("related_ids") or [])})
         for request in case.get("requests") or []:
             data = brain.context(request, record=False, include_kernel=False).data
             total += 1
@@ -144,6 +153,8 @@ def must_hold_eval(brain, cases) -> dict:
                      "decoy_rate": round(dgot / max(1, len(case.get("decoys") or [])), 3)})
     return {"recall": round(hit / total, 3) if total else 1.0,
             "decoy_rate": round(decoy_in / decoys, 3) if decoys else 0.0,
+            "held_out_recall": round(held_hit / held_total, 3) if held_total else None,
+            "held_out": held_total,
             "requests": total, "decoys": decoys, "by_note": rows, "misses": misses,
             "decoy_hits": decoy_hits}
 
@@ -155,7 +166,7 @@ def run_must_holds(brains_root: str, spec: dict, *, relevance_only: bool = False
     for case in spec.get("cases") or []:
         by_brain.setdefault(case["brain"], []).append(case)
     results, rows, misses, decoy_hits = {}, [], [], []
-    hit = total = decoy_in = decoys = 0
+    hit = total = decoy_in = decoys = held_hit = held_total = 0
     for name, cases in sorted(by_brain.items()):
         vault = copy_vault(os.path.join(brains_root, name, "vault"), models_dir)
         try:
@@ -174,11 +185,16 @@ def run_must_holds(brains_root: str, spec: dict, *, relevance_only: bool = False
         total += result["requests"]
         decoy_in += round(result["decoy_rate"] * result["decoys"])
         decoys += result["decoys"]
+        if result["held_out"]:
+            held_hit += round(result["held_out_recall"] * result["held_out"])
+            held_total += result["held_out"]
         rows += [dict(r, brain=name) for r in result["by_note"]]
         misses += [dict(m, brain=name) for m in result["misses"]]
         decoy_hits += [dict(d, brain=name) for d in result["decoy_hits"]]
     return {"recall": round(hit / total, 3) if total else 1.0,
             "decoy_rate": round(decoy_in / decoys, 3) if decoys else 0.0,
+            "held_out_recall": round(held_hit / held_total, 3) if held_total else None,
+            "held_out": held_total,
             "requests": total, "decoys": decoys, "by_note": rows, "misses": misses,
             "decoy_hits": decoy_hits, "brains": results}
 

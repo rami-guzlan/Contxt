@@ -385,6 +385,13 @@ def note_search_text(note) -> str:
     return f"{topic_words} {title} {note.summary} {note.body}"
 
 
+def must_hold_search_text(note) -> str:
+    """What a must-hold's domain is about, read as one passage: where it applies, the words
+    that bring it into play, and its rule. Matched by meaning against each request."""
+    targets = " ".join(t.replace("/", " ").replace("-", " ") for t in note.applies_to)
+    return f"{targets}. {', '.join(note.triggers)}. {note.title}. {note.must_text}"
+
+
 def skill_search_text(skill) -> str:
     parts = [skill.name.replace("-", " ").replace("_", " "), skill.category,
              skill.description, skill.when_to_use, str(skill.meta.get("index_line") or "")]
@@ -597,6 +604,8 @@ class Index:
             items += [(f"topic:{key}", text) for key, text in self.topic_texts.items()]
             items += [(f"section:{sid}", self.section_search_text(s)[:2000])
                       for sid, s in self.sections.items()]
+            items += [(f"domain:{nid}", must_hold_search_text(n)[:2000])
+                      for nid, n in self.notes.items() if n.must_hold]
             vectors = self.embedder.embed([text for _key, text in items]) if self.embedder else None
             self._vectors = ({key: vec for (key, _t), vec in zip(items, vectors)}
                              if vectors else {})
@@ -610,8 +619,8 @@ class Index:
             self._item_vectors()
 
     def similarity(self, request: str) -> dict:
-        """Cosine similarity of the request to every note, skill, topic and file section
-        ("kind:id")."""
+        """Cosine similarity of the request to every note, skill, topic, file section and
+        must-hold domain ("kind:id")."""
         if not self.semantic_ready():
             return {}
         vectors = self._item_vectors()

@@ -44,7 +44,38 @@ from .runtime import Runtime
 SNOOZE_DAYS = 3
 AWAY_DAYS = 3  # this long away, and the recap comes before the to-dos
 RECAP_DAYS = 7  # the window for someone who never caught up
-QUOTA = {"recheck": 3, "duplicate": 2, "tidy": 2}  # upkeep per rolling week
+QUOTA = {"recheck": 3, "duplicate": 2, "tidy": 2, "musthold": 1}  # upkeep per rolling week
+# A rule that reads like safety, health, money, law or privacy is offered as a must-hold: one
+# that goes into every brief whenever its area comes up, whatever the request's relevance.
+MUST_CUES = re.compile(
+    r"\b(allerg\w*|peanut\w*|epipen|asthma|diabet\w*|medication\w*|medical|safety|hazard\w*|"
+    r"legal|lawyer\w*|compliance|regulat\w*|gdpr|hipaa|finra|confidential|privacy|"
+    r"password\w*|secrets?|credential\w*|budget\w*|insurance)\b",
+    re.IGNORECASE,
+)
+GENERIC_WORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "our",
+    "your",
+    "their",
+    "this",
+    "that",
+    "every",
+    "each",
+    "rule",
+    "rules",
+    "note",
+    "how",
+    "what",
+    "when",
+    "who",
+    "never",
+    "always",
+    "only",
+}
 UNUSED_DAYS = 60
 UNUSED_MIN = 3
 NUDGE_DAYS = 30  # captures read for the nudges
@@ -60,6 +91,7 @@ SECONDS = {
     "tidy": 25,
     "unused": 10,
     "offer": 5,
+    "musthold": 20,
 }
 KEY = re.compile(r"^(?:[a-z_]+:[A-Za-z0-9_.:|@/-]{1,300}|unused)$")
 MAX_BODY = 1500  # characters of a note or suggestion a card shows
@@ -672,6 +704,10 @@ class CatchUp:
                     "why": str(item.get("why") or ""),
                 }
             )
+        if done.get("musthold", 0) < QUOTA["musthold"]:
+            offer = self._must_hold_offer(inventory, hidden)
+            if offer is not None:
+                out.append(offer)
         if "unused" not in hidden:
             idle = self._unused(inventory, now)
             if len(idle) >= UNUSED_MIN:
@@ -685,6 +721,51 @@ class CatchUp:
                     }
                 )
         return out
+
+    @staticmethod
+    def _must_hold_offer(
+        inventory: list[dict[str, Any]], hidden: set[str]
+    ) -> dict[str, Any] | None:
+        """One rule a week that reads like a constraint to never miss (an allergy, a budget,
+        a legal or privacy line) and still competes on relevance: offered as a must-hold for
+        its area, with a few words from it to start its triggers. The most used goes first."""
+        candidates = [
+            row
+            for row in inventory
+            if row.get("type") == "note"
+            and row.get("live")
+            and row.get("kind") == "rule"
+            and row.get("load") == "on-demand"
+            and f"musthold:{row['id']}" not in hidden
+            and MUST_CUES.search(f"{row.get('title') or ''} {row.get('summary') or ''}")
+        ]
+        if not candidates:
+            return None
+        row = max(
+            candidates,
+            key=lambda r: (int(((r.get("uses") or {}).get("d30")) or 0), str(r.get("id"))),
+        )
+        words = re.findall(
+            r"[a-z][a-z'-]{2,}", f"{row.get('title') or ''} {row.get('summary') or ''}".lower()
+        )
+        triggers = [w for w in dict.fromkeys(words) if w not in GENERIC_WORDS][:6]
+        area = str(row.get("area") or "")
+        return {
+            "key": f"musthold:{row['id']}",
+            "type": "musthold",
+            "id": row["id"],
+            "title": str(row.get("title") or row["id"]),
+            "summary": _clip(row.get("summary") or "", 300),
+            "area": area,
+            "area_label": str(row.get("area_label") or area),
+            "triggers": triggers,
+            "recommend": _advice(
+                "make_must_hold",
+                f"It reads like a rule that should never be missed. As a must-hold it goes "
+                f"into every brief whenever {row.get('area_label') or area} comes up, even "
+                "when a request does not mention it.",
+            ),
+        }
 
     @staticmethod
     def _side(
@@ -733,7 +814,7 @@ class CatchUp:
                 continue
             key = str((point.get("source") or {}).get("catch_up") or "")
             kind = key.split(":")[0]
-            if kind in ("recheck", "twin", "tidy"):
+            if kind in ("recheck", "twin", "tidy", "musthold"):
                 done[kind] = done.get(kind, 0) + 1
         return done
 

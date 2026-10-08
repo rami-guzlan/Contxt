@@ -8,6 +8,20 @@ from . import util
 
 LIVE = "approved"
 CONFIDENCE = ("confirmed", "inferred", "disputed", "unknown")
+# How a note reaches a model: in every session (standing), whenever its domain comes up
+# (domain: a must-hold), when a request is relevant to it (on-demand), or only when asked for
+# by id or found by a search (manual).
+LOADS = ("standing", "domain", "on-demand", "manual")
+MUST_HOLD = "domain"
+MAX_CRITICAL = 3               # must-holds the startup context shows in full, at most
+
+
+def listish(value) -> list[str]:
+    """A front-matter list that may also be written as one comma-separated line."""
+    out: list[str] = []
+    for item in fm.as_list(value):
+        out += [part.strip() for part in item.split(",") if part.strip()]
+    return out
 # Older vaults filed notes by kind ("layer"); a layer name implies the kind of its notes.
 LEGACY_KINDS = {"identity": "identity", "rules": "rule", "facts": "fact", "state": "state"}
 
@@ -127,6 +141,36 @@ class Note:
     @property
     def standing(self) -> bool:
         return self.load == "standing"
+
+    # ---------------------------------------------------------------- must-holds
+    @property
+    def must_hold(self) -> bool:
+        """A constraint that goes into every brief whenever its domain comes up, whatever
+        the request's relevance to it (`load: domain`)."""
+        return self.load == MUST_HOLD
+
+    @property
+    def applies_to(self) -> list[str]:
+        """The domains a must-hold covers: areas (`food`), topics (`food/diet`), project ids,
+        or `*` for every task. A must-hold that names none covers its own area."""
+        return listish(self.meta.get("applies_to")) or [self.area]
+
+    @property
+    def triggers(self) -> list[str]:
+        """Words and phrases that put this must-hold's domain in play when a request uses
+        them ("dinner", "birthday party")."""
+        return [t.lower() for t in listish(self.meta.get("triggers"))]
+
+    @property
+    def must_text(self) -> str:
+        """The one line a brief and the startup index show for this must-hold."""
+        return (str(self.meta.get("must_text") or "").strip() or self.startup_text
+                or self.summary)
+
+    @property
+    def critical(self) -> bool:
+        """Shown in full in the startup context, for models that cannot ask for a brief."""
+        return fm.as_bool(self.meta.get("critical"))
 
     @property
     def partition(self) -> str | None:

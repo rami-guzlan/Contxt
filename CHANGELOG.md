@@ -42,4 +42,14 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   Settings, On this computer, too). Nothing downloads on its own: a Brain, its MCP server
   included, matches by words until you ask (`BRAIN_LOCAL_MODELS=0` lets it fetch on first
   use).
+- Must-holds (`load: domain`): a rule that goes first into every brief whenever its domain
+  comes up (its trigger words, an area the request reaches, its topics, or, with a model, its
+  meaning), outside the note budget, in every packet of a conversation, flagged when stale.
+  The startup context lists the domains that have must-holds with their titles and ids; up to
+  three critical ones show their line in full. Set on a note's page ("When does this apply?"),
+  offered in Catch up for rules that read like safety, health, legal, privacy or money lines,
+  and proposed by the knowledge agent. In the demo Brains they take constraint recall on
+  requests that never name the rule from 47% to 100% (`docs/evals/`).
+- Safeguard evaluations (`scripts/safeguards_eval.py`): must-hold recall with decoys and
+  held-out requests, disagreement detection on labeled pairs, and dated values.
 - Source-available under the PolyForm Shield License 1.0.0.

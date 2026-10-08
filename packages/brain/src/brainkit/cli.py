@@ -105,8 +105,16 @@ def build_parser():
     p.add_argument("--summary", help="one line saying what it covers")
     p.add_argument("--kind", choices=["fact", "rule", "identity", "state"])
     p.add_argument("--scope")
-    p.add_argument("--load", choices=["standing", "on-demand"],
-                   help="default: standing for a rule in your own scope, else on-demand")
+    p.add_argument("--load", choices=["standing", "domain", "on-demand"],
+                   help="default: standing for a rule in your own scope, else on-demand; "
+                   "domain makes it a must-hold")
+    p.add_argument("--applies-to", help="must-hold: areas, area/topic pairs or project ids, "
+                   "comma-separated")
+    p.add_argument("--triggers", help="must-hold: words that bring its domain into play, "
+                   "comma-separated")
+    p.add_argument("--must-text", help="must-hold: the rule in one line")
+    p.add_argument("--critical", action="store_true",
+                   help="must-hold: also show its line in every session's startup context")
     p.add_argument("--evidence", default="")
     p.add_argument("--source", default="")
     p.add_argument("--supersedes")
@@ -314,7 +322,9 @@ def main(argv=None) -> int:
                                    note_kind=args.kind, text=" ".join(args.text),
                                    scope=args.scope, load=args.load, evidence=args.evidence,
                                    source=args.source, supersedes=args.supersedes,
-                                   target_id=args.target), args.json)
+                                   target_id=args.target, applies_to=args.applies_to,
+                                   triggers=args.triggers, must_text=args.must_text,
+                                   critical=True if args.critical else None), args.json)
     if command == "remember":
         return _emit(brain.remember(" ".join(args.text), scope=args.scope), args.json)
     if command == "search":

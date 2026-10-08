@@ -102,7 +102,21 @@ AGENT_TOOLS = [
          "kind": {"type": "string", "enum": ["fact", "rule", "identity", "state"]},
          "text": {"type": "string", "description": "One durable idea."},
          "scope": {"type": "string", "description": "company | dept:<name> | person:<name>"},
-         "load": {"type": "string", "enum": ["standing", "on-demand"]},
+         "load": {"type": "string", "enum": ["standing", "domain", "on-demand"],
+                  "description": "standing: every session. domain: a must-hold, in every "
+                                 "brief whenever its domain comes up (a safety, legal, money "
+                                 "or privacy constraint). on-demand: when relevant."},
+         "applies_to": {"type": "string", "description": "For load domain: the areas, "
+                        "area/topic pairs or project ids it covers, comma-separated (its own "
+                        "area when omitted)."},
+         "triggers": {"type": "string", "description": "For load domain: words and short "
+                      "phrases that bring the domain into play, comma-separated, for example "
+                      "dinner, lunchbox, restaurant, birthday party."},
+         "must_text": {"type": "string", "description": "For load domain: the rule in one "
+                       "line, as a brief will show it."},
+         "critical": {"type": "boolean", "description": "For load domain, only for a rule "
+                      "that must never be missed (a life-safety or legal one): its line also "
+                      "goes in every session's startup context. At most three per Brain."},
          "evidence": _STR, "source": _STR,
          "supersedes": {"type": "string", "description": "Note ids this one replaces; they "
                         "retire when it is approved. With target_id, a merge: the changed note "
@@ -238,7 +252,9 @@ HANDLERS = {
         evidence=a.get("evidence") or "", source=a.get("source") or "",
         supersedes=a.get("supersedes"), target_id=a.get("target_id"),
         title=a.get("title"), summary=a.get("summary") or a.get("index_line"),
-        note_kind=a.get("kind"), session_id=a.get("session_id"), capture_origin="chat"),
+        note_kind=a.get("kind"), session_id=a.get("session_id"), capture_origin="chat",
+        applies_to=a.get("applies_to") or None, triggers=a.get("triggers") or None,
+        must_text=a.get("must_text") or None, critical=a.get("critical")),
     "propose_skill": lambda b, a: b.propose_skill(
         name=a.get("name"), category=a.get("category"), description=a.get("description"),
         when_to_use=a.get("when_to_use"), triggers=a.get("triggers"), loads=a.get("loads"),

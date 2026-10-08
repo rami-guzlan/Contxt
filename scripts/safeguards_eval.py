@@ -61,7 +61,11 @@ def main(argv=None) -> int:
              f"Matching: {matching}. Constraints: {filed}.",
              "", "## Must-hold recall", "",
              f"- In-domain requests: {must['requests']}, recall {must['recall']:.0%}",
-             f"- Decoys: {must['decoys']}, constraint included {must['decoy_rate']:.0%}", "",
+             f"- Decoys: {must['decoys']}, constraint included {must['decoy_rate']:.0%}"]
+    if must.get("held_out"):
+        lines.append(f"- Held-out requests (never used to tune triggers): {must['held_out']}, "
+                     f"recall {must['held_out_recall']:.0%}")
+    lines += ["",
              "| Brain | Note | Recall | Decoys including it |", "| --- | --- | --- | --- |"]
     lines += [f"| {r['brain']} | `{r['note']}` | {r['recall']:.0%} | {r['decoy_rate']:.0%} |"
               for r in must["by_note"]]

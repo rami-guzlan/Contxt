@@ -107,6 +107,18 @@ class Policy:
     section_tokens_micro: int = 600       # ...for a one-answer lookup
     section_tokens_deep: int = 1400       # ...for deep work
     project_file_boost: float = 0.08      # sections of the files of the project it names
+    # must-holds: constraints that go in whenever their domain is in play (see MUST-HOLDS)
+    must_hold_max: int = 8                # shown in a brief; the rest are listed by title
+    # The request's best topic puts its area in play at this relevance, the second best at
+    # the stricter bar. Set from the tuning requests and decoys in tests/evals/must_holds.json
+    # (October 8, 2026): a domain's tuning requests put its topic first at 0.21 to 0.90; one
+    # decoy put a domain first (0.58, already reached by its route), one second (0.31).
+    must_hold_topic_bar: float = 0.25
+    must_hold_second_bar: float = 0.35
+    # With an embedding model, a request this close in meaning (on the model's 0..1 scale) to
+    # a must-hold's domain passage puts it in play. 0.57 is raw cosine 0.58 on bge-small:
+    # half the tuning requests clear it, no decoy and 3% of other must-holds' requests do.
+    must_hold_semantic_bar: float = 0.57
 
     @classmethod
     def from_config(cls, data: dict | None):
@@ -648,6 +660,15 @@ class Scored:
 
 
 @dataclass
+class MustHold:
+    """A must-hold in play for a request: the note, why its domain is in play, and why it is
+    stale when it is (a stale must-hold still goes in, flagged)."""
+    note: object
+    why: str
+    stale: str | None = None
+
+
+@dataclass
 class Route:
     request: str
     chain: list
@@ -681,6 +702,8 @@ class Route:
     draft: str = ""                                   # the request that started its draft
     pointed_files: list = field(default_factory=list)  # files matched, not quoted: listed
     orientation: list = field(default_factory=list)   # the area map, for orientation
+    must_holds: list = field(default_factory=list)    # [MustHold] in play, shown in full
+    must_overflow: list = field(default_factory=list)  # [MustHold] past the cap: listed
 
     def log(self, message):
         self.notes_log.append(message)
@@ -1007,7 +1030,103 @@ class Router:
     # ------------------------------------------------------------------ main entry
     def route(self, request, chain, partitions=(), *, focus_override=None,
               task_type_override=None, previous=None) -> Route:
-        """`previous` is the conversation's last packet."""
+        """`previous` is the conversation's last packet. Whatever the routing mode, the
+        must-holds whose domain the request touches are attached at the end."""
+        route = self._route(request, chain, partitions, focus_override=focus_override,
+                            task_type_override=task_type_override, previous=previous)
+        self._attach_must_holds(route)
+        return route
+
+    # ------------------------------------------------------------------ must-holds
+    # MUST-HOLDS are constraints the owner marked `load: domain`. Whenever their domain is in
+    # play they go in, whatever their relevance, the note budget or the per-topic caps, and
+    # however stale (flagged, never ranked down). A domain is in play when the request (or, in
+    # a continuation, the conversation's subject) uses one of the note's triggers; when the
+    # route already reached the domain (a selected note, a declared topic, the Focus, the
+    # procedure's loads); or when one of the domain's topics is among the request's best topic
+    # matches. The test leans toward including: a needless constraint costs one line, a
+    # missing one costs the answer.
+    NO_MUST_HOLDS = ("focus-update", "portfolio", "system", "exact-note")
+
+    def _attach_must_holds(self, route: Route) -> None:
+        if route.mode in self.NO_MUST_HOLDS:
+            return
+        notes = [n for n in self.admitted_notes(route.chain, route.partitions) if n.must_hold]
+        if not notes:
+            return
+        p = self.policy
+        sig = route.signals
+        words = util.stems(sig.words)
+        norm = sig.norm
+        if sig.continuation and route.subject:
+            words |= util.stems(util.terms(route.subject))
+            norm = f"{util.normalize(route.subject)} {norm}"
+        reached = set(route.topics) | set(route.forced_topics) | {
+            s.item.route_key for s in list(route.notes) + list(route.style_notes)
+            + list(route.standing_answer)}
+        if route.focus is not None:
+            reached.add(route.focus.note.route_key)
+        if route.skill is not None:
+            reached |= set(route.skill.load_topics)
+        reached_areas = {key.split("/", 1)[0] for key in reached}
+        focus_ids = {route.focus.id} if route.focus is not None else set()
+        close: dict | None = None      # the request's best topic matches, when needed
+        sims: dict | None = None       # its similarity to every domain passage, when needed
+
+        def why_for(note) -> str | None:
+            nonlocal close, sims
+            targets = note.applies_to
+            if "*" in targets:
+                return "applies to every task"
+            for trigger in note.triggers:
+                if " " in trigger or "-" in trigger:
+                    if util.phrase_in(trigger, norm):
+                        return f"the request mentions {trigger!r}"
+                elif util.stem(trigger) in words:
+                    return f"the request mentions {trigger!r}"
+            for target in targets:
+                if target in reached or target in reached_areas or target in focus_ids:
+                    return f"this task touches {target}"
+            if sims is None:
+                sims = self.similarity(sig.request)     # {} without an embedding model
+            meaning = self._semantic(sims, f"domain:{note.id}")
+            if meaning is not None and meaning >= p.must_hold_semantic_bar:
+                return f"this request is about its domain (meaning {meaning:.2f})"
+            if close is None:
+                close = self._close_topics(sig.request)
+            for target in targets:
+                for key, value in close.items():
+                    if key == target or key.split("/", 1)[0] == target:
+                        return f"this request is about {key} ({value:.2f})"
+            return None
+
+        today = util.today_date()
+        picks = []
+        for note in notes:
+            why = why_for(note)
+            if why is not None:
+                picks.append(MustHold(note, why, note.stale_reason(
+                    today, self.config.review_days_for(note))))
+        if not picks:
+            return
+        # Critical ones first, then those the request or the route names outright.
+        picks.sort(key=lambda m: (not m.note.critical,
+                                  m.why.startswith("this request is about"), m.note.id))
+        route.must_holds = picks[:p.must_hold_max]
+        route.must_overflow = picks[p.must_hold_max:]
+        route.log("must hold: " + "; ".join(f"{m.note.id} ({m.why})" for m in picks))
+
+    def _close_topics(self, request) -> dict:
+        """The request's best two topic matches, when they clear their must-hold bars:
+        {route key: score}."""
+        p = self.policy
+        scores = self.topic_relevance(request, list(self.index.topic_texts))
+        best = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:2]
+        bars = (p.must_hold_topic_bar, p.must_hold_second_bar)
+        return {key: value for (key, value), bar in zip(best, bars) if value >= bar}
+
+    def _route(self, request, chain, partitions=(), *, focus_override=None,
+               task_type_override=None, previous=None) -> Route:
         sig = analyze(request, self.config.routing, {"task_type": task_type_override})
         previous = previous or {}
         # A note loaded "manual" is opened by its id or found by a search, never routed into

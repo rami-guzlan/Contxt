@@ -7,7 +7,10 @@ topic: investor-updates
 kind: rule
 scope: person:riley
 status: approved
-load: on-demand
+load: domain
+applies_to: fundraising/investor-updates
+triggers: [investor update, investor updates, investors, investor, backers, shareholders, angels, monthly update, board update, lp update, letter to investors, investor email, update for investors]
+must_text: "Investor updates go out on the 5th with highlights, lowlights, the numbers table and up to three asks; bad news early, and Riley sends it personally."
 added: 2026-07-13
 source: Riley Chen, in conversation
 supersedes: none

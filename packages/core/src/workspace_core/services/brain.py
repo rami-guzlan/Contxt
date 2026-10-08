@@ -56,7 +56,16 @@ ENTRY_FIELDS = (
     "area",
     "topic",
     "aliases",  # a project's other names, comma separated
+    # When it reaches a model: standing, domain (a must-hold), on-demand or manual, and for
+    # a must-hold the domains it covers, the words that bring it in (both comma separated),
+    # its one line and whether the startup context shows that line in full.
+    "load",
+    "applies_to",
+    "triggers",
+    "must_text",
+    "critical",
 )
+FIELD_LIMITS = {"triggers": 1200, "applies_to": 600}  # characters; other fields take 200
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,80}$")  # a version: a commit, or "current"
 MAX_TEXT = 60_000  # characters in one entry a person writes or edits
 SUMMARY_LIMIT = 200  # characters in the one line a list shows for an entry
@@ -216,7 +225,9 @@ def _decision(item: dict[str, Any]) -> dict[str, Any]:
                     field="fields",
                 )
             out["fields"] = {
-                str(k): ("" if v is None else " ".join(str(v).split())[:200])
+                str(k): (
+                    "" if v is None else " ".join(str(v).split())[: FIELD_LIMITS.get(str(k), 200)]
+                )
                 for k, v in fields.items()
             }
         return out
@@ -1015,8 +1026,13 @@ class Brain:
         origin: str | None = None,
         goal: str | None = None,
         project: str | None = None,
+        must_hold: dict[str, Any] | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
+
+        `must_hold` ({applies_to, triggers, must_text}) proposes a rule as a must-hold: one
+        that goes into every brief whenever its domain comes up. Only a person can make one
+        critical.
 
         Made during a run, the proposal names the run and its task among its sources, so the
         work that produced it (a distillation request, say) can show what came of it. It can
@@ -1094,6 +1110,23 @@ class Brain:
                     field="project",
                 )
             extra["project_id"] = found.id
+        if must_hold:
+            if not isinstance(must_hold, dict):
+                raise ValidationFailed(
+                    "must_hold is {applies_to, triggers, must_text}.", field="must_hold"
+                )
+            limits = {"applies_to": 600, "triggers": 1200, "must_text": 400}
+            held = {
+                key: " ".join(str(must_hold.get(key) or "").split())
+                for key in limits
+                if str(must_hold.get(key) or "").strip()
+            }
+            for key, limit in limits.items():
+                if len(held.get(key, "")) > limit:
+                    raise ValidationFailed(
+                        f"must_hold.{key} is at most {limit} characters.", field="must_hold"
+                    )
+            extra["must_hold"] = held
         request = {
             "title": title,
             "statement": statement,

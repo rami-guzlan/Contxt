@@ -264,6 +264,7 @@ def propose_brain_entry(
         summary=_str(args, "summary"),
         goal=_str(args, "goal"),
         project=_str(args, "project"),
+        must_hold=args.get("must_hold") or None,
     )
     # Refused is a failure the model must notice; a duplicate (the same proposal retried) is
     # not.
@@ -574,6 +575,31 @@ TOOLS: dict[str, Tool] = {
                         "type": "string",
                         "description": "The id of the active project it belongs to: it is kept "
                         "with that project.",
+                    },
+                    "must_hold": {
+                        "type": "object",
+                        "description": "Only for a rule that must never be missed whenever its "
+                        "subject comes up (an allergy or another health or safety limit, a "
+                        "legal, money or privacy line): it then goes into every brief about "
+                        "its domain, even when a request never mentions it. A person decides.",
+                        "properties": {
+                            "applies_to": {
+                                "type": "string",
+                                "description": "The Brain's area (or area/topic) it covers, "
+                                "comma separated.",
+                            },
+                            "triggers": {
+                                "type": "string",
+                                "description": "A dozen or so words and short phrases a request "
+                                "in that domain would use, beyond the rule's own words, comma "
+                                "separated (for an allergy: dinner, lunchbox, restaurant, "
+                                "birthday party).",
+                            },
+                            "must_text": {
+                                "type": "string",
+                                "description": "The rule in one line, as every brief will show it.",
+                            },
+                        },
                     },
                     "run_id": {
                         "type": "string",

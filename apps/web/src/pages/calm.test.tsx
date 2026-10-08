@@ -82,6 +82,36 @@ describe("catch up", () => {
     await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/catch-up/seen")).toBe(true));
   });
 
+  it("offers a safety rule as a must-hold for its area, set as one decision", async () => {
+    const card = {
+      key: "musthold:nut-rule",
+      type: "musthold" as const,
+      id: "nut-rule",
+      title: "No peanuts at school",
+      summary: "Ollie is allergic to peanuts.",
+      area: "family",
+      area_label: "Family",
+      triggers: ["peanuts", "school"],
+      recommend: { action: "make_must_hold", reason: "It reads like a rule that should never be missed." },
+    };
+    const calls = mockApi({
+      "GET /api/brain/catch-up": plan({ judgment: [], quick: [], upkeep: [card] }),
+      "POST /api/brain/decisions": decided,
+      "POST /api/brain/catch-up/seen": {},
+    });
+    const user = userEvent.setup();
+    renderAt(<CatchUpPage />, { path: "/catch-up", route: "/catch-up" });
+    await user.click(await screen.findByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Must hold?")).toBeInTheDocument();
+    expect(screen.getByText(/It would come in when a request mentions: peanuts, school/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Make it a must-hold" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/decisions")).toBe(true));
+    expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toMatchObject({
+      decisions: [{ action: "update", entry_id: "nut-rule", fields: { load: "domain", applies_to: "family", triggers: "peanuts, school" } }],
+      source: { catch_up: "musthold:nut-rule" },
+    });
+  });
+
   it("starts with what happened after time away", async () => {
     mockApi({ "GET /api/brain/catch-up": plan({ recap_first: true }) });
     const user = userEvent.setup();

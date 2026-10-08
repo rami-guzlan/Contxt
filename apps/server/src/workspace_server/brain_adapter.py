@@ -1026,6 +1026,19 @@ class BrainKitAdapter:
         if kind == "decision" and not revises:
             # A decision is a fact the capture policy knows as a decision.
             extra = dict(extra or {}, type="decision")
+        # A must-hold the proposer suggests: the Brain checks its fields like any other.
+        extra = dict(extra or {})
+        must = extra.pop("must_hold", None) or {}
+        must_fields: dict[str, Any] = (
+            {
+                "load": "domain",
+                "applies_to": must.get("applies_to") or None,
+                "triggers": must.get("triggers") or None,
+                "must_text": must.get("must_text") or None,
+            }
+            if must
+            else {}
+        )
         with self._lock:
             result = self.brain.propose(
                 title=title,
@@ -1047,6 +1060,7 @@ class BrainKitAdapter:
                 target_id=revises or None,
                 origin=origin,
                 extra=extra or None,
+                **must_fields,
             )
         data = result.data
         status = str(data.get("status") or ("refused" if result.is_error else "pending"))

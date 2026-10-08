@@ -1,8 +1,10 @@
 {
-  "about": "Must-hold recall on the packaged demo Brains. Each case is a constraint note, eight requests from its domain that never name it, and four decoys from other domains. Phase 0 of the safeguards work measured these with every target set to load: on-demand (relevance alone).",
+  "about": "Must-hold recall on the packaged demo Brains. Each case is a constraint note, eight requests from its domain that never name it, and four decoys from other domains. Phase 0 of the safeguards work measured these with every target set to load: on-demand (relevance alone). Cases for notes marked as must-holds also carry three held-out requests, written after their triggers were fixed and never used to tune them.",
   "cases": [
     {
-      "brain": "personal", "note": "family-ollie", "domain": "meals, food and outings",
+      "brain": "personal",
+      "note": "family-ollie",
+      "domain": "meals, food and outings",
       "requests": [
         "Plan Tuesday dinner for the four of us",
         "What should we cook this weekend?",
@@ -18,10 +20,17 @@
         "Compare two phone plans for Jamie",
         "Draft an email to renew the car registration",
         "Build me a training plan for the half marathon"
+      ],
+      "held_out": [
+        "Ideas for Saturday brunch with the neighbors",
+        "What can Ollie bring to the class potluck?",
+        "Order pizza for the soccer team after the game"
       ]
     },
     {
-      "brain": "personal", "note": "money-budget", "domain": "spending and subscriptions",
+      "brain": "personal",
+      "note": "money-budget",
+      "domain": "spending and subscriptions",
       "requests": [
         "Should we sign up for that $30 a month meal kit?",
         "Find a new couch for the living room",
@@ -37,10 +46,17 @@
         "Write a note to Ollie's teacher about the field trip",
         "How do I reset the thermostat schedule?",
         "Summarize my running for September"
+      ],
+      "held_out": [
+        "Is it smart to upgrade to the bigger iCloud plan?",
+        "Find a cheaper car insurance policy",
+        "Should we get a second car?"
       ]
     },
     {
-      "brain": "personal", "note": "travel-preferences", "domain": "trips and bookings",
+      "brain": "personal",
+      "note": "travel-preferences",
+      "domain": "trips and bookings",
       "requests": [
         "Plan a long weekend in Montreal with Ollie",
         "Book flights to Chicago for the conference in May",
@@ -56,10 +72,17 @@
         "Track this month's grocery spending",
         "Make a reading list for Jamie",
         "Clean out the garage this weekend"
+      ],
+      "held_out": [
+        "Plan our April trip to Japan",
+        "Best way to get from Tokyo to Kyoto with Ollie",
+        "Book a cabin in the mountains for New Year's"
       ]
     },
     {
-      "brain": "personal", "note": "health-sleep", "domain": "evenings, school nights and screens",
+      "brain": "personal",
+      "note": "health-sleep",
+      "domain": "evenings, school nights and screens",
       "requests": [
         "Plan a movie night for Thursday",
         "Can Ollie go to a sleepover on Wednesday?",
@@ -75,10 +98,17 @@
         "Compare car insurance quotes",
         "Write a grocery list",
         "Clean out the garage this weekend"
+      ],
+      "held_out": [
+        "Can we stay out late for the fireworks on Thursday?",
+        "Plan a sleepover for Ollie's friends",
+        "Set up my Sunday long run and the night before"
       ]
     },
     {
-      "brain": "entrepreneur", "note": "fundraising-investor-updates", "domain": "investor updates",
+      "brain": "entrepreneur",
+      "note": "fundraising-investor-updates",
+      "domain": "investor updates",
       "requests": [
         "Draft the October update for our investors",
         "Write this month's note to the Loopline backers",
@@ -94,10 +124,17 @@
         "Draft a LinkedIn post about the new Loopline feature",
         "Introduce Grace Liu to Tomas Varga",
         "Block two hours a day for deep work"
+      ],
+      "held_out": [
+        "Write the September update for the people who invested in Loopline",
+        "Draft what we tell our backers this month",
+        "Prepare the numbers section for the investor email"
       ]
     },
     {
-      "brain": "entrepreneur", "note": "people-intros", "domain": "introductions",
+      "brain": "entrepreneur",
+      "note": "people-intros",
+      "domain": "introductions",
       "requests": [
         "Introduce Grace Liu to Tomas Varga",
         "Connect our designer with the founder of BrightPlumb",
@@ -113,10 +150,17 @@
         "Summarize Loopline's churn this month",
         "Write my priorities for the week",
         "Review the plumbing launch plan"
+      ],
+      "held_out": [
+        "Can you introduce me to someone who knows enterprise sales?",
+        "Connect Tomas with our lawyer",
+        "Draft a double opt-in ask to Grace about meeting Jordan"
       ]
     },
     {
-      "brain": "programmer", "note": "work-deploys", "domain": "deploys and releases",
+      "brain": "programmer",
+      "note": "work-deploys",
+      "domain": "deploys and releases",
       "requests": [
         "Ship the Parcelwise billing fix tonight",
         "Deploy the new search page to production",
@@ -132,10 +176,17 @@
         "Refactor the user service into smaller functions",
         "Explain this regular expression",
         "Rename getUserData to fetchUser"
+      ],
+      "held_out": [
+        "Can I get the fix out before the weekend?",
+        "Release the CLI to PyPI",
+        "Flip the feature flag for everyone"
       ]
     },
     {
-      "brain": "programmer", "note": "practices-secrets", "domain": "credentials, configuration and logs",
+      "brain": "programmer",
+      "note": "practices-secrets",
+      "domain": "credentials, configuration and logs",
       "requests": [
         "Add the Stripe API key to the payments service",
         "Connect the app to the production database",
@@ -154,7 +205,9 @@
       ]
     },
     {
-      "brain": "knowledge-company", "note": "customers-out-of-scope", "domain": "targeting and outreach",
+      "brain": "knowledge-company",
+      "note": "customers-out-of-scope",
+      "domain": "targeting and outreach",
       "requests": [
         "Build an outreach list of plants in Ohio",
         "Set up a LinkedIn ad audience for maintenance managers",
@@ -170,10 +223,17 @@
         "Summarize the last customer interview",
         "Write the agenda for Monday's team meeting",
         "Update the brand color palette doc"
+      ],
+      "held_out": [
+        "Make a list of companies to call in Texas",
+        "Who should get the webinar invitation?",
+        "Draft LinkedIn ads for plant managers"
       ]
     },
     {
-      "brain": "knowledge-company", "note": "marketing-approvals-morgan", "domain": "anything external",
+      "brain": "knowledge-company",
+      "note": "marketing-approvals-morgan",
+      "domain": "anything external",
       "requests": [
         "Post this case study on LinkedIn",
         "Send the newsletter to our customer list",
@@ -192,7 +252,9 @@
       ]
     },
     {
-      "brain": "knowledge-company", "note": "brand-claims-sourced", "domain": "content with numbers or claims",
+      "brain": "knowledge-company",
+      "note": "brand-claims-sourced",
+      "domain": "content with numbers or claims",
       "requests": [
         "Write a blog post on how predictive maintenance cuts downtime",
         "Draft a case study for the Ohio plant",

@@ -262,9 +262,32 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
 
     # ---------------------------------------------------------------- render
     lines = ["## Task", "", route.request.strip() or "(no request)", ""]
+    # MUST-HOLDS come first, one line each, outside the note budget, and in every packet of
+    # a conversation: they are never "already held", because a client that compacted its
+    # context may have lost them. A model without tools gets every one of them in full.
+    must = list(getattr(route, "must_holds", None) or [])
+    overflow = list(getattr(route, "must_overflow", None) or [])
+    if not tools:
+        must, overflow = must + overflow, []
+    if must:
+        lines += ["## Must hold", "",
+                  "These hold for any task in their domain, whatever else this brief says. "
+                  "Check your answer against each line before you reply.", ""]
+        for entry in must:
+            note = entry.note
+            text = note.must_text.rstrip(" .")
+            flag = (f" Stale ({entry.stale}): it still applies; say it needs a check."
+                    if entry.stale else "")
+            lines.append(f"- {text} (`{note.id}`).{flag}")
+            decisions.append(f"{note.id}: must hold, {entry.why}")
+        if overflow:
+            names = "; ".join(f"{m.note.title} (`{m.note.id}`)" for m in overflow)
+            lines.append(f"- Also must hold here; open each with get_note before you act: "
+                         f"{names}.")
+        lines.append("")
     loaded = bool(chosen or held or route.portfolio or route.system_docs or route.candidates
                   or route.skill or route.references or route.standing_answer or focus
-                  or quoted or held_sections)
+                  or quoted or held_sections or must)
     if loaded:
         scope_line = " > ".join(route.chain)
         if partition:
@@ -473,6 +496,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
 
     items = [("note", n.id, n.body_hash, n.tokens, _reason(why.get(n.id), n, route, index))
              for n in chosen]
+    # Recorded as their own kind: the one line is not the note's body, so a later packet
+    # that needs the whole note still sends it.
+    items += [("must", m.note.id, util.sha256(m.note.must_text), util.tokens(m.note.must_text),
+               f"must hold: {m.why}") for m in must]
     items += [("system", s.item.id, s.item.body_hash, s.item.tokens) for s in route.system_docs]
     items += [("section", section.id, section.body_hash, util.tokens(text), reason)
               for section, text, _clipped, reason in quoted]
@@ -494,6 +521,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         "skill_included": included.name if included is not None else None,
         "topics": list(route.topics),
         "note_ids": [n.id for n in chosen],
+        "must_hold_ids": [m.note.id for m in must],
+        "must_hold_listed": [m.note.id for m in overflow],
         "related_ids": [r.item.id for r in related],
         "held_ids": [n.id for n in held],
         "standing_ids": [s.item.id for s in route.standing_answer],
@@ -530,6 +559,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             "route_log": list(route.notes_log),
             "forced_topics": list(route.forced_topics),
             "excluded_topics": list(route.excluded_topics),
+            "must_holds": [{"id": m.note.id, "why": m.why, "stale": m.stale}
+                           for m in must + overflow],
             "note_scores": [{"id": s.item.id, "topic": s.item.route_key, **s.detail}
                             for s in route.style_notes + route.notes + route.related],
             "section_scores": [{"id": s.item.id, "file": s.item.path,

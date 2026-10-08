@@ -7,7 +7,10 @@ topic: deploys
 kind: rule
 scope: person:kai
 status: approved
-load: on-demand
+load: domain
+applies_to: work/deploys
+triggers: [deploy, deploys, deployment, release, ship, shipping, hotfix, roll out, rollout, production, prod, go live, live, launch, promote, staging, rollback, push to production]
+must_text: "Deploy Tuesday to Thursday between 10:00 and 15:00, never on a Friday; anything a customer sees ships behind a feature flag."
 added: 2026-08-14
 source: Kai Tanaka, in conversation
 supersedes: none

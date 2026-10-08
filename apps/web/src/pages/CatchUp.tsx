@@ -708,6 +708,38 @@ function Upkeep({ card, onDone, onSkip }: { card: UpkeepCard; onDone: (what: str
       </CardFrame>
     );
   }
+  if (card.type === "musthold") {
+    const triggers = card.triggers.join(", ");
+    return (
+      <CardFrame
+        tag="Must hold?"
+        title={card.title}
+        recommend={{ label: "make it a must-hold", reason: card.recommend.reason }}
+        busy={busy}
+        error={error}
+        choices={[
+          {
+            id: "yes",
+            label: "Make it a must-hold",
+            primary: true,
+            run: () =>
+              run(
+                [{ action: "update", entry_id: card.id, fields: { load: "domain", applies_to: card.area, triggers } }],
+                `Must hold: ${card.title}`,
+                onDone,
+                `“${card.title}” now goes into every brief about ${card.area_label}`,
+              ),
+          },
+          { id: "edit", label: "Choose when it applies", run: () => window.open(entryUrl(card.id), "_self") },
+          { id: "no", label: "Leave it as it is", run: () => aside.mutate({ key: card.key }, { onSuccess: () => onDone(`Left “${card.title}” as it is`) }) },
+          later,
+        ]}
+      >
+        <p>{card.summary}</p>
+        {triggers ? <p className="muted small">It would come in when a request mentions: {triggers}. You can change these words on the note.</p> : null}
+      </CardFrame>
+    );
+  }
   if (card.type === "tidy") {
     return (
       <CardFrame

@@ -69,6 +69,13 @@ project it belongs to, when it belongs to one; replaces or contradicts when they
 this run's run_id. Keep proposals distinct: one statement each, no two saying the same thing. \
 Proposing nothing is a good result when nothing is durable.
 
+When a rule must never be missed whenever its subject comes up (an allergy or another health \
+or safety limit, a legal, money or privacy line), also pass must_hold: applies_to, the area it \
+covers (from where related entries live); triggers, a dozen or so words and short phrases a \
+request in that domain would use, beyond the rule's own words; and must_text, the rule in one \
+line. It then goes into every brief about that domain once a person approves it. Use it \
+rarely: most rules are found by relevance well enough.
+
 Then call complete_task with a one-line summary (how many proposals you made, how many replace \
 or contradict an entry) and left_out: every statement you considered and did not propose, \
 each with why in a few words (small talk, already in the Brain, serves no goal or project), \

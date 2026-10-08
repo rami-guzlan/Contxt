@@ -42,7 +42,7 @@ import fnmatch
 import re
 
 from . import uploads, util
-from .model import CONFIDENCE, LEGACY_KINDS
+from .model import CONFIDENCE, LEGACY_KINDS, LOADS, MAX_CRITICAL, MUST_HOLD, listish
 from .scopes import Scopes
 
 KINDS = ("note.create", "note.update", "note.archive", "focus.create")
@@ -230,12 +230,65 @@ def _similar(brain, text, chain, partitions, limit=3):
     return [{"id": s.item.id, "score": s.score} for s in ranked[:limit] if s.score >= 0.55]
 
 
+def must_hold_fields(st, base, load, applies_to, triggers, must_text, critical,
+                     problems) -> dict:
+    """Check the must-hold fields of a proposal and return the front matter they set.
+
+    `applies_to` names areas (`food`), topics (`food/diet`), project ids or `*`; `triggers`
+    are words and phrases that put the domain in play; `must_text` is the one line a brief
+    shows; `critical` puts that line in the startup context (at most MAX_CRITICAL notes)."""
+    given = {key: value for key, value in (("applies_to", applies_to), ("triggers", triggers),
+                                           ("must_text", must_text), ("critical", critical))
+             if value not in (None, "", [])}
+    if not given:
+        return {}
+    effective = str(load or (base.load if base is not None else "") or "").strip().lower()
+    if effective != MUST_HOLD:
+        problems.append("applies_to, triggers, must_text and critical are for must-holds "
+                        "(load: domain)")
+        return {}
+    out: dict = {}
+    if "applies_to" in given:
+        targets = listish(applies_to)
+        unknown = [t for t in targets if t != "*" and t not in st.index.focuses
+                   and t.split("/", 1)[0] not in st.config.areas]
+        if unknown:
+            problems.append("applies_to names no area, topic or project: "
+                            + ", ".join(repr(t) for t in unknown))
+        out["applies_to"] = targets
+    if "triggers" in given:
+        words = [t.lower() for t in listish(triggers)]
+        long = [t for t in words if len(t.split()) > 6 or len(t) > 60]
+        if long:
+            problems.append("each trigger is a word or a short phrase: "
+                            + ", ".join(repr(t) for t in long))
+        if len(words) > 40:
+            problems.append("at most 40 triggers")
+        out["triggers"] = list(dict.fromkeys(words))
+    if "must_text" in given:
+        line = " ".join(str(must_text).split())
+        if len(line.split()) > 40:
+            problems.append("must_text is one line of at most 40 words")
+        out["must_text"] = line
+    if "critical" in given:
+        wanted = str(critical).strip().lower() in ("true", "yes", "1", "on")
+        if wanted:
+            others = [n for n in st.index.notes.values() if n.must_hold and n.critical
+                      and (base is None or n.id != base.id)]
+            if len(others) >= MAX_CRITICAL:
+                problems.append(f"at most {MAX_CRITICAL} must-holds can be critical; "
+                                f"{', '.join(n.id for n in others)} already are")
+        out["critical"] = wanted
+    return out
+
+
 def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=None,
                  principal=None, evidence="", source="", supersedes=None, summary=None,
                  title=None, note_kind=None, startup_text=None, note_id=None, target_id=None,
                  archive=False, partition=None, reason="", review_by=None, kind=None,
                  extra=None, session_id=None, force_pending=False, layer=None,
                  index_line=None, conflicts=None, origin=None, capture_origin=None,
+                 applies_to=None, triggers=None, must_text=None, critical=None,
                  **_ignored):
     """Propose a new note, a change to one (`target_id`), or its retirement (`archive`).
 
@@ -296,9 +349,10 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         problems.append(f"partition {partition!r} is not declared in brain.json")
     if kind != "note.archive" and not text:
         problems.append("text is required")
-    if load is not None and str(load).strip().lower() not in ("standing", "on-demand",
-                                                              "manual"):
-        problems.append("load must be standing, on-demand or manual")
+    if load is not None and str(load).strip().lower() not in LOADS:
+        problems.append("load must be standing, domain, on-demand or manual")
+    must = must_hold_fields(st, base, load, applies_to, triggers, must_text, critical,
+                            problems)
     for key in (extra or {}):
         if key in RESERVED:
             problems.append(f"{key} is set by governance, not by a proposal")
@@ -382,6 +436,7 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         target["index_line"] = summary
     if startup_text:
         target["startup_text"] = startup_text
+    target.update(must)
     if review_by:
         target["review_by"] = review_by
     if load is None and kind == "note.create" and st.scopes.kind(scope) == "person" \
@@ -966,7 +1021,11 @@ def unarchive(brain, note_id, *, reason="", actor=None):
 
 # What the owner sets on an entry directly: who answers for it, how often it is checked, how
 # sensitive it is, and where it is filed. An empty value clears the field.
-FIELDS = ("owner", "review_days", "review_by", "classification", "area", "topic", "aliases")
+FIELDS = ("owner", "review_days", "review_by", "classification", "area", "topic", "aliases",
+          "load", "applies_to", "triggers", "must_text", "critical")
+# When a note reaches a model: in every session, whenever its domain comes up (a must-hold),
+# when relevant, or only when asked for. Set together and checked by must_hold_fields.
+MUST_FIELDS = ("load", "applies_to", "triggers", "must_text", "critical")
 CLASSIFICATIONS = ("public", "internal", "confidential", "restricted")
 
 
@@ -998,12 +1057,27 @@ def update(brain, note_id, fields, *, reason="", actor=None):
         problems.append(f"area must be one of {', '.join(config.area_order())}")
     if "topic" in wanted and not re.match(r"^[a-z0-9][a-z0-9-]*$", topic):
         problems.append("topic must be a lowercase slug, for example 'voice'")
+    must: dict = {}
+    if any(key in wanted for key in MUST_FIELDS):
+        load = (wanted.get("load") or note.load).lower()
+        if load not in LOADS:
+            problems.append("load must be standing, domain, on-demand or manual")
+        must = must_hold_fields(st, note, load, wanted.get("applies_to"),
+                                wanted.get("triggers"), wanted.get("must_text"),
+                                wanted.get("critical"), problems)
+        if "load" in wanted:
+            must["load"] = load
     if problems:
         return _result("Not updated: " + "; ".join(problems) + ".",
                        {"status": "invalid", "problems": problems}, True)
     meta = dict(note.meta)
+    for key, value in must.items():
+        if key == "critical" and not value:
+            meta.pop(key, None)
+        else:
+            meta[key] = value
     for key, value in wanted.items():
-        if key in ("area", "topic"):
+        if key in ("area", "topic") or key in MUST_FIELDS:
             continue
         if key == "aliases":
             # Other names for it, comma separated: a project is found by any of them.

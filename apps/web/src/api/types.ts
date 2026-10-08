@@ -302,8 +302,21 @@ export interface BrainDecision {
   confidence?: string; // verify
 }
 
-// A project's other names are set on its entry, comma separated.
-export type EntryField = "owner" | "review_days" | "review_by" | "classification" | "area" | "topic" | "aliases";
+// A project's other names are set on its entry, comma separated. A must-hold's domains
+// (applies_to) and the words that bring it in (triggers) are comma separated too.
+export type EntryField =
+  | "owner"
+  | "review_days"
+  | "review_by"
+  | "classification"
+  | "area"
+  | "topic"
+  | "aliases"
+  | "load"
+  | "applies_to"
+  | "triggers"
+  | "must_text"
+  | "critical";
 
 // ---- the context supply chain
 
@@ -341,7 +354,11 @@ export interface InventoryItem {
   owner_set: boolean;
   uses: EntryUses;
   // entries only
-  load?: string;
+  load?: string; // standing | domain (a must-hold) | on-demand | manual
+  applies_to?: string[]; // a must-hold's domains: areas, area/topic pairs, project ids
+  triggers?: string[]; // words that bring a must-hold's domain into play
+  must_text?: string; // a must-hold's one line
+  critical?: boolean; // its line also goes in every session's startup context
   added?: string;
   updated?: string;
   revised?: string;
@@ -1124,7 +1141,8 @@ export type UpkeepCard =
   | { key: string; type: "recheck"; id: string; title: string; summary: string; why: string; uses: number; last_used: string | null }
   | { key: string; type: "duplicate"; score: number | null; a: UpkeepSide; b: UpkeepSide; recommend: Advice }
   | { key: string; type: "tidy"; id: string; title: string; why: string }
-  | { key: string; type: "unused"; count: number; days: number; items: { id: string; title: string; last_used: string | null; topic: string }[] };
+  | { key: string; type: "unused"; count: number; days: number; items: { id: string; title: string; last_used: string | null; topic: string }[] }
+  | { key: string; type: "musthold"; id: string; title: string; summary: string; area: string; area_label: string; triggers: string[]; recommend: Advice };
 
 /** After a run of the same yes: let this kind go straight in? */
 export interface Offer {

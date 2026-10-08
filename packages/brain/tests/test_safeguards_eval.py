@@ -78,6 +78,17 @@ class HarnessTest(unittest.TestCase):
         self.assertGreaterEqual(result["precision"], 0.8)
 
 
+class MustHoldBarsTest(unittest.TestCase):
+    """Phase A's bars, words only (with meaning-matching the held-out recall is higher)."""
+
+    def test_must_holds_reach_every_in_domain_request_and_few_decoys(self):
+        result = se.run_must_holds(BRAINS, _spec("must_holds.json"))
+        self.assertEqual(result["recall"], 1.0, result["misses"])
+        self.assertLessEqual(result["decoy_rate"], 0.15, result["decoy_hits"])
+        # Measured 79% (19 of 24) on October 8, 2026; must not fall.
+        self.assertGreaterEqual(result["held_out_recall"], 0.79, result["misses"])
+
+
 def brain_meta(vault, note_id):
     from brainkit import frontmatter as fm
     from brainkit import util

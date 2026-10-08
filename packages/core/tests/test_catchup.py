@@ -160,3 +160,74 @@ def test_only_the_person_sets_items_aside(ws, owner, connect):
     for act in (ws.catch_up.seen, lambda who: ws.catch_up.snooze(who, "unused")):
         with pytest.raises(PermissionDenied):
             act(claude)
+
+
+def test_a_rule_that_reads_like_a_safety_line_is_offered_as_a_must_hold(ws, owner, brain):
+    from workspace_core.ports import BrainEntry
+
+    brain.entries["nut-rule"] = BrainEntry(
+        id="nut-rule",
+        title="No peanuts at school",
+        text="Ollie is allergic to peanuts.",
+        scope="company",
+        kind="rule",
+        status="approved",
+        revision="r1",
+    )
+    rows = [
+        {
+            "type": "note",
+            "id": "nut-rule",
+            "title": "No peanuts at school",
+            "summary": "Ollie is allergic to peanuts: no peanuts in lunches.",
+            "kind": "rule",
+            "load": "on-demand",
+            "live": True,
+            "area": "family",
+            "area_label": "Family",
+            "uses": {"d30": 2},
+        },
+        {
+            "type": "note",
+            "id": "posting-days",
+            "title": "Posting days",
+            "summary": "Post on Tuesdays and Thursdays.",
+            "kind": "rule",
+            "load": "on-demand",
+            "live": True,
+            "area": "brand",
+            "uses": {"d30": 9},
+        },
+    ]
+    brain.inventory = lambda: rows
+    (card,) = [c for c in ws.catch_up.plan(owner)["upkeep"] if c["type"] == "musthold"]
+    assert (card["id"], card["area"]) == ("nut-rule", "family")
+    assert card["recommend"]["action"] == "make_must_hold"
+    assert "peanuts" in card["triggers"] and "the" not in card["triggers"]
+    # Making it a must-hold is an owner decision on the entry, counted against this week's dose.
+    ws.brain.decide_many(
+        owner,
+        [
+            {
+                "action": "update",
+                "entry_id": "nut-rule",
+                "fields": {"load": "domain", "applies_to": "family", "triggers": "lunch, snack"},
+            }
+        ],
+        source={"catch_up": card["key"]},
+    )
+    assert brain.batches[-1]["decisions"][0]["fields"]["load"] == "domain"
+    assert not [c for c in ws.catch_up.plan(owner)["upkeep"] if c["type"] == "musthold"]
+
+
+def test_must_hold_fields_are_details_a_person_can_set(ws, owner):
+    with pytest.raises(ValidationFailed):
+        ws.brain.decide_many(
+            owner, [{"action": "update", "entry_id": "voice-guide", "fields": {"weight": "1"}}]
+        )
+    long = ", ".join(f"word{i}" for i in range(150))
+    out = ws.brain.decide_many(
+        owner,
+        [{"action": "update", "entry_id": "voice-guide", "fields": {"triggers": long}}],
+    )
+    assert out["results"][0]["ok"]

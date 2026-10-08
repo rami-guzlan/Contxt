@@ -195,7 +195,11 @@ def make_handler(brain, token):
                         load=payload.get("load") or "on-demand",
                         evidence=payload.get("evidence") or "", source=payload.get("source")
                         or "owner edit in the local UI", target_id=payload.get("target_id"),
-                        archive=bool(payload.get("archive")), reason=payload.get("reason") or "")
+                        archive=bool(payload.get("archive")), reason=payload.get("reason") or "",
+                        applies_to=payload.get("applies_to") or None,
+                        triggers=payload.get("triggers") or None,
+                        must_text=payload.get("must_text") or None,
+                        critical=payload.get("critical"))
                     if (payload.get("apply") and not result.is_error
                             and result.data.get("status") == "pending"):
                         return self._result(brain.approve(result.data["proposal_id"]))
