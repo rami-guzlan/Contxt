@@ -59,6 +59,12 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   must-hold shows what it reaches first; a day to think is one setting away. Catch up adds
   "Changes a baseline" cards, a plain word after a run of quick yeses, "Still right?" spot
   checks, and Home shows how many approvals were taken back within a month.
+- Dated values: a note can say the day a changing value was true (`as_of`) and the last day
+  it holds (`valid_until`). A brief carries the newest of two dated values for the same thing,
+  labelled "as of", and lists the older ones as older values, never as current; a question
+  about a project gets the project's newest dated values too. A newer dated value is an
+  update, not a disagreement, and Catch up offers to retire the older one. Past its last day,
+  a note is flagged for a check. The knowledge agent dates the figures it proposes.
 - Safeguard evaluations (`scripts/safeguards_eval.py`): must-hold recall with decoys and
   held-out requests, disagreement detection on labeled and held-out pairs (with your own
   AI's verdicts, `--ask-model`), false alarms on the demo Brains, and dated values.

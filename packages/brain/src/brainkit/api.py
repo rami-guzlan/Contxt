@@ -783,10 +783,13 @@ class Brain:
         except Exception:
             usage = {}
         went_in = review.went_in_disagreements(self)
-        total = len(clashes) + len(twins) + len(flagged) + len(recheck) + len(went_in)
+        dated = review.dated_pairs(st)
+        total = (len(clashes) + len(twins) + len(flagged) + len(recheck) + len(went_in)
+                 + len(dated))
         return Result(f"{total} thing(s) want a look." if total else "Nothing wants a look.",
                       {"clashes": clashes, "twins": twins, "flagged": flagged,
-                       "recheck": recheck, "went_in": went_in, "usage": usage, "days": days})
+                       "recheck": recheck, "went_in": went_in, "dated": dated,
+                       "usage": usage, "days": days})
 
     def pending_checks(self, limit: int = 4) -> Result:
         """Pairs of notes a model should read side by side next (check 3 of the baseline

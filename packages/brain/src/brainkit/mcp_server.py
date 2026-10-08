@@ -120,6 +120,11 @@ AGENT_TOOLS = [
          "critical": {"type": "boolean", "description": "For load domain, only for a rule "
                       "that must never be missed (a life-safety or legal one): its line also "
                       "goes in every session's startup context. At most three per Brain."},
+         "as_of": {"type": "string", "description": "For a value that changes (a total, a "
+                   "count, a balance, a version): the day it was true, YYYY-MM-DD. A newer "
+                   "dated value for the same thing updates the older one in briefs."},
+         "valid_until": {"type": "string", "description": "The last day it holds, "
+                         "YYYY-MM-DD; after it, the note is flagged for a check."},
          "evidence": _STR, "source": _STR,
          "supersedes": {"type": "string", "description": "Note ids this one replaces; they "
                         "retire when it is approved. With target_id, a merge: the changed note "
@@ -257,7 +262,8 @@ HANDLERS = {
         title=a.get("title"), summary=a.get("summary") or a.get("index_line"),
         note_kind=a.get("kind"), session_id=a.get("session_id"), capture_origin="chat",
         applies_to=a.get("applies_to") or None, triggers=a.get("triggers") or None,
-        must_text=a.get("must_text") or None, critical=a.get("critical")),
+        must_text=a.get("must_text") or None, critical=a.get("critical"),
+        as_of=a.get("as_of") or None, valid_until=a.get("valid_until") or None),
     "propose_skill": lambda b, a: b.propose_skill(
         name=a.get("name"), category=a.get("category"), description=a.get("description"),
         when_to_use=a.get("when_to_use"), triggers=a.get("triggers"), loads=a.get("loads"),

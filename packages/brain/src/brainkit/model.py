@@ -90,6 +90,24 @@ class Note:
                 return value
         return ""
 
+    @property
+    def as_of(self) -> str:
+        """The day a changing value was true (`as_of`, YYYY-MM-DD), or ""."""
+        found = util.parse_date(self.meta.get("as_of"))
+        return found.isoformat() if found else ""
+
+    @property
+    def valid_until(self) -> str:
+        """The last day a value holds (`valid_until`), or ""."""
+        found = util.parse_date(self.meta.get("valid_until"))
+        return found.isoformat() if found else ""
+
+    @property
+    def dated(self) -> str:
+        """When what it says was true: `as_of`, else when its text last changed, else when
+        it was added."""
+        return self.as_of or str(self.meta.get("revised") or "")[:10] or self.added
+
     def stale_reason(self, today, default_days: int = 0) -> str | None:
         """Why this note is stale on `today`, or None. Stale notes stay, ranked lower.
 
@@ -97,6 +115,9 @@ class Note:
         (`Config.review_days_for` resolves both)."""
         if str(self.meta.get("stale") or "").strip().lower() in ("true", "yes", "1"):
             return "marked stale"
+        until = util.parse_date(self.meta.get("valid_until"))
+        if until and until < today:
+            return f"valid until {until.isoformat()}, now past"
         review_by = util.parse_date(self.meta.get("review_by"))
         if review_by and review_by < today:
             return f"review was due {review_by.isoformat()}"

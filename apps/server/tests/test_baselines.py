@@ -159,3 +159,25 @@ def test_with_a_day_to_think_a_rule_revision_waits_and_can_be_cancelled(owner, m
     assert "twelve words" in brain.state().index.note("rules-style-002").body
     revised = [r for r in brain.vault.decisions() if r.get("baseline_revised")]
     assert revised[-1]["baseline_revised"]["reason"] == approve["reason"]
+
+
+def test_a_value_a_model_dates_keeps_its_date(owner, model, runtime):
+    made = propose(
+        model,
+        title="Active retainers",
+        statement="The studio has 12 active retainers.",
+        kind="state",
+        as_of="2026-10-01",
+    )
+    decide(owner, {"action": "approve", "proposal_id": made["proposal_id"]})
+    note = runtime.ws.rt.brain.brain.state().index.note(made["entry_id"])
+    assert note.as_of == "2026-10-01"
+    reply = model.tool(
+        "propose_brain_entry",
+        title="Retainers",
+        statement="The studio has 13 active retainers.",
+        kind="state",
+        evidence="The tracker",
+        as_of="October",
+    )
+    assert reply["isError"] and "as_of is a date" in json.dumps(reply)

@@ -208,6 +208,34 @@ describe("catch up", () => {
     });
   });
 
+  it("offers to retire a value a newer one replaced", async () => {
+    const side = (id: string, title: string) => ({ id, title, summary: `${title}.`, uses: 0, added: null });
+    const card = {
+      key: "older:mrr-august|mrr-september",
+      type: "older" as const,
+      older: side("mrr-august", "MRR, August"),
+      newer: side("mrr-september", "MRR, September"),
+      older_as_of: "2026-08-31",
+      newer_as_of: "2026-09-30",
+    };
+    const calls = mockApi({
+      "GET /api/brain/catch-up": plan({ judgment: [], quick: [], upkeep: [card] }),
+      "POST /api/brain/decisions": decided,
+      "POST /api/brain/catch-up/seen": {},
+    });
+    const user = userEvent.setup();
+    renderAt(<CatchUpPage />, { path: "/catch-up", route: "/catch-up" });
+    await user.click(await screen.findByRole("button", { name: "Start" }));
+    expect(await screen.findByText("A newer value")).toBeInTheDocument();
+    expect(screen.getByText(/Older, as of/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retire the older one" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/decisions")).toBe(true));
+    expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toMatchObject({
+      decisions: [{ action: "archive", entry_id: "mrr-august" }],
+      source: { catch_up: "older:mrr-august|mrr-september" },
+    });
+  });
+
   it("lists a scheduled revision with a way to cancel it", async () => {
     const calls = mockApi({
       "GET /api/brain/catch-up": plan({

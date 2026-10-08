@@ -199,7 +199,9 @@ def make_handler(brain, token):
                         applies_to=payload.get("applies_to") or None,
                         triggers=payload.get("triggers") or None,
                         must_text=payload.get("must_text") or None,
-                        critical=payload.get("critical"))
+                        critical=payload.get("critical"),
+                        as_of=payload.get("as_of") or None,
+                        valid_until=payload.get("valid_until") or None)
                     if (payload.get("apply") and not result.is_error
                             and result.data.get("status") == "pending"):
                         return self._result(brain.approve(result.data["proposal_id"]))

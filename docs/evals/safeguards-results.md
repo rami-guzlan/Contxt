@@ -93,3 +93,32 @@ What that took, and what it means:
 - **Not built here:** the second approver for rules and must-holds belongs to the team edition.
   Check 3 runs only with Claude Code installed and signed in (at most 60 pairs a day); with
   Codex alone, checks 1 and 2 stand, and cards say no AI has read the pair yet.
+
+## Phase C: time-aware briefs
+
+Notes can say the day a changing value was true (`as_of`) and the last day it holds
+(`valid_until`). When two dated notes (an `as_of`, or a state note) give different values for
+the same thing, a brief carries the newest, labelled "as of", in the place of whichever was
+picked, and lists the older ones under "Older values (not current)" by name and date, without
+their text.
+
+| | Baseline (Phase 0) | Phase C |
+| --- | --- | --- |
+| Dated cases where the brief carries the newest value and no unmarked older one (5) | 1 | 5 |
+
+Two of the five were not about ranking at all: a question about a project ("How much of the
+seed round is committed so far?", "Which version of tidyq is current?") got the project's
+state and nothing else, so neither value reached the brief. A project question now also gets
+the newest dated values close to what it asks (relevance 0.45 or more, at most three).
+
+A newer dated value for the same thing is an update, not a disagreement: it never holds a
+change that would go in on its own, never raises a "Changes a baseline" card, and Catch up
+offers to retire the older note ("A newer value", two a week). Past `valid_until`, a note is
+stale like any other (still found, flagged, and back for a check). The knowledge agent is asked
+for `as_of` whenever a statement gives a figure that changes.
+
+Limits: two values count as the same thing when a sentence in each shares content words and
+gives a figure of one kind; a value given without a figure ("almost done") or spread over
+several sentences is not matched. Undated facts that disagree are still a disagreement for the
+baseline check, not history. The spec's second check for this phase, rerunning the film's
+three-lane test, was not rerun here.

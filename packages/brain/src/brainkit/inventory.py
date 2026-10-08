@@ -91,6 +91,8 @@ def note_row(st, note, *, created=None, changes=0, use=None) -> dict:
         "baseline": (baseline.why(note, config, int(use.get("d30") or 0)) or "")
         if note.live else "",
         "baseline_marked": bool(fm.as_bool(note.meta.get("baseline"))),
+        # when a changing value was true, and the last day it holds
+        "as_of": note.as_of or None, "valid_until": note.valid_until or None,
         "added": note.added, "updated": str(note.meta.get("updated") or "")[:10],
         "revised": str(note.meta.get("revised") or "")[:10],
         "verified": note.verified, "confidence": note.confidence,

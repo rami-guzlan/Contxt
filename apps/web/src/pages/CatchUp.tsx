@@ -1171,6 +1171,48 @@ function Upkeep({ card, onDone, onSkip }: { card: UpkeepCard; onDone: (what: str
       </CardFrame>
     );
   }
+  if (card.type === "older") {
+    return (
+      <CardFrame
+        tag="A newer value"
+        title={`“${card.newer.title}” is newer`}
+        recommend={{ label: "retire the older one", reason: "Every brief already carries the newer value; retiring the older keeps your Brain tidy, and it can be undone." }}
+        busy={busy}
+        error={error}
+        choices={[
+          {
+            id: "retire",
+            label: "Retire the older one",
+            primary: true,
+            run: () =>
+              run(
+                [{ action: "archive", entry_id: card.older.id, reason: `A newer value: ${card.newer.id}` }],
+                `Retired ${card.older.title}`,
+                onDone,
+                `Retired “${card.older.title}”: “${card.newer.title}” is newer`,
+              ),
+          },
+          { id: "keep", label: "Keep both as history", run: () => aside.mutate({ key: card.key }, { onSuccess: () => onDone(`Kept “${card.older.title}” as history`) }) },
+          later,
+        ]}
+      >
+        <div className="compare twins">
+          {[
+            { side: card.older, label: "Older", when: card.older_as_of },
+            { side: card.newer, label: "Newer", when: card.newer_as_of },
+          ].map(({ side, label, when: date }) => (
+            <div key={side.id} className="compare-side">
+              <p className="compare-label">
+                {label}
+                {date ? `, as of ${day(date)}` : ""}: <Link to={entryUrl(side.id)}>{side.title}</Link>
+              </p>
+              <p className="small">{side.summary}</p>
+            </div>
+          ))}
+        </div>
+      </CardFrame>
+    );
+  }
   if (card.type === "tidy") {
     return (
       <CardFrame

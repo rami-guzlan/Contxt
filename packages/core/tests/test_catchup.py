@@ -308,3 +308,19 @@ def test_drift_is_the_share_of_approvals_taken_back_within_a_month():
         {"at": "2026-06-01T10:00:00Z", "decisions": [{"action": "approved"}]},
     ]
     assert drift(points, now) == {"approvals": 2, "undone": 1, "share": 0.5, "days": 30}
+
+
+def test_a_value_with_a_newer_one_is_offered_for_retirement(ws, owner, brain):
+    brain.watch["dated"] = [
+        {
+            "key": "older:mrr-august|mrr-september",
+            "older": {"id": "mrr-august", "title": "MRR, August"},
+            "newer": {"id": "mrr-september", "title": "MRR, September"},
+            "older_as_of": "2026-08-31",
+            "newer_as_of": "2026-09-30",
+        }
+    ]
+    plan = ws.catch_up.plan(owner)
+    (card,) = [c for c in plan["upkeep"] if c["type"] == "older"]
+    assert (card["older"]["id"], card["newer"]["id"]) == ("mrr-august", "mrr-september")
+    assert card["older_as_of"] == "2026-08-31" and card["key"] == "older:mrr-august|mrr-september"

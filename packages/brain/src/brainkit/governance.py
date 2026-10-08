@@ -290,7 +290,7 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
                  extra=None, session_id=None, force_pending=False, layer=None,
                  index_line=None, conflicts=None, origin=None, capture_origin=None,
                  applies_to=None, triggers=None, must_text=None, critical=None,
-                 **_ignored):
+                 as_of=None, valid_until=None, **_ignored):
     """Propose a new note, a change to one (`target_id`), or its retirement (`archive`).
 
     `kind` is the proposal kind (note.create, note.update, ...); `note_kind` is what the note
@@ -302,7 +302,9 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     from, as `<kind>:<reference>` (`file:...`, `meeting:...`, `output:...`); a proposal made
     in a conversation without one records that conversation. `capture_origin` (`chat`,
     `folder`) says the owner's own AI or a swept folder brought it: the capture policy may then
-    apply it at once (see PRESETS).
+    apply it at once (see PRESETS). `as_of` is the day a changing value was true (a total, a
+    count, a version) and `valid_until` the last day it holds; a newer dated value for the
+    same thing is an update, not a disagreement.
     """
     st = brain.state()
     config = st.config
@@ -354,6 +356,14 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         problems.append("load must be standing, domain, on-demand or manual")
     must = must_hold_fields(st, base, load, applies_to, triggers, must_text, critical,
                             problems)
+    dates = {}
+    for name, value in (("as_of", as_of), ("valid_until", valid_until)):
+        if str(value or "").strip():
+            found = util.parse_date(value)
+            if found is None:
+                problems.append(f"{name} is a date (YYYY-MM-DD)")
+            else:
+                dates[name] = found.isoformat()
     for key in (extra or {}):
         if key in RESERVED:
             problems.append(f"{key} is set by governance, not by a proposal")
@@ -438,6 +448,7 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     if startup_text:
         target["startup_text"] = startup_text
     target.update(must)
+    target.update(dates)
     if review_by:
         target["review_by"] = review_by
     if load is None and kind == "note.create" and st.scopes.kind(scope) == "person" \
@@ -487,7 +498,8 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         from . import baseline
         held = baseline.guard(brain, kind, text, base=base, area=area, topic=topic,
                               chain=chain, partitions=seen or (),
-                              supersedes=supersedes or "", note_id=note_id)
+                              supersedes=supersedes or "", note_id=note_id,
+                              as_of=target.get("as_of") or "")
         if held:
             applies = False
             header["tension"] = held["id"]
@@ -1170,7 +1182,8 @@ def unarchive(brain, note_id, *, reason="", actor=None):
 # What the owner sets on an entry directly: who answers for it, how often it is checked, how
 # sensitive it is, and where it is filed. An empty value clears the field.
 FIELDS = ("owner", "review_days", "review_by", "classification", "area", "topic", "aliases",
-          "load", "applies_to", "triggers", "must_text", "critical", "baseline")
+          "load", "applies_to", "triggers", "must_text", "critical", "baseline", "as_of",
+          "valid_until")
 # When a note reaches a model: in every session, whenever its domain comes up (a must-hold),
 # when relevant, or only when asked for. Set together and checked by must_hold_fields.
 MUST_FIELDS = ("load", "applies_to", "triggers", "must_text", "critical")
@@ -1193,8 +1206,9 @@ def update(brain, note_id, fields, *, reason="", actor=None):
     problems = [f"{', '.join(unknown)} cannot be set this way"] if unknown else []
     if wanted.get("review_days") and not wanted["review_days"].isdigit():
         problems.append("review_days is a number of days")
-    if wanted.get("review_by") and util.parse_date(wanted["review_by"]) is None:
-        problems.append("review_by is a date (YYYY-MM-DD)")
+    for name in ("review_by", "as_of", "valid_until"):
+        if wanted.get(name) and util.parse_date(wanted[name]) is None:
+            problems.append(f"{name} is a date (YYYY-MM-DD)")
     if wanted.get("classification") and wanted["classification"] not in CLASSIFICATIONS:
         problems.append(f"classification is one of {', '.join(CLASSIFICATIONS)}")
     if wanted.get("owner") and not st.scopes.exists(wanted["owner"]):

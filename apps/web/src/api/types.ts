@@ -317,7 +317,9 @@ export type EntryField =
   | "triggers"
   | "must_text"
   | "critical"
-  | "baseline";
+  | "baseline"
+  | "as_of"
+  | "valid_until";
 
 // ---- the context supply chain
 
@@ -363,6 +365,8 @@ export interface InventoryItem {
   /** Why a change to it waits for a reason (a rule, a must-hold, confirmed, much used), or "". */
   baseline?: string;
   baseline_marked?: boolean; // you marked it a baseline
+  as_of?: string | null; // the day a changing value was true
+  valid_until?: string | null; // the last day it holds
   added?: string;
   updated?: string;
   revised?: string;
@@ -1227,7 +1231,8 @@ export type UpkeepCard =
   | { key: string; type: "tidy"; id: string; title: string; why: string }
   | { key: string; type: "unused"; count: number; days: number; items: { id: string; title: string; last_used: string | null; topic: string }[] }
   | { key: string; type: "musthold"; id: string; title: string; summary: string; area: string; area_label: string; triggers: string[]; recommend: Advice }
-  | { key: string; type: "spot"; id: string; title: string; summary: string; why: string; uses: number; last_used: string | null };
+  | { key: string; type: "spot"; id: string; title: string; summary: string; why: string; uses: number; last_used: string | null }
+  | { key: string; type: "older"; older: UpkeepSide; newer: UpkeepSide; older_as_of: string | null; newer_as_of: string | null };
 
 /** After a run of the same yes: let this kind go straight in? */
 export interface Offer {

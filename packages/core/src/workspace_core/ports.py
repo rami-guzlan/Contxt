@@ -561,6 +561,7 @@ class NoBrain:
             "flagged": [],
             "recheck": [],
             "went_in": [],
+            "dated": [],
             "usage": {},
             "days": 7,
         }

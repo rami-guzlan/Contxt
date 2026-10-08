@@ -297,6 +297,8 @@ function About({
                 ["Next check", details ? nextCheck(details) : null],
                 ["Confidence", entry.confidence ? label(entry.confidence) : null],
                 ["Baseline", baseline ? `Yes: ${baseline}` : null],
+                ["As of", details?.as_of ? day(details.as_of) : null],
+                ["Valid until", details?.valid_until ? day(details.valid_until) : null],
                 ["Sensitivity", details?.classification ? label(details.classification) : null],
                 ["Used", details ? `${plural(details.uses.d30, "time")} in 30 days` : null],
                 ["Source", entry.source],

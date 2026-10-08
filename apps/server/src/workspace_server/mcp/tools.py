@@ -265,6 +265,8 @@ def propose_brain_entry(
         goal=_str(args, "goal"),
         project=_str(args, "project"),
         must_hold=args.get("must_hold") or None,
+        as_of=_str(args, "as_of"),
+        valid_until=_str(args, "valid_until"),
     )
     # Refused is a failure the model must notice; a duplicate (the same proposal retried) is
     # not.
@@ -575,6 +577,16 @@ TOOLS: dict[str, Tool] = {
                         "type": "string",
                         "description": "The id of the active project it belongs to: it is kept "
                         "with that project.",
+                    },
+                    "as_of": {
+                        "type": "string",
+                        "description": "For a value that changes (a total, a count, a balance, "
+                        "a version): the day it was true, YYYY-MM-DD. Give it whenever the "
+                        "statement gives such a figure.",
+                    },
+                    "valid_until": {
+                        "type": "string",
+                        "description": "The last day it holds, YYYY-MM-DD, when it says so.",
                     },
                     "must_hold": {
                         "type": "object",

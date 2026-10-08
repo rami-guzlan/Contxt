@@ -76,6 +76,11 @@ request in that domain would use, beyond the rule's own words; and must_text, th
 line. It then goes into every brief about that domain once a person approves it. Use it \
 rarely: most rules are found by relevance well enough.
 
+When a statement gives a value that changes over time (a total, a count, a balance, a \
+version, where something stands), pass as_of: the day it was true (YYYY-MM-DD), from the \
+source. A newer dated value then replaces the older one in every brief, instead of reading \
+as a disagreement.
+
 Then call complete_task with a one-line summary (how many proposals you made, how many replace \
 or contradict an entry) and left_out: every statement you considered and did not propose, \
 each with why in a few words (small talk, already in the Brain, serves no goal or project), \

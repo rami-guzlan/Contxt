@@ -719,6 +719,11 @@ class BrainKitAdapter:
             for r in data.get("went_in") or []
             if r["note"]["id"] in visible and r["with"]["id"] in visible
         ]
+        data["dated"] = [
+            r
+            for r in data.get("dated") or []
+            if r["older"]["id"] in visible and r["newer"]["id"] in visible
+        ]
         data["usage"] = {k: v for k, v in data["usage"].items() if k in visible}
         return data
 
@@ -1050,6 +1055,8 @@ class BrainKitAdapter:
         # A must-hold the proposer suggests: the Brain checks its fields like any other.
         extra = dict(extra or {})
         must = extra.pop("must_hold", None) or {}
+        # Dates the Brain checks like any other field.
+        dated = {name: extra.pop(name) for name in ("as_of", "valid_until") if extra.get(name)}
         must_fields: dict[str, Any] = (
             {
                 "load": "domain",
@@ -1082,6 +1089,7 @@ class BrainKitAdapter:
                 origin=origin,
                 extra=extra or None,
                 **must_fields,
+                **dated,
             )
         data = result.data
         status = str(data.get("status") or ("refused" if result.is_error else "pending"))

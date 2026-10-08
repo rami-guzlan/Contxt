@@ -25,6 +25,12 @@ CHECK 2, FIGURES, NAMES AND OPPOSITES, sentence by sentence:
 A model reading the pair through the owner's own AI is the third check, for what these miss
 (an allergy against "can eat peanut butter now"); it runs in the app, not here.
 
+ONE MEASURE, TWO DATES (`same_measure`): two sentences about the same thing giving different
+values of one kind ("MRR was $36,100 at the end of August" and "MRR was $38,400 at the end
+of September") are one value and its history when the notes are dated. The router keeps the
+newest in a brief, and the review reads a newer dated value as an update, not a
+disagreement.
+
 Every finding is a reason in plain words, or None.
 """
 from __future__ import annotations
@@ -62,6 +68,7 @@ CLOCK = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s?(am|pm|a\.m\.|p\.m\.)(?!\w)|\b(\
 DATE = re.compile(r"\b(" + "|".join(sorted(MONTHS, key=len, reverse=True))
                   + r")\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b", re.IGNORECASE)
 CODE = re.compile(r"#[0-9a-f]{6}\b", re.IGNORECASE)
+VERSION = re.compile(r"(?<![\w.])v?(\d+(?:\.\d+){2,})\b", re.IGNORECASE)
 NUMBER = re.compile(r"(?<![\w$#.:])(\d[\d,]*(?:\.\d+)?)(?![\w%:])")
 WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
 
@@ -113,6 +120,8 @@ def figures(sentence: str) -> dict[str, set]:
 
     for m in CODE.finditer(sentence):
         take("code", m.group(0).lower(), m.span())
+    for m in VERSION.finditer(rest):
+        take("version", m.group(1), m.span())
     for m in MONEY.finditer(rest):
         scale = SCALE.get((m.group(2) or "").lower(), 1.0)
         take("money", round(_num(m.group(1)) * scale, 2), m.span())
@@ -215,6 +224,11 @@ def _words(sentence: str) -> set[str]:
 
 def check_two(proposed: str, existing: str) -> str | None:
     """Check 2: figures, names, polarity and opposites between sentences about one thing."""
+    found = _check_two(proposed, existing)
+    return found[1] if found else None
+
+
+def _check_two(proposed: str, existing: str) -> tuple[str, str] | None:
     for left in sentences(proposed):
         left_subject = subject(left)
         for right in sentences(existing):
@@ -228,12 +242,12 @@ def check_two(proposed: str, existing: str) -> str | None:
             if near >= FIGURES:
                 for kind in sorted(set(one) & set(other)):
                     if not one[kind] & other[kind]:
-                        return (f"different figures for {about}: "
+                        return ("figures", f"different figures for {about}: "
                                 f"“{util.excerpt(left, 90)}” against "
                                 f"“{util.excerpt(right, 90)}”")
             left_names, right_names = names(left), names(right)
             if near >= NAMES and left_names and right_names and not (left_names & right_names):
-                return (f"different names for {about}: "
+                return ("names", f"different names for {about}: "
                         f"“{util.excerpt(left, 90)}” against "
                         f"“{util.excerpt(right, 90)}”")
             if near < POLARITY:
@@ -241,13 +255,13 @@ def check_two(proposed: str, existing: str) -> str | None:
             if _negative(left) != _negative(right):
                 yes, no = (left, right) if _negative(right) else (right, left)
                 if PERMISSIVE.search(yes) or REQUIRE.search(yes):
-                    return (f"one rules out what the other allows ({about}): "
+                    return ("polarity", f"one rules out what the other allows ({about}): "
                             f"“{util.excerpt(no, 90)}” against "
                             f"“{util.excerpt(yes, 90)}”")
             pair = _opposite(_words(left), _words(right))
             if pair:
-                return (f"opposite actions on {about} ({pair[0]} against {pair[1]}): "
-                        f"“{util.excerpt(left, 90)}” against "
+                return ("opposites", f"opposite actions on {about} ({pair[0]} against "
+                        f"{pair[1]}): “{util.excerpt(left, 90)}” against "
                         f"“{util.excerpt(right, 90)}”")
     return None
 
@@ -275,6 +289,49 @@ def check_one(proposed: str, existing: str) -> str | None:
     return None
 
 
+def classify(proposed: str, existing: str) -> tuple[str, str] | None:
+    """(what disagrees, why in plain words), or None: "sentences" (check 1), or "figures",
+    "names", "polarity" or "opposites" (check 2)."""
+    found = check_one(proposed, existing)
+    if found:
+        return "sentences", found
+    return _check_two(proposed, existing)
+
+
 def tension(proposed: str, existing: str) -> str | None:
     """Why `proposed` may disagree with `existing` (checks 1 and 2), or None."""
-    return check_one(proposed, existing) or check_two(proposed, existing)
+    found = classify(proposed, existing)
+    return found[1] if found else None
+
+
+_MEASURES: dict[str, list[tuple[set, dict]]] = {}
+
+
+def measures(text) -> list[tuple[set, dict]]:
+    """(subject, figures) of every sentence that gives a figure, kept by text."""
+    key = util.sha256(str(text or ""))
+    found = _MEASURES.get(key)
+    if found is None:
+        if len(_MEASURES) > 20000:
+            _MEASURES.clear()
+        found = _MEASURES[key] = [(subject(s), figures(s)) for s in sentences(text)
+                                  if figures(s)]
+    return found
+
+
+def same_measure(one, other) -> bool:
+    """Do two texts give different values for the same thing (a sentence each, about the
+    same thing, with a figure of one kind whose values differ)? Texts, or what `measures`
+    made of them."""
+    left = measures(one) if isinstance(one, str) else one
+    right = measures(other) if isinstance(other, str) else other
+    for left_subject, left_figures in left:
+        for right_subject, right_figures in right:
+            if len(left_subject & right_subject) < 2:
+                continue
+            if overlap(left_subject, right_subject) < FIGURES:
+                continue
+            if any(left_figures[k] != right_figures[k]
+                   for k in set(left_figures) & set(right_figures)):
+                return True
+    return False

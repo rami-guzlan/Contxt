@@ -120,6 +120,15 @@ class BaselineCheckBarsTest(unittest.TestCase):
             self.assertGreaterEqual(found["combined"]["precision"], 0.8, name)
 
 
+class DatedValueBarsTest(unittest.TestCase):
+    """Phase C's bar: every dated case gets its newest value, and no older one unmarked
+    (Phase 0 measured 1 of 5)."""
+
+    def test_every_brief_carries_the_newest_dated_value(self):
+        result = se.run_time_cases(BRAINS, _spec("time_cases.json")["cases"])
+        self.assertEqual(result["score"], 1.0, result["cases"])
+
+
 def brain_meta(vault, note_id):
     from brainkit import frontmatter as fm
     from brainkit import util

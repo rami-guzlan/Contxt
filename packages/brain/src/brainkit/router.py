@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field, fields, replace
 
-from . import util
+from . import tension, util
 from .index import MODEL_SCALES
 from .scopes import Scopes
 
@@ -704,6 +704,7 @@ class Route:
     orientation: list = field(default_factory=list)   # the area map, for orientation
     must_holds: list = field(default_factory=list)    # [MustHold] in play, shown in full
     must_overflow: list = field(default_factory=list)  # [MustHold] past the cap: listed
+    older: list = field(default_factory=list)         # [(older note, newer note)]: listed
 
     def log(self, message):
         self.notes_log.append(message)
@@ -1034,8 +1035,75 @@ class Router:
         must-holds whose domain the request touches are attached at the end."""
         route = self._route(request, chain, partitions, focus_override=focus_override,
                             task_type_override=task_type_override, previous=previous)
+        self._prefer_newer(route)
         self._attach_must_holds(route)
         return route
+
+    # ------------------------------------------------------------------ dated values
+    # Two dated notes that give a figure for the same thing (a monthly total, a count, a
+    # version) are one value and its history. The brief carries the newest (`dated`: its
+    # `as_of`, else when its text last changed), in the place of whichever was picked, and
+    # lists the older ones as older values (`route.older`), never as if they were current. A
+    # note is dated when it says `as_of` or is a state note.
+    # A question about a project ("how much of the seed round is committed so far?") gets the
+    # project's state, and the newest dated values close to what it asks (DATED_RELEVANT).
+    NO_DATED = ("focus-update", "portfolio", "system", "exact-note")
+    DATED_RELEVANT = 0.45
+    DATED_TOP = 3
+
+    def _prefer_newer(self, route: Route) -> None:
+        if route.mode in self.NO_DATED:
+            return
+        pool = [n for n in self.admitted_notes(route.chain, route.partitions)
+                if (n.as_of or n.kind == "state") and not self.config.is_focus(n)
+                and tension.measures(n.body)]
+        if not pool:
+            return
+        if route.mode == "focus-only":
+            have = {s.item.id for s in route.notes}
+            for scored in self.score_notes(route.request, pool)[:self.DATED_TOP]:
+                if scored.score >= self.DATED_RELEVANT and scored.item.id not in have:
+                    route.notes.append(Scored(scored.item, scored.score,
+                                              ["a dated value the project question asks for"],
+                                              {"dated": True}))
+                    route.log(f"{scored.item.id}: dated value for the project question "
+                              f"({scored.score:.2f})")
+        if len(pool) < 2 or not route.notes:
+            return
+        dated = {n.id for n in pool}
+        kept, older, taken = [], {}, set()
+        for scored in route.notes:
+            note = scored.item
+            group = ([n for n in pool if n.id != note.id
+                      and tension.same_measure(tension.measures(note.body),
+                                               tension.measures(n.body))]
+                     if note.id in dated else [])
+            if not group:
+                if note.id not in taken:
+                    kept.append(scored)
+                    taken.add(note.id)
+                continue
+            newest = max([note] + group, key=lambda n: (n.dated, n.id))
+            for member in [note] + group:
+                if member.id != newest.id:
+                    older.setdefault(member.id, (member, newest))
+            if newest.id in taken:
+                continue
+            taken.add(newest.id)
+            if newest.id == note.id:
+                kept.append(scored)
+            else:
+                kept.append(Scored(newest, scored.score,
+                                   list(scored.reasons) + [f"newer value than {note.id}"],
+                                   dict(scored.detail)))
+                route.log(f"{newest.id}: newer value than {note.id} ({newest.dated} against "
+                          f"{note.dated})")
+        route.notes = [s for s in kept if s.item.id not in older]
+        route.related = [s for s in route.related
+                         if s.item.id not in older and s.item.id not in taken]
+        route.older = sorted(older.values(), key=lambda pair: (pair[1].id, pair[0].dated))
+        if route.older:
+            route.log("older values listed: " + ", ".join(o.id for o, _n in route.older))
 
     # ------------------------------------------------------------------ must-holds
     # MUST-HOLDS are constraints the owner marked `load: domain`. Whenever their domain is in

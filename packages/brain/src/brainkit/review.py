@@ -229,7 +229,8 @@ def analyze(brain, **_ignored):
                           else "retire" if kind == "note.archive"
                           else "file" if kind == "file.add" else "skill"),
                "replaces": [], "conflicts": [], "overlaps": [], "duplicates": [],
-               "tensions": [], "baseline": None, "checks": None, "scheduled": None,
+               "tensions": [], "updates": [], "baseline": None, "checks": None,
+               "scheduled": None,
                "held": None, "new_topic": False, "suggested": [], "base_changed": False,
                "problems": []}
         named = []
@@ -296,8 +297,14 @@ def analyze(brain, **_ignored):
             asked = {r["note"].id: baseline.pair_key(proposal.body, r["note"].body)
                      for r in pairs[:baseline.MODEL_PAIRS]}
             verdicts = _known(brain, asked.values())
+            as_of = util.parse_date(target.get("as_of"))
             for pair in pairs:
                 note = pair["note"]
+                if baseline.newer_value(proposal.body, as_of.isoformat() if as_of else "",
+                                        note):
+                    # The same figure, dated later: an update, which keeping it may retire.
+                    row["updates"].append(_entry(note, as_of=note.dated))
+                    continue
                 found = tension.tension(proposal.body, note.body)
                 verdict = _verdict(verdicts.get(asked.get(note.id, "")))
                 if verdict and verdict["relation"] in CLEARS:
@@ -376,6 +383,23 @@ def analyze(brain, **_ignored):
     result = _result(f"{len(rows)} proposal(s) analyzed.", {"proposals": rows})
     brain._review = ((st.fingerprint, stamp), result)
     return result
+
+
+def dated_pairs(st) -> list[dict]:
+    """Live dated notes (`as_of`, or state notes) that give different values for the same
+    thing: the newer, the older, and the older's date. Keeping both is history; retiring the
+    older is tidier."""
+    notes = sorted((n for n in st.index.notes.values()
+                    if (n.as_of or n.kind == "state") and not st.config.is_focus(n)
+                    and tension.measures(n.body)), key=lambda n: (n.dated, n.id))
+    out = []
+    for i, older in enumerate(notes):
+        for newer in notes[i + 1:]:
+            if newer.dated > older.dated and tension.same_measure(older.body, newer.body):
+                out.append({"key": f"older:{older.id}|{newer.id}", "older": _entry(older),
+                            "newer": _entry(newer), "older_as_of": older.dated,
+                            "newer_as_of": newer.dated})
+    return out
 
 
 def _known(brain, keys) -> dict:

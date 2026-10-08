@@ -66,6 +66,8 @@ ENTRY_FIELDS = (
     "must_text",
     "critical",
     "baseline",  # the owner marks it a baseline: a change to it waits, with a reason
+    "as_of",  # the day a changing value was true (YYYY-MM-DD)
+    "valid_until",  # the last day it holds
 )
 FIELD_LIMITS = {"triggers": 1200, "applies_to": 600}  # characters; other fields take 200
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,80}$")  # a version: a commit, or "current"
@@ -73,6 +75,7 @@ MAX_TEXT = 60_000  # characters in one entry a person writes or edits
 SUMMARY_LIMIT = 200  # characters in the one line a list shows for an entry
 MAX_DECISIONS = 200
 TOPIC = re.compile(r"^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9-]*$")
+DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ENTRY_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,120}$")
 FILE_STATUS = re.compile(r"^[a-z][a-z -]{0,29}$")  # draft, sent, final, in review
 # What a project update may change, as the Brain's Focus journal keeps it.
@@ -1030,6 +1033,8 @@ class Brain:
         goal: str | None = None,
         project: str | None = None,
         must_hold: dict[str, Any] | None = None,
+        as_of: str | None = None,
+        valid_until: str | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
 
@@ -1047,7 +1052,8 @@ class Brain:
         first sentence. `origin` says where it came from (`doc:<item>@r<version>` for a
         selection in a doc, say); without one it is read from the run or the first source.
         `goal` names the owner's goal it serves; `project` the active project it belongs to,
-        by id or name (it is then kept with that project)."""
+        by id or name (it is then kept with that project). `as_of` is the day a changing value
+        was true (a total, a count, a version), `valid_until` the last day it holds."""
         who.require("brain.propose")
         title, statement = " ".join(str(title or "").split()), str(statement or "").strip()
         if not title or not statement:
@@ -1130,6 +1136,13 @@ class Brain:
                         f"must_hold.{key} is at most {limit} characters.", field="must_hold"
                     )
             extra["must_hold"] = held
+        for name, value in (("as_of", as_of), ("valid_until", valid_until)):
+            text = str(value or "").strip()
+            if not text:
+                continue
+            if not DAY.match(text):
+                raise ValidationFailed(f"{name} is a date, YYYY-MM-DD.", field=name)
+            extra[name] = text
         request = {
             "title": title,
             "statement": statement,

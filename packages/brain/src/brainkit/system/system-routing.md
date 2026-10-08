@@ -26,6 +26,12 @@ every packet under "Must hold", one line each (`must_text`), in every packet of 
 conversation, and are listed past `must_hold_max`. Measured with
 `scripts/safeguards_eval.py`.
 
+DATED VALUES. A note can say the day a changing value was true (`as_of`) and the last day it
+holds (`valid_until`; past it, the note is stale). When two dated notes (an `as_of`, or state
+notes) give different values for the same thing, the packet carries the newest, labelled "as
+of", and lists the older under "Older values (not current)" by name and date (`older_ids`).
+A question about a project also gets the project's newest dated values close to what it asks.
+
 Tune by editing content, never code: note titles and summaries, topic lines in `topics.md`,
 hints, intents and caveats in `routing.json`, skill `triggers`/`aliases`/`loads`. Measure
 with `brain bench`: context usefulness from `eval.json` (must, useful and noise

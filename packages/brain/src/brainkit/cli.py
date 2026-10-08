@@ -115,6 +115,8 @@ def build_parser():
     p.add_argument("--must-text", help="must-hold: the rule in one line")
     p.add_argument("--critical", action="store_true",
                    help="must-hold: also show its line in every session's startup context")
+    p.add_argument("--as-of", help="the day a changing value was true (YYYY-MM-DD)")
+    p.add_argument("--valid-until", help="the last day it holds (YYYY-MM-DD)")
     p.add_argument("--evidence", default="")
     p.add_argument("--source", default="")
     p.add_argument("--supersedes")
@@ -324,7 +326,9 @@ def main(argv=None) -> int:
                                    source=args.source, supersedes=args.supersedes,
                                    target_id=args.target, applies_to=args.applies_to,
                                    triggers=args.triggers, must_text=args.must_text,
-                                   critical=True if args.critical else None), args.json)
+                                   critical=True if args.critical else None,
+                                   as_of=args.as_of, valid_until=args.valid_until),
+                     args.json)
     if command == "remember":
         return _emit(brain.remember(" ".join(args.text), scope=args.scope), args.json)
     if command == "search":

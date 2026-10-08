@@ -55,7 +55,7 @@ from .runtime import Runtime
 SNOOZE_DAYS = 3
 AWAY_DAYS = 3  # this long away, and the recap comes before the to-dos
 RECAP_DAYS = 7  # the window for someone who never caught up
-QUOTA = {"recheck": 3, "duplicate": 2, "tidy": 2, "musthold": 1, "spot": 2}  # per week
+QUOTA = {"recheck": 3, "duplicate": 2, "tidy": 2, "musthold": 1, "spot": 2, "older": 2}
 QUICK_SECONDS = 4  # a judgment kept this fast is spot-checked later
 SPOT_DAYS = 30  # what went in on its own, or was kept that fast, this recently
 DRIFT_DAYS = 30  # an approval taken back within this long counts as drift
@@ -104,6 +104,7 @@ SECONDS = {
     "baseline": 60,
     "went_in": 30,
     "spot": 15,
+    "older": 10,
     "quick": 8,
     "recheck": 15,
     "duplicate": 30,
@@ -888,6 +889,30 @@ class CatchUp:
             if offer is not None:
                 out.append(offer)
         out += self._spot_checks(rows, hidden, now, points, QUOTA["spot"] - done.get("spot", 0))
+        # A value and its newer value: briefs already carry the newer; retiring the older
+        # keeps the Brain tidy.
+        dated = [d for d in attention.get("dated") or [] if d["key"] not in hidden]
+        for pair in dated[: max(0, QUOTA["older"] - done.get("older", 0))]:
+            out.append(
+                {
+                    "key": pair["key"],
+                    "type": "older",
+                    "older": self._side(
+                        pair["older"]["id"],
+                        pair["older"].get("title"),
+                        rows,
+                        uses(pair["older"]["id"]),
+                    ),
+                    "newer": self._side(
+                        pair["newer"]["id"],
+                        pair["newer"].get("title"),
+                        rows,
+                        uses(pair["newer"]["id"]),
+                    ),
+                    "older_as_of": pair.get("older_as_of"),
+                    "newer_as_of": pair.get("newer_as_of"),
+                }
+            )
         if "unused" not in hidden:
             idle = self._unused(inventory, now)
             if len(idle) >= UNUSED_MIN:
@@ -1051,7 +1076,7 @@ class CatchUp:
                 continue
             key = str((point.get("source") or {}).get("catch_up") or "")
             kind = key.split(":")[0]
-            if kind in ("recheck", "twin", "tidy", "musthold", "spot"):
+            if kind in ("recheck", "twin", "tidy", "musthold", "spot", "older"):
                 done[kind] = done.get(kind, 0) + 1
         return done
 

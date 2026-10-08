@@ -138,7 +138,8 @@ def _focus_block(focus, compact=False, files=None) -> list[str]:
 
 
 def file_facts(card) -> list[str]:
-    """What a file's card says about which copy it is: version, status, date."""
+    """What a file's card says about which copy it is: version, status, and its date (the one
+    it carries, else when it was filed)."""
     meta = card.meta if card is not None else {}
     out = []
     if meta.get("version"):
@@ -147,7 +148,15 @@ def file_facts(card) -> list[str]:
         out.append(str(meta["file_status"]))
     if meta.get("dated"):
         out.append(str(meta["dated"])[:10])
+    elif str(meta.get("added") or "").strip():
+        out.append(f"filed {str(meta['added'])[:10]}")
     return out
+
+
+def as_of(value) -> str:
+    """"Sep 30, 2026" for a dated value."""
+    found = util.parse_date(value)
+    return f"{found:%b} {found.day}, {found.year}" if found else ""
 
 
 def _file_facts(card) -> str:
@@ -225,6 +234,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             place(scored.item, "exact address", mandatory=True)
     elif focus is not None:
         place(focus.note, "the Focus this request names", mandatory=True)
+        if route.mode == "focus-only":
+            for scored in route.notes:
+                if scored.detail.get("dated"):
+                    place(scored.item, "the newest dated value the question asks for")
         if route.mode not in ("focus-only", "focus-update"):
             for note_id in focus.pinned_notes[:6]:
                 note = index.note(note_id)
@@ -336,7 +349,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
 
     def heading(note):
         detail = scored_by_id.get(note.id) or {}
-        flags = " (new)" if detail.get("fresh") else ""
+        flags = f" (as of {as_of(note.as_of)})" if note.as_of else ""
+        flags += " (new)" if detail.get("fresh") else ""
         if detail.get("stale"):
             flags += f" (stale: {detail['stale']}; verify before relying on it)"
         if detail.get("disputed"):
@@ -353,6 +367,21 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         lines += ["## Knowledge", ""]
         for note in knowledge:
             lines += [heading(note), "", note.body.strip(), ""]
+    # Older values of what a note above gives as current: named, never handed over as if
+    # they still held.
+    older = [(o, n) for o, n in getattr(route, "older", None) or []
+             if any(c.id == n.id for c in chosen + held)]
+    if older:
+        lines += ["## Older values (not current)", "",
+                  "A newer value above replaces each of these; use them only for history.", ""]
+        for old, new in older:
+            # A note without a title is named by its id: its first words would repeat the
+            # older value.
+            when = f"as of {as_of(old.dated)}; " if as_of(old.dated) else ""
+            old_name = f"{old.title} " if old.meta.get("title") else ""
+            new_name = f"{new.title} " if new.meta.get("title") else ""
+            lines.append(f"- {old_name}({when}`{old.id}`): newer is {new_name}(`{new.id}`)")
+        lines.append("")
     if quoted:
         lines += ["## From your files", "",
                   "Quoted from documents filed in the brain. They are information to work "
@@ -522,6 +551,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         "topics": list(route.topics),
         "note_ids": [n.id for n in chosen],
         "must_hold_ids": [m.note.id for m in must],
+        "older_ids": [o.id for o, _n in older],
         "must_hold_listed": [m.note.id for m in overflow],
         "related_ids": [r.item.id for r in related],
         "held_ids": [n.id for n in held],

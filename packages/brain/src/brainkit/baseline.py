@@ -17,7 +17,8 @@ verdicts are kept in the ledger by the two texts (`pair_key`).
 
 A CHANGE THAT WOULD APPLY AT ONCE (the owner's own scope, or a capture the policy lets in) is
 checked first (`guard`): one that may disagree with a note, or that changes or retires a
-baseline, waits for the owner instead.
+baseline, waits for the owner instead. A newer dated value for the same thing (`as_of` later
+than the note's date) is an update, not a disagreement (`newer_value`).
 
 A REVISION of a baseline needs a reason of a few words, not the one given last time
 (`reason_problem`), and the journal records it. A revision of a rule, a standing note or a
@@ -163,15 +164,24 @@ def pair_key(proposed: str, existing: str) -> str:
     return util.sha256(util.canonical(proposed) + "\n↔\n" + util.canonical(existing))[:32]
 
 
-def tensions(brain, text, *, area, topic, chain, partitions=(), exclude=()) -> list[dict]:
+def newer_value(text, as_of, note) -> bool:
+    """Is `text`, true as of `as_of`, a newer value of what a dated note gives (its figure for
+    the same thing, at an earlier date)?"""
+    if not as_of or not (note.as_of or note.kind == "state"):
+        return False
+    return bool(note.dated) and note.dated < as_of and tension.same_measure(text, note.body)
+
+
+def tensions(brain, text, *, area, topic, chain, partitions=(), exclude=(),
+             as_of="") -> list[dict]:
     """Checks 1 and 2 against every candidate: [{"id", "title", "why", "baseline",
-    "found_by"}], baselines first."""
+    "found_by"}], baselines first. A newer dated value of a note's figure is not among them."""
     found = []
     for row in candidates(brain, text, area=area, topic=topic, chain=chain,
                           partitions=partitions, exclude=exclude):
         note = row["note"]
         reason = tension.tension(text, note.body)
-        if reason:
+        if reason and not newer_value(text, as_of, note):
             found.append({"id": note.id, "title": note.title, "why": reason,
                           "baseline": row["baseline"], "found_by": row["found_by"]})
     found.sort(key=lambda r: (not r["baseline"], r["id"]))
@@ -199,7 +209,7 @@ def revised(brain, kind, target) -> tuple | None:
 
 
 def guard(brain, kind, text, *, base, area, topic, chain, partitions=(), supersedes="",
-          note_id="") -> dict | None:
+          note_id="", as_of="") -> dict | None:
     """Why a change that would apply at once must wait for the owner, or None: it changes,
     retires or replaces a baseline, or it may disagree with a note (checks 1 and 2)."""
     target = {"id": base.id if base is not None else note_id, "supersedes": supersedes or ""}
@@ -215,7 +225,7 @@ def guard(brain, kind, text, *, base, area, topic, chain, partitions=(), superse
     if base is not None:
         exclude.add(base.id)
     for row in tensions(brain, text, area=area, topic=topic, chain=chain,
-                        partitions=partitions, exclude=exclude):
+                        partitions=partitions, exclude=exclude, as_of=as_of):
         return {"id": row["id"], "title": row["title"], "baseline": row["baseline"],
                 "why": f"it may disagree with it: {row['why']}"}
     return None
