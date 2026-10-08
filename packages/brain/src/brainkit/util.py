@@ -225,15 +225,30 @@ def now_iso() -> str:
     return now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def local(moment: _dt.datetime) -> _dt.datetime:
+    """`moment` on the owner's clock: the machine's time zone. Tests pin it to put the owner
+    in a time zone of their choosing."""
+    return moment.astimezone()
+
+
 def today() -> str:
     """Today's date where the owner is (the machine's local date), as YYYY-MM-DD: the date
     written on notes and the day freshness is judged by."""
-    return _dt.date.today().isoformat()
+    return today_date().isoformat()
 
 
 def today_date() -> _dt.date:
     """`today()` as a date."""
-    return _dt.date.today()
+    return local(now()).date()
+
+
+def local_date(stamp) -> _dt.date | None:
+    """The owner's date at a moment the Brain stamped in UTC (`now_iso()`), or None when
+    `stamp` is not one: on a New York evening, UTC is already on the next day."""
+    try:
+        return local(_dt.datetime.fromisoformat(str(stamp))).date()
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def parse_date(value):

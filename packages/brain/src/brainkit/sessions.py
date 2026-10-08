@@ -354,22 +354,27 @@ class Ledger:
 
     def weekly(self, weeks: int = 8) -> list[dict]:
         """Conversations the brain served in each of the last `weeks` weeks, oldest first:
-        [{"start", "end", "conversations", "packets"}], a week ending today last. Packets are
-        kept for the retention window, so weeks before it count none."""
+        [{"start", "end", "conversations", "packets"}], a week ending today last. The days
+        are the owner's (`util.today()`): packets are stamped in UTC, and each counts on the
+        owner's date when it came. Packets are kept for the retention window, so weeks
+        before it count none."""
         weeks = max(1, min(int(weeks), 26))
-        today = util.now().date()
+        today = util.today_date()
         start = today - _dt.timedelta(days=7 * weeks - 1)
         buckets = [{"start": (start + _dt.timedelta(days=7 * i)).isoformat(),
                     "end": (start + _dt.timedelta(days=7 * i + 6)).isoformat(),
                     "sessions": set(), "packets": 0} for i in range(weeks)]
+        # A day early: no time zone is a whole day from UTC, and the offset check below
+        # drops the packets from before the owner's first day.
+        since = (start - _dt.timedelta(days=1)).isoformat()
         with self._connect() as conn:
-            rows = conn.execute("SELECT session_id, substr(at, 1, 10) AS day FROM packets "
-                                "WHERE at >= ?", (start.isoformat(),)).fetchall()
+            rows = conn.execute("SELECT session_id, at FROM packets WHERE at >= ?",
+                                (since,)).fetchall()
         for row in rows:
-            try:
-                offset = (_dt.date.fromisoformat(row["day"]) - start).days // 7
-            except ValueError:
+            day = util.local_date(row["at"])
+            if day is None:
                 continue
+            offset = (day - start).days // 7
             if 0 <= offset < weeks:
                 buckets[offset]["sessions"].add(row["session_id"])
                 buckets[offset]["packets"] += 1
