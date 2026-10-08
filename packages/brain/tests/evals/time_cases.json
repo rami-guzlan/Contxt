@@ -1,0 +1,50 @@
+{
+  "about": "Dated values: two notes give a figure for the same subject at different dates; the request asks for it now. The packet should carry the newest and leave the older out or mark it as older.",
+  "cases": [
+    {
+      "id": "loopline-mrr", "brain": "entrepreneur",
+      "request": "What is Loopline's MRR right now?",
+      "notes": [
+        {"id": "loopline-mrr-august", "area": "ventures", "topic": "loopline-metrics", "title": "Loopline MRR, August", "as_of": "2026-08-31", "added": "2026-09-01", "body": "Loopline MRR was $36,100 at the end of August."},
+        {"id": "loopline-mrr-september", "area": "ventures", "topic": "loopline-metrics", "title": "Loopline MRR, September", "as_of": "2026-09-30", "added": "2026-10-01", "body": "Loopline MRR was $38,400 at the end of September."}
+      ],
+      "newest": "loopline-mrr-september", "older": ["loopline-mrr-august"]
+    },
+    {
+      "id": "seed-committed", "brain": "entrepreneur",
+      "request": "How much of the seed round is committed so far?",
+      "notes": [
+        {"id": "seed-committed-september", "area": "fundraising", "topic": "seed-round", "title": "Seed round committed, mid September", "as_of": "2026-09-15", "added": "2026-09-15", "body": "Seed round: $800,000 committed so far."},
+        {"id": "seed-committed-october", "area": "fundraising", "topic": "seed-round", "title": "Seed round committed, early October", "as_of": "2026-10-06", "added": "2026-10-06", "body": "Seed round: $1,100,000 committed so far."}
+      ],
+      "newest": "seed-committed-october", "older": ["seed-committed-september"]
+    },
+    {
+      "id": "grocery-spend", "brain": "personal",
+      "request": "How much have we spent on groceries this month?",
+      "notes": [
+        {"id": "groceries-spent-august", "area": "money", "topic": "budget", "title": "Grocery spending, August", "as_of": "2026-08-31", "added": "2026-08-31", "body": "Grocery spending this month: $780 of the $900 budget."},
+        {"id": "groceries-spent-september", "area": "money", "topic": "budget", "title": "Grocery spending, September", "as_of": "2026-09-30", "added": "2026-09-30", "body": "Grocery spending this month: $865 of the $900 budget."}
+      ],
+      "newest": "groceries-spent-september", "older": ["groceries-spent-august"]
+    },
+    {
+      "id": "tidyq-version", "brain": "programmer",
+      "request": "Which version of tidyq is current?",
+      "notes": [
+        {"id": "tidyq-version-august", "area": "projects", "topic": "tidyq-1-0-release", "title": "tidyq version, August", "as_of": "2026-08-20", "added": "2026-08-20", "body": "tidyq is on version 0.9.2."},
+        {"id": "tidyq-version-september", "area": "projects", "topic": "tidyq-1-0-release", "title": "tidyq version, late September", "as_of": "2026-09-28", "added": "2026-09-28", "body": "tidyq is on version 0.9.4."}
+      ],
+      "newest": "tidyq-version-september", "older": ["tidyq-version-august"]
+    },
+    {
+      "id": "webinar-registrations", "brain": "knowledge-company",
+      "request": "How many people have registered for the first webinar?",
+      "notes": [
+        {"id": "webinar-one-registrations-sept", "area": "projects", "topic": "q4-webinar-series", "title": "Webinar 1 registrations, September", "as_of": "2026-09-20", "added": "2026-09-20", "body": "Webinar 1 has 140 registrations."},
+        {"id": "webinar-one-registrations-oct", "area": "projects", "topic": "q4-webinar-series", "title": "Webinar 1 registrations, October", "as_of": "2026-10-05", "added": "2026-10-05", "body": "Webinar 1 has 212 registrations."}
+      ],
+      "newest": "webinar-one-registrations-oct", "older": ["webinar-one-registrations-sept"]
+    }
+  ]
+}

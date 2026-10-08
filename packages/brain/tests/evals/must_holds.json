@@ -1,0 +1,214 @@
+{
+  "about": "Must-hold recall on the packaged demo Brains. Each case is a constraint note, eight requests from its domain that never name it, and four decoys from other domains. Phase 0 of the safeguards work measured these with every target set to load: on-demand (relevance alone).",
+  "cases": [
+    {
+      "brain": "personal", "note": "family-ollie", "domain": "meals, food and outings",
+      "requests": [
+        "Plan Tuesday dinner for the four of us",
+        "What should we cook this weekend?",
+        "Snack ideas for the birthday party on Saturday",
+        "Pick a restaurant for Friday night",
+        "Make a grocery list for next week's meals",
+        "Lunchbox ideas for school this week",
+        "Plan a picnic for Sunday at the lake",
+        "Find a bakery that can make a cake for Saturday"
+      ],
+      "decoys": [
+        "Fix the dripping bathroom faucet",
+        "Compare two phone plans for Jamie",
+        "Draft an email to renew the car registration",
+        "Build me a training plan for the half marathon"
+      ]
+    },
+    {
+      "brain": "personal", "note": "money-budget", "domain": "spending and subscriptions",
+      "requests": [
+        "Should we sign up for that $30 a month meal kit?",
+        "Find a new couch for the living room",
+        "Is the streaming bundle worth it for us?",
+        "Sign Ollie up for the summer soccer camp",
+        "Book a nice dinner out for our anniversary",
+        "Help me pick a new laptop for Jamie",
+        "Which gym membership should I get?",
+        "Plan birthday gifts for the grandparents"
+      ],
+      "decoys": [
+        "What time is soccer practice on Saturday?",
+        "Write a note to Ollie's teacher about the field trip",
+        "How do I reset the thermostat schedule?",
+        "Summarize my running for September"
+      ]
+    },
+    {
+      "brain": "personal", "note": "travel-preferences", "domain": "trips and bookings",
+      "requests": [
+        "Plan a long weekend in Montreal with Ollie",
+        "Book flights to Chicago for the conference in May",
+        "Find a place to stay in Lisbon for a week",
+        "How should we get to Boston for Thanksgiving?",
+        "Plan a three-city trip through Italy next summer",
+        "Make a packing list for four days in Denver",
+        "Find a hotel near the beach in San Diego for spring break",
+        "Should we drive or take the train to Philadelphia?"
+      ],
+      "decoys": [
+        "Plan Tuesday dinner",
+        "Track this month's grocery spending",
+        "Make a reading list for Jamie",
+        "Clean out the garage this weekend"
+      ]
+    },
+    {
+      "brain": "personal", "note": "health-sleep", "domain": "evenings, school nights and screens",
+      "requests": [
+        "Plan a movie night for Thursday",
+        "Can Ollie go to a sleepover on Wednesday?",
+        "Schedule my long run for Saturday morning",
+        "Plan a family game night on a school night",
+        "Set up a bedtime routine for Ollie",
+        "Plan a late concert outing on Tuesday",
+        "When should I stop using my laptop tonight?",
+        "Plan a weeknight dinner with friends"
+      ],
+      "decoys": [
+        "Find a hotel in Chicago",
+        "Compare car insurance quotes",
+        "Write a grocery list",
+        "Clean out the garage this weekend"
+      ]
+    },
+    {
+      "brain": "entrepreneur", "note": "fundraising-investor-updates", "domain": "investor updates",
+      "requests": [
+        "Draft the October update for our investors",
+        "Write this month's note to the Loopline backers",
+        "What goes in the monthly investor email?",
+        "Prepare the update we send investors on the 5th",
+        "Summarize September for our shareholders",
+        "Draft the monthly recap for our angels",
+        "Turn these metrics into the monthly investor update",
+        "Write the Q3 letter to Loopline's investors"
+      ],
+      "decoys": [
+        "Plan the hiring loop for a senior engineer",
+        "Draft a LinkedIn post about the new Loopline feature",
+        "Introduce Grace Liu to Tomas Varga",
+        "Block two hours a day for deep work"
+      ]
+    },
+    {
+      "brain": "entrepreneur", "note": "people-intros", "domain": "introductions",
+      "requests": [
+        "Introduce Grace Liu to Tomas Varga",
+        "Connect our designer with the founder of BrightPlumb",
+        "Write an email connecting Ana and Marco",
+        "Draft an intro between our new AE and two customers",
+        "Who should I connect Priya with this week?",
+        "Make an introduction to a seed investor for my friend Jordan",
+        "Send a warm intro for the agency to Tomas",
+        "Put two founders I know in touch about hiring"
+      ],
+      "decoys": [
+        "Draft the October investor update",
+        "Summarize Loopline's churn this month",
+        "Write my priorities for the week",
+        "Review the plumbing launch plan"
+      ]
+    },
+    {
+      "brain": "programmer", "note": "work-deploys", "domain": "deploys and releases",
+      "requests": [
+        "Ship the Parcelwise billing fix tonight",
+        "Deploy the new search page to production",
+        "Can we release version 2.3 on Friday afternoon?",
+        "Push the hotfix for the login bug",
+        "Roll out the new onboarding flow to customers",
+        "Plan the release of the API changes",
+        "Get the dashboard redesign live this week",
+        "Promote the staging build to prod"
+      ],
+      "decoys": [
+        "Write unit tests for the date parser",
+        "Refactor the user service into smaller functions",
+        "Explain this regular expression",
+        "Rename getUserData to fetchUser"
+      ]
+    },
+    {
+      "brain": "programmer", "note": "practices-secrets", "domain": "credentials, configuration and logs",
+      "requests": [
+        "Add the Stripe API key to the payments service",
+        "Connect the app to the production database",
+        "Set up the OAuth client for Google sign-in",
+        "Add logging to the checkout request handler",
+        "Put the AWS credentials into the deploy script",
+        "Configure the webhook signing token",
+        "Write a test that calls the real payments API",
+        "Send the database password to the new contractor"
+      ],
+      "decoys": [
+        "Rename getUserData to fetchUser",
+        "Explain how the cache works",
+        "Write a README for the CLI",
+        "Center the button on the settings page"
+      ]
+    },
+    {
+      "brain": "knowledge-company", "note": "customers-out-of-scope", "domain": "targeting and outreach",
+      "requests": [
+        "Build an outreach list of plants in Ohio",
+        "Set up a LinkedIn ad audience for maintenance managers",
+        "Find 50 prospects for the predictive maintenance webinar",
+        "Should we go after small machine shops?",
+        "Plan an email campaign to manufacturers in Mexico",
+        "Draft cold outreach to pharma contract manufacturers",
+        "Who should we advertise to next quarter?",
+        "Build a target account list for Q4"
+      ],
+      "decoys": [
+        "Fix the typo on the webinar landing page",
+        "Summarize the last customer interview",
+        "Write the agenda for Monday's team meeting",
+        "Update the brand color palette doc"
+      ]
+    },
+    {
+      "brain": "knowledge-company", "note": "marketing-approvals-morgan", "domain": "anything external",
+      "requests": [
+        "Post this case study on LinkedIn",
+        "Send the newsletter to our customer list",
+        "Publish the new landing page for the webinar",
+        "Launch the retargeting ads this week",
+        "Send the press release to trade media",
+        "Email the webinar invite to prospects",
+        "Put the new pricing page live",
+        "Announce our trade show booth on social media"
+      ],
+      "decoys": [
+        "Summarize the last customer interview",
+        "Research competitors' pricing for an internal memo",
+        "Write internal notes from the team meeting",
+        "Organize the research library folders"
+      ]
+    },
+    {
+      "brain": "knowledge-company", "note": "brand-claims-sourced", "domain": "content with numbers or claims",
+      "requests": [
+        "Write a blog post on how predictive maintenance cuts downtime",
+        "Draft a case study for the Ohio plant",
+        "Create a one-pager on the ROI of our product",
+        "Write ad copy about how much customers save",
+        "Draft a LinkedIn post with industry downtime statistics",
+        "Make a slide with average results for customers",
+        "Write the webinar abstract with the key numbers",
+        "Draft a press release about results at three plants"
+      ],
+      "decoys": [
+        "Schedule the team meeting for Thursday",
+        "Organize the research library folders",
+        "Plan the booth layout for the trade show",
+        "Write onboarding notes for the new hire"
+      ]
+    }
+  ]
+}
