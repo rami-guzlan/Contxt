@@ -449,6 +449,25 @@ describe("moving in", () => {
     expect(await screen.findByRole("heading", { name: /1 suggestion wait in Catch up/ })).toBeInTheDocument();
     expect(calls.find((c) => c.path === "/api/brain/move-in")?.body).toMatchObject({ ids: ["i1"] });
   });
+
+  it("takes files of any kind, zips too, and says what it could not read", async () => {
+    const calls = mockApi({
+      "POST /api/brain/move-in/files": {
+        sources: [{ kind: "chatgpt", label: "export.zip", text: "Planning the Q4 webinars for supervisors.", note: "" }],
+        skipped: [{ name: "export.zip: photo.png", why: "a picture: Moving in reads words, not images" }],
+      },
+      "POST /api/brain/move-in/preview": preview,
+    });
+    const user = userEvent.setup();
+    renderAt(<MoveInPage />);
+    const zip = new File([new Uint8Array([80, 75, 3, 4])], "export.zip", { type: "application/zip" });
+    await user.upload(screen.getByLabelText("Choose files to bring in (any kind, zip files too)"), zip);
+    expect(await screen.findByRole("list", { name: "How the Brain read it" })).toBeInTheDocument();
+    expect(screen.getByText("export.zip: photo.png: not read, a picture: Moving in reads words, not images.")).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/api/brain/move-in/preview")?.body).toEqual({
+      sources: [{ kind: "chatgpt", text: "Planning the Q4 webinars for supervisors.", label: "export.zip" }],
+    });
+  });
 });
 
 describe("the first run", () => {

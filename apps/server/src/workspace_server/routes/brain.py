@@ -10,10 +10,11 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, Query, Response, UploadFile
 
 from workspace_core.domain.records import Task
-from workspace_core.errors import NotFound
+from workspace_core.errors import NotFound, ValidationFailed
 from workspace_core.services.brain import MAX_FILE
 
 from ..deps import WS, Who
+from ..movein_files import UploadReader
 from ..schemas import (
     BrainDecisionIn,
     BrainProjectIn,
@@ -35,6 +36,8 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/api/brain")
+MAX_MOVE_IN_FILES = 8  # at a time, as many as Moving in reads
+MAX_MOVE_IN_UPLOAD = 100 * 1024 * 1024  # one file or zip
 
 
 @router.get("/status")
@@ -414,6 +417,26 @@ def move_in_preview(body: MoveInIn, who: Who, ws: WS) -> dict[str, Any]:
     """What the Brain makes of what an AI app already knows, stage by stage; nothing is
     written."""
     return ws.move_in.preview(who, [s.model_dump() for s in body.sources])
+
+
+@router.post("/move-in/files")
+def move_in_files(who: Who, files: Annotated[list[UploadFile], File()]) -> dict[str, Any]:
+    """Read files for Moving in, any type, zips included: one source per file that reads (to
+    preview like a paste), and what could not be read, and why. Nothing is kept. (A plain
+    function: reading a long PDF runs in a worker thread, never on the event loop.)"""
+    who.require("brain.read")
+    if len(files) > MAX_MOVE_IN_FILES:
+        raise ValidationFailed(f"Bring at most {MAX_MOVE_IN_FILES} files at a time.")
+    read = []
+    for upload in files:
+        data = upload.file.read(MAX_MOVE_IN_UPLOAD + 1)
+        if len(data) > MAX_MOVE_IN_UPLOAD:
+            raise ValidationFailed(
+                f"{upload.filename or 'A file'} is over "
+                f"{MAX_MOVE_IN_UPLOAD // (1024 * 1024)} MB: bring in a smaller part of it."
+            )
+        read.append((upload.filename or "file", data))
+    return UploadReader().read(read)
 
 
 @router.post("/move-in", status_code=201)

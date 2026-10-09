@@ -1,6 +1,7 @@
 // Moving in: bring what your AIs already know. Pick where it lives (ChatGPT, Claude, Cursor,
 // instruction files, or anything pasted), follow two or three steps with a prompt to copy into
-// that AI, then paste or drop the answer. Watch the Brain read it: split into ideas, sorted by
+// that AI, then paste the answer, or bring in files of any kind (documents, data exports, zips;
+// the server reads what it can and names what it could not). Watch the Brain read it: split into ideas, sorted by
 // kind, checked against what it knows, private detail flagged, and sifted against your goals and
 // projects, each stage with one real example. Choose what stays; it waits in Catch up.
 
@@ -8,7 +9,7 @@ import { Check } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { useMoveInKeep, useMoveInPreview, type MoveInSource } from "../api/hooks";
+import { useMoveInFiles, useMoveInKeep, useMoveInPreview, type MoveInSource } from "../api/hooks";
 import type { MoveInIdea, MoveInKept, MoveInKind, MoveInPreview } from "../api/types";
 import { CopyBlock, ErrorNote } from "../components/ui";
 import { plural } from "../lib/format";
@@ -58,7 +59,7 @@ export const GUIDES: Guide[] = [
     label: "Instruction files (CLAUDE.md, AGENTS.md)",
     steps: [
       "Find CLAUDE.md and AGENTS.md in your projects, and your own one in your home folder (.claude/CLAUDE.md).",
-      "Open each one and paste it here, or drop the file on the box.",
+      "Open each one and paste it here, or drop the files on the box (a zip of them works too).",
     ],
   },
   {
@@ -95,22 +96,47 @@ export function MoveInPage() {
   );
 }
 
+const MAX_SOURCES = 8; // as many as the Brain reads at once
+
 export function MoveIn({ onDone }: { onDone?: (kept: MoveInKept | null) => void }) {
   const [sources, setSources] = useState<MoveInSource[]>([]);
   const [kind, setKind] = useState<MoveInKind>("chatgpt");
   const [text, setText] = useState("");
   const preview = useMoveInPreview();
   const keep = useMoveInKeep();
+  const reading = useMoveInFiles();
   const [chosen, setChosen] = useState<string[] | null>(null);
   const [kept, setKept] = useState<MoveInKept | null>(null);
+  const [fileNotes, setFileNotes] = useState<string[]>([]);
   const guide = GUIDES.find((g) => g.kind === kind) ?? (GUIDES[0] as Guide);
+
+  const read = (next: MoveInSource[]) => {
+    setSources(next);
+    preview.mutate(next, { onSuccess: (result) => setChosen(chosenByDefault(result)) });
+  };
 
   const add = () => {
     if (!text.trim()) return;
-    const next = [...sources, { kind, text, label: guide.label }];
-    setSources(next);
+    read([...sources, { kind, text, label: guide.label }]);
     setText("");
-    preview.mutate(next, { onSuccess: (result) => setChosen(chosenByDefault(result)) });
+  };
+
+  /** Files of any type, zips included: the server reads what it can and says what it could not. */
+  const addFiles = (list: File[]) => {
+    if (!list.length) return;
+    reading.mutate(list, {
+      onSuccess: (found) => {
+        const room = MAX_SOURCES - sources.length;
+        const taken = found.sources.slice(0, Math.max(0, room));
+        const notes = [
+          ...found.sources.filter((s) => s.note).map((s) => `${s.label}: ${s.note}`),
+          ...found.skipped.map((s) => `${s.name}: not read, ${s.why}.`),
+        ];
+        if (found.sources.length > taken.length) notes.push(`Only ${MAX_SOURCES} sources are read at a time: bring the rest in next.`);
+        setFileNotes(notes);
+        if (taken.length) read([...sources, ...taken.map((s) => ({ kind: s.kind, text: s.text, label: s.label }))]);
+      },
+    });
   };
 
   if (kept) {
@@ -179,14 +205,14 @@ export function MoveIn({ onDone }: { onDone?: (kept: MoveInKept | null) => void 
         <textarea
           rows={8}
           value={text}
-          placeholder="Paste what it said, or drop a file"
+          placeholder="Paste what it said, or drop files here: any kind, zip files and data exports too"
           onChange={(event) => setText(event.target.value)}
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => {
-            const file = event.dataTransfer.files?.[0];
-            if (!file) return;
+            const dropped = Array.from(event.dataTransfer.files ?? []);
+            if (!dropped.length) return;
             event.preventDefault();
-            void file.text().then((read) => setText((current) => (current.trim() ? `${current}\n\n${read}` : read)));
+            addFiles(dropped);
           }}
         />
       </label>
@@ -194,6 +220,20 @@ export function MoveIn({ onDone }: { onDone?: (kept: MoveInKept | null) => void 
         <button type="button" className="primary" disabled={!text.trim() || preview.isPending} onClick={add}>
           {preview.isPending ? "Reading…" : sources.length ? "Read this too" : "Read it"}
         </button>
+        <label className="button file-pick">
+          {reading.isPending ? "Reading files…" : "Or choose files"}
+          <input
+            type="file"
+            multiple
+            className="sr-only"
+            aria-label="Choose files to bring in (any kind, zip files too)"
+            disabled={reading.isPending || sources.length >= MAX_SOURCES}
+            onChange={(event) => {
+              addFiles(Array.from(event.target.files ?? []));
+              event.target.value = "";
+            }}
+          />
+        </label>
         {sources.length ? <span className="muted small">Read so far: {sources.map((s) => s.label).join(", ")}</span> : null}
         {onDone ? (
           <button type="button" className="link" onClick={() => onDone(null)}>
@@ -201,7 +241,18 @@ export function MoveIn({ onDone }: { onDone?: (kept: MoveInKept | null) => void 
           </button>
         ) : null}
       </div>
-      <ErrorNote error={preview.error} />
+      <p className="muted small">
+        Any kind of file: documents, text, instruction files, a data export from ChatGPT or Claude (its conversations become your own words, newest
+        first), or a zip of all of them. Pictures and recordings are named, not read.
+      </p>
+      {fileNotes.length ? (
+        <ul className="muted small move-in-notes" aria-label="What happened to your files">
+          {fileNotes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      ) : null}
+      <ErrorNote error={preview.error ?? reading.error} />
       {preview.data && chosen ? (
         <>
           <Pipeline preview={preview.data} />

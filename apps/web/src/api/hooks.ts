@@ -795,6 +795,21 @@ export function useMoveInPreview() {
   });
 }
 
+/** Files of any type, zips included, read into sources (one per file that reads), with what
+ * could not be read and why; nothing is kept. */
+export function useMoveInFiles() {
+  return useMutation({
+    mutationFn: (files: File[]) => {
+      const form = new FormData();
+      for (const file of files) form.append("files", file);
+      return api<{ sources: (MoveInSource & { label: string; note: string })[]; skipped: { name: string; why: string }[] }>(
+        "/api/brain/move-in/files",
+        { method: "POST", form },
+      );
+    },
+  });
+}
+
 /** Suggest the ideas chosen (none named: the ones that fit); they wait in Catch up. */
 export function useMoveInKeep() {
   const invalidate = useInvalidate();
