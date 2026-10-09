@@ -25,6 +25,7 @@ from workspace_core.storage.objects import ObjectStore
 
 from .clock import iso
 from .services.actors import Actors
+from .services.agent import KnowledgeAgent
 from .services.approvals import Approvals
 from .services.artifacts import Artifacts, Destination
 from .services.brain import Brain
@@ -74,6 +75,7 @@ class Workspace:
         self.legacy = Legacy(rt)
         self.catch_up = CatchUp(rt, self.brain, self.legacy)
         self.move_in = MovingIn(rt)
+        self.agent = KnowledgeAgent(rt, self.brain)
 
     # ---------------------------------------------------------------- lifecycle
 

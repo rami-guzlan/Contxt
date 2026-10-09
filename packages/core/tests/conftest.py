@@ -86,6 +86,7 @@ class FakeBrain:
         self.baselines: dict[str, str] = {}  # entry id: why it is a baseline
         self.challenged: list[dict] = []  # challenges raised
         self.builtin: dict[str, bool] = {"knowledge-check": False, "wrap-up": True}
+        self.gathered: dict[str, list[dict]] = {}  # the knowledge agent's candidates, by action
         self.entries = {
             "voice-guide": BrainEntry(
                 id="voice-guide",
@@ -653,6 +654,27 @@ class FakeBrain:
 
     def kernel(self, *, tools=True):
         return {"text": "# Startup\nWrite plainly.", "tokens": 6}
+
+    def agent_outline(self, *, brief=False):
+        return {
+            "counts": {"notes": len(self.entries)},
+            "text": "# The Brain as it is now\n\n"
+            + "\n".join(f"- `{i}` {e.title}" for i, e in self.entries.items()),
+        }
+
+    def agent_gather(self, action, *, limit=10):
+        found = list(self.gathered.get(action) or [])
+        return {
+            "action": action,
+            "candidates": [{"ref": f"c{n}", **c} for n, c in enumerate(found[:limit], 1)],
+            "found": len(found),
+        }
+
+    def agent_skill(self, name):
+        return f"# /{name}\n\nJudge each candidate. Answer in JSON."
+
+    def agent_skills(self):
+        return [{"name": "tidy-repeats", "description": "Repeats.", "text": "...", "own": False}]
 
     def requests(self, *, limit=50, before=None, client=None):
         return {"requests": [], "brain_tokens": 100, "apps": []}

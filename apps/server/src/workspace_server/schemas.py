@@ -332,3 +332,44 @@ class OnboardingIn(Body):
 class WorkspacePatch(Body):
     name: str | None = None
     timezone: str | None = None
+
+
+# ------------------------------------------------------------------------- the knowledge agent
+
+
+class AgentSettingsIn(Body):
+    model: str | None = Field(default=None, max_length=140)
+    suggestions: bool | None = None
+
+
+class AgentActionIn(Body):
+    model: str | None = Field(default=None, max_length=140)
+
+
+class AgentTurn(Body):
+    role: str = Field(pattern="^(user|agent)$")
+    text: str = Field(max_length=8000)
+
+
+class AgentChatIn(Body):
+    message: str = Field(min_length=1, max_length=4000)
+    history: list[AgentTurn] = Field(default_factory=list, max_length=40)
+    model: str | None = Field(default=None, max_length=140)
+
+
+class AgentDismissIn(Body):
+    key: str = Field(min_length=1, max_length=300)
+    days: int = Field(default=3, ge=1, le=30)
+
+
+class AgentAnswerIn(Body):
+    key: str = Field(min_length=1, max_length=300)
+    do: str = Field(pattern="^(verify|retire|dispute|answer|done|dismiss)$")
+    text: str | None = Field(default=None, max_length=2000)
+
+
+class AgentKeepIn(Body):
+    title: str = Field(default="", max_length=200)
+    text: str = Field(min_length=1, max_length=2000)
+    kind: str = Field(default="fact", pattern="^(fact|rule|decision|preference)$")
+    said: str = Field(default="", max_length=4000)

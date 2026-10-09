@@ -437,6 +437,25 @@ class BrainPort(Protocol):
         `tools`, as a model that cannot call the Brain needs it: nothing asks for a tool."""
         ...
 
+    def agent_outline(self, *, brief: bool = False) -> dict[str, Any]:
+        """The knowledge agent's map of what the owner may see, made by code: {"counts",
+        "goals", "areas", "projects", "skills", "text"}; `brief` for a small model."""
+        ...
+
+    def agent_gather(self, action: str, *, limit: int = 10) -> dict[str, Any]:
+        """What one knowledge agent action judges: {"action", "candidates": [{"ref", "kind",
+        "ids", "title", "text"}], "found"}."""
+        ...
+
+    def agent_skill(self, name: str) -> str:
+        """The procedure one knowledge agent action (or its conversation) follows."""
+        ...
+
+    def agent_skills(self) -> list[dict[str, Any]]:
+        """The knowledge agent's procedures: [{"name", "description", "when_to_use",
+        "triggers", "text", "own"}]."""
+        ...
+
     def unsaved(self) -> list[str]:
         """Governed files whose changes are live but not saved to git (a commit failed)."""
         ...
@@ -695,6 +714,18 @@ class NoBrain:
 
     def kernel(self, *, tools: bool = True) -> dict[str, Any]:
         return {"text": "", "tokens": 0}
+
+    def agent_outline(self, *, brief: bool = False) -> dict[str, Any]:
+        return {"counts": {}, "goals": "", "areas": [], "projects": [], "skills": [], "text": ""}
+
+    def agent_gather(self, action: str, *, limit: int = 10) -> dict[str, Any]:
+        return {"action": action, "candidates": [], "found": 0}
+
+    def agent_skill(self, name: str) -> str:
+        raise Conflict("This workspace has no Brain for an agent to keep.")
+
+    def agent_skills(self) -> list[dict[str, Any]]:
+        return []
 
     def unsaved(self) -> list[str]:
         return []
