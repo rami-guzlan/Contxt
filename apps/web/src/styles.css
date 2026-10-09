@@ -5395,3 +5395,290 @@ li.missing {
     position: static;
   }
 }
+
+/* Workflows: each one drawn as boxes and arrows, colored by its last run. */
+.pill-waiting {
+  color: var(--review);
+}
+
+.pill-stopped {
+  color: var(--neutral);
+}
+
+.flow-list,
+.template-list,
+.workflow-runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.template-list {
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+.flow-card,
+.template-card,
+.workflow-run {
+  display: grid;
+  gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.8rem 1rem;
+}
+
+.template-card h3,
+.flow-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.template-card .button {
+  justify-self: start;
+}
+
+.flow-card-head {
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.flow-card-head h3 {
+  margin-right: auto;
+}
+
+.flow-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: stretch;
+}
+
+.flow-box {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 0.1rem;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem 0.4rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  min-width: 6rem;
+}
+
+.flow-trigger {
+  padding-left: 0.6rem;
+  font-weight: 600;
+}
+
+.flow-output {
+  font-style: italic;
+}
+
+.flow-arrow {
+  position: absolute;
+  left: 0.3rem;
+  top: 50%;
+  width: 0.9rem;
+  height: 0.9rem;
+  transform: translateY(-50%);
+  color: var(--muted);
+}
+
+.flow-kind {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.flow-done {
+  border-color: var(--done);
+}
+
+.flow-running,
+.flow-pending {
+  border-color: var(--active);
+}
+
+.flow-waiting {
+  border-color: var(--review);
+}
+
+.flow-failed {
+  border-color: var(--blocked);
+}
+
+.workflow-title {
+  margin: 0;
+}
+
+.workflow-actions {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.workflow-actions input {
+  min-width: 16rem;
+  flex: 1;
+}
+
+.workflow-editor fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.workflow-editor textarea,
+.workflow-editor select,
+.workflow-editor input:not([type="checkbox"]) {
+  width: 100%;
+  font: inherit;
+}
+
+.workflow-editor textarea.mono {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.workflow-schedule {
+  gap: 0.75rem;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.workflow-schedule .field {
+  min-width: 10rem;
+}
+
+.workflow-days {
+  gap: 0.6rem;
+}
+
+.workflow-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.workflow-step-box {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.6rem 0.8rem;
+}
+
+.workflow-step-head {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.workflow-step-tools {
+  margin-left: auto;
+  gap: 0.2rem;
+}
+
+.workflow-step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.icon-button {
+  padding: 0.25rem;
+  line-height: 0;
+}
+
+.workflow-add {
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.workflow-run header {
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.workflow-run-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.workflow-run-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  border-left: 3px solid var(--border);
+  padding-left: 0.6rem;
+}
+
+.workflow-run-steps li.flow-done {
+  border-left-color: var(--done);
+}
+
+.workflow-run-steps li.flow-running,
+.workflow-run-steps li.flow-pending {
+  border-left-color: var(--active);
+}
+
+.workflow-run-steps li.flow-waiting {
+  border-left-color: var(--review);
+}
+
+.workflow-run-steps li.flow-failed {
+  border-left-color: var(--blocked);
+}
+
+.workflow-check {
+  display: grid;
+  gap: 0.6rem;
+  border: 1px solid var(--review);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+  background: var(--bg);
+}
+
+.workflow-check h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.workflow-check textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.workflow-result {
+  white-space: pre-wrap;
+  max-height: 22rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 0.9rem;
+  width: 100%;
+}

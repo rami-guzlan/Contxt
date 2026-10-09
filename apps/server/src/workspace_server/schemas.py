@@ -541,3 +541,45 @@ class PromptPatch(Body):
     body: str | None = Field(default=None, min_length=1, max_length=8000)
     picks: ComposePicks | None = None
     expected_version: int | None = None
+
+
+# ------------------------------------------------------------------------- Workflows
+
+
+class WorkflowIn(Body):
+    """A workflow from the builder: its steps (checked in full by the workflow service), when it
+    runs, where it runs and where what it makes goes."""
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    project: str | None = Field(default=None, max_length=200)
+    schedule: dict[str, Any] = Field(default_factory=lambda: {"kind": "manual"})
+    ai: bool = False
+    steps: list[dict[str, Any]] = Field(min_length=1, max_length=12)
+    runner: str = Field(default="claude", pattern="^(claude|any)$")
+    output: dict[str, Any] = Field(default_factory=lambda: {"kind": "outputs"})
+    enabled: bool = True
+    expected_version: int | None = None
+
+    def fields(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "project": self.project,
+            "schedule": self.schedule,
+            "ai": self.ai,
+            "steps": self.steps,
+            "runner": self.runner,
+            "output": self.output,
+            "enabled": self.enabled,
+        }
+
+
+class WorkflowRunIn(Body):
+    request: str = Field(default="", max_length=4000)
+
+
+class WorkflowDecideIn(Body):
+    go: bool
+    edit: str | None = Field(default=None, max_length=400000)
+    note: str = Field(default="", max_length=500)

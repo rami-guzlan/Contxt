@@ -4,7 +4,16 @@
 
 import { Link } from "react-router";
 
-import { useLibrary, useOutputs, useSavedPrompts, useSkills, useWorkAgents, useWorkspace } from "../../api/hooks";
+import {
+  useLibrary,
+  useOutputs,
+  useSavedPrompts,
+  useSkills,
+  useWaitingRuns,
+  useWorkAgents,
+  useWorkflows,
+  useWorkspace,
+} from "../../api/hooks";
 import { LatestRuns } from "../../components/SkillWork";
 import { Section } from "../../components/ui";
 import { plural } from "../../lib/format";
@@ -25,6 +34,8 @@ export function WorkOverviewPage() {
   const { data: agents } = useWorkAgents();
   const { data: workspace } = useWorkspace();
   const { data: prompts } = useSavedPrompts();
+  const { data: workflows } = useWorkflows();
+  const { data: checks } = useWaitingRuns();
   const parts: Part[] = [
     {
       title: "Compose",
@@ -58,6 +69,8 @@ export function WorkOverviewPage() {
       title: "Workflows",
       question: "When it runs",
       text: "Steps that run on a schedule, with a button or from any AI, and wait for your yes before anything that matters.",
+      to: "/work/workflows",
+      count: workflows ? plural(workflows.length, "workflow") : undefined,
     },
     {
       title: "Library",
@@ -81,11 +94,23 @@ export function WorkOverviewPage() {
         <strong>Show it</strong> once in Compose, <strong>write it down</strong> as a skill, <strong>hand it off</strong> to an agent with a
         schedule. Each part reads from your Brain, so the work stays current.
       </p>
-      {waiting.length ? (
+      {waiting.length || checks?.length ? (
         <Section title="Waiting for you">
-          <p className="notice small">
-            {plural(waiting.length, "skill")} waiting in <Link to="/review">Review</Link>: {waiting.map((w) => `/${w.name}`).join(", ")}.
-          </p>
+          {checks?.length ? (
+            <ul className="list" aria-label="Checks waiting for you">
+              {checks.map((run) => (
+                <li key={run.id}>
+                  <Link to={`/work/workflows/${encodeURIComponent(run.workflow_id)}?run=${encodeURIComponent(run.id)}`}>{run.workflow}</Link>
+                  <span className="muted small"> · {run.waiting ? run.waiting.ask : "a step waits for a person"}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {waiting.length ? (
+            <p className="notice small">
+              {plural(waiting.length, "skill")} waiting in <Link to="/review">Review</Link>: {waiting.map((w) => `/${w.name}`).join(", ")}.
+            </p>
+          ) : null}
         </Section>
       ) : null}
       <ul className="work-parts" aria-label="The parts of Work">

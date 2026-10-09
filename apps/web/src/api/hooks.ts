@@ -4,6 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, del, get, post, put, query } from "./client";
 import type {
+  Connectors,
+  Workflow,
+  WorkflowForm,
+  WorkflowRun,
+  WorkflowTemplate,
   ComposeAssembly,
   ComposePicks,
   ComposeSpec,
@@ -1326,3 +1331,89 @@ export function useArchivePrompt() {
     onSuccess: () => invalidate(promptsKey),
   });
 }
+
+// ------------------------------------------------------------------ Work: Workflows
+
+const workflowsKey = ["workflows"] as const;
+const going = (runs: WorkflowRun[] | undefined) => (runs ?? []).some((r) => r.status === "running" || r.status === "waiting");
+
+export const useWorkflows = (archived = false) =>
+  useQuery({
+    queryKey: [...workflowsKey, "list", archived],
+    queryFn: () => get<Workflow[]>(`/api/workflows${archived ? "?archived=true" : ""}`),
+    refetchInterval: (q) => ((q.state.data ?? []).some((w) => w.running) ? 5000 : false),
+  });
+
+export const useWorkflow = (id: string) =>
+  useQuery({
+    queryKey: [...workflowsKey, "one", id],
+    queryFn: () => get<Workflow>(`/api/workflows/${encodeURIComponent(id)}`),
+    enabled: !!id,
+  });
+
+export const useWorkflowTemplates = () =>
+  useQuery({ queryKey: [...workflowsKey, "templates"], queryFn: () => get<WorkflowTemplate[]>("/api/workflows/templates") });
+
+/** Runs, newest first: of one workflow, or of all; looked at again while one goes. */
+export const useWorkflowRuns = (id = "") =>
+  useQuery({
+    queryKey: [...workflowsKey, "runs", id],
+    queryFn: () => get<WorkflowRun[]>(id ? `/api/workflows/${encodeURIComponent(id)}/runs` : "/api/workflows/runs"),
+    refetchInterval: (q) => (going(q.state.data) ? 4000 : false),
+  });
+
+/** Runs waiting for you: a check, or a step a person must unblock. */
+export const useWaitingRuns = () =>
+  useQuery({
+    queryKey: [...workflowsKey, "waiting"],
+    queryFn: () => get<WorkflowRun[]>("/api/workflows/waiting"),
+    refetchInterval: 15000,
+  });
+
+/** What one step made, in full. */
+export const useStepResult = (runId: string, index: number | null) =>
+  useQuery({
+    queryKey: [...workflowsKey, "step", runId, index],
+    queryFn: () => get<{ title: string; text: string; version: number | null; artifact_id: string | null }>(`/api/workflows/runs/${encodeURIComponent(runId)}/steps/${index}`),
+    enabled: !!runId && index !== null,
+  });
+
+/** The MCP servers Claude Code here connects to; asked only when wanted (it starts them). */
+export const useConnectors = (wanted: boolean) =>
+  useQuery({ queryKey: [...workflowsKey, "connectors"], queryFn: () => get<Connectors>("/api/workflows/connectors"), enabled: wanted, staleTime: 60_000 });
+
+function useWorkflowMutation<I, O>(send: (input: I) => Promise<O>) {
+  const invalidate = useInvalidate();
+  return useMutation({ mutationFn: send, onSuccess: () => invalidate(workflowsKey, keys.tasks, workspaceKey) });
+}
+
+/** Save a workflow, or (with `id`) change it: a new revision. */
+export const useSaveWorkflow = () =>
+  useWorkflowMutation(({ id, ...form }: WorkflowForm & { id?: string; expected_version?: number }) =>
+    id ? put<Workflow>(`/api/workflows/${encodeURIComponent(id)}`, form) : post<Workflow>("/api/workflows", form),
+  );
+
+export const useArchiveWorkflow = () =>
+  useWorkflowMutation(({ id, back = false }: { id: string; back?: boolean }) =>
+    back ? post<Workflow>(`/api/workflows/${encodeURIComponent(id)}/restore`) : del<Workflow>(`/api/workflows/${encodeURIComponent(id)}`),
+  );
+
+export const useRunWorkflow = () =>
+  useWorkflowMutation(({ id, request = "" }: { id: string; request?: string }) =>
+    post<WorkflowRun>(`/api/workflows/${encodeURIComponent(id)}/run`, { request }),
+  );
+
+/** At a check: go on (with your edit, if any), or stop here. */
+export const useDecideCheck = () =>
+  useWorkflowMutation(({ runId, go, edit, note = "" }: { runId: string; go: boolean; edit?: string; note?: string }) =>
+    post<WorkflowRun>(`/api/workflows/runs/${encodeURIComponent(runId)}/decide`, { go, edit, note }),
+  );
+
+export const useStopRun = () =>
+  useWorkflowMutation((runId: string) => post<WorkflowRun>(`/api/workflows/runs/${encodeURIComponent(runId)}/stop`));
+
+/** A workflow file another Contxt made: it comes in switched off. */
+export const useImportWorkflow = () =>
+  useWorkflowMutation((file: File) => file.text().then((text) => post<Workflow>("/api/workflows/import", JSON.parse(text))));
+
+export const workflowExportUrl = (id: string) => `/api/workflows/${encodeURIComponent(id)}/export`;

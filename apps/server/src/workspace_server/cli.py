@@ -300,6 +300,7 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     from .challenger import ChallengerWorker
     from .checks import CheckWorker
     from .digests import DigestWorker
+    from .flows import WorkflowWorker
     from .library import LibraryWorker
     from .speech import TranscriptionWorker
     from .worker import Worker
@@ -315,6 +316,11 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     checker = None if args.no_worker else CheckWorker(runtime.ws, runtime.runners)
     challenger = None if args.no_worker else ChallengerWorker(runtime.ws, runtime.runners)
     librarian = None if args.no_worker else LibraryWorker(runtime.ws, runtime.library)
+    flows = (
+        None
+        if args.no_worker
+        else WorkflowWorker(runtime.ws, runtime.runners, runtime.agent, settings.worker_interval)
+    )
     if worker:
         worker.start()
     if transcriber:
@@ -327,6 +333,8 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
         challenger.start()
     if librarian:
         librarian.start()
+    if flows:
+        flows.start()
     print(f"Contxt on {settings.base_url}")
     print(f"Sign in: {settings.base_url}/auth/login?token={runtime.owner_token}")
     print(f"The app's MCP endpoint, for the AI work it starts: {settings.base_url}/mcp")
@@ -361,6 +369,8 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
             librarian.stop()
         if challenger:
             challenger.stop()
+        if flows:
+            flows.stop()
     return 0
 
 

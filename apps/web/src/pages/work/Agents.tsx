@@ -509,6 +509,12 @@ function AskIt({ agent }: { agent: WorkAgent }) {
           >
             Open in Compose
           </Link>
+          <Link
+            className="small"
+            to={`/work/workflows/new?agent=${encodeURIComponent(agent.name)}${project ? `&project=${encodeURIComponent(project)}` : ""}${text.trim() ? `&ask=${encodeURIComponent(text.trim())}` : ""}`}
+          >
+            Schedule it
+          </Link>
         </div>
         <ErrorNote error={ask.error} />
         {task ? <Working key={task.id} task={task} waiting="It waits for a model: run it here, or paste the prompt into a connected AI." /> : null}

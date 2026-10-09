@@ -33,7 +33,10 @@ MAX_IMPORT = 25 * 1024 * 1024
 def items(who: Who, ws: WS, project: str | None = None, archived: bool = False) -> dict[str, Any]:
     """Docs and links by project, and anything linked to one (or what was set aside, with
     `archived`); for one project (`project`), also the agents that work on it."""
-    return ws.docs.items(who, project=project or None, archived=archived)
+    out = ws.docs.items(who, project=project or None, archived=archived)
+    if project:
+        out["workflows"] = ws.workflows.for_project(who, project)
+    return out
 
 
 @router.post("/docs", status_code=201)

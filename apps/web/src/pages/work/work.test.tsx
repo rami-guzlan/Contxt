@@ -40,7 +40,14 @@ const skills = {
 
 describe("Work", () => {
   it("frames its parts as tabs, with what waits for a yes on Skills", async () => {
-    mockApi({ "GET /api/brain/status": { available: true }, "GET /api/skills": skills, "GET /api/library": [], "GET /api/agents": [] });
+    mockApi({
+      "GET /api/brain/status": { available: true },
+      "GET /api/skills": skills,
+      "GET /api/library": [],
+      "GET /api/agents": [],
+      "GET /api/workflows": [],
+      "GET /api/workflows/waiting": [],
+    });
     renderAt(<WorkLayout />, { path: "/work", route: "/work" });
     const tabs = await screen.findByRole("navigation", { name: "Work sections" });
     expect(within(tabs).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual([
@@ -49,6 +56,7 @@ describe("Work", () => {
       "/work/workspace",
       "/work/skills",
       "/work/agents",
+      "/work/workflows",
       "/work/library",
       "/work/outputs",
     ]);
@@ -65,6 +73,8 @@ describe("Work", () => {
       "GET /api/agents": [],
       "GET /api/workspace/items": { items: [], projects: [] },
       "GET /api/prompts": [],
+      "GET /api/workflows": [],
+      "GET /api/workflows/waiting": [],
     });
     renderAt(<WorkOverviewPage />, { path: "/work", route: "/work" });
     const parts = await screen.findByRole("list", { name: "The parts of Work" });

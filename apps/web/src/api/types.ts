@@ -1926,6 +1926,8 @@ export interface WorkspaceView {
   projects: { id: string; title: string; active: boolean }[];
   /** For one project: the agents that work on it. */
   agents?: { name: string; role: string; last_run?: { task_id: string; status: string; at: string } | null }[];
+  /** For one project: the workflows that name it. */
+  workflows?: { id: string; name: string; when: string; enabled: boolean; running: boolean; last_run: WorkflowRunSummary | null }[];
 }
 
 // ------------------------------------------------------------------ Work: Compose
@@ -1973,4 +1975,149 @@ export interface SavedPrompt {
   uses: number;
   last_used: string | null;
   versions: { revision: number; title: string; body: string; at: string }[];
+}
+
+// ------------------------------------------------------------------ Work: Workflows
+
+export type StepKind = "skill" | "agent" | "prompt" | "connector" | "upkeep" | "check";
+
+/** One box of a workflow: what it runs, and what it is given. */
+export interface WorkflowStep {
+  kind: StepKind;
+  title?: string;
+  ask?: string;
+  skill?: string;
+  agent?: string | null;
+  prompt_id?: string | null;
+  text?: string;
+  skills?: string[];
+  docs?: string[];
+  library?: string[];
+  meetings?: number;
+  tools?: string[];
+  writes?: boolean;
+  action?: string;
+}
+
+/** When a workflow runs by itself, in the workspace's time zone. */
+export interface WorkflowSchedule {
+  kind: "manual" | "once" | "daily" | "weekly" | "monthly";
+  at?: string;
+  time?: string;
+  days?: string[];
+  day?: number;
+}
+
+export type WorkflowOutput = { kind: "outputs" } | { kind: "workspace"; doc_id: string | null };
+
+export interface WorkflowRunSummary {
+  id: string;
+  status: WorkflowRunStatus;
+  trigger: string;
+  started_at: string;
+  finished_at: string | null;
+  note: string;
+  step: number;
+  steps: WorkflowStepStatus[];
+}
+
+export type WorkflowRunStatus = "running" | "waiting" | "done" | "failed" | "stopped";
+export type WorkflowStepStatus = "pending" | "running" | "waiting" | "done" | "failed";
+
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  project: string | null;
+  schedule: WorkflowSchedule;
+  /** The schedule in words. */
+  when: string;
+  /** Any connected AI may start it (run_workflow). */
+  ai: boolean;
+  steps: WorkflowStep[];
+  runner: "claude" | "any";
+  output: WorkflowOutput;
+  enabled: boolean;
+  timezone: string;
+  next_due_at: string | null;
+  revision: number;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  last_run: WorkflowRunSummary | null;
+  running: boolean;
+}
+
+export interface WorkflowStepResult {
+  artifact_id?: string;
+  version?: number;
+  title?: string;
+  excerpt?: string;
+  text?: string;
+  edited?: boolean;
+}
+
+export interface WorkflowRunStep {
+  index: number;
+  kind: StepKind;
+  title: string;
+  status: WorkflowStepStatus;
+  task_id?: string;
+  job_id?: string;
+  started_at?: string;
+  finished_at?: string;
+  result?: WorkflowStepResult | null;
+  read?: { ref: string; version: number }[];
+  note?: string;
+  ask?: string;
+  /** For a step under way: where its task is (draft and ready: waiting for a model). */
+  task_status?: string;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflow_id: string;
+  workflow: string;
+  status: WorkflowRunStatus;
+  trigger: "now" | "schedule" | "ai";
+  due_at: string | null;
+  started_at: string;
+  finished_at: string | null;
+  step: number;
+  steps: WorkflowRunStep[];
+  revision: number;
+  request: string;
+  note: string;
+  version: number;
+  /** A check waiting for the owner: what to look at, and what the step before made. */
+  waiting: { step: number; ask: string; result: WorkflowStepResult | null } | null;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  schedule: WorkflowSchedule;
+  steps: WorkflowStep[];
+  output: WorkflowOutput;
+}
+
+export interface WorkflowForm {
+  name: string;
+  description: string;
+  project: string | null;
+  schedule: WorkflowSchedule;
+  ai: boolean;
+  steps: WorkflowStep[];
+  runner: "claude" | "any";
+  output: WorkflowOutput;
+  enabled: boolean;
+}
+
+/** The MCP servers Claude Code here connects to, to name a connector step's tools from. */
+export interface Connectors {
+  available: boolean;
+  servers: { name: string; detail: string; connected: boolean; state: string }[];
+  note: string;
 }

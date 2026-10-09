@@ -1,4 +1,4 @@
-import { useLibrary, useSkills, useWorkAgents } from "../../api/hooks";
+import { useLibrary, useSkills, useWaitingRuns, useWorkAgents, useWorkflows } from "../../api/hooks";
 import { SectionFrame, Stat } from "../../components/SectionFrame";
 
 // Work: where the Brain gets put to use. Each tab answers one question: how you ask (Compose),
@@ -9,6 +9,8 @@ export function WorkLayout() {
   const { data: skills } = useSkills();
   const { data: library } = useLibrary();
   const { data: agents } = useWorkAgents();
+  const { data: workflows } = useWorkflows();
+  const { data: waiting } = useWaitingRuns();
   return (
     <SectionFrame
       title="Work"
@@ -21,6 +23,7 @@ export function WorkLayout() {
         { to: "/work/workspace", label: "Workspace" },
         { to: "/work/skills", label: "Skills", badge: skills?.waiting.length ?? 0 },
         { to: "/work/agents", label: "Agents" },
+        { to: "/work/workflows", label: "Workflows", badge: waiting?.length ?? 0 },
         { to: "/work/library", label: "Library" },
         { to: "/work/outputs", label: "Outputs" },
       ]}
@@ -28,6 +31,7 @@ export function WorkLayout() {
         <dl className="stats">
           <Stat label="Skills" value={skills?.skills.length} />
           <Stat label="Agents" value={agents?.length} />
+          <Stat label="Workflows" value={workflows?.length} />
           <Stat label="Library" value={library?.length} />
         </dl>
       }

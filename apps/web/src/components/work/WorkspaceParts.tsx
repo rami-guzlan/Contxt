@@ -158,6 +158,7 @@ export function ProjectWorkspace({ project }: { project: { id: string; title: st
   const { data, isLoading, error } = useWorkspace(project.id);
   const items = data?.items ?? [];
   const agents = data?.agents ?? [];
+  const workflows = data?.workflows ?? [];
   return (
     <div className="stack project-workspace">
       <p className="muted small">Yours alone: what you work from for it. No AI reads any of it until you ask about a doc or add it to the Brain.</p>
@@ -191,6 +192,22 @@ export function ProjectWorkspace({ project }: { project: { id: string; title: st
                 <span className="muted small">
                   {a.role ? ` · ${a.role}` : ""}
                   {a.last_run ? ` · last ran ${when(a.last_run.at)}` : " · not run yet"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {workflows.length ? (
+        <div>
+          <h3 className="small-head">Workflows for it</h3>
+          <ul className="list compact-list">
+            {workflows.map((w) => (
+              <li key={w.id}>
+                <Link to={`/work/workflows/${encodeURIComponent(w.id)}`}>{w.name}</Link>
+                <span className="muted small">
+                  {` · ${w.when}`}
+                  {w.running ? " · running now" : w.last_run ? ` · last ${w.last_run.status} ${when(w.last_run.started_at)}` : " · not run yet"}
                 </span>
               </li>
             ))}

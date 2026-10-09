@@ -45,6 +45,7 @@ from .routes import (
     runners,
     skills,
     system,
+    workflows,
     workspace,
 )
 from .runners import Runners
@@ -181,6 +182,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         backups,
         workspace,
         compose,
+        workflows,
         mcp,
     )
     for module in routers:

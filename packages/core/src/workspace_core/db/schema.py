@@ -404,3 +404,48 @@ idempotency_keys = sa.Table(
     sa.Column("result_id", sa.String(200), nullable=False),
     sa.Column("created_at", TS, nullable=False),
 )
+
+# Work's workflows: steps run as one thing, on a schedule, by a button or from any AI
+# (services/workflows.py). A workflow names a project the Brain follows by its id there (a plain
+# reference: the Brain's projects are not rows here).
+workflows = sa.Table(
+    "workflows",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("name", sa.String(120), nullable=False),
+    sa.Column("description", sa.Text, nullable=False, server_default=""),
+    sa.Column("project", sa.String(200), index=True),
+    sa.Column("trigger", sa.JSON, nullable=False),  # {"schedule": a Schedule, "ai": bool}
+    sa.Column("steps", sa.JSON, nullable=False),
+    sa.Column("runner", sa.String(40), nullable=False, server_default="claude"),
+    sa.Column("output", sa.JSON, nullable=False),
+    sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.true()),
+    sa.Column("timezone", sa.String(64), nullable=False, server_default="UTC"),
+    sa.Column("next_due_at", TS, index=True),
+    sa.Column("scope", sa.String(120), nullable=False, server_default=""),
+    sa.Column("revision", sa.Integer, nullable=False, server_default="1"),
+    *_record(),
+)
+
+# One run of a workflow: where it is, and each step's state (its task or job, what it made,
+# the versions it read). Runs are kept, never archived.
+workflow_runs = sa.Table(
+    "workflow_runs",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("workflow_id", ID, sa.ForeignKey("workflows.id"), nullable=False, index=True),
+    # running | waiting (a check, or a step blocked) | done | failed | stopped
+    sa.Column("status", sa.String(16), nullable=False, index=True),
+    sa.Column("trigger", sa.String(16), nullable=False),  # now | schedule | ai
+    sa.Column("due_at", TS),
+    sa.Column("started_at", TS, nullable=False),
+    sa.Column("finished_at", TS),
+    sa.Column("step", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("steps", sa.JSON, nullable=False),
+    sa.Column("revision", sa.Integer, nullable=False),  # the workflow's revision it ran
+    sa.Column("request", sa.Text, nullable=False, server_default=""),
+    sa.Column("note", sa.Text, nullable=False, server_default=""),
+    *_record(archivable=False),
+)

@@ -121,9 +121,22 @@ export function ComposePage() {
               Save
             </button>
             {empty ? null : (
-              <Link className="button" to={skillFromPrompt(spec)}>
-                Make it a skill
-              </Link>
+              <>
+                <Link className="button" to={skillFromPrompt(spec)}>
+                  Make it a skill
+                </Link>
+                <Link
+                  className="button"
+                  to={`/work/workflows/new?name=${encodeURIComponent(loaded?.title ?? request.trim().split("\n")[0]?.slice(0, 80) ?? "")}`}
+                  state={{
+                    step: loaded
+                      ? { kind: "prompt", prompt_id: loaded.id, text: "", docs: [], library: [], meetings: 0 }
+                      : { kind: "prompt", prompt_id: null, text: request, skills: picks.skills, agent: picks.agent, docs: picks.docs, library: picks.library, meetings: 0 },
+                  }}
+                >
+                  Schedule it
+                </Link>
+              </>
             )}
           </div>
           <ErrorNote error={run.error ?? improving.error} />

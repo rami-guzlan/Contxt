@@ -51,6 +51,7 @@ from workspace_core.domain.records import Actor, Task
 from workspace_core.domain.schedule import zone
 from workspace_core.errors import Conflict, NotFound
 from workspace_core.ids import new_id
+from workspace_core.services.workflows import TOOL
 from workspace_core.workspace import Workspace
 
 from . import anchoring
@@ -492,6 +493,12 @@ class Runners:
                 else self._plan(who, str(about.get("name") or ""))
             )
         web = CHALLENGER_TOOLS if task.template == "challenge" else ()
+        # A workflow's connector step: its run may also call these tools of the person's own
+        # MCP servers (named in full, read-only unless they said otherwise), so for this run
+        # alone Claude Code loads those servers too.
+        connector = [
+            str(t) for t in (about.get("connector") or {}).get("tools") or [] if TOOL.match(str(t))
+        ]
         task_id = task.id
 
         run = LocalRun(
@@ -536,18 +543,25 @@ class Runners:
             ",".join(FILE_TOOLS) if copying else ",".join(web),
             "--mcp-config",
             config,
-            "--strict-mcp-config",
+            *([] if connector else ["--strict-mcp-config"]),
             "--permission-mode",
             "dontAsk",
             "--allowedTools",
             f"mcp__{SERVER_NAME}",
             *(FILE_ALLOWED if copying else web),
+            *connector,
             "--no-session-persistence",
         ]
         with self._lock:
             self.runs[run.id] = run
             self._trim()
         self._add(run, "status", text=f"Starting {spec.label} as {actor.name}.")
+        if connector:
+            self._add(
+                run,
+                "status",
+                text="It may also use these tools of your own connectors: " + ", ".join(connector),
+            )
         copies: dict[str, set[str]] = {}
         try:
             if copying:
@@ -564,7 +578,7 @@ class Runners:
                 run_id=run.id,
                 minutes=int(self.timeout // 60),
                 folder=run.folder,
-                tools=FILE_TOOLS if copying else web,
+                tools=[*(FILE_TOOLS if copying else web), *connector],
             )
             argv += ["--settings", anchoring.write(run.contract, folder)]
             self.contracts.register(connection.credential.id, run.contract)

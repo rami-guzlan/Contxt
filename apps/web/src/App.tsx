@@ -45,6 +45,9 @@ const NewWorkAgentPage = page(() => import("./pages/work/Agents"), "NewWorkAgent
 const SkillPage = page(() => import("./pages/work/Skills"), "SkillPage");
 const SkillsPage = page(() => import("./pages/work/Skills"), "SkillsPage");
 const ComposePage = page(() => import("./pages/work/Compose"), "ComposePage");
+const WorkflowsPage = page(() => import("./pages/work/Workflows"), "WorkflowsPage");
+const WorkflowPage = page(() => import("./pages/work/Workflows"), "WorkflowPage");
+const NewWorkflowPage = page(() => import("./pages/work/Workflows"), "NewWorkflowPage");
 const WorkspacePage = page(() => import("./pages/work/Workspace"), "WorkspacePage");
 const WorkspaceDocPage = page(() => import("./pages/work/Workspace"), "WorkspaceDocPage");
 
@@ -123,6 +126,9 @@ export function App() {
             <Route path="agents" element={<WorkAgentsPage />} />
             <Route path="agents/new" element={<NewWorkAgentPage />} />
             <Route path="agents/:name" element={<WorkAgentPage />} />
+            <Route path="workflows" element={<WorkflowsPage />} />
+            <Route path="workflows/new" element={<NewWorkflowPage />} />
+            <Route path="workflows/:id" element={<WorkflowPage />} />
             <Route path="library" element={<LibraryPage />} />
             <Route path="library/view" element={<LibraryItemPage />} />
             <Route path="outputs" element={<OutputsPage />} />

@@ -47,6 +47,7 @@ from .services.prompts import Prompts
 from .services.runtime import Runtime
 from .services.skills import Skills
 from .services.tasks import Tasks
+from .services.workflows import Workflows
 
 
 @dataclass
@@ -84,6 +85,9 @@ class Workspace:
         self.docs = Docs(rt, self.notes, self.brain, self.skills, self.agents)
         self.prompts = Prompts(rt, self.skills)
         self.compose = Compose(rt, self.brain, self.skills, self.agents, self.notes, self.prompts)
+        self.workflows = Workflows(
+            rt, self.brain, self.skills, self.compose, self.notes, self.prompts, self.artifacts
+        )
 
     # ---------------------------------------------------------------- lifecycle
 
