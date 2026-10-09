@@ -19,6 +19,8 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router";
 
 import { useBringIn, useCatchUp, useCreateNote, useGoals, useHome } from "../api/hooks";
 import { minutes } from "../lib/catchup";
+import { AgentProvider } from "./agent/AgentContext";
+import { AgentDock, AgentPanel } from "./agent/AgentPanel";
 import { AiWork } from "./AiWork";
 import { UploadButton } from "./CaptureParts";
 import { TalkButton, TalkProvider, useTalk } from "./Talk";
@@ -51,6 +53,7 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <TourProvider>
       <TalkProvider>
+        <AgentProvider>
         <div className="shell">
           <aside className="sidebar">
             <p className="brand">{home?.workspace.name ?? "Contxt"}</p>
@@ -89,6 +92,9 @@ export function Layout({ children }: { children: ReactNode }) {
             <main>{children}</main>
           </div>
         </div>
+        <AgentPanel />
+        <AgentDock />
+        </AgentProvider>
       </TalkProvider>
     </TourProvider>
   );

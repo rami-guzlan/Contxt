@@ -1,5 +1,7 @@
 // Home: a calm cockpit. One sentence and one button (catch up, or all caught up) beside a health
-// ring; what the Brain is for; the next few steps until they are done; three pictures (what your
+// ring; flashcards of what to keep an eye on (stale context, repeats, gaps, quiet projects, the
+// knowledge agent's questions and actions); what the Brain is for; the next few steps until
+// they are done; three pictures (what your
 // AIs used, what came in by source, the projects in motion); your AI apps with their last
 // request; a box to ask what your Brain would hand over; see the difference; and ways to bring
 // things in, including moving in what your other AIs already know. A new Brain opens the first
@@ -12,6 +14,7 @@ import { useAiApps, useBrainProjects, useCatchUp, useGoals, useHome, useModels, 
 import type { BrainHealth, CatchUpPlan, Goals } from "../api/types";
 import { BringIn } from "../components/BringIn";
 import { ContextPreview } from "../components/ContextPreview";
+import { Flashcards } from "../components/Flashcards";
 import { SeeTheDifference } from "../components/Difference";
 import { FirstVisitTip } from "../components/Tips";
 import { ErrorNote, Loading, Section } from "../components/ui";
@@ -36,6 +39,7 @@ export function HomePage() {
       <p className="eyebrow">{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
       <h1>{home.workspace.name}</h1>
       {plan ? <Hero plan={plan} /> : null}
+      <Flashcards />
       {goals ? <GoalsLine goals={goals} /> : null}
       <NextSteps goals={goals} />
       <div className="cards-3">

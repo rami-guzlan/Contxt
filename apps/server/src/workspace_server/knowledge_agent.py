@@ -1,0 +1,176 @@
+"""The knowledge agent's model work, in the background.
+
+An action, or one turn of the side panel's conversation, asks the model the owner chose
+(models.py); the workspace's agent (workspace_core/services/agent.py) builds every prompt and
+reads every answer. One model call runs at a time, so a row of clicks queues instead of
+starting several CLIs at once. Jobs are kept in memory until the server stops; what an action
+made (its record, its suggestions in Catch up and its questions) is kept by the workspace.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+from workspace_core.clock import iso
+from workspace_core.domain.policy import Principal
+from workspace_core.errors import NotFound, ValidationFailed, WorkspaceError
+from workspace_core.ids import new_id
+from workspace_core.services.agent import ACTIONS, MAX_MESSAGE
+from workspace_core.workspace import Workspace
+
+from .models import ModelChoice, Models
+
+log = logging.getLogger(__name__)
+
+KEEP = 40  # jobs kept in memory
+
+
+@dataclass
+class AgentJob:
+    id: str
+    kind: str  # action | chat
+    model: str
+    model_label: str
+    started_at: str
+    action: str | None = None
+    message: str = ""
+    status: str = "waiting"  # waiting | running | done | failed
+    result: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    finished_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+class AgentWork:
+    def __init__(self, ws: Workspace, models: Models) -> None:
+        self.ws = ws
+        self.models = models
+        self.jobs: dict[str, AgentJob] = {}
+        self._lock = threading.Lock()
+        self._turn = threading.Lock()  # one model call at a time
+
+    def _model(self, wanted: str | None) -> ModelChoice:
+        return self.models.choose(str(wanted or self.ws.agent.model()))
+
+    def _keep(self, job: AgentJob) -> None:
+        with self._lock:
+            self.jobs[job.id] = job
+            for old in sorted(self.jobs.values(), key=lambda j: j.started_at)[:-KEEP]:
+                self.jobs.pop(old.id, None)
+
+    def start_action(self, who: Principal, action: str, *, model: str | None = None) -> AgentJob:
+        """Run one upkeep action through the chosen model, in the background."""
+        who.require("workspace.admin")
+        if action not in ACTIONS:
+            raise ValidationFailed(f"An action is one of {', '.join(ACTIONS)}.", field="action")
+        choice = self._model(model)
+        job = AgentJob(
+            id=new_id("ajob", self.ws.rt.clock.now()),
+            kind="action",
+            action=action,
+            model=choice.id,
+            model_label=choice.label,
+            started_at=iso(self.ws.rt.clock.now()),
+        )
+        self._keep(job)
+        threading.Thread(
+            target=self._run_action, args=(who, job, choice), daemon=True, name="agent-action"
+        ).start()
+        return job
+
+    def start_chat(
+        self,
+        who: Principal,
+        message: str,
+        history: list[dict[str, Any]] | None = None,
+        *,
+        model: str | None = None,
+    ) -> AgentJob:
+        """One turn of the conversation, in the background."""
+        who.require("workspace.admin")
+        text = str(message or "").strip()
+        if not text:
+            raise ValidationFailed("Say something to the agent.", field="message")
+        if len(text) > MAX_MESSAGE:
+            raise ValidationFailed(
+                f"Keep a message under {MAX_MESSAGE:,} characters.", field="message"
+            )
+        choice = self._model(model)
+        job = AgentJob(
+            id=new_id("ajob", self.ws.rt.clock.now()),
+            kind="chat",
+            model=choice.id,
+            model_label=choice.label,
+            message=text,
+            started_at=iso(self.ws.rt.clock.now()),
+        )
+        self._keep(job)
+        threading.Thread(
+            target=self._run_chat,
+            args=(who, job, choice, list(history or [])),
+            daemon=True,
+            name="agent-chat",
+        ).start()
+        return job
+
+    def get(self, who: Principal, job_id: str) -> AgentJob:
+        who.require("brain.read")
+        with self._lock:
+            job = self.jobs.get(job_id)
+        if job is None:
+            raise NotFound("That run of the agent is not here (the app restarted?).", id=job_id)
+        return job
+
+    def recent(self, who: Principal) -> list[AgentJob]:
+        who.require("brain.read")
+        with self._lock:
+            return sorted(self.jobs.values(), key=lambda j: j.started_at, reverse=True)
+
+    # ---------------------------------------------------------------- in the background
+
+    def _run_action(self, who: Principal, job: AgentJob, choice: ModelChoice) -> None:
+        assert job.action is not None
+        try:
+            prompt, gathered = self.ws.agent.action_prompt(who, job.action, brief=choice.brief)
+            answer, seconds = "", None
+            if prompt:
+                with self._turn:
+                    job.status = "running"
+                    began = time.monotonic()
+                    answer = self.models.ask(who, choice, prompt, json_only=True)
+                    seconds = time.monotonic() - began
+            job.result = self.ws.agent.apply_action(
+                who, job.action, gathered, answer, model=choice.id, seconds=seconds
+            )
+            job.status = "done"
+        except WorkspaceError as exc:
+            job.status, job.error = "failed", str(exc)
+        except Exception as exc:  # a job never takes the server down
+            log.warning("the knowledge agent's action failed", exc_info=True)
+            job.status, job.error = "failed", f"It stopped: {exc}"
+        finally:
+            job.finished_at = iso(self.ws.rt.clock.now())
+
+    def _run_chat(
+        self, who: Principal, job: AgentJob, choice: ModelChoice, history: list[dict[str, Any]]
+    ) -> None:
+        try:
+            prompt = self.ws.agent.chat_prompt(who, job.message, history, brief=choice.brief)
+            with self._turn:
+                job.status = "running"
+                answer = self.models.ask(who, choice, prompt)
+            job.result = self.ws.agent.read_chat(answer)
+            job.status = "done"
+        except WorkspaceError as exc:
+            job.status, job.error = "failed", str(exc)
+        except Exception as exc:  # a job never takes the server down
+            log.warning("the knowledge agent's answer failed", exc_info=True)
+            job.status, job.error = "failed", f"It stopped: {exc}"
+        finally:
+            job.finished_at = iso(self.ws.rt.clock.now())

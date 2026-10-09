@@ -1,0 +1,168 @@
+"""The models the app asks one question of, for the knowledge agent.
+
+- Claude Code on this computer, the default: the same ask the baseline check uses (no tools,
+  no MCP server, an empty folder, restricted), so it knows only what the prompt says.
+- Local models through Ollama, when Ollama runs on this computer: free, private and quick, but
+  small, so they get the short map and fewer candidates, and their answers are read like any
+  other: what cannot be read is kept as nothing.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import threading
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from typing import Any
+
+from workspace_core.domain.policy import Principal
+from workspace_core.errors import Conflict, ValidationFailed
+
+from .runners import RUNNERS, Runners
+
+OLLAMA = os.environ.get("CONTXT_OLLAMA_URL") or "http://127.0.0.1:11434"
+LIST_SECONDS = 30  # how long the list of local models is reused
+THINKING = re.compile(r"<think>.*?</think>", re.S)
+
+
+@dataclass(frozen=True)
+class ModelChoice:
+    id: str  # "claude", "ollama:<name>"
+    label: str
+    kind: str  # "cli" | "local"
+    available: bool
+    detail: str  # what it is, or why it cannot answer now
+    brief: bool  # a small context: the short map and fewer candidates
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _http(url: str, body: dict[str, Any] | None = None, *, timeout: float = 2.0) -> Any:
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    request = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"} if data else {}
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8") or "{}")
+
+
+class Models:
+    def __init__(
+        self,
+        runners: Runners,
+        *,
+        ollama_url: str = OLLAMA,
+        fetch: Callable[..., Any] | None = None,
+    ) -> None:
+        self.runners = runners
+        self.ollama_url = ollama_url.rstrip("/")
+        self.fetch = fetch or _http
+        self._local: tuple[float, list[dict[str, Any]]] | None = None
+        self._lock = threading.Lock()
+
+    def _ollama_models(self) -> list[dict[str, Any]]:
+        with self._lock:
+            if self._local and time.monotonic() - self._local[0] < LIST_SECONDS:
+                return self._local[1]
+        try:
+            found = self.fetch(f"{self.ollama_url}/api/tags", timeout=1.5)
+            models = [m for m in (found or {}).get("models") or [] if m.get("name")]
+        except (OSError, ValueError, urllib.error.URLError):
+            models = []
+        with self._lock:
+            self._local = (time.monotonic(), models)
+        return models
+
+    def list(self) -> list[ModelChoice]:
+        """Every model the agent could use here, the ones that can answer now first."""
+        out = []
+        claude = RUNNERS["claude"]
+        status = self.runners.status(claude)
+        why = (
+            f"Not installed: {claude.install}"
+            if not status.installed
+            else "Not signed in: sign in to Claude Code first"
+            if status.signed_in is False
+            else f"Claude Code {status.version or ''} on this computer".strip()
+        )
+        out.append(
+            ModelChoice(
+                id="claude",
+                label="Claude Code (your CLI)",
+                kind="cli",
+                available=bool(status.installed) and status.signed_in is not False,
+                detail=why,
+                brief=False,
+            )
+        )
+        for model in sorted(self._ollama_models(), key=lambda m: int(m.get("size") or 0)):
+            name = str(model["name"])
+            size = int(model.get("size") or 0)
+            out.append(
+                ModelChoice(
+                    id=f"ollama:{name}",
+                    label=f"{name} (local)",
+                    kind="local",
+                    available=True,
+                    detail=(
+                        f"On this computer through Ollama, {size / 1e9:.1f} GB"
+                        if size
+                        else "On this computer through Ollama"
+                    ),
+                    brief=True,
+                )
+            )
+        return out
+
+    def choose(self, wanted: str) -> ModelChoice:
+        """The model to use: the one named, which must be able to answer now."""
+        found = next((m for m in self.list() if m.id == wanted), None)
+        if found is None:
+            if wanted.startswith("ollama:"):
+                raise Conflict(
+                    f"{wanted.split(':', 1)[1]} is not available: start Ollama, or choose "
+                    "another model in the knowledge agent's settings."
+                )
+            raise ValidationFailed(f"No model {wanted} here.", field="model")
+        if not found.available:
+            raise Conflict(f"{found.label} cannot answer now: {found.detail}.")
+        return found
+
+    def ask(
+        self,
+        who: Principal,
+        choice: ModelChoice,
+        prompt: str,
+        *,
+        json_only: bool = False,
+        timeout: float = 240.0,
+    ) -> str:
+        """One answer to one prompt."""
+        if choice.id == "claude":
+            return self.runners.ask(who, prompt, timeout=timeout)
+        if choice.id.startswith("ollama:"):
+            who.require("workspace.admin")
+            body: dict[str, Any] = {
+                "model": choice.id.split(":", 1)[1],
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                # A thinking model (qwen3, say) would otherwise write pages before it answers,
+                # slow on a laptop's CPU; the procedure already says how to think.
+                "think": False,
+                "options": {"temperature": 0.2, "num_ctx": 8192},
+            }
+            if json_only:
+                body["format"] = "json"
+            try:
+                found = self.fetch(f"{self.ollama_url}/api/chat", body, timeout=timeout)
+            except (OSError, ValueError, urllib.error.URLError) as exc:
+                raise Conflict(f"The local model did not answer: {exc}") from exc
+            text = str(((found or {}).get("message") or {}).get("content") or "")
+            return THINKING.sub("", text).strip()
+        raise ValidationFailed(f"No model {choice.id} here.", field="model")

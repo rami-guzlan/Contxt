@@ -225,6 +225,11 @@ def test_what_each_ai_asked_over_rest(owner, runtime):
     assert owner.ok(owner.get("/api/brain/requests?app=Cursor"))["requests"] == []
     listed = {a["label"]: a for a in owner.ok(owner.get("/api/brain/apps"))}
     assert listed["Claude Code"]["last_request"]["request"] == "How long do web projects take?"
+    # One request in full: the exact text it got, and the startup context that went with it.
+    full = owner.ok(owner.get(f"/api/brain/requests/{request['id']}"))
+    assert full["id"] == request["id"] and full["text"]
+    assert full["startup"]["text"].startswith("# Startup context")
+    assert owner.get("/api/brain/requests/pkt-none").status_code == 404
 
 
 def test_serve_and_demo_both_take_the_browser_flags():

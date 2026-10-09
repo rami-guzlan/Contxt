@@ -15,6 +15,7 @@ function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, n
 }
 
 const AiActivityPage = page(() => import("./pages/Activity"), "AiActivityPage");
+const AgentPage = page(() => import("./pages/brain/Agent"), "AgentPage");
 const BrainLayout = page(() => import("./pages/brain/BrainLayout"), "BrainLayout");
 const KnowsPage = page(() => import("./pages/brain/Knows"), "KnowsPage");
 const CatchUpPage = page(() => import("./pages/CatchUp"), "CatchUpPage");
@@ -100,6 +101,7 @@ export function App() {
             <Route path="files" element={<FilesPage />} />
             <Route path="files/view" element={<FileViewPage />} />
             <Route path="questions" element={<GapsPage />} />
+            <Route path="agent" element={<AgentPage />} />
           </Route>
           <Route path="/brain/history" element={<HistoryMoved />} />
           <Route path="/brain/gaps" element={<Navigate to="/brain/questions" replace />} />

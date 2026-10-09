@@ -571,20 +571,22 @@ textarea {
   flex-wrap: wrap;
 }
 
-.activity {
+/* The list of changes (components/Activity.tsx). Only the list: the Activity page's own wrapper
+   is also called "activity", and its request rows keep their own layout. */
+ol.activity {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-.activity li {
+ol.activity > li {
   display: grid;
   grid-template-columns: 6.5rem 1fr;
   gap: 0.5rem;
   padding: 0.25rem 0;
 }
 
-.activity time {
+ol.activity time {
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -3558,6 +3560,57 @@ button.record.live {
 .skill-inputs select {
   width: 100%;
 }
+/* Choosing several skills on the Skills page: a closed line that opens to a checklist. */
+.multi-pick {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.multi-pick-toggle {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0.35rem 0.6rem;
+}
+.multi-pick-toggle[aria-expanded="true"] {
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+.multi-pick-panel {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  max-height: 18rem;
+  overflow: auto;
+}
+.multi-pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.multi-pick-list label {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  cursor: pointer;
+}
+.picked-skills {
+  list-style: none;
+  padding: 0;
+  margin: 0.3rem 0 0;
+  counter-reset: picked;
+}
+.picked-skills > li::before {
+  counter-increment: picked;
+  content: counter(picked) ". ";
+  color: var(--muted);
+}
+.latest-runs h2 {
+  margin-bottom: 0.4rem;
+}
 .stack-tight {
   display: grid;
   gap: 0.3rem;
@@ -4333,7 +4386,7 @@ button.big,
 
 .request-head {
   display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr) auto;
+  grid-template-columns: minmax(6rem, 10rem) minmax(0, 1fr) auto;
   gap: 0.75rem;
   align-items: baseline;
   width: 100%;
@@ -4345,6 +4398,8 @@ button.big,
 
 .request-app {
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .request-text {
@@ -4353,14 +4408,64 @@ button.big,
   white-space: nowrap;
 }
 
+.request-meta {
+  white-space: nowrap;
+}
+
 .request-body {
-  padding: 0 0.8rem 0.7rem;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.8rem 0.8rem;
+}
+
+.request-body > * {
+  margin: 0;
+}
+
+.request-asked {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.request-part {
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+}
+
+.request-sent {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.sent-text {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.7rem;
+}
+
+.sent-text > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.sent-text[open] > summary {
+  margin-bottom: 0.4rem;
+}
+
+.sent-text .document {
+  max-height: 32rem;
+  overflow: auto;
 }
 
 @media (max-width: 700px) {
   .request-head {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.1rem;
+  }
+
+  .request-meta {
+    white-space: normal;
   }
 }
 
@@ -4480,3 +4585,414 @@ button.big,
   font-family: var(--font);
 }
 
+
+/* The knowledge agent: the slide-over panel (a quarter of the screen, on the right), its
+   suggestions at the bottom right, the strip above the Brain's map, and its page. */
+
+.agent-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  width: clamp(20rem, 25vw, 32rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem 0.9rem;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgb(0 0 0 / 12%);
+}
+
+.agent-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.agent-panel-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.model-pick {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.model-pick select {
+  min-width: 0;
+}
+
+.agent-quick {
+  flex-wrap: wrap;
+}
+
+.agent-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  padding-right: 0.2rem;
+}
+
+.agent-turn {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.agent-turn.mine {
+  justify-self: end;
+  max-width: 90%;
+  background: var(--bg);
+  white-space: pre-wrap;
+}
+
+.agent-turn.theirs > :first-child,
+.agent-turn.action > :first-child {
+  margin-top: 0;
+}
+
+.agent-turn.action {
+  border-style: dashed;
+}
+
+.agent-turn p {
+  margin: 0.25rem 0;
+}
+
+.agent-note {
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.55rem;
+  border-left: 3px solid var(--accent);
+  background: var(--bg);
+}
+
+.agent-empty p {
+  margin: 0.3rem 0;
+}
+
+.agent-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  align-items: end;
+}
+
+.agent-composer textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.agent-clear {
+  justify-self: start;
+}
+
+.agent-dock {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 30;
+  display: grid;
+  justify-items: end;
+  gap: 0.5rem;
+  max-width: min(22rem, calc(100vw - 2rem));
+}
+
+.agent-toast {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
+}
+
+.agent-toast p {
+  margin: 0 0 0.3rem;
+}
+
+.agent-toast-title {
+  font-weight: 600;
+}
+
+.agent-dock-row {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.agent-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 14%);
+}
+
+.agent-open .calm-count {
+  color: var(--accent-text);
+  margin-left: 0.2rem;
+}
+
+.agent-strip {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.agent-strip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.agent-strip-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.agent-strip-ask {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+}
+
+.agent-strip .chips {
+  flex-wrap: wrap;
+}
+
+.agent-intro p {
+  max-width: 48rem;
+}
+
+.agent-models {
+  border: none;
+  padding: 0;
+  margin: 0 0 0.6rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.agent-model {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.agent-model.unavailable {
+  opacity: 0.6;
+}
+
+.agent-models-group {
+  margin: 0.5rem 0 0.1rem;
+  color: var(--muted);
+}
+
+.agent-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.7rem;
+}
+
+.agent-action {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.agent-action h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.agent-action p {
+  margin: 0;
+}
+
+.agent-questions {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.agent-question {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.agent-question.compact {
+  padding: 0.45rem 0.6rem;
+}
+
+.agent-question p {
+  margin: 0;
+}
+
+.agent-question-ask {
+  font-weight: 600;
+}
+
+.agent-question-actions {
+  flex-wrap: wrap;
+}
+
+.agent-runs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.agent-runs li {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.agent-map {
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+  max-height: 28rem;
+  overflow: auto;
+}
+
+.agent-procedure {
+  margin: 0.4rem 0;
+}
+
+.agent-procedure > summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 700px) {
+  .agent-panel {
+    width: 100vw;
+  }
+}
+/* Home's flashcards: what to keep an eye on, one card at a time (or all of them). */
+
+.flashcards {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.flashcards:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius);
+}
+
+.flashcards-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.flashcards-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.flashcard-one {
+  display: grid;
+}
+
+.flashcard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.7rem;
+}
+
+.flashcard {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  min-height: 9rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--neutral);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.flashcard p {
+  margin: 0;
+}
+
+.flashcard.attention {
+  border-left-color: var(--active);
+}
+
+.flashcard.calm {
+  border-left-color: var(--done);
+}
+
+.flashcard.info {
+  border-left-color: var(--accent);
+}
+
+.flashcard.soon {
+  border-left-style: dashed;
+}
+
+.flashcard-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.flashcard-count {
+  font-family: var(--serif);
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.flashcard-title {
+  font-weight: 600;
+}
+
+.flashcard-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+/* Moving in: a file picker beside Read it, and what happened to each file. */
+.file-pick {
+  position: relative;
+  cursor: pointer;
+}
+
+.move-in-notes {
+  margin: 0;
+  padding-left: 1.1rem;
+}

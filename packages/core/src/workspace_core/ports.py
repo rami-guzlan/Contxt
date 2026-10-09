@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from workspace_core.errors import Conflict
+from workspace_core.errors import Conflict, NotFound
 
 
 @dataclass(frozen=True)
@@ -437,6 +437,25 @@ class BrainPort(Protocol):
         `tools`, as a model that cannot call the Brain needs it: nothing asks for a tool."""
         ...
 
+    def agent_outline(self, *, brief: bool = False) -> dict[str, Any]:
+        """The knowledge agent's map of what the owner may see, made by code: {"counts",
+        "goals", "areas", "projects", "skills", "text"}; `brief` for a small model."""
+        ...
+
+    def agent_gather(self, action: str, *, limit: int = 10) -> dict[str, Any]:
+        """What one knowledge agent action judges: {"action", "candidates": [{"ref", "kind",
+        "ids", "title", "text"}], "found"}."""
+        ...
+
+    def agent_skill(self, name: str) -> str:
+        """The procedure one knowledge agent action (or its conversation) follows."""
+        ...
+
+    def agent_skills(self) -> list[dict[str, Any]]:
+        """The knowledge agent's procedures: [{"name", "description", "when_to_use",
+        "triggers", "text", "own"}]."""
+        ...
+
     def unsaved(self) -> list[str]:
         """Governed files whose changes are live but not saved to git (a commit failed)."""
         ...
@@ -464,6 +483,12 @@ class BrainPort(Protocol):
         """What each AI asked and what it got, newest first: {"requests", "brain_tokens",
         "apps"}; each request with its app, what it got and why, what it opened after, and
         what its conversation saved or suggested."""
+        ...
+
+    def request(self, packet_id: str) -> dict[str, Any]:
+        """One request in full: what `requests` says of it, the exact text it was handed
+        (`text`), and the startup context when it went with it (`startup`: {"fingerprint",
+        "text"}, the text None when it was not kept). NotFound past the retention window."""
         ...
 
     def goals(self) -> dict[str, Any]:
@@ -690,6 +715,18 @@ class NoBrain:
     def kernel(self, *, tools: bool = True) -> dict[str, Any]:
         return {"text": "", "tokens": 0}
 
+    def agent_outline(self, *, brief: bool = False) -> dict[str, Any]:
+        return {"counts": {}, "goals": "", "areas": [], "projects": [], "skills": [], "text": ""}
+
+    def agent_gather(self, action: str, *, limit: int = 10) -> dict[str, Any]:
+        return {"action": action, "candidates": [], "found": 0}
+
+    def agent_skill(self, name: str) -> str:
+        raise Conflict("This workspace has no Brain for an agent to keep.")
+
+    def agent_skills(self) -> list[dict[str, Any]]:
+        return []
+
     def unsaved(self) -> list[str]:
         return []
 
@@ -709,6 +746,9 @@ class NoBrain:
         self, *, limit: int = 50, before: str | None = None, client: str | None = None
     ) -> dict[str, Any]:
         return {"requests": [], "brain_tokens": 0, "apps": []}
+
+    def request(self, packet_id: str) -> dict[str, Any]:
+        raise NotFound("This workspace has no Brain.")
 
     def goals(self) -> dict[str, Any]:
         return {"questions": [], "answers": {}, "exists": False, "updated": None, "text": ""}

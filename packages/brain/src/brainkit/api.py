@@ -346,6 +346,9 @@ class Brain:
                               engine=runtime_mod.STARTED_WITH)
             self.ledger.record(session, packet.id, str(request), route.mode, packet.text,
                                data, items)
+            if not kernel_held:
+                # The startup context as it was sent, once per version, for Activity to show.
+                self.ledger.record_kernel(kernel_fp, parts[0])
         return Result("\n\n".join(parts), data)
 
     def preview(self, request, *, principal=None, focus=None, partition=None,
@@ -1033,6 +1036,12 @@ class Brain:
         return activity.requests(self, limit=limit, before=before, client=client,
                                  session=session)
 
+    def request(self, packet_id) -> Result:
+        """One request in full: what it got, and the exact text it was handed, with the
+        startup context when that went with it (activity.py)."""
+        from . import activity
+        return activity.request(self, packet_id)
+
     def record_output(self, path, *, title="", session_id=None) -> Result:
         """Note a file an AI saved for the person, with the conversation it was made in."""
         from . import activity
@@ -1080,6 +1089,36 @@ class Brain:
         """Add the built-in skills this brain is missing, as one undo point (builtin.py)."""
         from . import builtin
         return self._write(lambda: builtin.install(self, names=names, **kwargs))
+
+    def agent_skills(self) -> Result:
+        """The knowledge agent's procedures, each with its text (agent.py)."""
+        from . import agent
+        found = agent.skills(self)
+        return Result(f"{len(found)} procedure(s).", {"skills": found})
+
+    def agent_skill(self, name) -> Result:
+        """The procedure one knowledge agent action follows (agent.py)."""
+        from . import agent
+        text = agent.skill_text(self, name)
+        if text is None:
+            return error(f"No knowledge agent procedure {name!r}.", name=str(name or ""))
+        return Result(f"/{name}", {"name": str(name), "text": text})
+
+    def agent_outline(self, *, brief=False, visible=None) -> Result:
+        """The knowledge agent's map of the brain as it is now (agent.py)."""
+        from . import agent
+        found = agent.outline(self, brief=bool(brief), visible=visible)
+        return Result(f"{found['counts']['notes']} live notes mapped.", found)
+
+    def agent_gather(self, action, *, limit=None, visible=None) -> Result:
+        """What one knowledge agent action judges, each candidate with its text (agent.py)."""
+        from . import agent
+        try:
+            found = agent.gather(self, str(action or ""), limit=limit or agent.MAX_CANDIDATES,
+                                 visible=visible)
+        except ValueError as exc:
+            return error(str(exc), action=str(action or ""))
+        return Result(f"{len(found['candidates'])} candidate(s) for {action}.", found)
 
     def goals(self) -> Result:
         """The questions about what this brain is for, and the owner's answers (goals.py)."""

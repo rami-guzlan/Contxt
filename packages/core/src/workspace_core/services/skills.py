@@ -78,6 +78,7 @@ MAX_BODY = 60000  # characters in a skill's procedure
 MAX_RESULT = 400000  # characters in a run's result
 MAX_ATTACHED = 5  # Brain files one run may be pointed to
 MAX_EDITS = 30  # passages one improvement may change
+MAX_SKILLS = 6  # skills one run from the Skills page may follow
 RECENT = 500  # tasks read to find a skill's runs
 RUN_CONTRACT = {
     "artifacts": [],
@@ -115,6 +116,43 @@ Save what you make in the working directory itself, not inside ./skill: where th
 you leave there is kept; the copies of the skills are removed when the run ends. Check each \
 file you made opens (read it back, or render a page), and in the result list each file with \
 what it is.
+"""
+RUN_MANY_INSTRUCTIONS = """\
+Run these skills for the request below, in this order: {names}. First read each in full with \
+get_brain_skill and follow them step by step, the result of one feeding the next where that \
+fits (research, then the draft, then its formatting). The Relevant context section holds what \
+the Brain found for this request; open what the skills load with get_brain_entry, \
+get_brain_reference or search_context. Use only what the Brain, the pinned items and the \
+request say: never invent facts, names, numbers or quotes, and where something is missing, \
+say so in the result.
+
+Where a skill asks questions before it starts, answer them from the request and the context; \
+where they cannot be answered, choose a sensible default and say which in the result.
+{files}
+Save the result once with save_skill_result, with this run's run_id: a short title, and the \
+whole result as Markdown (what the person asked for, ready to use, without commentary around \
+it). Then complete the task. Never publish or send anything."""
+PICK_INSTRUCTIONS = """\
+The request below names no skill. The Relevant context section holds what the Brain found \
+for it, including the skills that fit (under Procedure or Skills): read the best fit in full \
+with get_brain_skill and follow it step by step. When none fits, do the work directly from \
+the Brain's context. Use only what the Brain, the pinned items and the request say: never \
+invent facts, names, numbers or quotes, and where something is missing, say so in the result. \
+If the skill that fits makes files (a PDF, a deck), say so and suggest running it from its page, \
+where it can make them.
+
+Save the result once with save_skill_result, with this run's run_id: a short title, and the \
+whole result as Markdown, ending with one line naming the skill you followed (or "No skill \
+fitted"). Then complete the task. Never publish or send anything."""
+FILES_PART_MANY = """
+This run makes files, in a folder of its own on this computer (your working directory). Each \
+skill's own files are in a folder named after it (./name, its scripts in ./name/scripts, its \
+assets in ./name/assets), as are the skills they depend on. Read and write files there, and \
+run Python with `python`. Save what you make in the working directory itself, not inside the \
+skills' folders: where a skill says /mnt/user-data/outputs or present_files, write to the \
+working directory instead. Only what you leave there is kept; the copies of the skills are \
+removed when the run ends. Check each file you made opens, and in the result list each file \
+with what it is.
 """
 IMPROVE_INSTRUCTIONS = """\
 Improve the skill {name} as the person asks below. First read it in full with get_brain_skill \
@@ -296,8 +334,18 @@ class Skills:
 
     def runs(self, who: Principal, name: str, *, limit: int = 20) -> builtins.list[dict[str, Any]]:
         """The skill's recent runs and drafts, newest first: what was asked, where each stands,
-        and what came of it (the result, the files it made, the change it proposed)."""
-        mine = [t for t in self._tasks(who, RUN, DRAFT) if self._skill_of(t) == name][:limit]
+        and what came of it (the result, the files it made, the change it proposed). A run of
+        several skills shows on each of their pages."""
+        mine = [t for t in self._tasks(who, RUN, DRAFT) if name in self._skills_of(t)][:limit]
+        return self._shaped(who, mine, name)
+
+    def recent(self, who: Principal, *, limit: int = 10) -> builtins.list[dict[str, Any]]:
+        """The latest runs from the Skills page and from every skill, newest first."""
+        return self._shaped(who, self._tasks(who, RUN)[: max(1, min(int(limit), 50))], None)
+
+    def _shaped(
+        self, who: Principal, mine: builtins.list[Task], name: str | None
+    ) -> builtins.list[dict[str, Any]]:
         if not mine:
             return []
         ids = [t.id for t in mine]
@@ -350,10 +398,13 @@ class Skills:
         out = []
         for task in mine:
             about = dict(task.provenance.get("skill") or {})
+            skills = self._skills_of(task)
             out.append(
                 {
                     "task_id": task.id,
-                    "skill": name,
+                    # the skill whose page shows it; on the Skills page, the first it followed
+                    "skill": name or (skills[0] if skills else ""),
+                    "skills": skills,
                     "kind": "run" if task.template == RUN else "improve",
                     "ask": about.get("ask") or "",
                     "status": task.status,
@@ -399,6 +450,107 @@ class Skills:
                 name=skill.name,
             )
         ask = _ask(ask, "from it")
+        capture, focus, attached, extra = self._inputs(who, capture_id, project, files)
+        files_mode = makes_files(skill)
+        instructions = RUN_INSTRUCTIONS.format(
+            name=skill.name, files=FILES_PART if files_mode else ""
+        )
+        instructions += f"\n\nThe request, from {who.name}:\n{ask}{extra}"
+        request = f"{ask}\n\nUsing the skill {skill.name}: {skill.description}"
+        if focus:
+            request += f"\nProject: {focus['title']}"
+        about: dict[str, Any] = {"name": skill.name, "ask": ask, "files": files_mode}
+        return self._ask_model(
+            who,
+            title=f"Run /{skill.name}",
+            purpose=f"Run the skill {skill.name} for {who.name}.",
+            instructions=instructions,
+            request=request,
+            template=RUN,
+            contract=RUN_CONTRACT,
+            about=self._with_inputs(about, capture, focus, attached),
+            capture=capture,
+        )
+
+    def run_many(
+        self,
+        who: Principal,
+        names: builtins.list[str],
+        *,
+        ask: str,
+        capture_id: str | None = None,
+        project: str | None = None,
+        files: builtins.list[str] | None = None,
+    ) -> Task:
+        """Ask a model for what is needed with the skills chosen on the Skills page, followed
+        in the order given. With one, it is that skill's run; with none, the Brain picks the
+        skill that fits (the run's context lists it), or the work is done without one."""
+        wanted = list(
+            dict.fromkeys(
+                str(n or "").strip().lstrip("/") for n in names or [] if str(n or "").strip()
+            )
+        )
+        if len(wanted) > MAX_SKILLS:
+            raise ValidationFailed(
+                f"Choose at most {MAX_SKILLS} skills for one run.", field="names"
+            )
+        if len(wanted) == 1:
+            return self.run(
+                who, wanted[0], ask=ask, capture_id=capture_id, project=project, files=files
+            )
+        who.require("tasks.write")
+        skills = [self.find(who, name) for name in wanted]
+        for skill in skills:
+            if use_of(skill, self._users(who, skill.name)) != "run":
+                raise ValidationFailed(
+                    f"/{skill.name} is not run on its own here: choose the skills you run.",
+                    name=skill.name,
+                )
+        ask = _ask(ask, "from them" if skills else "done")
+        capture, focus, attached, extra = self._inputs(who, capture_id, project, files)
+        files_mode = any(makes_files(skill) for skill in skills)
+        if skills:
+            listed = ", ".join(f"/{skill.name}" for skill in skills)
+            instructions = RUN_MANY_INSTRUCTIONS.format(
+                names=listed, files=FILES_PART_MANY if files_mode else ""
+            )
+            request = f"{ask}\n\nUsing the skills " + "; ".join(
+                f"{skill.name}: {skill.description}" for skill in skills
+            )
+            title, purpose = f"Run {listed}", f"Run the skills {listed} for {who.name}."
+        else:
+            instructions, request = PICK_INSTRUCTIONS, ask
+            title = "Run what fits: " + (ask if len(ask) <= 60 else ask[:57] + "...")
+            purpose = f"Do what {who.name} asked, with the skill that fits."
+        instructions += f"\n\nThe request, from {who.name}:\n{ask}{extra}"
+        if focus:
+            request += f"\nProject: {focus['title']}"
+        about: dict[str, Any] = {
+            "name": skills[0].name if skills else "",
+            "names": [skill.name for skill in skills],
+            "ask": ask,
+            "files": files_mode,
+        }
+        return self._ask_model(
+            who,
+            title=title,
+            purpose=purpose,
+            instructions=instructions,
+            request=request,
+            template=RUN,
+            contract=RUN_CONTRACT,
+            about=self._with_inputs(about, capture, focus, attached),
+            capture=capture,
+        )
+
+    def _inputs(
+        self,
+        who: Principal,
+        capture_id: str | None,
+        project: str | None,
+        files: builtins.list[str] | None,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, builtins.list[str], str]:
+        """What a run is pointed to besides the request, and the lines that say so."""
         capture = self._capture(who, capture_id) if capture_id else None
         focus = self._project(who, project) if project else None
         attached = self._attached(who, files)
@@ -409,32 +561,22 @@ class Skills:
             extra += f"\n\nUse the pinned item, “{capture['title']}” ({capture['id']})."
         if attached:
             extra += "\n\nRead these files with get_brain_reference: " + ", ".join(attached) + "."
-        files_mode = makes_files(skill)
-        instructions = RUN_INSTRUCTIONS.format(
-            name=skill.name, files=FILES_PART if files_mode else ""
-        )
-        instructions += f"\n\nThe request, from {who.name}:\n{ask}{extra}"
-        request = f"{ask}\n\nUsing the skill {skill.name}: {skill.description}"
-        if focus:
-            request += f"\nProject: {focus['title']}"
-        about: dict[str, Any] = {"name": skill.name, "ask": ask, "files": files_mode}
+        return capture, focus, attached, extra
+
+    @staticmethod
+    def _with_inputs(
+        about: dict[str, Any],
+        capture: dict[str, Any] | None,
+        focus: dict[str, Any] | None,
+        attached: builtins.list[str],
+    ) -> dict[str, Any]:
         if capture:
             about["capture"] = capture
         if focus:
             about["project"] = focus
         if attached:
             about["attached"] = attached
-        return self._ask_model(
-            who,
-            title=f"Run /{skill.name}",
-            purpose=f"Run the skill {skill.name} for {who.name}.",
-            instructions=instructions,
-            request=request,
-            template=RUN,
-            contract=RUN_CONTRACT,
-            about=about,
-            capture=capture,
-        )
+        return about
 
     def improve(
         self,
@@ -847,6 +989,18 @@ class Skills:
     def _skill_of(task: Task) -> str | None:
         about = task.provenance.get("skill") or {}
         return about.get("name") if isinstance(about, dict) else None
+
+    @staticmethod
+    def _skills_of(task: Task) -> builtins.list[str]:
+        """Every skill a run followed: one, several chosen on the Skills page, or none (the
+        Brain picked)."""
+        about = task.provenance.get("skill") or {}
+        if not isinstance(about, dict):
+            return []
+        names = about.get("names")
+        if isinstance(names, list):
+            return [str(n) for n in names if n]
+        return [str(about["name"])] if about.get("name") else []
 
     def _task_of_run(
         self, who: Principal, run_id: str, template: str, wrong: str

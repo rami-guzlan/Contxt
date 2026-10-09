@@ -1179,6 +1179,25 @@ class BrainKitAdapter:
                 row[key] = [p for p in row[key] if p["kind"] != "note" or p["id"] in seen]
         return data
 
+    def request(self, packet_id: str) -> dict[str, Any]:
+        result = self.brain.request(packet_id)
+        if result.is_error:
+            raise NotFound(result.text)
+        row: dict[str, Any] = dict(result.data)
+        seen = self._seen(self.brain.state())
+        hidden = any(
+            p["kind"] == "note" and p["id"] not in seen
+            for key in ("got", "opened")
+            for p in row.get(key) or []
+        )
+        for key in ("got", "opened"):
+            row[key] = [p for p in row.get(key) or [] if p["kind"] != "note" or p["id"] in seen]
+        if hidden:
+            # It was handed notes the owner does not see: its text would show them.
+            row["text"] = None
+            row["startup"] = None
+        return row
+
     def unsaved(self) -> list[str]:
         return list(self.brain.unsaved())
 
@@ -1202,6 +1221,28 @@ class BrainKitAdapter:
     def kernel(self, *, tools: bool = True) -> dict[str, Any]:
         found = self.brain.kernel(tools=tools)
         return {"text": found.text, "tokens": int(found.data.get("tokens") or 0)}
+
+    # ---------------------------------------------------------------- the knowledge agent
+
+    def agent_outline(self, *, brief: bool = False) -> dict[str, Any]:
+        visible = self._seen(self.brain.state())
+        return dict(self.brain.agent_outline(brief=brief, visible=visible).data)
+
+    def agent_gather(self, action: str, *, limit: int = 10) -> dict[str, Any]:
+        visible = self._seen(self.brain.state())
+        result = self.brain.agent_gather(action, limit=limit, visible=visible)
+        if result.is_error:
+            raise ValidationFailed(result.text, field="action")
+        return dict(result.data)
+
+    def agent_skill(self, name: str) -> str:
+        result = self.brain.agent_skill(name)
+        if result.is_error:
+            raise NotFound(result.text, name=name)
+        return str(result.data.get("text") or "")
+
+    def agent_skills(self) -> list[dict[str, Any]]:
+        return list(self.brain.agent_skills().data.get("skills") or [])
 
     def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
         return list(self.brain.weekly(weeks).data.get("weeks") or [])

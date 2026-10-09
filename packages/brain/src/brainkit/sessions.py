@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS outputs (
 CREATE TABLE IF NOT EXISTS dismissed (key TEXT PRIMARY KEY, at TEXT);
 CREATE TABLE IF NOT EXISTS verdicts (
     key TEXT PRIMARY KEY, relation TEXT, detail TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS kernels (fingerprint TEXT PRIMARY KEY, at TEXT, text TEXT);
 """
 
 # How an item reached a conversation: the usage_daily column each way counts in.
@@ -157,6 +158,13 @@ class Ledger:
                  str(engine or "") or None))
         self.prune()
 
+    def session_principal(self, session_id: str) -> str | None:
+        """Who a conversation asked as (the last scope of its caller's chain)."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT principal FROM sessions WHERE id = ?",
+                               (session_id,)).fetchone()
+        return (row["principal"] or None) if row is not None else None
+
     def exists(self, session_id: str) -> bool:
         with self._connect() as conn:
             return conn.execute("SELECT 1 FROM sessions WHERE id = ?",
@@ -243,6 +251,22 @@ class Ledger:
         except ValueError:
             out["data"] = {}
         return out
+
+    def record_kernel(self, fingerprint: str, text: str) -> None:
+        """Keep the startup context a conversation was handed, once per version (its
+        fingerprint), so a request can show exactly what it got."""
+        if not fingerprint or not text:
+            return
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO kernels (fingerprint, at, text) VALUES (?, ?, ?)",
+                         (str(fingerprint), util.now_iso(), str(text)))
+
+    def kernel_text(self, fingerprint: str) -> str | None:
+        """The startup context kept for this version, if it was kept."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT text FROM kernels WHERE fingerprint = ?",
+                               (str(fingerprint or ""),)).fetchone()
+        return row["text"] if row is not None else None
 
     def last_packet(self, session_id: str) -> dict | None:
         """The most recent packet in this session, for follow-up continuity: its data, plus
@@ -482,12 +506,14 @@ class Ledger:
                 "ORDER BY at, rowid", (session_id,))]
 
     def requests(self, *, limit: int = 50, before: str | None = None,
-                 session: str | None = None) -> list[dict]:
+                 session: str | None = None, packet: str | None = None) -> list[dict]:
         """Packets newest first (older than the packet `before` names, for the next page):
         the request, its tokens, its session's app (`client`), each piece it delivered with
-        why, and what the conversation opened after it (until its next packet)."""
+        why, and what the conversation opened after it (until its next packet). With
+        `packet`, only that one, with the text it was handed (`text`)."""
         query = ("SELECT p.id, p.session_id, p.at, p.request, p.mode, p.tokens, p.data, "
-                 "s.label AS client, s.engine AS engine FROM packets p "
+                 + ("p.text, " if packet else "")
+                 + "s.label AS client, s.engine AS engine FROM packets p "
                  "LEFT JOIN sessions s ON s.id = p.session_id")
         params: list = []
         where = []
@@ -497,6 +523,9 @@ class Ledger:
         if session:
             where.append("p.session_id = ?")
             params.append(str(session))
+        if packet:
+            where.append("p.id = ?")
+            params.append(str(packet))
         if where:
             query += " WHERE " + " AND ".join(where)
         query += " ORDER BY p.at DESC, p.rowid DESC LIMIT ?"
@@ -624,3 +653,5 @@ class Ledger:
             conn.execute("DELETE FROM deliveries WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM packets WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM sessions WHERE seen < ?", (cutoff,))
+            conn.execute("DELETE FROM kernels WHERE at < ? AND fingerprint NOT IN "
+                         "(SELECT item FROM deliveries WHERE kind = 'kernel')", (cutoff,))

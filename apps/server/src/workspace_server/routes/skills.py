@@ -13,7 +13,7 @@ from workspace_core.domain.records import Task
 
 from ..deps import WS, Who
 from ..files import served
-from ..schemas import SkillDraftIn, SkillEditIn, SkillImproveIn, SkillRunIn
+from ..schemas import SkillDraftIn, SkillEditIn, SkillImproveIn, SkillRunIn, SkillsRunIn
 
 router = APIRouter(prefix="/api/skills")
 
@@ -28,6 +28,26 @@ def cards(who: Who, ws: WS) -> dict[str, Any]:
 def draft(body: SkillDraftIn, who: Who, ws: WS) -> Task:
     """Ask a model to write a new skill from a description, or from something brought in."""
     return ws.skills.draft(who, ask=body.ask, capture_id=body.capture_id)
+
+
+@router.get("/runs")
+def recent_runs(who: Who, ws: WS, limit: int = 10) -> list[dict[str, Any]]:
+    """The latest runs, from the Skills page and from every skill, with what came of each."""
+    return ws.skills.recent(who, limit=limit)
+
+
+@router.post("/runs", status_code=201)
+def run_many(body: SkillsRunIn, who: Who, ws: WS) -> Task:
+    """Ask a model for what is needed with the skills chosen, followed in order; with none
+    chosen, with the one that fits."""
+    return ws.skills.run_many(
+        who,
+        body.names,
+        ask=body.ask,
+        capture_id=body.capture_id,
+        project=body.project,
+        files=body.files,
+    )
 
 
 @router.get("/runs/{task_id}/files/{name:path}")

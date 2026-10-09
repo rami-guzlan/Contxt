@@ -151,6 +151,35 @@ def test_a_skill_that_makes_files_works_in_its_own_folder(owner, runtime, brain_
     assert picture.headers["x-content-type-options"] == "nosniff"
 
 
+def test_the_skills_page_runs_several_skills_with_each_ones_files(
+    owner, runtime, brain_vault, monkeypatch
+):
+    add_skill(brain_vault, "social", "weekly-posts", POSTS)
+    task = owner.ok(
+        owner.post(
+            "/api/skills/runs",
+            json={"names": ["weekly-posts", "brand-sheet"], "ask": "A sheet, then posts."},
+        ),
+        201,
+    )
+    assert task["title"] == "Run /weekly-posts, /brand-sheet"
+    assert "in this order: /weekly-posts, /brand-sheet" in task["instructions"]
+    assert "named after it" in task["instructions"]  # one of them makes files
+    monkeypatch.setenv("FAKE_CLI_MAKE", "sheet.pdf")
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": task["id"]}), 201)
+    seen = report(finish(owner, run["id"]))
+    assert {"weekly-posts/SKILL.md", "brand-sheet/SKILL.md"} <= set(seen["listing"])
+    (latest, *_) = owner.ok(owner.get("/api/skills/runs"))
+    assert latest["task_id"] == task["id"]
+    assert latest["skills"] == ["weekly-posts", "brand-sheet"]
+    assert [f["name"] for f in latest["files"]] == ["sheet.pdf"]
+    # with none chosen, the Brain picks
+    picked = owner.ok(owner.post("/api/skills/runs", json={"ask": "Posts for Tuesday."}), 201)
+    assert picked["title"].startswith("Run what fits")
+    too_many = owner.post("/api/skills/runs", json={"names": list("abcdefg"), "ask": "x"})
+    assert too_many.status_code == 422
+
+
 def test_a_folder_a_stopped_server_left_is_tidied_and_listed(owner, runtime):
     task = owner.ok(owner.post("/api/skills/brand-sheet/runs", json={"ask": "One for Acme."}), 201)
     folder = os.path.join(runtime.settings.exports_dir, "skill-runs", "2026-09-28-brand-sheet")

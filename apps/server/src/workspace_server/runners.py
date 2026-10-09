@@ -485,7 +485,12 @@ class Runners:
         about = dict(task.provenance.get("skill") or {})
         copying: list[tuple[str, str]] = []
         if task.template == "skill" and about.get("files"):
-            copying = self._plan(who, str(about.get("name") or ""))
+            names = [str(n) for n in about.get("names") or [] if n]
+            copying = (
+                self._plan_many(who, names)
+                if len(names) > 1
+                else self._plan(who, str(about.get("name") or ""))
+            )
         web = CHALLENGER_TOOLS if task.template == "challenge" else ()
         task_id = task.id
 
@@ -864,6 +869,25 @@ class Runners:
             found = self.ws.rt.brain.skill_folder(dep)
             if found and dep not in {into for into, _ in plan}:
                 plan.append((dep, found))
+        return plan
+
+    def _plan_many(self, who: Principal, names: list[str]) -> list[tuple[str, str]]:
+        """A run of several skills that makes files: each skill's folder (copied to a folder
+        named after it) and those of the skills they depend on."""
+        plan: list[tuple[str, str]] = []
+        for name in names:
+            skill = self.ws.skills.find(who, name)
+            source = self.ws.rt.brain.skill_folder(skill.name)
+            if source is None:
+                raise Conflict(
+                    f"The files of the skill {skill.name} are not on this computer, so it "
+                    "cannot make files here."
+                )
+            for into, found in [(skill.name, source)] + [
+                (dep, self.ws.rt.brain.skill_folder(dep)) for dep in skill.depends_on
+            ]:
+                if found and into not in {i for i, _ in plan}:
+                    plan.append((into, found))
         return plan
 
     def _prepare(

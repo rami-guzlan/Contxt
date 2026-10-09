@@ -22,9 +22,12 @@ from .brain_adapter import BrainKitAdapter
 from .deps import error_response
 from .difference import Differences
 from .extractor import DocumentExtractor
+from .knowledge_agent import AgentWork
 from .mcp.protocol import McpHandler
+from .models import Models
 from .outputs import Outputs
 from .routes import (
+    agent,
     backups,
     brain,
     bus,
@@ -56,6 +59,8 @@ class Runtime:
     speech: Speech
     differences: Differences
     outputs: Outputs
+    models: Models
+    agent: AgentWork
     closed: bool = False
 
     def close(self) -> None:
@@ -108,6 +113,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         base_url=local_url(settings),
         outputs=settings.exports_dir or os.path.join(settings.data_dir, "exports"),
     )
+    models = Models(runners)
     return Runtime(
         settings=settings,
         ws=ws,
@@ -118,6 +124,8 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         speech=Speech(settings.speech_models),
         differences=Differences(ws, runners),
         outputs=Outputs(ws, settings.exports_dir or os.path.join(settings.data_dir, "exports")),
+        models=models,
+        agent=AgentWork(ws, models),
     )
 
 
@@ -152,6 +160,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         system,
         notes,
         captures,
+        agent,
         brain,
         outputs,
         proof,

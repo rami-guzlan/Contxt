@@ -65,6 +65,37 @@ class ActivityTests(unittest.TestCase):
         self.assertEqual(activity.client_label("codex-mcp-client 0.4"), "Codex")
         self.assertEqual(activity.client_label("my-tool 3"), "my-tool")
         self.assertEqual(activity.client_label(""), "An AI app")
+        # the Claude desktop app names its client after the server it set up
+        self.assertEqual(activity.client_label("local-agent-mode-contxt 1.0.0"), "Claude app")
+
+    def test_one_request_in_full_has_the_text_it_got_and_the_startup_context(self):
+        first = self.brain.context("How long do web projects take?")
+        newest = self.brain.requests().data["requests"][0]
+        full = self.brain.request(newest["id"]).data
+        self.assertEqual(full["request"], "How long do web projects take?")
+        self.assertIn(full["text"].strip()[:40], first.text)  # the packet as it was sent
+        startup = full["startup"]
+        self.assertTrue(startup["text"].startswith(
+            f"# Startup context (kernel {startup['fingerprint']})"))
+        self.assertIn(startup["text"], first.text)
+        # A later request in the same conversation already holds the startup context.
+        session = first.text.split("session_id: ")[1].split(" ")[0]
+        self.brain.context("Headline rules?", session_id=session)
+        later = self.brain.requests().data["requests"][0]
+        self.assertIsNone(self.brain.request(later["id"]).data["startup"])
+        # A request from before the brain kept what it sent: today's version, while it is the
+        # same one; nothing once the startup context has changed.
+        with self.brain.ledger._connect() as conn:
+            conn.execute("DELETE FROM kernels")
+        self.assertEqual(self.brain.request(newest["id"]).data["startup"]["text"],
+                         startup["text"])
+        with self.brain.ledger._connect() as conn:
+            conn.execute("UPDATE packets SET data = replace(data, ?, 'aaaaaaaaaaaa')",
+                         (startup["fingerprint"],))
+        self.assertIsNone(self.brain.request(newest["id"]).data["startup"]["text"])
+        missing = self.brain.request("pkt-none")
+        self.assertTrue(missing.is_error)
+        self.assertEqual(missing.data["status"], "missing")
 
     def test_each_request_names_its_engine_and_flags_an_old_one(self):
         self.brain.context("How long do web projects take?")

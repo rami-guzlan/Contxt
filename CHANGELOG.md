@@ -83,4 +83,23 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   held-out requests, disagreement detection on labeled and held-out pairs (with your own
   AI's verdicts, `--ask-model`), false alarms on the demo Brains, dated values, and seeded
   wrong beliefs for the cross-check.
+- The knowledge agent keeps the Brain accurate, tidy and aimed at your goals. Code makes a
+  map of the Brain (every live note with the flags upkeep cares about, the goals, projects and
+  skills) and gathers the candidates for seven actions: find repeats, check drift, check
+  alignment, freshen up, check projects, check skills and fill gaps. Each follows a procedure
+  that ships with Contxt, so any model can do the work without guessing: Claude Code by default,
+  or a small local model through Ollama, which reads a shorter map. Its answers become
+  suggestions in Catch up and questions with one-tap answers (still true, retire it, mark it
+  disputed, answer it); nothing changes without you. It has its own tab in Brain, a strip above
+  the Brain's map, a side panel for talking to it on every page, and suggestions at the bottom
+  right as the Brain changes, made by code without a model.
+- Home's flashcards: what to keep an eye on, one card at a time (stale context, repeats,
+  drift, gaps, quiet projects, the agent's questions and what it did), and what is coming.
+- The Skills page runs several skills at once, followed in the order chosen, or the one the
+  Brain finds for the request.
+- Activity: each request opens to every piece it got and what it opened after, and to the
+  exact text it was handed and the startup context when that went with it.
+- Moving in takes files of any kind, zips included: documents, instruction files, any text,
+  and ChatGPT's and Claude's data exports (their conversations as your own words); what cannot
+  be read is named with why.
 - Source-available under the PolyForm Shield License 1.0.0.

@@ -11,8 +11,10 @@ import type { BrainCheckpoint, SkillCard, SkillVersion } from "../api/types";
 import { Markdown } from "../components/Markdown";
 import {
   ImproveSkill,
+  LatestRuns,
   NewSkill,
   RunSkill,
+  RunSkills,
   Saved,
   SkillEditor,
   SkillHistory,
@@ -83,6 +85,8 @@ export function SkillsPage() {
       {writing ? (
         <NewSkill capture={teaching && capture ? { id: capture.id, title: capture.title } : null} onClose={() => setParams({})} />
       ) : null}
+      {data.skills.some((s) => s.use === "run") ? <RunSkills skills={data.skills} /> : null}
+      <LatestRuns />
       <BuiltIns />
       {data.waiting.length ? (
         <p className="notice small">
@@ -157,7 +161,13 @@ export function SkillPage() {
   const [params, setParams] = useSearchParams();
   const { data: skill, isLoading, error } = useBrainSkill(name);
   const { data: cards } = useSkills();
-  const [editing, setEditing] = useState<SkillVersion | "current" | null>(null);
+  // Words to ask for it that the knowledge agent suggested (?add=a|b): the editor opens with
+  // them added, for the person to look over and save.
+  const added = (params.get("add") ?? "")
+    .split("|")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const [editing, setEditing] = useState<SkillVersion | "current" | null>(added.length ? "current" : null);
   const [saved, setSaved] = useState<BrainCheckpoint | null>(null);
   if (isLoading) return <Loading />;
   if (!skill) return <ErrorNote error={error} />;
@@ -241,9 +251,10 @@ export function SkillPage() {
                   name: skill.name,
                   description: skill.description,
                   when_to_use: skill.when_to_use,
-                  triggers: skill.triggers ?? [],
+                  triggers: [...new Set([...(skill.triggers ?? []), ...(editing === "current" ? added : [])])],
                   body: editing === "current" ? source : (editing.body ?? source),
                 }}
+                saved={skill.triggers ?? []}
                 onDone={(checkpoint) => {
                   setEditing(null);
                   setSaved(checkpoint);

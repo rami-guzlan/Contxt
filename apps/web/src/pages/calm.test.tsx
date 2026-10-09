@@ -449,6 +449,25 @@ describe("moving in", () => {
     expect(await screen.findByRole("heading", { name: /1 suggestion wait in Catch up/ })).toBeInTheDocument();
     expect(calls.find((c) => c.path === "/api/brain/move-in")?.body).toMatchObject({ ids: ["i1"] });
   });
+
+  it("takes files of any kind, zips too, and says what it could not read", async () => {
+    const calls = mockApi({
+      "POST /api/brain/move-in/files": {
+        sources: [{ kind: "chatgpt", label: "export.zip", text: "Planning the Q4 webinars for supervisors.", note: "" }],
+        skipped: [{ name: "export.zip: photo.png", why: "a picture: Moving in reads words, not images" }],
+      },
+      "POST /api/brain/move-in/preview": preview,
+    });
+    const user = userEvent.setup();
+    renderAt(<MoveInPage />);
+    const zip = new File([new Uint8Array([80, 75, 3, 4])], "export.zip", { type: "application/zip" });
+    await user.upload(screen.getByLabelText("Choose files to bring in (any kind, zip files too)"), zip);
+    expect(await screen.findByRole("list", { name: "How the Brain read it" })).toBeInTheDocument();
+    expect(screen.getByText("export.zip: photo.png: not read, a picture: Moving in reads words, not images.")).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/api/brain/move-in/preview")?.body).toEqual({
+      sources: [{ kind: "chatgpt", text: "Planning the Q4 webinars for supervisors.", label: "export.zip" }],
+    });
+  });
 });
 
 describe("the first run", () => {
@@ -547,6 +566,11 @@ describe("activity", () => {
     const calls = mockApi({
       "GET /api/brain/weekly": [{ start: "2026-09-29", end: "2026-10-05", conversations: 4, packets: 9 }],
       "GET /api/brain/requests": { requests: [{ ...request, old_engine: true }], brain_tokens: 6400, apps: ["Claude Code", "Cursor"], engine: "new" },
+      "GET /api/brain/requests/pkt-1": {
+        ...request,
+        text: "## Task\n\nWrite a LinkedIn post announcing the Q4 webinars\n\n## Rules\n\n- Hook in the first line.",
+        startup: { fingerprint: "abc123def456", text: "# Startup context (kernel abc123def456)\n\nAct as the marketing coworker." },
+      },
       "POST /api/brain/proposals": { status: "pending", message: "", proposal_id: "p5" },
     });
     const user = userEvent.setup();
@@ -557,6 +581,11 @@ describe("activity", () => {
     await user.click(screen.getByRole("button", { name: /Write a LinkedIn post announcing the Q4 webinars/ }));
     expect(screen.getByRole("link", { name: "LinkedIn posting rules" })).toHaveAttribute("href", "/brain/entries/linkedin-rules");
     expect(screen.getByText("(score 0.61)")).toBeInTheDocument();
+    // the exact text it got, and the startup context that went with it, open on demand
+    await user.click(await screen.findByText(/The exact text it got/));
+    expect(await screen.findByText("Hook in the first line.")).toBeInTheDocument();
+    await user.click(screen.getByText("The startup context it got, once for this chat"));
+    expect(await screen.findByText("Act as the marketing coworker.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Something was missing/ }));
     await user.type(screen.getByLabelText("What should it have known?"), "The first webinar is October 22.");
     await user.click(screen.getByRole("button", { name: "Teach it" }));

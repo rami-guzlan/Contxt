@@ -9,4 +9,5 @@ under "Already in this conversation" instead. After a context compaction or in a
 pass `fresh: true` (or omit the session id) to receive everything again. The ledger lives in
 `vault/.brain/sessions.sqlite` and is never knowledge: the detail of each handout is pruned
 after the retention window (90 days by default), while daily counts of each entry's use are
-kept for good.
+kept for good. It keeps each packet's text, and each version of the startup context once (by
+its fingerprint), so a person can see exactly what any request was handed.

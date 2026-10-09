@@ -722,6 +722,9 @@ export interface SkillCards {
 export interface SkillRun {
   task_id: string;
   skill: string;
+  /** Every skill it followed: several when chosen on the Skills page; none when the Brain
+   * picked the one that fit. */
+  skills?: string[];
   kind: "run" | "improve";
   ask: string;
   status: TaskStatus;
@@ -1494,6 +1497,14 @@ export interface AiRequest {
   old_engine: boolean;
 }
 
+/** One request in full: the exact text it was handed, and the startup context when that went
+ * with it (its text null when it was sent before the Brain kept it). Text null: it got notes
+ * you do not see. */
+export interface AiRequestFull extends AiRequest {
+  text: string | null;
+  startup: { fingerprint: string; text: string | null } | null;
+}
+
 export interface AiRequests {
   requests: AiRequest[];
   brain_tokens: number;
@@ -1647,4 +1658,110 @@ export interface BackupMade {
   files: number;
   brain_files: number;
   originals: number;
+}
+
+// ---- the knowledge agent
+
+/** A model the agent can work through: Claude Code on this computer, or a local one. */
+export interface AgentModel {
+  id: string;
+  label: string;
+  kind: "cli" | "local";
+  available: boolean;
+  detail: string;
+  /** A small model: it gets the short map and fewer candidates. */
+  brief: boolean;
+}
+
+export interface AgentAction {
+  id: string;
+  label: string;
+  blurb: string;
+}
+
+/** Something the agent asks the owner, with the one-tap answers its kind allows. */
+export interface AgentQuestion {
+  key: string;
+  action: string;
+  verdict: string;
+  ask: string;
+  why: string;
+  text: string;
+  target: { type: "note" | "project" | "skill" | "gap" | "goals"; id: string; title: string };
+  triggers?: string[];
+  at: string;
+  status: "open" | "done" | "dismissed";
+  /** The run that asked it. */
+  run?: string;
+}
+
+/** What one run of an action did. */
+export interface AgentRun {
+  id: string;
+  action: string;
+  label: string;
+  model: string;
+  at: string;
+  summary: string;
+  checked: number;
+  found: number;
+  proposed: number;
+  questions: number;
+  fine: number;
+  skipped: number;
+  proposals: string[];
+  notes: string[];
+  seconds?: number;
+}
+
+export interface AgentOverview {
+  model: string;
+  suggestions: boolean;
+  actions: AgentAction[];
+  questions: AgentQuestion[];
+  runs: AgentRun[];
+  models: AgentModel[];
+  working: AgentJob[];
+}
+
+/** A suggestion made by code as the Brain changes: the action that deals with it, or where. */
+export interface AgentSuggestion {
+  key: string;
+  kind: string;
+  title: string;
+  detail: string;
+  count: number;
+  action: string | null;
+  link: string | null;
+}
+
+export interface AgentChatResult {
+  reply: string;
+  run: string[];
+  notes: { title: string; text: string; kind: string }[];
+}
+
+/** The agent at work in the background: an action, or one turn of the conversation. */
+export interface AgentJob {
+  id: string;
+  kind: "action" | "chat";
+  action: string | null;
+  model: string;
+  model_label: string;
+  message: string;
+  status: "waiting" | "running" | "done" | "failed";
+  result: Partial<AgentRun> & Partial<AgentChatResult>;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface AgentSkill {
+  name: string;
+  description: string;
+  when_to_use: string;
+  triggers: string[];
+  text: string;
+  /** The Brain holds its own skill of this name, used instead. */
+  own: boolean;
 }
