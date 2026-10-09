@@ -142,7 +142,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     app.state.brain = runtime.brain
     app.state.templates = runtime.templates
     app.state.runners = runtime.runners
-    app.state.mcp = McpHandler(runtime.ws, runtime.templates)
+    app.state.mcp = McpHandler(runtime.ws, runtime.templates, runtime.runners.contracts)
 
     @app.exception_handler(WorkspaceError)
     async def workspace_error(_request: Request, exc: WorkspaceError) -> JSONResponse:

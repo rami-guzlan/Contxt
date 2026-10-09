@@ -9,6 +9,7 @@ relative to its folder) it makes there, as a run of a skill that makes files wou
 
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -98,6 +99,45 @@ emit(
         },
     }
 )
+
+
+def run_hooks(event, payload):
+    """What the hooks a --settings file names for an event print, run as Claude Code runs
+    them: each command through the shell, the event on its stdin."""
+    if "--settings" not in args:
+        return []
+    with open(args[args.index("--settings") + 1], encoding="utf-8") as handle:
+        settings = json.load(handle)
+    outs = []
+    for group in (settings.get("hooks") or {}).get(event) or []:
+        for hook in group.get("hooks") or []:
+            done = subprocess.run(
+                hook["command"],
+                shell=True,
+                input=json.dumps(dict(payload, hook_event_name=event)),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            outs.append(done.stdout.strip())
+    return outs
+
+
+claim = {"tool_name": "mcp__contxt-app__claim_task", "tool_input": {"task_id": "task_x"}}
+hooks = {
+    "pre": run_hooks("PreToolUse", claim),
+    "post": run_hooks("PostToolUse", dict(claim, tool_response="Claimed.")),
+    "stop": run_hooks("Stop", {"stop_hook_active": False}),
+}
+if any(hooks["stop"]):  # sent back: Claude Code would go on; this one only stops again
+    hooks["stop"] += run_hooks("Stop", {"stop_hook_active": True})
+if "--settings" in args:
+    emit(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": "hooks " + json.dumps(hooks)}]},
+        }
+    )
 emit(
     {
         "type": "result",

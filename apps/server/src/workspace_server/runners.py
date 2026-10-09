@@ -13,6 +13,9 @@ does into the page, and keeps everything a run touches on a short leash:
   revoked the moment the run ends (the MCP configuration holding it is deleted too)
 - a run that stops before finishing leaves a blocker on the task saying why, instead of a
   claim that only expires when its lease runs out
+- it carries a contract (anchoring.py): its prompt opens with it, Claude Code's hooks from a
+  settings file made for the run keep it in scope and bring it back as the run goes, the
+  app's MCP replies repeat its line, and what the hooks did goes into the run's record
 
 A run of a skill that makes files (a PDF, a deck) works in a folder of its own under the
 outputs folder instead: it holds copies of the skill's files and of the skills it depends on,
@@ -50,6 +53,7 @@ from workspace_core.errors import Conflict, NotFound
 from workspace_core.ids import new_id
 from workspace_core.workspace import Workspace
 
+from . import anchoring
 from .templates import TemplateLibrary
 
 log = logging.getLogger(__name__)
@@ -151,6 +155,8 @@ class LocalRun:
     events: list[dict[str, Any]] = field(default_factory=list)
     folder: str | None = None  # where a run that makes files worked, and what it left there
     made: list[dict[str, Any]] = field(default_factory=list)
+    contract: dict[str, Any] | None = None  # what it was for and held to (anchoring.py)
+    checks: dict[str, Any] | None = None  # re-anchors, blocked calls, the finishing check
 
     def to_dict(self, after: int = 0) -> dict[str, Any]:
         data = asdict(self)
@@ -355,6 +361,7 @@ class Runners:
         self.resolve = resolve
         self.popen = popen
         self.runs: dict[str, LocalRun] = {}
+        self.contracts = anchoring.Contracts()  # the app's MCP replies repeat each run's line
         self._procs: dict[str, Any] = {}
         self._lock = threading.Lock()
         self._status: dict[str, tuple[float, RunnerStatus]] = {}
@@ -542,6 +549,16 @@ class Runners:
                     text=f"It works in {run.folder} with file and Python tools; what it makes "
                     "stays there.",
                 )
+            run.contract = anchoring.build(
+                self.ws,
+                task,
+                run_id=run.id,
+                minutes=int(self.timeout // 60),
+                folder=run.folder,
+                tools=FILE_TOOLS if copying else (),
+            )
+            argv += ["--settings", anchoring.write(run.contract, folder)]
+            self.contracts.register(connection.credential.id, run.contract)
             proc = self.popen(
                 argv,
                 cwd=run.folder or folder,
@@ -564,7 +581,8 @@ class Runners:
         self._procs[run.id] = proc
         run.status = "running"
         self._event(who, "runner.started", run, {"runner": spec.id})
-        prompt = self.templates.run_prompt(self.ws.info().name, task.id)
+        opening = anchoring.prompt_block(run.contract) + "\n" if run.contract else ""
+        prompt = opening + self.templates.run_prompt(self.ws.info().name, task.id)
         threading.Thread(target=self._feed, args=(proc, prompt), daemon=True).start()
         errors = threading.Thread(target=self._read, args=(run, proc.stderr, "stderr"), daemon=True)
         errors.start()
@@ -767,6 +785,9 @@ class Runners:
             code = proc.wait()
             if errors is not None:
                 errors.join(timeout=10)  # its last lines on stderr belong to this run's story
+            if run.contract is not None:
+                run.checks = anchoring.read_events(folder)
+                self._add(run, "checks", checks=run.checks, text=anchoring.summary(run.checks))
             if run.folder:
                 try:
                     self._collect(run, copies or {})
@@ -792,7 +813,12 @@ class Runners:
                 run.status = ended  # last: a finished run is complete when anyone sees it finished
                 self._procs.pop(run.id, None)
         try:
-            self._event(who, "runner.finished", run, {"status": ended, "exit_code": code})
+            self._event(
+                who,
+                "runner.finished",
+                run,
+                {"status": ended, "exit_code": code, "checks": run.checks},
+            )
         except Exception:
             log.warning("Could not record the end of %s", run.id, exc_info=True)
 
@@ -888,6 +914,7 @@ class Runners:
         )
 
     def _cleanup(self, who: Principal, run: LocalRun, credential_id: str, folder: str) -> None:
+        self.contracts.forget(credential_id)
         try:
             self.ws.actors.revoke(who, credential_id)
         finally:

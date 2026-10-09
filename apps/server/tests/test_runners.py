@@ -299,3 +299,48 @@ def test_a_reconcile_request_runs_from_this_computer(owner):
 def test_any_client_can_run_a_task_from_its_prompt(owner, ready_task):
     prompt = owner.ok(owner.get(f"/api/tasks/{ready_task['id']}/prompt"))["prompt"]
     assert ready_task["id"] in prompt and "Test workspace" in prompt and "claim_task" in prompt
+
+
+def test_a_run_carries_its_contract_in_its_prompt_its_hooks_and_its_record(owner, ready_task):
+    from workspace_server.anchoring import FINISH_CHECK
+
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    done = finish(owner, run["id"])
+    seen = report(done)
+    assert seen["prompt"].startswith("## Run contract")
+    assert "Objective: Draft launch notes" in seen["prompt"] and ready_task["id"] in seen["prompt"]
+    argv = seen["argv"]
+    assert "--settings" in argv and "--restricted" in argv
+    assert done["contract"]["objective"].startswith("Draft launch notes")
+    assert done["contract"]["budget"]["steps"] == 60
+    hooks = next(
+        json.loads(e["text"][len("hooks ") :])
+        for e in done["events"]
+        if e["kind"] == "text" and e["text"].startswith("hooks ")
+    )
+    assert hooks["pre"] == [""] and hooks["post"] == [""]  # in scope, nothing to re-anchor yet
+    sent_back = json.loads(hooks["stop"][0])
+    assert sent_back["decision"] == "block" and "complete_task" in sent_back["reason"]
+    assert hooks["stop"][1] == ""  # the second time it may stop
+    checks = done["checks"]
+    assert checks["steps"] == 1 and checks["blocked"] == []
+    assert checks["gate"] == {"passed": False, "missing": [FINISH_CHECK], "sent_back": False}
+    line = next(e for e in done["events"] if e["kind"] == "checks")
+    assert "did not finish as its contract asks" in line["text"]
+
+
+def test_the_apps_replies_to_a_run_repeat_its_contract(owner, ready_task, monkeypatch):
+    monkeypatch.setenv("FAKE_CLI_MODE", "hang")
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    seen = wait_for_report(owner, run["id"])
+    server = seen["config"]["mcpServers"]["contxt-app"]
+    token = server["headers"]["Authorization"].removeprefix("Bearer ")
+    texts = []
+    for _ in range(5):
+        reply = mcp(owner.client, token, "tools/call", {"name": "get_due_tasks", "arguments": {}})
+        texts.append(reply.json()["result"]["content"][0]["text"])
+    assert "Run contract: Draft launch notes" in texts[0]
+    assert all("Run contract" not in text for text in texts[1:4])
+    assert "Run contract: Draft launch notes" in texts[4]
+    owner.ok(owner.post(f"/api/runners/runs/{run['id']}/cancel"))
+    finish(owner, run["id"])

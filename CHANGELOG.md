@@ -65,6 +65,12 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   about a project gets the project's newest dated values too. A newer dated value is an
   update, not a disagreement, and Catch up offers to retire the older one. Past its last day,
   a note is flagged for a check. The knowledge agent dates the figures it proposes.
+- Run contracts: every AI work run the app starts carries a contract (its objective, checks,
+  must-holds, scope and budget) that opens its prompt; Claude Code's own hooks, from a
+  settings file made for the run, refuse what is out of scope or over budget, bring the
+  contract back as the run goes (and a must-hold's line as soon as its domain shows up), and
+  send back a run that never finished; the app's MCP replies repeat the contract's line; the
+  run's record keeps what the hooks did.
 - Safeguard evaluations (`scripts/safeguards_eval.py`): must-hold recall with decoys and
   held-out requests, disagreement detection on labeled and held-out pairs (with your own
   AI's verdicts, `--ask-model`), false alarms on the demo Brains, and dated values.

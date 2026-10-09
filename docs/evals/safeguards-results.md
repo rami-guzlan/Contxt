@@ -122,3 +122,36 @@ gives a figure of one kind; a value given without a figure ("almost done") or sp
 several sentences is not matched. Undated facts that disagree are still a disagreement for the
 baseline check, not history. The spec's second check for this phase, rerunning the film's
 three-lane test, was not rerun here.
+
+## Phase D: run anchoring
+
+Work (multi-step workflows) is not built yet, so anchoring went into the runs the app already
+starts: AI work on a task through Claude Code on this computer (finding what to remember,
+reconciling, merging, running a skill that makes files).
+
+- **A contract per run**: the objective (the task's title and purpose), its checks (claim
+  first, propose with the tool the task names, finish with complete_task or a blocker, publish
+  nothing), the must-holds a brief for the task would carry, its scope (the one folder it may
+  touch when it works with files) and its budget (60 tool calls and the run's time limit). The
+  run's prompt opens with it, and the run's record keeps it.
+- **Claude Code's own hooks**, from a settings file made for the run and passed with
+  `--settings` (`brainkit/hooks/run.py`). Before each tool call, a file outside the run's
+  folder, a guarded shell command, or any call past the budget except the finishing ones is
+  refused. After each tool call, the contract comes back every 8 calls, and a must-hold's line
+  as soon as a tool's input or output uses one of its trigger words. When the run would stop
+  without finishing, it is sent back once with what is missing.
+- **The app's MCP replies** to a run end with the contract's line on the first call and every
+  fifth, whatever CLI makes the calls.
+- **The record**: tool calls, re-anchors, what was blocked and the finishing check, read from
+  the hooks when the run ends, shown as one line in the run's console and kept on the run.
+
+Checked on this computer with Claude Code 2.1.272: in `--restricted` mode it runs PreToolUse,
+PostToolUse and Stop hooks from a settings file passed with `--settings`, and the context a
+PostToolUse hook adds reaches the model (it quoted the added line back).
+
+Not measured, and not built: the spec's drift set (anchored runs against unanchored ones on
+the same tasks) needs Work's multi-step runs to mean something, and so do drift judged by
+meaning and a model judging the output at the gate. Today's runs are a handful of tool calls,
+so the cadence re-anchor rarely fires; the scope checks, the must-hold line and the finishing
+gate are what matter now. Whether a run's output breaks a must-hold is not checked by a
+model yet; the line is put in front of it at the moment its domain shows up.

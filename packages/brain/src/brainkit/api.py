@@ -373,6 +373,14 @@ class Brain:
                     if row["id"] in set(data.get("section_ids") or [])]
         focus_id = data.get("focus_id")
         found = st.index.focuses.get(focus_id) if focus_id else None
+        # The must-holds in play for the request (a run's contract carries them): each line and
+        # the words that bring its domain into play.
+        must = []
+        for row in trace.get("must_holds") or []:
+            note = st.index.note(row.get("id"))
+            if note is not None:
+                must.append({"id": note.id, "title": note.title, "line": note.must_text,
+                             "triggers": list(note.triggers), "why": row.get("why") or ""})
         text = result.text.split("## Continuity", 1)[0].rstrip() + "\n"
         return Result(text, {
             "request": str(request), "mode": data.get("mode"),
@@ -380,7 +388,7 @@ class Brain:
             "project": ({"id": found.id, "title": found.title} if found is not None else None),
             "procedure": data.get("skill_id"), "candidates": data.get("candidates") or [],
             "skill_included": data.get("skill_included"),
-            "notes": notes, "sections": sections,
+            "notes": notes, "sections": sections, "must_holds": must,
             "related": data.get("related_ids") or [], "log": trace.get("route_log") or []})
 
     # ------------------------------------------------------------------ follow-ups
