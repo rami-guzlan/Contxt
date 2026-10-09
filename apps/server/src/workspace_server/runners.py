@@ -76,6 +76,9 @@ FILE_ALLOWED = (
     "Bash(python3:*)",
     "Bash(py:*)",
 )
+# What the external challenger may use besides the workspace's tools: reading the web, and
+# nothing else (no files, no shell). Only its runs (task template "challenge") get these.
+CHALLENGER_TOOLS = ("WebSearch", "WebFetch")
 SKIPPED = shutil.ignore_patterns("__pycache__", "*.pyc", ".git", ".DS_Store")
 # Added to Claude Code's own instructions when it answers with no tools at all: those describe
 # tools, and without this line it writes out calls it cannot make instead of the answer.
@@ -483,6 +486,7 @@ class Runners:
         copying: list[tuple[str, str]] = []
         if task.template == "skill" and about.get("files"):
             copying = self._plan(who, str(about.get("name") or ""))
+        web = CHALLENGER_TOOLS if task.template == "challenge" else ()
         task_id = task.id
 
         run = LocalRun(
@@ -524,7 +528,7 @@ class Runners:
             "--verbose",
             "--restricted",
             "--tools",
-            ",".join(FILE_TOOLS) if copying else "",
+            ",".join(FILE_TOOLS) if copying else ",".join(web),
             "--mcp-config",
             config,
             "--strict-mcp-config",
@@ -532,7 +536,7 @@ class Runners:
             "dontAsk",
             "--allowedTools",
             f"mcp__{SERVER_NAME}",
-            *(FILE_ALLOWED if copying else ()),
+            *(FILE_ALLOWED if copying else web),
             "--no-session-persistence",
         ]
         with self._lock:
@@ -555,7 +559,7 @@ class Runners:
                 run_id=run.id,
                 minutes=int(self.timeout // 60),
                 folder=run.folder,
-                tools=FILE_TOOLS if copying else (),
+                tools=FILE_TOOLS if copying else web,
             )
             argv += ["--settings", anchoring.write(run.contract, folder)]
             self.contracts.register(connection.credential.id, run.contract)

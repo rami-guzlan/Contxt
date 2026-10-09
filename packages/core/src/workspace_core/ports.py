@@ -505,6 +505,22 @@ class BrainPort(Protocol):
         """Revisions the owner scheduled whose time has come go in: {"applied", "returned"}."""
         ...
 
+    # ---- dissent: challenges, the weekly cross-check, the external challenger's targets
+
+    def challenge(
+        self, note_id: str, *, claim: str, evidence: str, source: str, proposer: str
+    ) -> BrainProposal:
+        """Challenge a note with a claim and its evidence: it waits for review."""
+        ...
+
+    def cross_check(self) -> list[dict[str, Any]]:
+        """Beliefs something in the Brain says otherwise about, each with its evidence."""
+        ...
+
+    def challenge_targets(self, limit: int = 3) -> list[dict[str, Any]]:
+        """The beliefs the external challenger tests this week, each as a claim only."""
+        ...
+
 
 class NoBrain:
     """The workspace without long-term context. Nothing breaks; nothing is remembered."""
@@ -717,6 +733,15 @@ class NoBrain:
 
     def apply_scheduled(self) -> dict[str, Any]:
         return {"applied": [], "returned": []}
+
+    def challenge(self, note_id: str, **_: Any) -> BrainProposal:
+        raise Conflict("This workspace has no Brain to challenge.")
+
+    def cross_check(self) -> list[dict[str, Any]]:
+        return []
+
+    def challenge_targets(self, limit: int = 3) -> list[dict[str, Any]]:
+        return []
 
 
 class TextExtractor(Protocol):

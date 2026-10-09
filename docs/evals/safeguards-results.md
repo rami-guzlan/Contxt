@@ -155,3 +155,52 @@ meaning and a model judging the output at the gate. Today's runs are a handful o
 so the cadence re-anchor rarely fires; the scope checks, the must-hold line and the finishing
 gate are what matter now. Whether a run's output breaks a must-hold is not checked by a
 model yet; the line is put in front of it at the moment its domain shows up.
+
+## Phase E: dissent and challenge
+
+- **Challenges are governed proposals** (`note.challenge`): a note, a claim, its evidence and
+  its source, from any AI (`challenge_note` on the Brain's server, `propose_challenge` on the
+  app's). They always wait. Accepted, the note is disputed and keeps the challenge as its other
+  view; turned down, the same claim on the same evidence is refused, and new evidence is
+  taken.
+- **Briefs**: a disputed note with an other view brings it along ("Contested: ...") into
+  planning, strategy and decision work, and stays a flag for a lookup (tested both ways).
+- **The internal cross-check**, on by default: the notes AIs use most and the baselines
+  longest since checked, read against other notes, quoted sections of filed documents, and
+  proposals that say otherwise, waiting or turned down in the last 90 days. Words and figures
+  read every pair; the owner's own AI reads three pairs a week, closest first, and its verdict
+  wins. Catch up shows at most one belief a week; settling it (still right, or disputed) keeps
+  that finding away for 90 days.
+- **The external challenger** is offered once the Brain has 25 baselines or a baseline comes
+  back stale, and never runs until it is turned on. Then, once a week, Claude Code gets the
+  three highest-impact beliefs, each only as a claim under test (its task's packet carries no
+  Brain context), with the web as its only extra tool, under a run contract, and what it finds
+  comes back as challenges.
+
+Measured on eight wrong beliefs seeded into the four demo Brains (an outdated price, version,
+schedule or amount, a reversed decision or rule), each with evidence elsewhere in the same
+Brain (another note, a waiting proposal, or one the owner turned down). A case succeeds when the
+belief is among the first two the cross-check shows (two weekly cycles), with that evidence:
+
+| | Seeded beliefs found in two weeks (8) |
+| --- | --- |
+| Words and figures alone | 6 (75%) |
+| With your own AI's weekly pairs (six in two weeks) | 8 (100%) |
+
+- The two that words and figures miss need meaning: a send day that moved (days are not
+  figures) and a rule reversed in other words. The model read both.
+- Two choices were made while measuring, both general: findings are ranked by baselines first,
+  then the most used, then the longest since checked (the spec's order; ties had fallen to
+  alphabetical order, which put one seeded belief third), and each belief's evidence is read
+  closest first. The seeded beliefs are dated months back, since an outdated belief is an old
+  one. In every case the seeded evidence was the closest text to its belief, so the model read
+  it first by construction: real evidence will often be less obvious.
+- On the demo Brains as they are, the cross-check shows 4 findings by words and figures
+  (personal 1, programmer 2, knowledge company 1), each one a person would clear for nothing;
+  in the model run, its pairs read those as extending or agreeing, which clears them.
+- The model run (October 9, 2026, Claude Code 2.1.272) is saved in
+  `docs/evals/seeded-beliefs-model.json`; the tests read it, and score words and figures live.
+- Not measured: the external challenger (the seeded beliefs are invented, so the web cannot
+  speak to them; it needs real beliefs to test). The team edition's parts (department scopes,
+  dissent from every member's AI, monoculture signals, two-person approval) belong to the
+  private repository.

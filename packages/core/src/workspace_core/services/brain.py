@@ -625,6 +625,50 @@ class Brain:
             )
         return entry
 
+    def challenge(
+        self,
+        who: Principal,
+        *,
+        note_id: str,
+        claim: str,
+        evidence: str,
+        source: str = "",
+        run_id: str | None = None,
+    ) -> BrainProposal:
+        """Challenge an entry: a claim, its evidence and where it comes from. It waits for a
+        person; accepted, the entry is disputed and keeps the challenge as its other view."""
+        who.require("brain.propose")
+        claim, evidence = " ".join(str(claim or "").split()), str(evidence or "").strip()
+        source = " ".join(str(source or "").split())
+        if not ENTRY_ID.match(str(note_id or "")):
+            raise ValidationFailed("Name the entry to challenge.", field="note_id")
+        if not claim or len(claim) > 600:
+            raise ValidationFailed("Say the claim in at most 600 characters.", field="claim")
+        if not evidence or len(evidence) > 2000:
+            raise ValidationFailed(
+                "Give the evidence in at most 2,000 characters.", field="evidence"
+            )
+        result = self.rt.brain.challenge(
+            str(note_id),
+            claim=claim,
+            evidence=evidence,
+            source=source[:300],
+            proposer=proposer(who),
+        )
+        with self.rt.write() as tx:
+            tx.emit(
+                "brain.challenged",
+                actor_id=who.actor_id,
+                subject_type="brain_entry",
+                subject_id=str(note_id),
+                data={
+                    "status": result.status,
+                    "proposal": result.proposal_id,
+                    **({"run_id": run_id} if run_id else {}),
+                },
+            )
+        return result
+
     def proposals(self, who: Principal) -> list[dict[str, Any]]:
         who.require("brain.read")
         return self.rt.brain.proposals()

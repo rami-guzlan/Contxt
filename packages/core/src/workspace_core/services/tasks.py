@@ -29,7 +29,13 @@ from .runtime import Runtime
 REVIEW_POLICIES = ("required", "auto")
 PIN_TYPES = ("context_item", "artifact", "brain_entry", "brain_project", "brain_file")
 # The tools a task can name as the way its results come back, instead of artifacts.
-RESULT_TOOLS = ("propose_brain_entry", "save_digest", "save_skill_result", "propose_brain_skill")
+RESULT_TOOLS = (
+    "propose_brain_entry",
+    "save_digest",
+    "save_skill_result",
+    "propose_brain_skill",
+    "propose_challenge",  # the external challenger's runs
+)
 DEFINITION_FIELDS = (
     "project_id",
     "title",

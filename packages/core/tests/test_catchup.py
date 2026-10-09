@@ -324,3 +324,61 @@ def test_a_value_with_a_newer_one_is_offered_for_retirement(ws, owner, brain):
     (card,) = [c for c in plan["upkeep"] if c["type"] == "older"]
     assert (card["older"]["id"], card["newer"]["id"]) == ("mrr-august", "mrr-september")
     assert card["older_as_of"] == "2026-08-31" and card["key"] == "older:mrr-august|mrr-september"
+
+
+def test_a_challenge_is_a_card_of_its_own(ws, owner, brain):
+    made = propose(ws, owner, "Voice guide is out of date", kind="rule")
+    brain.proposed[-1]["kind"] = "note.challenge"  # as the real inbox names a challenge
+    brain.analysis[made.proposal_id] = {
+        "challenged": {"id": "voice-guide", "title": "Voice guide", "body": "Write plainly."},
+        "challenge": {"claim": "We now write in a playful voice.", "evidence": "The 2026 brief."},
+    }
+    plan = ws.catch_up.plan(owner)
+    (card,) = plan["judgment"]
+    assert (card["type"], card["tag"]) == ("challenge", "A challenge to your note")
+    assert card["with"]["id"] == "voice-guide"
+    assert card["actions"] == ["dispute", "keep_note", "revise_note", "later"]
+    assert "We now write in a playful voice." in card["why"]
+
+
+def test_the_cross_check_shows_one_belief_a_week(ws, owner, brain):
+    finding = {
+        "key": "belief:voice-guide",
+        "id": "voice-guide",
+        "title": "Voice guide",
+        "body": "Write plainly. No hype.",
+        "why": "one rules out what the other allows",
+        "found_by": "words and figures",
+        "baseline": "it is a rule",
+        "evidence": {"kind": "proposal", "id": "p9", "title": "Hype", "text": "Use hype."},
+    }
+    brain.findings = [finding, dict(finding, key="belief:other", id="other")]
+    plan = ws.catch_up.plan(owner)
+    (card,) = [c for c in plan["upkeep"] if c["type"] == "belief"]
+    assert card["id"] == "voice-guide" and card["evidence"]["kind"] == "proposal"
+    ws.brain.decide_many(
+        owner,
+        [{"action": "verify", "entry_id": "voice-guide"}],
+        source={"catch_up": "belief:voice-guide"},
+    )
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "belief"]  # one a week
+    brain.policy["cross_check"] = False
+    brain.points.clear()
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "belief"]  # turned off
+
+
+def test_the_challenger_is_offered_once_there_are_many_baselines(ws, owner, brain, monkeypatch):
+    from workspace_core.services import catchup
+
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "challenger"]
+    monkeypatch.setattr(catchup, "CHALLENGER_BASELINES", 1)
+    brain.baselines = {"voice-guide": "it is a rule"}
+    plan = ws.catch_up.plan(owner)
+    (card,) = [c for c in plan["upkeep"] if c["type"] == "challenger"]
+    assert card["key"] == "offer:challenger" and card["baselines"] == 1
+    brain.policy["challenger"] = True
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "challenger"]

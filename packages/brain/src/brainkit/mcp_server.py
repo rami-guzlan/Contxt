@@ -83,6 +83,21 @@ AGENT_TOOLS = [
          "query": {"type": "string", "description": "What you need, in a few words."},
          "limit": {"type": "integer", "description": "How many hits (default 8)."},
          "session_id": _STR}, "required": ["query"]}},
+    {"name": "challenge_note",
+     "description": "When the person says, or evidence you found shows, that a note the Brain "
+                    "holds is wrong or out of date, raise a challenge: the note's id, what you "
+                    "claim instead, the evidence and where it comes from. It waits for the "
+                    "owner and never changes the note; a challenge turned down before is not "
+                    "taken again without new evidence.",
+     "inputSchema": {"type": "object", "properties": {
+         "note_id": {"type": "string", "description": "The note challenged."},
+         "claim": {"type": "string", "description": "What you claim instead, in one or two "
+                   "sentences."},
+         "evidence": {"type": "string", "description": "The evidence for it, quoted or "
+                      "summarized."},
+         "source": {"type": "string", "description": "Where the evidence comes from: a file, "
+                    "a page, a person, a date."},
+         "session_id": _STR}, "required": ["note_id", "claim", "evidence"]}},
     {"name": "propose_note",
      "description": "Capture durable knowledge as it comes up, without being asked: a rule, "
                     "correction, preference, decision or changed fact the person states that "
@@ -254,6 +269,9 @@ HANDLERS = {
     "get_skill": lambda b, a: b.skill(a.get("name"), partition=a.get("partition"),
                                       session_id=a.get("session_id")),
     "get_reference": lambda b, a: b.reference(a.get("path"), session_id=a.get("session_id")),
+    "challenge_note": lambda b, a: b.challenge(
+        a.get("note_id"), claim=a.get("claim"), evidence=a.get("evidence"),
+        source=a.get("source") or "", session_id=a.get("session_id")),
     "propose_note": lambda b, a: b.propose(
         area=a.get("area") or a.get("layer"), topic=a.get("topic"), text=a.get("text"),
         scope=a.get("scope"), load=a.get("load") or None,

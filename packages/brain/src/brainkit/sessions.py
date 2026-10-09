@@ -396,11 +396,12 @@ class Ledger:
             row = conn.execute("SELECT COUNT(*) AS n, MAX(at) AS at FROM verdicts").fetchone()
         return f"{row['n']}:{row['at'] or ''}"
 
-    def verdicts_since(self, since: str) -> int:
-        """Pairs a model was asked about since an ISO moment: what a daily cap counts."""
+    def verdicts_since(self, since: str, *, prefix: str = "") -> int:
+        """Pairs a model was asked about since an ISO moment (those whose key starts with
+        `prefix`): what a cap counts."""
         with self._connect() as conn:
-            row = conn.execute("SELECT COUNT(*) AS n FROM verdicts WHERE at >= ?",
-                               (since,)).fetchone()
+            row = conn.execute("SELECT COUNT(*) AS n FROM verdicts WHERE at >= ? AND key LIKE ?",
+                               (since, prefix.replace("%", "") + "%")).fetchone()
         return int(row["n"] or 0)
 
     def handouts(self, kind: str, item: str) -> list[dict]:

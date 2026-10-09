@@ -120,12 +120,16 @@ def main(argv=None) -> int:
                                      lambda a, b: tension_module.tension(b, a))
              for label, pairs in sets.items()} if saved else {}
     ordinary = se.held_ordinary(BRAINS)
+    seeded = se.run_seeded_beliefs(
+        BRAINS, se.load_spec(os.path.join(EVALS, "seeded_beliefs.json"))["cases"]
+    )
+    noise = se.cross_check_noise(BRAINS)
     time = se.run_time_cases(BRAINS, se.load_spec(os.path.join(EVALS, "time_cases.json"))["cases"],
                              models_dir=args.models)
     results = {"settings": {"relevance_only": args.relevance_only,
                             "semantic": bool(args.models)},
                "must_holds": must, "tension": tension, "model": model,
-               "ordinary": ordinary, "time": time}
+               "ordinary": ordinary, "seeded": seeded, "noise": noise, "time": time}
 
     matching = "words and meaning" if args.models else "words only"
     filed = "relevance only (set to on-demand)" if args.relevance_only else "as filed"
@@ -164,6 +168,13 @@ def main(argv=None) -> int:
     lines += [f"Ordinary notes held by checks 1 and 2: {len(ordinary['held'])} of "
               f"{ordinary['notes']} ({ordinary['rate']:.0%}), each demo note proposed against "
               "the rest of its Brain.", ""]
+    lines += ["## The weekly cross-check", "",
+              f"Seeded wrong beliefs shown with their evidence within two weekly cycles, by "
+              f"words and figures alone: {seeded['score']:.0%} of {len(seeded['cases'])}.", ""]
+    lines += [f"- {c['id']} ({c['what']}, evidence in a {c['evidence']}): "
+              + ("ok" if c["ok"] else "missed") for c in seeded["cases"]]
+    lines += ["", "Shown on the demo Brains as they are, with nothing seeded: "
+              + ", ".join(f"{name} {len(found)}" for name, found in noise.items()) + ".", ""]
     lines += ["## Dated values", "",
               f"Newest value delivered without an unmarked older one: {time['score']:.0%} "
               f"of {len(time['cases'])} cases.", ""]

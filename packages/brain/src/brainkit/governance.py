@@ -647,6 +647,9 @@ def inbox(brain, **_ignored):
             extra.update(uploads.preview(brain, proposal))
         if proposal.kind.startswith("skill."):
             route_key = f"skills/{proposal.target.get('category')}/{proposal.target.get('name')}"
+        if proposal.kind == "note.challenge":
+            challenged = st.index.note(str(proposal.target.get("id") or ""))
+            route_key = challenged.route_key if challenged is not None else ""
         rows.append({
             "id": proposal.id, "kind": proposal.kind, "scope": proposal.scope,
             "route_key": route_key, **extra,
@@ -692,6 +695,9 @@ def approve(brain, proposal_id, *, actor=None, edits=None, body=None, reason="")
     proposal = st.snapshot.proposals.get(str(proposal_id))
     if proposal is None:
         return _result(f"No pending proposal {proposal_id!r}.", {"status": "missing"}, True)
+    if proposal.kind == "note.challenge":
+        from . import dissent
+        return dissent.apply(brain, proposal, actor=who)
     target = dict(proposal.target)
     for key, value in (edits or {}).items():
         if key in RESERVED or key == "id":
@@ -1385,6 +1391,11 @@ POLICY = {
     # The owner's own AI reads possible disagreements side by side (check 3), when one is
     # connected; on by default.
     "model_checks": ("governance", "model_checks", "bool"),
+    # Once a week, the most used notes and the oldest baselines are read against what the
+    # Brain holds (dissent.py); on by default.
+    "cross_check": ("governance", "cross_check", "bool"),
+    # The external challenger argues against a few beliefs each week; off until turned on.
+    "challenger": ("governance", "challenger", "bool"),
 }
 
 
@@ -1410,6 +1421,8 @@ def policies(brain) -> dict:
         "capture": capture_policy(config),
         "revision_delay": delays(config),
         "model_checks": bool(data["governance"].get("model_checks", True)),
+        "cross_check": bool(data["governance"].get("cross_check", True)),
+        "challenger": bool(data["governance"].get("challenger", False)),
         "capture_types": list(CAPTURE_TYPES),
         "capture_origins": list(CAPTURE_ORIGINS),
     }

@@ -236,6 +236,56 @@ describe("catch up", () => {
     });
   });
 
+  it("settles a challenge to a note, and looks at one belief a week", async () => {
+    const challenge: JudgmentCard = {
+      ...judgment,
+      key: "proposal:c1",
+      proposal_id: "c1",
+      type: "challenge",
+      tag: "A challenge to your note",
+      title: "Web project length",
+      body: "Projects now run ten to twelve weeks.\n\nEvidence: the 2026 tracker.",
+      why: "Says your note “Web project length” is wrong or out of date: Projects now run ten to twelve weeks.",
+      with: { id: "web-length", title: "Web project length", body: "Projects run six to eight weeks.", score: null },
+      recommend: { action: "dispute", reason: "It comes with evidence." },
+      actions: ["dispute", "keep_note", "revise_note", "later"],
+    };
+    const belief = {
+      key: "belief:web-length",
+      type: "belief" as const,
+      id: "web-length",
+      title: "Web project length",
+      summary: "Projects run six to eight weeks.",
+      why: "different figures for project, week",
+      found_by: "your AI",
+      baseline: "you marked it a baseline",
+      evidence: { kind: "note" as const, id: "tracker", title: "Tracker", text: "Eleven weeks on average." },
+    };
+    const calls = mockApi({
+      "GET /api/brain/catch-up": plan({ judgment: [challenge], quick: [], upkeep: [belief] }),
+      "POST /api/brain/decisions": decided,
+      "POST /api/brain/catch-up/dismiss": {},
+      "POST /api/brain/catch-up/seen": {},
+    });
+    const user = userEvent.setup();
+    renderAt(<CatchUpPage />, { path: "/catch-up", route: "/catch-up" });
+    await user.click(await screen.findByRole("button", { name: "Start" }));
+    expect(await screen.findByText("A challenge to your note")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Mark my note disputed" }));
+    await waitFor(() => expect(calls.filter((c) => c.path === "/api/brain/decisions")).toHaveLength(1));
+    expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toMatchObject({ decisions: [{ action: "approve", proposal_id: "c1" }] });
+
+    expect(await screen.findByText("One belief to look at")).toBeInTheDocument();
+    expect(screen.getByText(/Eleven weeks on average\./)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Still right" }));
+    await waitFor(() => expect(calls.filter((c) => c.path === "/api/brain/decisions")).toHaveLength(2));
+    expect(calls.filter((c) => c.path === "/api/brain/decisions")[1]?.body).toMatchObject({
+      decisions: [{ action: "verify", entry_id: "web-length" }],
+      source: { catch_up: "belief:web-length" },
+    });
+    expect(calls.find((c) => c.path === "/api/brain/catch-up/dismiss")?.body).toEqual({ key: "belief:web-length", days: 90 });
+  });
+
   it("lists a scheduled revision with a way to cancel it", async () => {
     const calls = mockApi({
       "GET /api/brain/catch-up": plan({

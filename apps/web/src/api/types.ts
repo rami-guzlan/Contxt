@@ -524,6 +524,10 @@ export interface BrainPolicies {
   revision_delay?: boolean;
   /** Your own AI reads possible disagreements side by side, when one is connected. */
   model_checks?: boolean;
+  /** Once a week, your most used notes and oldest baselines are read against the rest. */
+  cross_check?: boolean;
+  /** The external challenger argues against a few beliefs each week; off until you turn it on. */
+  challenger?: boolean;
 }
 
 export interface DecisionOutcome {
@@ -1102,6 +1106,7 @@ export interface Serves {
 }
 
 export type CardType =
+  | "challenge"
   | "baseline"
   | "went_in"
   | "conflict"
@@ -1126,7 +1131,10 @@ export type CardAction =
   | "compare"
   | "revise"
   | "both_hold"
-  | "undo";
+  | "undo"
+  | "dispute"
+  | "keep_note"
+  | "revise_note";
 
 /** What your own AI said after reading two notes side by side (check 3). */
 export interface ModelVerdict {
@@ -1232,7 +1240,19 @@ export type UpkeepCard =
   | { key: string; type: "unused"; count: number; days: number; items: { id: string; title: string; last_used: string | null; topic: string }[] }
   | { key: string; type: "musthold"; id: string; title: string; summary: string; area: string; area_label: string; triggers: string[]; recommend: Advice }
   | { key: string; type: "spot"; id: string; title: string; summary: string; why: string; uses: number; last_used: string | null }
-  | { key: string; type: "older"; older: UpkeepSide; newer: UpkeepSide; older_as_of: string | null; newer_as_of: string | null };
+  | { key: string; type: "older"; older: UpkeepSide; newer: UpkeepSide; older_as_of: string | null; newer_as_of: string | null }
+  | {
+      key: string;
+      type: "belief";
+      id: string;
+      title: string;
+      summary: string;
+      why: string;
+      found_by: string;
+      baseline: string;
+      evidence: { kind: "note" | "file" | "proposal" | "rejected"; id: string; title: string; text: string };
+    }
+  | { key: string; type: "challenger"; baselines: number; stale: boolean };
 
 /** After a run of the same yes: let this kind go straight in? */
 export interface Offer {

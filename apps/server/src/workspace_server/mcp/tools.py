@@ -273,6 +273,20 @@ def propose_brain_entry(
     return result.message, {"proposal": asdict(result)}, result.status == "refused"
 
 
+def propose_challenge(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    result = ws.brain.challenge(
+        who,
+        note_id=str(_str(args, "note_id", True)),
+        claim=str(_str(args, "claim", True)),
+        evidence=str(_str(args, "evidence", True)),
+        source=str(args.get("source") or ""),
+        run_id=_str(args, "run_id"),
+    )
+    return result.message, {"proposal": asdict(result)}, result.status == "refused"
+
+
 def save_digest(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     digest = ws.captures.save_digest(
         who,
@@ -623,6 +637,25 @@ TOOLS: dict[str, Tool] = {
                 ["title", "statement"],
             ),
             propose_brain_entry,
+            "brain.propose",
+        ),
+        Tool(
+            "propose_challenge",
+            "Challenge an entry the Brain holds when you found evidence that it is wrong or out "
+            "of date: the entry's id, what the evidence says instead, the evidence quoted and "
+            "its source (a link and its date, a file). It waits for a person and never changes "
+            "the entry; a challenge turned down before is not taken again on the same evidence.",
+            _obj(
+                {
+                    "note_id": {"type": "string", "description": "The entry challenged."},
+                    "claim": {"type": "string", "description": "What the evidence says."},
+                    "evidence": {"type": "string", "description": "The evidence, quoted."},
+                    "source": {"type": "string", "description": "Where it comes from."},
+                    "run_id": RUN,
+                },
+                ["note_id", "claim", "evidence"],
+            ),
+            propose_challenge,
             "brain.propose",
         ),
         Tool(

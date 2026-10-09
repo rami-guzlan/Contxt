@@ -88,6 +88,8 @@ def test_a_revision_of_a_rule_needs_a_reason_and_the_journal_keeps_it(owner, mod
 def test_the_owners_ai_reads_what_may_disagree_and_catch_up_shows_it(
     owner, model, runtime, monkeypatch
 ):
+    # The weekly cross-check's own pairs (test_dissent.py) would come after these.
+    owner.ok(owner.put("/api/brain/policies", json={"cross_check": False}))
     made = propose(
         model,
         title="Launch invoices",

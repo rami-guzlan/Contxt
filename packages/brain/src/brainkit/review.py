@@ -227,6 +227,7 @@ def analyze(brain, **_ignored):
                "route_key": route_key, "placement": str(target.get("placement") or "chosen"),
                "change": ("new" if kind == "note.create" else "update" if kind == "note.update"
                           else "retire" if kind == "note.archive"
+                          else "challenge" if kind == "note.challenge"
                           else "file" if kind == "file.add" else "skill"),
                "replaces": [], "conflicts": [], "overlaps": [], "duplicates": [],
                "tensions": [], "updates": [], "baseline": None, "checks": None,
@@ -265,6 +266,15 @@ def analyze(brain, **_ignored):
                 row["problems"].append(f"Its text {flag}.")
         if kind == "file.add" and proposal.meta.get("replaces"):
             row["replaces_file"] = str(proposal.meta["replaces"])
+        if kind == "note.challenge":
+            challenged = index.note(str(target.get("id") or ""), include_archived=True)
+            row["challenged"] = (_entry(challenged) if challenged is not None
+                                 else _missing(str(target.get("id") or "")))
+            row["challenge"] = {k: str(target.get(k) or "")
+                                for k in ("claim", "evidence", "source")}
+            row["route_key"] = challenged.route_key if challenged is not None else ""
+            if challenged is None or not challenged.live:
+                row["problems"].append("The note it challenges is no longer live; reject it.")
         if kind in ("skill.create", "skill.update"):
             name = str(target.get("name") or "")
             row["skill"] = {"name": name, "category": str(target.get("category") or ""),
@@ -477,6 +487,10 @@ def pending_checks(brain, *, limit: int = 4) -> list[dict]:
         if len(out) >= limit:
             break
         add(f"note:{note.id}", note.title, note.body, _went_in_pairs(brain, note, chain))
+    if len(out) < limit and bool(st.config.governance.get("cross_check", True)):
+        # The weekly cross-check's few pairs (dissent.py), after everything waiting.
+        from . import dissent
+        out += dissent.cross_pairs(brain)[: limit - len(out)]
     return out
 
 

@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from workspace_core.db import schema
 from workspace_core.db.tx import Tx
 from workspace_core.domain.schedule import Schedule
+from workspace_core.ports import BrainContext
 
 from .runtime import Runtime
 
@@ -235,7 +236,15 @@ def resolve(
     request = task["brain_request"] or "\n".join(
         part for part in (task["title"], task["purpose"], task["instructions"]) if part
     )
-    brain = rt.brain.context(request)
+    if task["template"] == "challenge":
+        # Blind: the beliefs under test are in the instructions, only as claims; a brief would
+        # hand them over as what the Brain holds true.
+        brain = BrainContext(
+            available=False,
+            reason="Left out on purpose: test the claims in the instructions on their merits.",
+        )
+    else:
+        brain = rt.brain.context(request)
     packet: dict[str, Any] = {
         "schema": PACKET_SCHEMA,
         "task": {"id": task["id"], "title": task["title"], "revision": task["revision"]},

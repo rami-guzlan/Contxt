@@ -30,6 +30,14 @@ from .vault import Vault
 
 
 
+def review_stamp(brain) -> str:
+    """Changes when a model's verdict comes in."""
+    try:
+        return brain.ledger.verdicts_stamp()
+    except Exception:
+        return ""
+
+
 class Result:
     __slots__ = ("text", "data", "is_error")
 
@@ -814,6 +822,33 @@ class Brain:
                 and v.get("relation") in review.RELATIONS]
         kept = self.ledger.record_verdicts(rows)
         return Result(f"{kept} verdict(s) kept.", {"kept": kept})
+
+    def challenge(self, note_id, *, claim, evidence, source="", **kwargs) -> Result:
+        """Raise a challenge to a note, with its evidence: it waits for the owner (dissent.py)."""
+        from . import dissent
+        return self._write(lambda: dissent.propose(self, note_id, claim=claim,
+                                                   evidence=evidence, source=source, **kwargs))
+
+    def cross_check(self) -> Result:
+        """What the weekly cross-check finds: beliefs something in the Brain says otherwise
+        about, each with its evidence (dissent.py). Kept until the vault or a verdict
+        changes."""
+        from . import dissent
+        st = self.state()
+        stamp = (st.fingerprint, review_stamp(self))
+        cached = getattr(self, "_cross", None)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        found = dissent.cross_check(self)
+        result = Result(f"{len(found)} belief(s) to look at.", {"findings": found})
+        self._cross = (stamp, result)
+        return result
+
+    def challenge_targets(self, limit=3) -> Result:
+        """The beliefs the external challenger argues against this week (dissent.py)."""
+        from . import dissent
+        found = dissent.targets(self, limit=limit)
+        return Result(f"{len(found)} belief(s) to test.", {"targets": found})
 
     def apply_scheduled(self, **kwargs) -> Result:
         """Scheduled revisions whose time has come go in (governance.apply_scheduled)."""

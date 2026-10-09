@@ -13,7 +13,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass, field
 
-from . import capture, util
+from . import capture, dissent, util
 
 WORKING_HINT = {
     "candidate": "Pick the fitting skill candidate. Open it with get_skill only if you will "
@@ -359,14 +359,22 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             return f"### {note.title}{flags}\n`{note.id}`"
         return f"### {note.id}{flags}"
 
+    # A disputed note brings its other view into planning, strategy and decision work; for a
+    # lookup it stays a flag (dissent.py).
+    weighing = dissent.deliberate(route)
+
+    def body(note) -> list[str]:
+        view = dissent.contested(note) if weighing else ""
+        return [note.body.strip(), ""] + ([view, ""] if view else [])
+
     if rules:
         lines += ["## Required constraints", ""]
         for note in rules:
-            lines += [heading(note), "", note.body.strip(), ""]
+            lines += [heading(note), ""] + body(note)
     if knowledge:
         lines += ["## Knowledge", ""]
         for note in knowledge:
-            lines += [heading(note), "", note.body.strip(), ""]
+            lines += [heading(note), ""] + body(note)
     # Older values of what a note above gives as current: named, never handed over as if
     # they still held.
     older = [(o, n) for o, n in getattr(route, "older", None) or []

@@ -309,6 +309,73 @@ def run_time_cases(brains_root: str, cases, *, models_dir: str | None = None) ->
     return {"score": round(good / len(cases), 3) if cases else 1.0, "cases": rows}
 
 
+# ---------------------------------------------------------------------------- dissent
+def run_seeded_beliefs(brains_root: str, cases, *, ask=None) -> dict:
+    """Each case seeds a wrong belief (marked a baseline) and the evidence against it (a note,
+    a waiting proposal, or one the owner turned down) in a scratch copy of a demo Brain, then
+    asks the cross-check. One belief shows a week, so a case succeeds when its belief is among
+    the first two findings (two weekly cycles), with that evidence. `ask(batch) -> verdicts`,
+    when given, first reads two weeks' worth of the cross-check's model pairs, as the app's
+    worker would."""
+    from . import dissent
+    rows, good = [], 0
+    for case in cases:
+        vault = copy_vault(os.path.join(brains_root, case["brain"], "vault"))
+        belief = dict(case["belief"], baseline=True)
+        evidence = case["evidence"]
+        try:
+            notes = [belief]
+            if evidence["kind"] == "note":
+                notes.append({k: v for k, v in evidence.items() if k != "kind"})
+                notes[-1]["kind"] = "fact"
+            add_notes(vault, notes)
+            brain = open_brain(vault)
+            try:
+                expected = evidence.get("id")
+                if evidence["kind"] in ("proposal", "rejected"):
+                    made = brain.propose(area=evidence["area"], topic=evidence["topic"],
+                                         text=evidence["text"], force_pending=True)
+                    expected = made.data.get("proposal_id")
+                    if evidence["kind"] == "rejected":
+                        brain.reject(expected, "Not now")
+                if ask is not None:
+                    for batch in dissent.cross_pairs(brain,
+                                                     limit=2 * dissent.CROSS_MODEL_PAIRS):
+                        brain.record_checks(ask(batch))
+                found = brain.cross_check().data["findings"]
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+        ranked = [f["id"] for f in found]
+        hit = next((f for f in found[:2] if f["id"] == belief["id"]), None)
+        ok = hit is not None and hit["evidence"]["id"] == expected
+        good += ok
+        rows.append({"id": case["id"], "what": case["what"], "evidence": evidence["kind"],
+                     "ok": ok, "place": ranked.index(belief["id"]) + 1
+                     if belief["id"] in ranked else None,
+                     "found_by": hit["found_by"] if hit else None, "findings": len(found)})
+    return {"score": round(good / len(cases), 3) if cases else 1.0, "cases": rows}
+
+
+def cross_check_noise(brains_root: str, names=DEMO_BRAINS) -> dict:
+    """What the cross-check shows on each demo Brain as it is, where nothing was seeded: every
+    finding there is one a person would clear for nothing."""
+    out = {}
+    for name in names:
+        vault = copy_vault(os.path.join(brains_root, name, "vault"))
+        try:
+            brain = open_brain(vault)
+            try:
+                out[name] = [{"id": f["id"], "with": f["evidence"]["id"], "why": f["why"]}
+                             for f in brain.cross_check().data["findings"]]
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+    return out
+
+
 def load_spec(path: str) -> dict:
     with open(path, encoding="utf-8") as handle:
         return json.load(handle)

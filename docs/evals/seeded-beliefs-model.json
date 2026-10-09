@@ -1,0 +1,420 @@
+{
+ "about": "The seeded wrong beliefs (packages/brain/tests/evals/seeded_beliefs.json) with the cross-check's model pairs read by Claude Code 2.1.272 on October 9, 2026: two weeks' worth (six pairs per case), with the app's prompt. Each verdict key is the ledger's pair key, shortened.",
+ "result": {
+  "score": 1.0,
+  "cases": [
+   {
+    "id": "loopline-price",
+    "what": "an outdated price",
+    "evidence": "proposal",
+    "ok": true,
+    "place": 1,
+    "found_by": "your AI",
+    "findings": 1
+   },
+   {
+    "id": "seed-lead",
+    "what": "a reversed decision",
+    "evidence": "note",
+    "ok": true,
+    "place": 1,
+    "found_by": "your AI",
+    "findings": 1
+   },
+   {
+    "id": "line-brief-day",
+    "what": "an outdated schedule",
+    "evidence": "note",
+    "ok": true,
+    "place": 1,
+    "found_by": "your AI",
+    "findings": 2
+   },
+   {
+    "id": "paid-ads",
+    "what": "a reversed decision",
+    "evidence": "rejected",
+    "ok": true,
+    "place": 1,
+    "found_by": "your AI",
+    "findings": 2
+   },
+   {
+    "id": "tidyq-python",
+    "what": "an outdated requirement",
+    "evidence": "note",
+    "ok": true,
+    "place": 1,
+    "found_by": "your AI",
+    "findings": 3
+   },
+   {
+    "id": "friday-deploys",
+    "what": "a reversed rule",
+    "evidence": "proposal",
+    "ok": true,
+    "place": 1,
+    "found_by": "your AI",
+    "findings": 3
+   },
+   {
+    "id": "soccer-day",
+    "what": "an outdated schedule",
+    "evidence": "note",
+    "ok": true,
+    "place": 1,
+    "found_by": "your AI",
+    "findings": 3
+   },
+   {
+    "id": "allowance",
+    "what": "an outdated amount",
+    "evidence": "rejected",
+    "ok": true,
+    "place": 1,
+    "found_by": "your AI",
+    "findings": 2
+   }
+  ]
+ },
+ "asked": [
+  {
+   "subject": "belief:loopline-price",
+   "pairs": [
+    "loopline-costs-59-seat-month-after",
+    "ventures-loopline-metrics",
+    "references/loopline-pitch-notes.md#2",
+    "references/brewbox-postmortem.md#1",
+    "you-goals",
+    "references/brewbox-postmortem.md#2"
+   ],
+   "verdicts": [
+    [
+     "x:2635719159",
+     "contradicts"
+    ],
+    [
+     "x:a317e53a03",
+     "unrelated"
+    ],
+    [
+     "x:66cbd32852",
+     "unrelated"
+    ],
+    [
+     "x:6815137bc3",
+     "unrelated"
+    ],
+    [
+     "x:45cae1b70f",
+     "unrelated"
+    ],
+    [
+     "x:3671f0723e",
+     "unrelated"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:seed-lead-decision",
+   "pairs": [
+    "seed-lead-update",
+    "references/loopline-pitch-notes.md#3",
+    "fundraising-investor-updates"
+   ],
+   "verdicts": [
+    [
+     "x:8f214ceb88",
+     "contradicts"
+    ],
+    [
+     "x:c05f49d6f3",
+     "unrelated"
+    ],
+    [
+     "x:c1dda09199",
+     "unrelated"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:assistant-identity",
+   "pairs": [
+    "assistant-working-style",
+    "you-goals",
+    "references/brewbox-postmortem.md#3"
+   ],
+   "verdicts": [
+    [
+     "x:6626518a43",
+     "extends"
+    ],
+    [
+     "x:803ecd5067",
+     "extends"
+    ],
+    [
+     "x:f26e993681",
+     "unrelated"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:line-brief-day",
+   "pairs": [
+    "line-brief-move",
+    "marketing-channels",
+    "marketing-linkedin-rules",
+    "marketing-approvals-morgan",
+    "references/research-library.md#1",
+    "references/brand-guide.md#2"
+   ],
+   "verdicts": [
+    [
+     "x:6be5f4ca43",
+     "contradicts"
+    ],
+    [
+     "x:7472b0f796",
+     "agrees"
+    ],
+    [
+     "x:e6f2a33f78",
+     "unrelated"
+    ],
+    [
+     "x:d9e438a31c",
+     "unrelated"
+    ],
+    [
+     "x:ac319422f7",
+     "unrelated"
+    ],
+    [
+     "x:7f0ff327f9",
+     "unrelated"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:no-paid-linkedin-ads",
+   "pairs": [
+    "run-paid-linkedin-ads-q4-webinar-series",
+    "references/audience-research-2026.md#1",
+    "marketing-approvals-morgan",
+    "marketing-linkedin-rules"
+   ],
+   "verdicts": [
+    [
+     "x:3cbc9abc32",
+     "contradicts"
+    ],
+    [
+     "x:0bc103317e",
+     "unrelated"
+    ],
+    [
+     "x:51411ae64c",
+     "unrelated"
+    ],
+    [
+     "x:13d72cfdd2",
+     "extends"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:assistant-identity",
+   "pairs": [
+    "assistant-working-style",
+    "you-goals"
+   ],
+   "verdicts": [
+    [
+     "x:19f77bbfa0",
+     "extends"
+    ],
+    [
+     "x:aaa7986c09",
+     "extends"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:tidyq-python-support",
+   "pairs": [
+    "tidyq-python-update",
+    "references/tidyq-design.md#4",
+    "references/tidyq-design.md#3",
+    "references/tidyq-design.md#1"
+   ],
+   "verdicts": [
+    [
+     "x:3120490cd6",
+     "contradicts"
+    ],
+    [
+     "x:f8b667ff30",
+     "unrelated"
+    ],
+    [
+     "x:b8866aac17",
+     "unrelated"
+    ],
+    [
+     "x:5a03f12ff1",
+     "unrelated"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:assistant-identity",
+   "pairs": [
+    "assistant-working-style",
+    "you-goals"
+   ],
+   "verdicts": [
+    [
+     "x:fbc597e303",
+     "extends"
+    ],
+    [
+     "x:89faffd652",
+     "agrees"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:no-friday-deploys",
+   "pairs": [
+    "small-deploys-fridays-fine-change-sits",
+    "work-deploys"
+   ],
+   "verdicts": [
+    [
+     "x:faae008b71",
+     "contradicts"
+    ],
+    [
+     "x:fd7fb8b1bd",
+     "agrees"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:assistant-identity",
+   "pairs": [
+    "assistant-working-style",
+    "you-goals",
+    "me-preferences",
+    "practices-code-style-types"
+   ],
+   "verdicts": [
+    [
+     "x:fbc597e303",
+     "extends"
+    ],
+    [
+     "x:89faffd652",
+     "agrees"
+    ],
+    [
+     "x:022cf6a036",
+     "agrees"
+    ],
+    [
+     "x:7657da3f58",
+     "unrelated"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:soccer-practice-time",
+   "pairs": [
+    "soccer-practice-move",
+    "family-ollie",
+    "family-jamie",
+    "family-calendar",
+    "references/packing-list.md#2"
+   ],
+   "verdicts": [
+    [
+     "x:5450ee7276",
+     "contradicts"
+    ],
+    [
+     "x:5284363150",
+     "agrees"
+    ],
+    [
+     "x:44a57536a7",
+     "unrelated"
+    ],
+    [
+     "x:31c60e74a9",
+     "unrelated"
+    ],
+    [
+     "x:3eb7b60ae0",
+     "unrelated"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:assistant-identity",
+   "pairs": [
+    "assistant-privacy"
+   ],
+   "verdicts": [
+    [
+     "x:cc9d1245eb",
+     "extends"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:ollie-allowance",
+   "pairs": [
+    "ollie-s-allowance-went-8-week-october",
+    "food-diet",
+    "you-goals",
+    "references/packing-list.md#2",
+    "money-budget"
+   ],
+   "verdicts": [
+    [
+     "x:b36fa3e82c",
+     "contradicts"
+    ],
+    [
+     "x:29e26f9382",
+     "unrelated"
+    ],
+    [
+     "x:49ad7b583e",
+     "unrelated"
+    ],
+    [
+     "x:1ddba39773",
+     "unrelated"
+    ],
+    [
+     "x:6d4b3b0b3d",
+     "unrelated"
+    ]
+   ]
+  },
+  {
+   "subject": "belief:assistant-identity",
+   "pairs": [
+    "assistant-privacy"
+   ],
+   "verdicts": [
+    [
+     "x:cc9d1245eb",
+     "extends"
+    ]
+   ]
+  }
+ ]
+}

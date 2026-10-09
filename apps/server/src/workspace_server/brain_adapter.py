@@ -733,6 +733,45 @@ class BrainKitAdapter:
     def record_checks(self, verdicts: list[dict[str, Any]]) -> int:
         return int(self.brain.record_checks(verdicts).data.get("kept") or 0)
 
+    def challenge(
+        self, note_id: str, *, claim: str, evidence: str, source: str, proposer: str
+    ) -> BrainProposal:
+        found = self._visible_id(note_id)
+        if found is None:
+            return BrainProposal(status="refused", message=f"No entry {note_id} to challenge.")
+        with self._lock:
+            result = self.brain.challenge(
+                found,
+                claim=claim,
+                evidence=evidence,
+                source=source,
+                reason=f"a challenge from {proposer}",
+            )
+        data = result.data
+        status = str(data.get("status") or ("refused" if result.is_error else "pending"))
+        if result.is_error and status != "duplicate":
+            status = "refused"
+        return BrainProposal(
+            status=status,
+            message=result.text,
+            proposal_id=data.get("proposal_id"),
+            entry_id=data.get("id"),
+        )
+
+    def cross_check(self) -> list[dict[str, Any]]:
+        visible = {n.id for n in self._visible_notes(self.brain.state())}
+        return [
+            f for f in self.brain.cross_check().data.get("findings") or [] if f["id"] in visible
+        ]
+
+    def challenge_targets(self, limit: int = 3) -> list[dict[str, Any]]:
+        visible = {n.id for n in self._visible_notes(self.brain.state())}
+        return [
+            t
+            for t in self.brain.challenge_targets(limit).data.get("targets") or []
+            if t["id"] in visible
+        ]
+
     def apply_scheduled(self) -> dict[str, Any]:
         with self._lock:
             result = self.brain.apply_scheduled()

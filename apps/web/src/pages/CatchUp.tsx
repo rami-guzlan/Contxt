@@ -519,6 +519,9 @@ function CardFrame({
 }
 
 const ACTION_LABELS: Record<CardAction, string> = {
+  dispute: "Mark my note disputed",
+  keep_note: "Keep my note as it is",
+  revise_note: "Revise my note",
   revise: "Revise the baseline",
   both_hold: "Both hold",
   undo: "Take it back",
@@ -609,6 +612,17 @@ function Judgment({
         return setComparing((c) => !c);
       case "review":
         return navigate(`/review?proposal=${encodeURIComponent(id)}`);
+      case "dispute":
+        return run([{ action: "approve", proposal_id: id }], `Disputed “${card.with?.title ?? card.title}”`, onDone, `Marked “${card.with?.title ?? card.title}” disputed`);
+      case "keep_note":
+        return run(
+          [{ action: "reject", proposal_id: id, reason: "Kept the note as it is" }],
+          `Kept “${card.with?.title ?? card.title}”`,
+          onDone,
+          `Kept “${card.with?.title ?? card.title}” as it is`,
+        );
+      case "revise_note":
+        return navigate(entryUrl(card.with?.id ?? ""));
       case "later":
         return aside.mutate({ key: card.key, later: true }, { onSuccess: onSkip });
       default:
@@ -1031,6 +1045,7 @@ function Upkeep({ card, onDone, onSkip }: { card: UpkeepCard; onDone: (what: str
   const { decide, run } = useDecide(card.key);
   const aside = useSetAside();
   const merge = useMerge();
+  const policy = useSetBrainPolicies();
   const later = { id: "later", label: "Later", run: () => aside.mutate({ key: card.key, later: true }, { onSuccess: onSkip }) };
   const busy = decide.isPending || aside.isPending || merge.isPending;
   const error = decide.error ?? aside.error ?? merge.error;
@@ -1167,6 +1182,87 @@ function Upkeep({ card, onDone, onSkip }: { card: UpkeepCard; onDone: (what: str
         <p className="muted small">
           {card.why} A second look now and then keeps quick yeses honest.
           {card.uses ? ` Used in ${plural(card.uses, "chat")} this month.` : ""}
+        </p>
+      </CardFrame>
+    );
+  }
+  if (card.type === "belief") {
+    const where = { note: "a note", file: "a filed document", proposal: "a waiting suggestion", rejected: "a suggestion you turned down" }[card.evidence.kind];
+    return (
+      <CardFrame
+        tag="One belief to look at"
+        title={card.title}
+        recommend={null}
+        busy={busy}
+        error={error}
+        choices={[
+          {
+            id: "right",
+            label: "Still right",
+            primary: true,
+            run: () => {
+              // Settled: the same finding stays away for a season.
+              aside.mutate({ key: card.key, days: 90 });
+              run([{ action: "verify", entry_id: card.id }], `Still right: ${card.title}`, onDone, `Confirmed “${card.title}”`);
+            },
+          },
+          { id: "revise", label: "Revise it", run: () => window.open(entryUrl(card.id), "_self") },
+          {
+            id: "dispute",
+            label: "Mark it disputed",
+            run: () => {
+              aside.mutate({ key: card.key, days: 90 });
+              run(
+                [{ action: "mark", entry_id: card.id, state: "disputed", reason: `Cross-check: ${card.why}`.slice(0, 480) }],
+                `Disputed ${card.title}`,
+                onDone,
+                `Marked “${card.title}” disputed`,
+              );
+            },
+          },
+          later,
+        ]}
+      >
+        <p>{card.summary}</p>
+        <p className="muted small">
+          {card.baseline ? `A baseline: ${card.baseline}. ` : ""}
+          Your weekly cross-check found {where} that may say otherwise ({card.found_by === "your AI" ? "read by your AI" : "by its words and figures"}).
+        </p>
+        <blockquote className="suggestion-text">
+          <strong>{card.evidence.title}</strong>: {card.evidence.text}
+        </blockquote>
+        <p className="small">{card.why}</p>
+      </CardFrame>
+    );
+  }
+  if (card.type === "challenger") {
+    return (
+      <CardFrame
+        tag="A challenger for your beliefs?"
+        title="Let your AI argue against what your Brain holds, once a week"
+        recommend={null}
+        busy={busy || policy.isPending}
+        error={error ?? policy.error}
+        choices={[
+          {
+            id: "on",
+            label: "Turn it on",
+            primary: true,
+            run: () =>
+              policy.mutate({ challenger: true } as never, { onSuccess: () => onDone("Turned the challenger on: it runs once a week") }),
+          },
+          { id: "no", label: "Not now", run: () => aside.mutate({ key: card.key, days: 90 }, { onSuccess: () => onDone("The challenger stays off") }) },
+          later,
+        ]}
+      >
+        <p>
+          {card.stale ? "A baseline came back stale, " : `Your Brain holds ${plural(card.baselines, "baseline")}, `}
+          so it may be worth a fresh look from outside. Once a week, Claude Code on this computer takes your most used and oldest beliefs, each only as a
+          claim to test, and looks for current evidence against them on the web.
+        </p>
+        <p className="muted small">
+          It uses some of your Claude quota, reads the web and nothing else (no files, no shell), and changes nothing: what it finds comes back here as
+          challenges for you to settle. One click turns it off in Settings.
         </p>
       </CardFrame>
     );

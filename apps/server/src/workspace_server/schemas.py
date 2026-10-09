@@ -123,6 +123,8 @@ class PoliciesIn(Body):
     preset: str | None = None  # personal, careful or regulated: a fresh start
     revision_delay: bool | None = None  # a day to think before a rule or must-hold changes
     model_checks: bool | None = None  # your own AI reads possible disagreements
+    cross_check: bool | None = None  # the weekly cross-check of your beliefs
+    challenger: bool | None = None  # the external challenger (off until turned on)
 
 
 class CatchUpItemIn(Body):

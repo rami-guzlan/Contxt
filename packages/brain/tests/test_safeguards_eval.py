@@ -129,6 +129,26 @@ class DatedValueBarsTest(unittest.TestCase):
         self.assertEqual(result["score"], 1.0, result["cases"])
 
 
+class CrossCheckBarsTest(unittest.TestCase):
+    """Phase E's bar for the internal cross-check, by words and figures alone (the model's
+    weekly pairs come on top: docs/evals/seeded-beliefs-model.json): a seeded wrong belief is
+    shown with its evidence within two weekly cycles in 70% of cases or more."""
+
+    def test_seeded_wrong_beliefs_come_up_within_two_weeks(self):
+        result = se.run_seeded_beliefs(BRAINS, _spec("seeded_beliefs.json")["cases"])
+        # Measured 75% (6 of 8) on October 9, 2026; 100% with the model's pairs.
+        self.assertGreaterEqual(result["score"], 0.7, result["cases"])
+
+    def test_with_your_own_ais_pairs_every_seeded_belief_came_up(self):
+        import json
+        with open(os.path.join(ROOT, "docs", "evals", "seeded-beliefs-model.json"),
+                  encoding="utf-8") as handle:
+            saved = json.load(handle)
+        self.assertEqual(saved["result"]["score"], 1.0)
+        self.assertEqual(len(saved["result"]["cases"]),
+                         len(_spec("seeded_beliefs.json")["cases"]))
+
+
 def brain_meta(vault, note_id):
     from brainkit import frontmatter as fm
     from brainkit import util

@@ -255,6 +255,33 @@ function Approval() {
             figures are checked alone.
           </span>
         </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={policies.cross_check !== false}
+            disabled={set.isPending}
+            onChange={(event) => set.mutate({ cross_check: event.target.checked } as never)}
+          />{" "}
+          Cross-check my beliefs each week
+          <span className="muted small">
+            {" "}
+            Your most used notes and oldest baselines are read against the rest of your Brain; at most one belief to look at a week.
+          </span>
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={!!policies.challenger}
+            disabled={set.isPending}
+            onChange={(event) => set.mutate({ challenger: event.target.checked } as never)}
+          />{" "}
+          Let a challenger argue against my beliefs
+          <span className="muted small">
+            {" "}
+            Once a week, Claude Code looks for current evidence on the web against a few of your beliefs, each only as a claim to test. It uses some
+            of your quota and changes nothing: it raises challenges for you to settle.
+          </span>
+        </label>
       </fieldset>
       {set.isSuccess ? (
         <p className="small" role="status">

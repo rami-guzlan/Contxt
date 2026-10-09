@@ -55,7 +55,16 @@ from .runtime import Runtime
 SNOOZE_DAYS = 3
 AWAY_DAYS = 3  # this long away, and the recap comes before the to-dos
 RECAP_DAYS = 7  # the window for someone who never caught up
-QUOTA = {"recheck": 3, "duplicate": 2, "tidy": 2, "musthold": 1, "spot": 2, "older": 2}
+QUOTA = {
+    "recheck": 3,
+    "duplicate": 2,
+    "tidy": 2,
+    "musthold": 1,
+    "spot": 2,
+    "older": 2,
+    "belief": 1,  # the cross-check's one belief to look at
+}
+CHALLENGER_BASELINES = 25  # this many baselines, and the external challenger is offered
 QUICK_SECONDS = 4  # a judgment kept this fast is spot-checked later
 SPOT_DAYS = 30  # what went in on its own, or was kept that fast, this recently
 DRIFT_DAYS = 30  # an approval taken back within this long counts as drift
@@ -105,6 +114,9 @@ SECONDS = {
     "went_in": 30,
     "spot": 15,
     "older": 10,
+    "challenge": 45,
+    "belief": 30,
+    "challenger": 15,
     "quick": 8,
     "recheck": 15,
     "duplicate": 30,
@@ -179,6 +191,8 @@ def judgment_kind(row: dict[str, Any], analysis: dict[str, Any]) -> str | None:
     """Why a suggestion needs the person's judgment, or None when it is a quick yes."""
     kind = str(row.get("kind") or "")
     overlaps = analysis.get("overlaps") or []
+    if kind == "note.challenge":
+        return "challenge"
     if analysis.get("baseline"):
         return "baseline"
     if (
@@ -341,7 +355,7 @@ class CatchUp:
         judgment, quick, scheduled = self._suggestions(review.proposals, rows, areas, hidden)
         judgment += self._went_in(attention, hidden)
         points = port.checkpoints(200)
-        upkeep = self._upkeep(attention, inventory, rows, hidden, now, points)
+        upkeep = self._upkeep(attention, inventory, rows, hidden, now, points, policies)
         events = port.activity(
             since=iso(now - timedelta(days=OFFER_DAYS)),
             actions=["approved", "rejected"],
@@ -484,7 +498,10 @@ class CatchUp:
         tensions = analysis.get("tensions") or []
         other: dict[str, Any] | None = None
         detail = ""
-        if why == "baseline":
+        if why == "challenge":
+            other = analysis.get("challenged")
+            detail = str((analysis.get("challenge") or {}).get("claim") or "")
+        elif why == "baseline":
             other = analysis.get("baseline")
             detail = str((other or {}).get("tension") or "")
             detail = detail[:1].upper() + detail[1:] + ("." if detail else "")
@@ -702,6 +719,18 @@ class CatchUp:
         stale = bool(found.get("stale")) or found.get("confidence") == "disputed"
         uses = int((found.get("uses") or {}).get("d30") or 0)
         verified = str(found.get("verified") or "")[:10]
+        if why == "challenge":
+            if found.get("checked") and verified:
+                return _advice(
+                    "keep_note",
+                    f"You confirmed your note on {verified}; keep it unless the evidence is "
+                    "newer than that.",
+                )
+            return _advice(
+                "dispute",
+                "It comes with evidence. Disputed, your note stays, flagged, with this view "
+                "beside it in planning work, and you can revise it after.",
+            )
         if why == "baseline":
             change = str((other or {}).get("change") or "")
             relation = next(
@@ -817,6 +846,7 @@ class CatchUp:
         hidden: set[str],
         now: datetime,
         points: list[dict[str, Any]] | None = None,
+        policies: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """This week's dose of upkeep: notes to confirm (most used first), possible duplicates,
         text to tidy, spot checks on quick approvals, and the notes no AI has used in two
@@ -889,6 +919,45 @@ class CatchUp:
             if offer is not None:
                 out.append(offer)
         out += self._spot_checks(rows, hidden, now, points, QUOTA["spot"] - done.get("spot", 0))
+        policies = policies or {}
+        # The weekly cross-check: one belief something in the Brain says otherwise about.
+        if policies.get("cross_check", True) and done.get("belief", 0) < QUOTA["belief"]:
+            for finding in self.rt.brain.cross_check():
+                if finding["key"] in hidden:
+                    continue
+                out.append(
+                    {
+                        "key": finding["key"],
+                        "type": "belief",
+                        "id": finding["id"],
+                        "title": str(finding.get("title") or finding["id"]),
+                        "summary": _clip(finding.get("body") or "", 300),
+                        "why": str(finding.get("why") or ""),
+                        "found_by": str(finding.get("found_by") or ""),
+                        "baseline": str(finding.get("baseline") or ""),
+                        "evidence": finding.get("evidence") or {},
+                    }
+                )
+                break
+        # The external challenger, offered once the Brain has many baselines or a stale one.
+        if not policies.get("challenger") and "offer:challenger" not in hidden:
+            baselines = sum(
+                1
+                for r in inventory
+                if r.get("type") == "note" and r.get("live") and r.get("baseline")
+            )
+            stale = any(
+                (rows.get(r["id"]) or {}).get("baseline") for r in attention.get("recheck") or []
+            )
+            if baselines >= CHALLENGER_BASELINES or stale:
+                out.append(
+                    {
+                        "key": "offer:challenger",
+                        "type": "challenger",
+                        "baselines": baselines,
+                        "stale": stale,
+                    }
+                )
         # A value and its newer value: briefs already carry the newer; retiring the older
         # keeps the Brain tidy.
         dated = [d for d in attention.get("dated") or [] if d["key"] not in hidden]
@@ -1076,7 +1145,7 @@ class CatchUp:
                 continue
             key = str((point.get("source") or {}).get("catch_up") or "")
             kind = key.split(":")[0]
-            if kind in ("recheck", "twin", "tidy", "musthold", "spot", "older"):
+            if kind in ("recheck", "twin", "tidy", "musthold", "spot", "older", "belief"):
                 done[kind] = done.get(kind, 0) + 1
         return done
 
@@ -1146,6 +1215,7 @@ class CatchUp:
 
 
 TAGS = {
+    "challenge": "A challenge to your note",
     "baseline": "Changes a baseline",
     "went_in": "Went in, but disagrees",
     "conflict": "Might disagree with your note",
@@ -1159,6 +1229,7 @@ TAGS = {
     "problem": "Needs a closer look",
 }
 WHY = {
+    "challenge": "Says your note “{other}” is wrong or out of date: {detail}",
     "baseline": "{baseline_line} {detail}",
     "went_in": "It went in on its own, and your AI then read it as disagreeing with “{other}”.",
     "conflict": "Disagrees with your note “{other}”. {detail}",
@@ -1173,6 +1244,7 @@ WHY = {
 }
 # The choices a card offers, the recommended one moved first by the page.
 ACTIONS = {
+    "challenge": ["dispute", "keep_note", "revise_note", "later"],
     "baseline": ["revise", "keep_mine", "both_hold", "later"],
     "went_in": ["undo", "keep_both", "later"],
     "conflict": ["keep_mine", "use_this", "keep_both", "edit", "later"],

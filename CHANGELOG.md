@@ -71,7 +71,16 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   contract back as the run goes (and a must-hold's line as soon as its domain shows up), and
   send back a run that never finished; the app's MCP replies repeat the contract's line; the
   run's record keeps what the hooks did.
+- Dissent: any AI can challenge a note with its evidence (`challenge_note`, and
+  `propose_challenge` for the app's AI work); accepted, the note is disputed and keeps the
+  challenge as its other view, which planning and decision work sees; turned down, it does
+  not come back on the same evidence. A weekly cross-check, on by default, reads your most used
+  notes and oldest baselines against the rest of the Brain (and lets your own AI read three
+  pairs a week): one belief to look at, at most, each week. An external challenger, offered
+  and off until you turn it on, argues against a few beliefs once a week with the web as its
+  only extra tool, blind to the Brain's own view of them.
 - Safeguard evaluations (`scripts/safeguards_eval.py`): must-hold recall with decoys and
   held-out requests, disagreement detection on labeled and held-out pairs (with your own
-  AI's verdicts, `--ask-model`), false alarms on the demo Brains, and dated values.
+  AI's verdicts, `--ask-model`), false alarms on the demo Brains, dated values, and seeded
+  wrong beliefs for the cross-check.
 - Source-available under the PolyForm Shield License 1.0.0.
