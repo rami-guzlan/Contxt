@@ -291,7 +291,7 @@ function TeachSkill({ note }: { note: Note }) {
         When this shows how something should be made (a post, a proposal, a recap), your AI can write it up as a skill to follow next
         time.
       </p>
-      <Link className="button small" to={`/skills?capture=${encodeURIComponent(note.id)}`}>
+      <Link className="button small" to={`/work/skills?capture=${encodeURIComponent(note.id)}`}>
         Teach a skill
       </Link>
     </section>

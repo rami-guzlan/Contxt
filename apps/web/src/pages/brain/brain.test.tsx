@@ -11,7 +11,7 @@ import { EntryPage } from "./Entry";
 import { GapsPage } from "./Gaps";
 import { HistoryPage } from "./History";
 import { InventoryPage } from "./Inventory";
-import { SkillPage, SkillsPage } from "../Skills";
+import { SkillPage, SkillsPage } from "../work/Skills";
 import { KnowsPage } from "./Knows";
 import { PoliciesPage } from "./Policies";
 import { ReviewPage, proposerName } from "./Review";
@@ -546,16 +546,16 @@ describe("brain files", () => {
         loads: ["brand/voice"],
       },
     });
-    const { unmount } = renderAt(<SkillsPage />, { path: "/skills", route: "/skills" });
-    expect(await screen.findByRole("heading", { level: 1, name: "Skills" })).toBeInTheDocument();
+    const { unmount } = renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills" });
+    expect(await screen.findByRole("button", { name: "New skill" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Design" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "/brand-sheet" })).toHaveAttribute("href", "/skills/brand-sheet");
+    expect(screen.getByRole("link", { name: "/brand-sheet" })).toHaveAttribute("href", "/work/skills/brand-sheet");
     expect(screen.getByText("A one-page brand sheet for a client.")).toBeInTheDocument();
     expect(screen.getByText("Makes PDF files")).toBeInTheDocument();
     unmount();
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/brand-sheet?tab=procedure" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/brand-sheet?tab=procedure" });
     expect(await screen.findByRole("heading", { level: 1, name: "/brand-sheet" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Skills" })).toHaveAttribute("href", "/skills");
+    expect(screen.getByRole("link", { name: "Skills" })).toHaveAttribute("href", "/work/skills");
     expect(screen.getByText("Make the sheet.")).toBeInTheDocument();
     expect(screen.getByText("brand/voice")).toBeInTheDocument();
   });
@@ -1484,7 +1484,7 @@ describe("brain activity, gaps and policies", () => {
     // The chip says "Checked"; the sentence beside it goes on without a colon of its own.
     expect(screen.getByText(/^still true by You/)).toBeInTheDocument();
     // A procedure has no entry: the event names it by its skill.
-    expect(screen.getByRole("link", { name: "/brand-sheet" })).toHaveAttribute("href", "/skills/brand-sheet");
+    expect(screen.getByRole("link", { name: "/brand-sheet" })).toHaveAttribute("href", "/work/skills/brand-sheet");
     await user.selectOptions(screen.getByRole("combobox"), "restored");
     await waitFor(() => expect(calls.some((c) => c.path.includes("action=restored"))).toBe(true));
   });

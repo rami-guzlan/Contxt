@@ -40,7 +40,7 @@ def place(ws: Workspace, who: Principal, task_id: str) -> str | None:
     about = task.provenance or {}
     if task.template in ("skill", "skill-draft"):
         name = (about.get("skill") or {}).get("name")
-        return f"/skills/{quote(str(name))}" if name else "/review"
+        return f"/work/skills/{quote(str(name))}" if name else "/review"
     if task.template == "digest":
         item = (about.get("digest") or {}).get("item")
         return f"/capture/{quote(str(item))}" if item else None

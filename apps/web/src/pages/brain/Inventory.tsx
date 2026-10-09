@@ -392,7 +392,7 @@ function ItemTitle({ item }: { item: InventoryItem }) {
     item.type === "note"
       ? entryUrl(item.id)
       : item.type === "skill"
-        ? `/skills/${encodeURIComponent(item.id)}`
+        ? `/work/skills/${encodeURIComponent(item.id)}`
         : `/brain/files/view?path=${encodeURIComponent(item.id)}`;
   return (
     <span className="item-title">

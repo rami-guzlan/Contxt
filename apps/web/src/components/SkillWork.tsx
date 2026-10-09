@@ -364,7 +364,7 @@ function RunCard({ run, showSkills = false }: { run: SkillRun; showSkills?: bool
               ? followed.map((name, i) => (
                   <span key={name}>
                     {i ? " then " : ""}
-                    <Link to={`/skills/${encodeURIComponent(name)}`}>/{name}</Link>
+                    <Link to={`/work/skills/${encodeURIComponent(name)}`}>/{name}</Link>
                   </span>
                 ))
               : "The skill that fit"}
@@ -398,7 +398,7 @@ function RunCard({ run, showSkills = false }: { run: SkillRun; showSkills?: bool
       ) : null}
       {run.kind === "improve" && run.proposal?.status === "approved" ? (
         <p className="small">
-          Its new version was approved and is in use. <Link to={`/skills/${encodeURIComponent(run.skill)}?tab=history`}>See its history</Link>.
+          Its new version was approved and is in use. <Link to={`/work/skills/${encodeURIComponent(run.skill)}?tab=history`}>See its history</Link>.
         </p>
       ) : null}
       {run.kind === "improve" && run.proposal?.status === "rejected" ? (
@@ -485,7 +485,7 @@ function Result({ result, project, skill }: { result: NonNullable<SkillRun["resu
           file={() => new File([result.text], `${slug(result.title) || "result"}.md`, { type: "text/markdown" })}
         />
         {skill ? (
-          <Link className="button" to={`/skills/${encodeURIComponent(skill)}?tab=improve&example=${encodeURIComponent(result.artifact_id)}`}>
+          <Link className="button" to={`/work/skills/${encodeURIComponent(skill)}?tab=improve&example=${encodeURIComponent(result.artifact_id)}`}>
             Teach the skill from this
           </Link>
         ) : null}

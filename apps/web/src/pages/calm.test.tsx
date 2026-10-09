@@ -14,7 +14,7 @@ import { AiActivityPage } from "./Activity";
 import { CatchUpPage } from "./CatchUp";
 import { FirstRunPage } from "./FirstRun";
 import { MoveInPage } from "./MoveIn";
-import { OutputsPage } from "./Outputs";
+import { OutputsPage } from "./work/Outputs";
 import { SettingsPage } from "./Settings";
 
 const decided = { results: [{ id: "p1", action: "reject", ok: true, message: "", data: {} }], checkpoint: { id: "cp-1", label: "Kept my note" } };
@@ -635,7 +635,7 @@ describe("outputs", () => {
       "/api/outputs/file?path=skill-runs%2F2026-10-05-one-pager%2Fone-pager.pdf",
     );
     await user.click(pdf);
-    expect(await within(row).findByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/skills/one-pager");
+    expect(await within(row).findByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/work/skills/one-pager");
     expect(within(row).getByText(/A one-pager for the webinar/)).toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "Voice" })).toHaveAttribute("href", "/brain/entries/voice");
   });
@@ -682,7 +682,7 @@ describe("see the difference", () => {
     expect(await screen.findByText("With your Brain", {}, { timeout: 6000 })).toBeInTheDocument();
     expect(screen.getByText("Exciting news!")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "LinkedIn posting rules" })).toHaveAttribute("href", "/brain/entries/linkedin-rules");
-    expect(screen.getByRole("link", { name: "/linkedin-post" })).toHaveAttribute("href", "/skills/linkedin-post");
+    expect(screen.getByRole("link", { name: "/linkedin-post" })).toHaveAttribute("href", "/work/skills/linkedin-post");
     expect(screen.getByText(/It got 640 tokens, about a tenth of your Brain\./)).toBeInTheDocument();
     expect(calls.find((c) => c.path === "/api/brain/difference")?.body).toEqual({ request: "Write a post" });
   }, 15_000);

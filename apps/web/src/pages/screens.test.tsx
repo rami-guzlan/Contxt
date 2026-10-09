@@ -74,8 +74,7 @@ describe("layout", () => {
       "Capture",
       "Projects",
       "Brain",
-      "Skills",
-      "Outputs",
+      "Work",
       "Activity",
       "Catch up",
     ]);

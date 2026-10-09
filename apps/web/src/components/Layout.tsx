@@ -1,7 +1,7 @@
 import {
   Activity,
   Brain,
-  Files,
+  BriefcaseBusiness,
   FolderKanban,
   House,
   Inbox,
@@ -11,7 +11,6 @@ import {
   Plus,
   Radio,
   Settings,
-  WandSparkles,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -30,16 +29,16 @@ import { TourProvider } from "./tour/Tour";
 import { ErrorNote } from "./ui";
 
 // Places named for the person's questions: how am I doing (Home), what did I bring in
-// (Capture), what is in motion (Projects), what does my AI know (Brain), how does it make things
-// (Skills), what did it make (Outputs), what did it use and what changed (Activity). Catch up,
-// what needs my yes, is listed only while something does, calmly, with the time it takes.
+// (Capture), what is in motion (Projects), what does my AI know (Brain), how do I put it to use
+// (Work: composing, writing, skills, agents, workflows, the library and what they made), what did
+// it use and what changed (Activity). Catch up, what needs my yes, is listed only while
+// something does, calmly, with the time it takes.
 const NAV: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: "/", label: "Home", icon: House, end: true },
   { to: "/capture", label: "Capture", icon: Inbox },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/brain", label: "Brain", icon: Brain },
-  { to: "/skills", label: "Skills", icon: WandSparkles },
-  { to: "/outputs", label: "Outputs", icon: Files },
+  { to: "/work", label: "Work", icon: BriefcaseBusiness },
   { to: "/activity", label: "Activity", icon: Activity },
 ];
 

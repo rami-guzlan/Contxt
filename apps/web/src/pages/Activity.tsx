@@ -132,7 +132,7 @@ function pieceLink(piece: RequestPiece): string | null {
   if (piece.kind === "note") return entryUrl(piece.id);
   if (piece.kind === "focus") return `/projects/${encodeURIComponent(piece.id)}`;
   if ((piece.kind === "section" || piece.kind === "reference") && piece.path) return fileViewUrl(piece.path);
-  if (piece.kind === "skill") return `/skills/${encodeURIComponent(piece.id)}`;
+  if (piece.kind === "skill") return `/work/skills/${encodeURIComponent(piece.id)}`;
   return null;
 }
 

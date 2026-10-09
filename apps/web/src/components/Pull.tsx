@@ -70,7 +70,7 @@ export function KnowledgeCheck({ title, captureId, path }: { title: string; capt
     return (
       <div className="pull">
         <Working task={task} waiting="It waits for the first AI that can do it." />
-        <Link className="small" to="/skills/knowledge-check">
+        <Link className="small" to="/work/skills/knowledge-check">
           See the answer
         </Link>
       </div>

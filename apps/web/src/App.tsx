@@ -6,6 +6,7 @@ import { useMe } from "./api/hooks";
 import { Layout } from "./components/Layout";
 import { TalkProvider } from "./components/Talk";
 import { ErrorNote, Loading } from "./components/ui";
+import { skillUrl } from "./lib/links";
 import { HomePage } from "./pages/Home";
 import { SignInPage } from "./pages/SignIn";
 
@@ -21,7 +22,6 @@ const KnowsPage = page(() => import("./pages/brain/Knows"), "KnowsPage");
 const CatchUpPage = page(() => import("./pages/CatchUp"), "CatchUpPage");
 const FirstRunPage = page(() => import("./pages/FirstRun"), "FirstRunPage");
 const MoveInPage = page(() => import("./pages/MoveIn"), "MoveInPage");
-const OutputsPage = page(() => import("./pages/Outputs"), "OutputsPage");
 const EntryPage = page(() => import("./pages/brain/Entry"), "EntryPage");
 const FilesPage = page(() => import("./pages/brain/Files"), "FilesPage");
 const FileViewPage = page(() => import("./pages/brain/Files"), "FileViewPage");
@@ -34,8 +34,11 @@ const ProjectsPage = page(() => import("./pages/Projects"), "ProjectsPage");
 const ReviewPage = page(() => import("./pages/brain/Review"), "ReviewPage");
 const SearchPage = page(() => import("./pages/Misc"), "SearchPage");
 const SettingsPage = page(() => import("./pages/Settings"), "SettingsPage");
-const SkillPage = page(() => import("./pages/Skills"), "SkillPage");
-const SkillsPage = page(() => import("./pages/Skills"), "SkillsPage");
+const WorkLayout = page(() => import("./pages/work/WorkLayout"), "WorkLayout");
+const WorkOverviewPage = page(() => import("./pages/work/Overview"), "WorkOverviewPage");
+const OutputsPage = page(() => import("./pages/work/Outputs"), "OutputsPage");
+const SkillPage = page(() => import("./pages/work/Skills"), "SkillPage");
+const SkillsPage = page(() => import("./pages/work/Skills"), "SkillsPage");
 
 /** An old address that moved: same path below the moved part, same query. */
 function Moved({ from, to }: { from: string; to: string }) {
@@ -44,8 +47,8 @@ function Moved({ from, to }: { from: string; to: string }) {
   return <Navigate to={`${to}${rest}${location.search}`} replace />;
 }
 
-/** A link to a retired page (goals, to-dos, tasks, outputs, meetings) goes home; a doc from
- * Work is a note in Capture now, under the same id. */
+/** A link to a retired page (goals, to-dos, tasks, meetings) goes home; a doc from the old Work
+ * is a note in Capture now, under the same id. */
 function Retired() {
   const { workId } = useParams();
   return <Navigate to={workId ? `/capture/${workId}` : "/"} replace />;
@@ -62,7 +65,7 @@ function HistoryMoved() {
 /** A skill's page from when skills were part of the Library's files. */
 function SkillMoved() {
   const { name = "" } = useParams();
-  return <Navigate to={`/skills/${encodeURIComponent(name)}`} replace />;
+  return <Navigate to={skillUrl(name)} replace />;
 }
 
 export function App() {
@@ -89,7 +92,6 @@ export function App() {
           <Route path="/catch-up" element={<CatchUpPage />} />
           <Route path="/move-in" element={<MoveInPage />} />
           <Route path="/activity" element={<AiActivityPage />} />
-          <Route path="/outputs" element={<OutputsPage />} />
           <Route path="/capture" element={<CapturePage />} />
           <Route path="/capture/:noteId" element={<NotePage />} />
           <Route path="/projects" element={<ProjectsPage />} />
@@ -103,15 +105,23 @@ export function App() {
             <Route path="questions" element={<GapsPage />} />
             <Route path="agent" element={<AgentPage />} />
           </Route>
+          <Route path="/work" element={<WorkLayout />}>
+            <Route index element={<WorkOverviewPage />} />
+            <Route path="skills" element={<SkillsPage />} />
+            <Route path="skills/:name" element={<SkillPage />} />
+            <Route path="outputs" element={<OutputsPage />} />
+            {/* A doc from the old Work, before it became Capture. */}
+            <Route path=":workId" element={<Retired />} />
+          </Route>
           <Route path="/brain/history" element={<HistoryMoved />} />
           <Route path="/brain/gaps" element={<Navigate to="/brain/questions" replace />} />
-          <Route path="/skills" element={<SkillsPage />} />
-          <Route path="/skills/:name" element={<SkillPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/search" element={<SearchPage />} />
           {/* Addresses from before: the Library and Activity became the Brain, Notes became
-              Capture, skills got their own place, and some pages went. */}
+              Capture, Skills and Outputs moved into Work, and some pages went. */}
+          <Route path="/skills/*" element={<Moved from="/skills" to="/work/skills" />} />
+          <Route path="/outputs/*" element={<Moved from="/outputs" to="/work/outputs" />} />
           <Route path="/library/skills/:name" element={<SkillMoved />} />
           <Route path="/library/*" element={<Moved from="/library" to="/brain" />} />
           <Route path="/activity/gaps" element={<Navigate to="/brain/questions" replace />} />
@@ -123,8 +133,6 @@ export function App() {
           <Route path="/suggestions" element={<Navigate to="/review" replace />} />
           <Route path="/approvals" element={<Navigate to="/review" replace />} />
           <Route path="/connections" element={<Navigate to="/settings?tab=apps" replace />} />
-          <Route path="/work" element={<Navigate to="/capture" replace />} />
-          <Route path="/work/:workId" element={<Retired />} />
           <Route path="/goals/*" element={<Retired />} />
           <Route path="/todos" element={<Retired />} />
           <Route path="/tasks/*" element={<Retired />} />

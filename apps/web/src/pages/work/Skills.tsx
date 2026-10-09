@@ -1,14 +1,14 @@
-// Skills: the procedures your AI follows to make things (a post, a proposal, a deck), each with
-// what it loads from the Brain and the files it needs. Every AI you connect finds them; here you
-// run them and see what they make, improve them, write new ones, and look back at each version.
+// Work, Skills: the procedures your AI follows to make things (a post, a proposal, a deck), each
+// with what it loads from the Brain and the files it needs. Every AI you connect finds them; here
+// you run them and see what they make, improve them, write new ones, and look back at each version.
 
 import { WandSparkles } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
-import { brainFileUrl, useAddBuiltinSkills, useBrainSkill, useBuiltinSkills, useNote, useSkills } from "../api/hooks";
-import type { BrainCheckpoint, SkillCard, SkillVersion } from "../api/types";
-import { Markdown } from "../components/Markdown";
+import { brainFileUrl, useAddBuiltinSkills, useBrainSkill, useBuiltinSkills, useNote, useSkills } from "../../api/hooks";
+import type { BrainCheckpoint, SkillCard, SkillVersion } from "../../api/types";
+import { Markdown } from "../../components/Markdown";
 import {
   ImproveSkill,
   LatestRuns,
@@ -20,11 +20,12 @@ import {
   SkillHistory,
   SkillRuns,
   makesLine,
-} from "../components/SkillWork";
-import { FirstVisitTip } from "../components/Tips";
-import { Empty, ErrorNote, Loading, Pill, Section, Tabs } from "../components/ui";
-import { bytes, label, plural, when } from "../lib/format";
-import { fileViewUrl } from "./brain/shared";
+} from "../../components/SkillWork";
+import { FirstVisitTip } from "../../components/Tips";
+import { Empty, ErrorNote, Loading, Pill, Section, Tabs } from "../../components/ui";
+import { bytes, label, plural, when } from "../../lib/format";
+import { SKILLS, skillUrl } from "../../lib/links";
+import { fileViewUrl } from "../brain/shared";
 
 /** A skill's description, cut at its first sentence or two: what it does, not every trigger. */
 function gist(description: string, limit = 180): string {
@@ -38,8 +39,6 @@ function gist(description: string, limit = 180): string {
   out = out.trim() || text;
   return out.length > limit ? `${out.slice(0, limit - 1)}…` : out;
 }
-
-const skillUrl = (name: string, tab?: string) => `/skills/${encodeURIComponent(name)}${tab ? `?tab=${tab}` : ""}`;
 
 export function SkillsPage() {
   const { data, isLoading, error } = useSkills();
@@ -56,29 +55,18 @@ export function SkillsPage() {
   }
   const startNew = () => setParams({ new: "1" });
   return (
-    <div className="page skills">
-      <header className="brain-head">
-        <div>
-          <h1>Skills</h1>
-          <p className="lede">
-            How your AI makes things: each skill is a procedure it follows, with what it loads from the Brain and the files it needs. Run
-            one here and see what it makes, or ask for it in any AI you connect.
-          </p>
-        </div>
-        <div className="head-actions">
-          <dl className="stats">
-            <div className="stat">
-              <dt>Skills</dt>
-              <dd>{data.skills.length}</dd>
-            </div>
-          </dl>
-          {!writing ? (
-            <button type="button" className="primary" onClick={startNew}>
-              New skill
-            </button>
-          ) : null}
-        </div>
-      </header>
+    <div className="work-tab skills">
+      <div className="work-intro">
+        <p>
+          How your AI makes things: each skill is a procedure it follows, with what it loads from the Brain and the files it needs. Run one
+          here and see what it makes, or ask for it in any AI you connect.
+        </p>
+        {!writing ? (
+          <button type="button" className="primary" onClick={startNew}>
+            New skill
+          </button>
+        ) : null}
+      </div>
       <FirstVisitTip id="skills">
         A skill is how your AI makes something, step by step. Run one here, or just ask for it in any AI you connect: it finds the skill.
       </FirstVisitTip>
@@ -188,9 +176,9 @@ export function SkillPage() {
     show("procedure");
   };
   return (
-    <div className="page skill-page">
+    <div className="skill-page">
       <nav className="breadcrumb" aria-label="Breadcrumb">
-        <Link to="/skills">Skills</Link>
+        <Link to={SKILLS}>Skills</Link>
         {skill.category ? (
           <>
             <span aria-hidden="true">/</span>
