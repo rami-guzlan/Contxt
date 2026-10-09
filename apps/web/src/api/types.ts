@@ -726,6 +726,8 @@ export interface SkillRun {
    * picked the one that fit. */
   skills?: string[];
   kind: "run" | "improve";
+  /** The agent asked, when an agent was. */
+  agent?: string | null;
   ask: string;
   status: TaskStatus;
   assignee_id: string | null;
@@ -1810,4 +1812,89 @@ export interface LibraryRefreshed {
   message: string;
   path: string;
   proposal_id: string | null;
+}
+
+// ------------------------------------------------------------------ Work: agents
+
+export type AgentOutput = "outputs" | "workspace" | "proposals";
+
+/** A role written like a job description, kept in the Brain (agents/<name>/AGENT.md). */
+export interface WorkAgent {
+  name: string;
+  role: string;
+  responsibilities: string[];
+  goals: string[];
+  projects: string[];
+  skills: string[];
+  library: string[];
+  context: string[];
+  meetings_days: number;
+  boundaries: string[];
+  output: AgentOutput;
+  output_shape: string;
+  runner: string;
+  review: boolean;
+  scope: string;
+  status: "active" | "archived";
+  prompt: string;
+  path: string;
+  last_run?: { task_id: string; status: string; at: string } | null;
+}
+
+/** What each of an agent's pointers is now, and which no longer resolve. */
+export interface WorkAgentResolved {
+  skills: { name: string; missing: boolean; description: string }[];
+  library: { path: string; title: string; missing: boolean }[];
+  context: { key: string; missing: boolean }[];
+  projects: { id: string; title: string; missing: boolean; status?: string; current?: string; next?: string }[];
+  broken: string[];
+}
+
+export interface WorkAgentFull {
+  agent: WorkAgent;
+  resolved: WorkAgentResolved;
+  /** The role as a model gets it, before the brief of a task. */
+  prompt: string;
+  checkpoint?: BrainCheckpoint | null;
+}
+
+/** The form an agent is written with; the Brain checks what each field means. */
+export interface WorkAgentForm {
+  name: string;
+  role: string;
+  responsibilities: string[];
+  goals: string[];
+  projects: string[];
+  skills: string[];
+  library: string[];
+  context: string[];
+  meetings_days: number;
+  boundaries: string[];
+  output: AgentOutput;
+  output_shape: string;
+  runner: string;
+  review: boolean;
+  prompt: string;
+}
+
+/** A model's draft for Work: an agent's operating prompt, or an improved prompt in Compose. */
+export interface WorkDraft {
+  prompt: string;
+  questions: string[];
+  changes?: string[];
+  used?: string[];
+}
+
+/** A Work job in the background (the same queue as the knowledge agent's). */
+export interface WorkJob<R = WorkDraft> {
+  id: string;
+  kind: string;
+  model: string;
+  model_label: string;
+  message: string;
+  status: "waiting" | "running" | "done" | "failed";
+  result: Partial<R>;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
 }

@@ -5135,3 +5135,88 @@ button.big,
     gap: 0.3rem;
   }
 }
+
+/* Agents: a roster of digital coworkers, each a face, a role and what it points to. */
+.agent-roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.75rem;
+}
+
+.agent-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+}
+
+.agent-card.archived {
+  opacity: 0.7;
+}
+
+.agent-card-main p {
+  margin: 0.2rem 0 0;
+}
+
+.agent-card-main .chips {
+  margin-top: 0.35rem;
+}
+
+.agent-card-name {
+  font-weight: 600;
+  font-size: 1.02rem;
+}
+
+.agent-face {
+  display: inline-grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+
+.agent-face.large {
+  width: 3.2rem;
+  height: 3.2rem;
+  font-size: 1.15rem;
+}
+
+.agent-head {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.agent-head h1 {
+  margin: 0;
+}
+
+.agent-editor textarea.mono,
+.agent-editor .mono {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+label.check {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+li.missing {
+  color: var(--muted);
+  text-decoration: line-through;
+}

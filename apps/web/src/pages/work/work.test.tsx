@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { mockApi, renderAt } from "../../test/render";
+import { NewWorkAgentPage, WorkAgentPage, WorkAgentsPage } from "./Agents";
 import { LibraryItemPage, LibraryPage } from "./Library";
 import { WorkOverviewPage } from "./Overview";
 import { WorkLayout } from "./WorkLayout";
@@ -31,10 +32,10 @@ const skills = {
 
 describe("Work", () => {
   it("frames its parts as tabs, with what waits for a yes on Skills", async () => {
-    mockApi({ "GET /api/brain/status": { available: true }, "GET /api/skills": skills, "GET /api/library": [] });
+    mockApi({ "GET /api/brain/status": { available: true }, "GET /api/skills": skills, "GET /api/library": [], "GET /api/agents": [] });
     renderAt(<WorkLayout />, { path: "/work", route: "/work" });
     const tabs = await screen.findByRole("navigation", { name: "Work sections" });
-    expect(within(tabs).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["/work", "/work/skills", "/work/library", "/work/outputs"]);
+    expect(within(tabs).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["/work", "/work/skills", "/work/agents", "/work/library", "/work/outputs"]);
     expect(within(tabs).getByRole("link", { name: /Skills/ })).toHaveTextContent("1");
     expect(screen.getByRole("heading", { level: 1, name: "Work" })).toBeInTheDocument();
   });
@@ -45,6 +46,7 @@ describe("Work", () => {
       "GET /api/outputs": { root: "C:/home/outputs", folders: [], files: [] },
       "GET /api/skills/runs": [],
       "GET /api/library": [],
+      "GET /api/agents": [],
     });
     renderAt(<WorkOverviewPage />, { path: "/work", route: "/work" });
     const parts = await screen.findByRole("list", { name: "The parts of Work" });
@@ -142,5 +144,105 @@ describe("the Library", () => {
     expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ path: "references/acme-site.md", kind: "guide" });
     await user.click(screen.getByRole("button", { name: "Fetch it again now" }));
     expect(await screen.findByText("Nothing changed since it was fetched.")).toBeInTheDocument();
+  });
+});
+
+const writer = {
+  name: "case-writer",
+  role: "Writes the studio's case studies from finished projects.",
+  responsibilities: ["Draft one case study a month"],
+  goals: [],
+  projects: [],
+  skills: ["weekly-posts"],
+  library: ["references/release-notes.md"],
+  context: ["brand/voice"],
+  meetings_days: 14,
+  boundaries: ["Never publish, send or post anything: leave drafts for the owner."],
+  output: "outputs",
+  output_shape: "A one-page case study.",
+  runner: "claude",
+  review: true,
+  scope: "",
+  status: "active",
+  prompt: "You write case studies.",
+  path: "agents/case-writer/AGENT.md",
+  last_run: { task_id: "t1", status: "done", at: "2026-10-09T09:00:00Z" },
+};
+const writerFull = {
+  agent: writer,
+  resolved: {
+    skills: [{ name: "weekly-posts", missing: false, description: "Three posts." }],
+    library: [{ path: "references/release-notes.md", title: "How we write release notes", missing: false }],
+    context: [{ key: "brand/voice", missing: false }],
+    projects: [],
+    broken: ["/gone-skill"],
+  },
+  prompt: "# You are working as case-writer\n\nWrites the studio's case studies.",
+};
+const pickers = {
+  "GET /api/skills": skills,
+  "GET /api/library": [guide],
+  "GET /api/brain/projects": [],
+  "GET /api/brain/catalog": { areas: [{ key: "brand", label: "Brand", description: "", topics: [{ key: "brand/voice", label: "Voice", description: "", entries: 2 }] }], entries: [] },
+};
+
+describe("Agents", () => {
+  it("shows the team as faces, roles and what each points to", async () => {
+    mockApi({ "GET /api/agents": [writer] });
+    renderAt(<WorkAgentsPage />, { path: "/work/agents", route: "/work/agents" });
+    const roster = await screen.findByRole("list", { name: "Agents" });
+    expect(within(roster).getByRole("link", { name: "case-writer" })).toHaveAttribute("href", "/work/agents/case-writer");
+    expect(within(roster).getByText("CW")).toBeInTheDocument();
+    expect(within(roster).getByText("1 skill")).toBeInTheDocument();
+    expect(within(roster).getByText("meetings, 14 days")).toBeInTheDocument();
+    expect(within(roster).getByText(/last asked/)).toBeInTheDocument();
+  });
+
+  it("has the model write a new agent's prompt from the role, then saves the whole role", async () => {
+    const calls = mockApi({
+      ...pickers,
+      "POST /api/agents/prompt": { id: "ajob_1", kind: "agent-prompt", status: "waiting", result: {}, error: null },
+      "GET /api/brain/agent/jobs/ajob_1": {
+        id: "ajob_1",
+        kind: "agent-prompt",
+        status: "done",
+        result: { prompt: "You plan one case study a month.", questions: ["Which projects count as finished?"] },
+        error: null,
+      },
+      "POST /api/agents": writerFull,
+    });
+    const user = userEvent.setup();
+    renderAt(<NewWorkAgentPage />, { path: "/work/agents/new", route: "/work/agents/new" });
+    await user.type(await screen.findByLabelText("What it does, in a line"), "Writes case studies");
+    expect(screen.getByLabelText("Its name")).toHaveValue("case-studies");
+    await user.clear(screen.getByLabelText("Its name"));
+    await user.type(screen.getByLabelText("Its name"), "case-writer");
+    await user.click(screen.getByRole("button", { name: "Write it with your AI" }));
+    expect(await screen.findByDisplayValue("You plan one case study a month.")).toBeInTheDocument();
+    expect(screen.getByText("Which projects count as finished?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save the agent" }));
+    const saved = calls.find((c) => c.method === "POST" && c.path === "/api/agents");
+    expect(saved?.body).toMatchObject({ name: "case-writer", role: "Writes case studies", prompt: "You plan one case study a month.", output: "outputs", review: true });
+    expect(await screen.findByText("navigated away")).toBeInTheDocument();
+  });
+
+  it("asks an agent for something and shows what it gets, naming what no longer resolves", async () => {
+    const calls = mockApi({
+      ...pickers,
+      "GET /api/agents/case-writer": writerFull,
+      "GET /api/agents/case-writer/runs": [],
+      "POST /api/agents/case-writer/run": { id: "task_1", title: "Ask case-writer", status: "draft", template: "skill", project_id: null },
+      "GET /api/runners": [],
+    });
+    const user = userEvent.setup();
+    renderAt(<WorkAgentPage />, { path: "/work/agents/:name", route: "/work/agents/case-writer" });
+    expect(await screen.findByRole("heading", { level: 1, name: "case-writer" })).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("/gone-skill");
+    await user.type(screen.getByLabelText("What do you need from case-writer?"), "A case study of the podcast.");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({ ask: "A case study of the podcast." });
+    await user.click(screen.getByRole("tab", { name: "What it gets" }));
+    expect(await screen.findByText(/# You are working as case-writer/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "How we write release notes" })).toHaveAttribute("href", "/work/library/view?path=references%2Frelease-notes.md");
   });
 });

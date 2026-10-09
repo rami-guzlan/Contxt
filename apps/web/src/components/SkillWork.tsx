@@ -345,7 +345,7 @@ export function SkillRuns({ name, kind }: { name: string; kind: SkillRun["kind"]
   );
 }
 
-function RunCard({ run, showSkills = false }: { run: SkillRun; showSkills?: boolean }) {
+export function RunCard({ run, showSkills = false }: { run: SkillRun; showSkills?: boolean }) {
   // A run started on this computer a moment ago may not have claimed its task yet.
   const { data: live } = useRecentRuns();
   const starting = !!live?.some((r) => r.task_id === run.task_id && ["starting", "running"].includes(r.status));
@@ -358,7 +358,12 @@ function RunCard({ run, showSkills = false }: { run: SkillRun; showSkills?: bool
       <header className="skill-run-head">
         <Pill status={run.status} />
         <span className="muted small">{when(run.created_at)}</span>
-        {showSkills || followed.length > 1 ? (
+        {run.agent ? (
+          <Link className="small" to={`/work/agents/${encodeURIComponent(run.agent)}`}>
+            Asked {run.agent}
+          </Link>
+        ) : null}
+        {(showSkills || followed.length > 1) && !(run.agent && !followed.length) ? (
           <span className="small">
             {followed.length
               ? followed.map((name, i) => (

@@ -79,6 +79,11 @@ import type {
   LibraryKind,
   LibraryRefresh,
   LibraryRefreshed,
+  WorkAgent,
+  WorkAgentForm,
+  WorkAgentFull,
+  WorkDraft,
+  WorkJob,
 } from "./types";
 
 export const keys = {
@@ -1125,3 +1130,80 @@ export const useUpdateLibraryItem = () =>
 /** Fetch an item again now. */
 export const useRefreshLibraryItem = () =>
   useLibraryMutation((path: string) => post<LibraryRefreshed>("/api/library/refresh", { path }));
+
+// ------------------------------------------------------------------ Work: agents
+
+const agentsKey = ["work-agents"] as const;
+
+export const useWorkAgents = (archived = false) =>
+  useQuery({ queryKey: [...agentsKey, { archived }], queryFn: () => get<WorkAgent[]>(`/api/agents${archived ? "?archived=true" : ""}`) });
+
+export const useWorkAgent = (name: string) =>
+  useQuery({
+    queryKey: [...agentsKey, name],
+    queryFn: () => get<WorkAgentFull>(`/api/agents/${encodeURIComponent(name)}`),
+    enabled: !!name,
+  });
+
+export const useWorkAgentVersions = (name: string) =>
+  useQuery({
+    queryKey: [...agentsKey, name, "versions"],
+    queryFn: () => get<SkillVersion[]>(`/api/agents/${encodeURIComponent(name)}/versions`),
+    enabled: !!name,
+  });
+
+/** What the agent was asked and what it made, newest first; looked at again while one runs. */
+export const useWorkAgentRuns = (name: string) =>
+  useQuery({
+    queryKey: [...agentsKey, name, "runs"],
+    queryFn: () => get<SkillRun[]>(`/api/agents/${encodeURIComponent(name)}/runs`),
+    enabled: !!name,
+    refetchInterval: (q) => ((q.state.data ?? []).some((r) => ["ready", "claimed", "in_progress"].includes(r.status)) ? 4000 : false),
+  });
+
+/** Save an agent: a new one (POST) or a change (PUT). */
+export function useSaveWorkAgent() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ form, isNew }: { form: WorkAgentForm; isNew: boolean }) =>
+      isNew ? post<WorkAgentFull>("/api/agents", form) : put<WorkAgentFull>(`/api/agents/${encodeURIComponent(form.name)}`, form),
+    onSuccess: () => invalidate(agentsKey, keys.brain, keys.library),
+  });
+}
+
+export function useArchiveWorkAgent() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (name: string) => api<unknown>(`/api/agents/${encodeURIComponent(name)}`, { method: "DELETE" }),
+    onSuccess: () => invalidate(agentsKey),
+  });
+}
+
+/** Have the chosen model write the operating prompt from the form; nothing is saved. */
+export const useWriteAgentPrompt = () =>
+  useMutation({
+    mutationFn: (form: Omit<WorkAgentForm, "prompt">) => post<WorkJob>("/api/agents/prompt", form),
+  });
+
+export const useWorkJob = <R = WorkDraft,>(id: string | null) =>
+  useQuery({
+    queryKey: ["work-job", id],
+    queryFn: () => get<WorkJob<R>>(`/api/brain/agent/jobs/${encodeURIComponent(id ?? "")}`),
+    enabled: !!id,
+    refetchInterval: (q) => (q.state.data && ["done", "failed"].includes(q.state.data.status) ? false : 1500),
+  });
+
+/** Ask an agent for something: a run like a skill run. */
+export function useAskWorkAgent() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ name, ask, project }: { name: string; ask: string; project?: string }) =>
+      post<Task>(`/api/agents/${encodeURIComponent(name)}/run`, { ask, project: project || undefined }),
+    onSuccess: () => invalidate(agentsKey, keys.tasks, keys.skills),
+  });
+}
+
+export const useAddAgentToClaudeCode = () =>
+  useMutation({
+    mutationFn: (name: string) => post<{ path: string; replaced: boolean }>(`/api/agents/${encodeURIComponent(name)}/claude-code`),
+  });

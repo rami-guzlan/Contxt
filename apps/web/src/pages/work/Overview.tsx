@@ -4,7 +4,7 @@
 
 import { Link } from "react-router";
 
-import { useLibrary, useOutputs, useSkills } from "../../api/hooks";
+import { useLibrary, useOutputs, useSkills, useWorkAgents } from "../../api/hooks";
 import { LatestRuns } from "../../components/SkillWork";
 import { Section } from "../../components/ui";
 import { plural } from "../../lib/format";
@@ -22,6 +22,7 @@ export function WorkOverviewPage() {
   const { data: skills } = useSkills();
   const { data: outputs } = useOutputs();
   const { data: library } = useLibrary();
+  const { data: agents } = useWorkAgents();
   const parts: Part[] = [
     {
       title: "Compose",
@@ -44,6 +45,8 @@ export function WorkOverviewPage() {
       title: "Agents",
       question: "Who does the work",
       text: "Roles written like a job description, pointing to the skills, references and context they need.",
+      to: "/work/agents",
+      count: agents ? plural(agents.length, "agent") : undefined,
     },
     {
       title: "Workflows",

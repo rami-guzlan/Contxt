@@ -468,6 +468,36 @@ class BrainPort(Protocol):
         "triggers", "text", "own"}]."""
         ...
 
+    # ---- Work: agents, roles kept in the Brain (agents/<name>/AGENT.md)
+
+    def agents(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        """The agents the owner defined, each its role, pointers and operating prompt."""
+        ...
+
+    def agent(self, name: str) -> dict[str, Any] | None:
+        """One agent: {"agent", "resolved" (each pointer as it is now, and what no longer
+        resolves), "prompt" (its role as a model gets it)}; None when there is no such agent."""
+        ...
+
+    def save_agent(
+        self, name: str, fields: dict[str, Any], prompt: str, *, label: str | None = None
+    ) -> dict[str, Any]:
+        """Create or change an agent as the owner: applied at once, one undo point. Raises
+        ValidationFailed with the Brain's words when the role is not right."""
+        ...
+
+    def archive_agent(self, name: str) -> dict[str, Any]:
+        """Hide an agent; its file stays, with an undo point."""
+        ...
+
+    def agent_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
+        """Every saved version of an agent, newest first; None when there is no such agent."""
+        ...
+
+    def work_skill(self, name: str) -> str | None:
+        """A procedure Work follows with a model (agent-builder, prompt-improver)."""
+        ...
+
     def unsaved(self) -> list[str]:
         """Governed files whose changes are live but not saved to git (a commit failed)."""
         ...
@@ -738,6 +768,26 @@ class NoBrain:
 
     def agent_skills(self) -> list[dict[str, Any]]:
         return []
+
+    def agents(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        return []
+
+    def agent(self, name: str) -> dict[str, Any] | None:
+        return None
+
+    def save_agent(
+        self, name: str, fields: dict[str, Any], prompt: str, **_: Any
+    ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep agents in.")
+
+    def archive_agent(self, name: str) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep agents in.")
+
+    def agent_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
+        return None
+
+    def work_skill(self, name: str) -> str | None:
+        return None
 
     def unsaved(self) -> list[str]:
         return []

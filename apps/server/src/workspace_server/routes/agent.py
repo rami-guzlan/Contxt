@@ -39,7 +39,9 @@ def overview(request: Request, who: Who, ws: WS) -> dict[str, Any]:
     out = ws.agent.overview(who)
     out["models"] = [m.to_dict() for m in models(request).list()]
     out["working"] = [
-        j.to_dict() for j in work(request).recent(who) if j.status in ("waiting", "running")
+        j.to_dict()
+        for j in work(request).recent(who)
+        if j.status in ("waiting", "running") and j.kind in ("action", "chat")
     ]
     return out
 

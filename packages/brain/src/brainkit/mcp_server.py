@@ -239,6 +239,18 @@ AGENT_TOOLS = [
     {"name": "brain_health",
      "description": "Run the read-only brain health report.",
      "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "list_agents",
+     "description": "The agents the owner defined: roles written like a job description, each "
+                    "with what it does. Take one on with get_agent when asked to work as it.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "get_agent",
+     "description": "Take on one of the owner's agents: its role, its operating prompt, what "
+                    "it points to as each is now (skills, documents, projects) and what it "
+                    "never does. Then get the brief for the task with get_task_context.",
+     "inputSchema": {"type": "object", "properties": {
+         "name": {"type": "string", "description": "The agent's name, such as "
+                                                  "content-strategist."},
+         "session_id": _STR}, "required": ["name"]}},
 ]
 FULL_TOOLS = AGENT_TOOLS + [
     {"name": "get_topic", "description": "Read every visible note in one topic (inspection).",
@@ -305,6 +317,8 @@ HANDLERS = {
         pinned_skills=a.get("pinned_skills"), aliases=a.get("aliases"),
         session_id=a.get("session_id")),
     "brain_health": lambda b, a: b.health(),
+    "list_agents": lambda b, a: b.agents(),
+    "get_agent": lambda b, a: b.agent_prompt(a.get("name"), session_id=a.get("session_id")),
     "record_output": lambda b, a: b.record_output(
         a.get("path"), title=a.get("title") or "", session_id=a.get("session_id")),
     "search_notes": lambda b, a: b.search(a.get("query"), limit=a.get("limit") or 8,

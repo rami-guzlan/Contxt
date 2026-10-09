@@ -343,6 +343,40 @@ class Skills:
         """The latest runs from the Skills page and from every skill, newest first."""
         return self._shaped(who, self._tasks(who, RUN)[: max(1, min(int(limit), 50))], None)
 
+    def runs_where(
+        self, who: Principal, keep: Any, *, limit: int = 20
+    ) -> builtins.list[dict[str, Any]]:
+        """Runs whose record `keep(about)` accepts (an agent's runs, say), newest first, shaped
+        the way a skill's page shows them."""
+        mine = [t for t in self._tasks(who, RUN) if keep(dict(t.provenance.get("skill") or {}))]
+        return self._shaped(who, mine[: max(1, min(int(limit), 50))], None)
+
+    def queue(
+        self,
+        who: Principal,
+        *,
+        title: str,
+        purpose: str,
+        instructions: str,
+        request: str,
+        about: dict[str, Any],
+        pins: builtins.list[tuple[str, str, int]] | None = None,
+    ) -> Task:
+        """A run like a skill run (the same queue, result tool and review), for another part of
+        Work: an agent asked for something, a prompt run from Compose."""
+        who.require("tasks.write")
+        return self._ask_model(
+            who,
+            title=title,
+            purpose=purpose,
+            instructions=instructions,
+            request=request,
+            template=RUN,
+            contract=RUN_CONTRACT,
+            about=about,
+            pins=pins,
+        )
+
     def _shaped(
         self, who: Principal, mine: builtins.list[Task], name: str | None
     ) -> builtins.list[dict[str, Any]]:
@@ -406,6 +440,7 @@ class Skills:
                     "skill": name or (skills[0] if skills else ""),
                     "skills": skills,
                     "kind": "run" if task.template == RUN else "improve",
+                    "agent": about.get("agent") or None,
                     "ask": about.get("ask") or "",
                     "status": task.status,
                     "assignee_id": task.assignee_id,

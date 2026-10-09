@@ -1254,6 +1254,43 @@ class BrainKitAdapter:
     def agent_skills(self) -> list[dict[str, Any]]:
         return list(self.brain.agent_skills().data.get("skills") or [])
 
+    # ---- Work: agents
+
+    def agents(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        return list(self.brain.agents(archived=archived).data.get("agents") or [])
+
+    def agent(self, name: str) -> dict[str, Any] | None:
+        result = self.brain.agent(name)
+        if result.is_error:
+            return None
+        return dict(result.data)
+
+    def save_agent(
+        self, name: str, fields: dict[str, Any], prompt: str, *, label: str | None = None
+    ) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.save_agent(name, fields, prompt, label=label)
+        if result.is_error:
+            raise ValidationFailed(result.text, problems=result.data.get("problems") or [])
+        return dict(result.data)
+
+    def archive_agent(self, name: str) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.archive_agent(name)
+        if result.is_error:
+            raise NotFound(result.text, name=name)
+        return dict(result.data)
+
+    def agent_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
+        result = self.brain.agent_versions(name, with_text=with_text)
+        if result.is_error:
+            return None
+        return list(result.data.get("versions") or [])
+
+    def work_skill(self, name: str) -> str | None:
+        result = self.brain.work_skill(name)
+        return None if result.is_error else str(result.data.get("text") or "")
+
     def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
         return list(self.brain.weekly(weeks).data.get("weeks") or [])
 

@@ -29,6 +29,7 @@ from .models import Models
 from .outputs import Outputs
 from .routes import (
     agent,
+    agents,
     backups,
     brain,
     bus,
@@ -165,6 +166,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         notes,
         captures,
         agent,
+        agents,
         brain,
         outputs,
         proof,

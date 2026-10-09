@@ -421,3 +421,41 @@ class LibraryItemIn(Body):
 
 class LibraryRefreshIn(Body):
     path: str = Field(min_length=1, max_length=500)
+
+
+# ------------------------------------------------------------------------- agents
+
+
+class AgentForm(Body):
+    """An agent's role, written like a job description: the Brain checks what each field means."""
+
+    role: str = Field(default="", max_length=300)
+    responsibilities: list[str] = Field(default_factory=list, max_length=20)
+    goals: list[str] = Field(default_factory=list, max_length=20)
+    projects: list[str] = Field(default_factory=list, max_length=20)
+    skills: list[str] = Field(default_factory=list, max_length=20)
+    library: list[str] = Field(default_factory=list, max_length=20)
+    context: list[str] = Field(default_factory=list, max_length=20)
+    meetings_days: int = Field(default=0, ge=0, le=90)
+    boundaries: list[str] = Field(default_factory=list, max_length=20)
+    output: str = Field(default="outputs", pattern="^(outputs|workspace|proposals)$")
+    output_shape: str = Field(default="", max_length=500)
+    runner: str = Field(default="claude", max_length=90)
+    review: bool = True
+
+
+class AgentSaveIn(AgentForm):
+    name: str = Field(min_length=1, max_length=64)
+    prompt: str = Field(default="", max_length=30_000)
+
+
+class AgentPromptIn(AgentForm):
+    """Ask the chosen model to write the operating prompt from the form (saved or not)."""
+
+    name: str = Field(default="", max_length=64)
+    model: str | None = Field(default=None, max_length=140)
+
+
+class AgentAskIn(Body):
+    ask: str = Field(min_length=1, max_length=4000)
+    project: str | None = Field(default=None, max_length=200)
