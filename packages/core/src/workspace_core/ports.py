@@ -167,6 +167,15 @@ class BrainFile:
     dated: str | None = None
     sections: int = 0
     work: bool = False
+    # In the Library, from its card: what kind of item it is (guide, reference, influence),
+    # where it was fetched from (a page, or a repository and the files picked from it), when,
+    # and how often it is fetched again (never, weekly, monthly).
+    library: str | None = None
+    source_url: str | None = None
+    source_repo: str | None = None
+    source_paths: tuple[str, ...] = ()
+    fetched_at: str | None = None
+    refresh: str | None = None
 
 
 @dataclass(frozen=True)
@@ -322,11 +331,14 @@ class BrainPort(Protocol):
         status: str | None = None,
         origin: str = "app",
         wait: bool = False,
+        library: dict[str, Any] | None = None,
+        replaces: str | None = None,
     ) -> BrainProposal:
         """File a document or asset (in a project, as a new version of one already there
-        when its name says so). The Brain's capture policy decides whether it is filed at
-        once, with an undo point (`status` applied), or waits for review (pending); `wait`
-        makes it wait whatever the policy says."""
+        when its name says so, or of the one `replaces` names). The Brain's capture policy
+        decides whether it is filed at once, with an undo point (`status` applied), or waits
+        for review (pending); `wait` makes it wait whatever the policy says. `library` gives a
+        document its Library fields on its card."""
         ...
 
     def projects(self) -> list[BrainProject]:

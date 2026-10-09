@@ -373,3 +373,51 @@ class AgentKeepIn(Body):
     text: str = Field(min_length=1, max_length=2000)
     kind: str = Field(default="fact", pattern="^(fact|rule|decision|preference)$")
     said: str = Field(default="", max_length=4000)
+
+
+# ------------------------------------------------------------------------- the Library
+
+LIBRARY_KIND = "^(guide|reference|influence)$"
+LIBRARY_REFRESH = "^(never|weekly|monthly)$"
+
+
+class LibraryWriteIn(Body):
+    """A guide (or any item) written in the Library itself, in Markdown."""
+
+    title: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=200_000)
+    kind: str = Field(default="guide", pattern=LIBRARY_KIND)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class LibraryUrlIn(Body):
+    """A web page to fetch and keep."""
+
+    url: str = Field(min_length=9, max_length=2000)
+    kind: str = Field(default="influence", pattern=LIBRARY_KIND)
+    title: str = Field(default="", max_length=200)
+    refresh: str = Field(default="never", pattern=LIBRARY_REFRESH)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class LibraryRepoIn(Body):
+    """A GitHub repository to keep as a snapshot: its README, its tree and the files picked."""
+
+    url: str = Field(min_length=20, max_length=500)
+    paths: list[str] = Field(default_factory=list, max_length=20)
+    kind: str = Field(default="influence", pattern=LIBRARY_KIND)
+    title: str = Field(default="", max_length=200)
+    refresh: str = Field(default="never", pattern=LIBRARY_REFRESH)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class LibraryItemIn(Body):
+    """Change what kind of item a document is, or how often it is fetched again."""
+
+    path: str = Field(min_length=1, max_length=500)
+    kind: str | None = Field(default=None, pattern=LIBRARY_KIND)
+    refresh: str | None = Field(default=None, pattern=LIBRARY_REFRESH)
+
+
+class LibraryRefreshIn(Body):
+    path: str = Field(min_length=1, max_length=500)

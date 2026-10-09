@@ -5057,3 +5057,81 @@ button.big,
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+.row.space-between {
+  justify-content: space-between;
+}
+
+/* Filters drawn as chips: one kind at a time, or everything. */
+.work-filter .chip,
+.library-filter .chip {
+  font-size: 0.85rem;
+  padding: 0.15rem 0.65rem;
+  cursor: pointer;
+}
+
+.work-filter .chip.active,
+.library-filter .chip.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.library-item {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+}
+
+.library-item-main p {
+  margin: 0.15rem 0 0;
+}
+
+.library-item-title {
+  font-weight: 600;
+}
+
+/* What a Library item is for, in its own color: a guide to follow, a reference to read, an
+   influence to borrow from. */
+.kind-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  justify-self: start;
+}
+
+.kind-guide {
+  color: var(--review);
+}
+
+.kind-reference {
+  color: var(--accent);
+}
+
+.kind-influence {
+  color: var(--active);
+}
+
+@media (max-width: 640px) {
+  .library-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+}

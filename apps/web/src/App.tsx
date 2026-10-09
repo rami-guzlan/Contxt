@@ -37,6 +37,8 @@ const SettingsPage = page(() => import("./pages/Settings"), "SettingsPage");
 const WorkLayout = page(() => import("./pages/work/WorkLayout"), "WorkLayout");
 const WorkOverviewPage = page(() => import("./pages/work/Overview"), "WorkOverviewPage");
 const OutputsPage = page(() => import("./pages/work/Outputs"), "OutputsPage");
+const LibraryPage = page(() => import("./pages/work/Library"), "LibraryPage");
+const LibraryItemPage = page(() => import("./pages/work/Library"), "LibraryItemPage");
 const SkillPage = page(() => import("./pages/work/Skills"), "SkillPage");
 const SkillsPage = page(() => import("./pages/work/Skills"), "SkillsPage");
 
@@ -109,6 +111,8 @@ export function App() {
             <Route index element={<WorkOverviewPage />} />
             <Route path="skills" element={<SkillsPage />} />
             <Route path="skills/:name" element={<SkillPage />} />
+            <Route path="library" element={<LibraryPage />} />
+            <Route path="library/view" element={<LibraryItemPage />} />
             <Route path="outputs" element={<OutputsPage />} />
             {/* A doc from the old Work, before it became Capture. */}
             <Route path=":workId" element={<Retired />} />

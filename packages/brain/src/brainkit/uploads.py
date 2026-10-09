@@ -63,10 +63,40 @@ SKILL_KEY_ORDER = ("name", "description", "index_line", "when_to_use", "scope", 
 SKILL_LIST_FIELDS = ("triggers", "aliases", "cue_terms", "artifacts", "loads", "depends_on",
                      "quality_gates")
 UPLOAD_KINDS = ("skill.create", "skill.update", "file.add")
+# The Library: a document kept whole can say what kind of item it is (a guide to follow, a
+# reference to read whole, an influence whose taste to borrow), where it was fetched from, when,
+# and how often to fetch it again. These live on the document's card.
+LIBRARY_KINDS = ("guide", "reference", "influence")
+LIBRARY_REFRESH = ("never", "weekly", "monthly")
+LIBRARY_KEYS = ("library", "source_url", "source_repo", "source_paths", "fetched_at", "refresh")
 
 
 class Refused(Exception):
     """An upload that fails a gate. Nothing has been staged when this is raised."""
+
+
+def library_meta(fields) -> dict:
+    """The Library's fields for a document's card, checked; empty ones are left out."""
+    out: dict = {}
+    for key, value in (fields or {}).items():
+        if key not in LIBRARY_KEYS:
+            raise Refused(f"{key} is not a Library field")
+        if value in (None, "", [], ()):
+            continue
+        if key == "source_paths":
+            paths = [str(p).strip() for p in value if str(p).strip()]
+            if paths:
+                out[key] = paths[:20]
+            continue
+        text = str(value).strip()
+        if key == "library" and text not in LIBRARY_KINDS:
+            raise Refused("a Library item is a guide, a reference or an influence")
+        if key == "refresh" and text not in LIBRARY_REFRESH:
+            raise Refused("refresh is never, weekly or monthly")
+        if key in ("source_url", "source_repo") and not text.lower().startswith("https://"):
+            raise Refused(f"{key} must be an https:// address")
+        out[key] = text
+    return out
 
 
 def _result(message, data=None, is_error=False):
@@ -380,10 +410,12 @@ def _as_int(value) -> int | None:
 def add_file(brain, *, source_path=None, content=None, content_base64=None, filename=None,
              title=None, description="", purpose=None, topic=None, scope=None, principal=None,
              evidence="", source="", reason="", session_id=None, replaces=None, project=None,
-             status=None, version=None, dated=None, origin=None, wait=False, **_ignored):
+             status=None, version=None, dated=None, origin=None, wait=False, library=None,
+             **_ignored):
     """File a document (a reference) or an asset with its card, or a new version of one
     already filed: `replaces` names it (references/brand-voice.md), or, in a project, a file
-    named like one already there is its new version.
+    named like one already there is its new version. `library` puts the Library's fields
+    on a document's card (LIBRARY_KEYS: its kind, source, when it was fetched, its refresh).
 
     `project` files it in a project's folder (a Focus, by id or name); `status` (draft,
     sent, final, ...), `version` and `dated` say which copy this is. `origin` is where it
@@ -429,6 +461,9 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
         if ext not in DOC_EXT + ASSET_EXT:
             raise Refused(f"{filename}: unsupported type {ext or '(none)'}")
         purpose = wanted or ("reference" if ext in DOC_EXT else "asset")
+        extra = library_meta(library)
+        if extra and purpose != "reference":
+            raise Refused(f"{filename}: only a document kept whole goes in the Library")
         if not replaces and home is not None and purpose == "reference":
             replaces = _same_document(st, home, filename)
         replacing = _replaceable(brain, replaces, purpose) if replaces else None
@@ -521,6 +556,7 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
             meta.pop("file_status", None)
         meta.setdefault("file", replacing)
         meta.setdefault("type", "file")
+        meta.update(extra)
         card_update = {"id": card.id, "meta": meta,
                        "body": (_card_body(card.title, replacing, about, outline)
                                 if purpose == "reference" else card.body)}
@@ -552,6 +588,7 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
         "supersedes": "none"}
     if home is not None:
         note_meta["project_id"] = home.id
+    note_meta.update(extra)
     if stated or purpose == "reference":
         note_meta["version"] = stated or 1
     if status:

@@ -73,6 +73,12 @@ import type {
   AgentOverview,
   AgentSkill,
   AgentSuggestion,
+  LibraryFiled,
+  LibraryItem,
+  LibraryItemFull,
+  LibraryKind,
+  LibraryRefresh,
+  LibraryRefreshed,
 } from "./types";
 
 export const keys = {
@@ -88,6 +94,7 @@ export const keys = {
   onboarding: ["onboarding"] as const,
   legacy: ["legacy"] as const,
   skills: ["skills"] as const,
+  library: ["library"] as const,
 };
 
 export function useInvalidate() {
@@ -1061,3 +1068,60 @@ export function useDismissAgentSuggestion() {
     onSettled: () => invalidate(agentKey),
   });
 }
+// ------------------------------------------------------------------ Work: the Library
+
+export const useLibrary = () => useQuery({ queryKey: keys.library, queryFn: () => get<LibraryItem[]>("/api/library") });
+
+export const useLibraryItem = (path: string) =>
+  useQuery({
+    queryKey: [...keys.library, "item", path],
+    queryFn: () => get<LibraryItemFull>(`/api/library/item${query({ path })}`),
+    enabled: !!path,
+  });
+
+function useLibraryMutation<I, O>(send: (input: I) => Promise<O>) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: send,
+    onSuccess: () => invalidate(keys.library, keys.brain, keys.home, keys.events),
+  });
+}
+
+/** Keep a guide (or a reference) written in the Library itself. */
+export const useWriteToLibrary = () =>
+  useLibraryMutation((input: { title: string; text: string; kind: LibraryKind; project?: string }) =>
+    post<LibraryFiled>("/api/library/write", input),
+  );
+
+/** Keep a document whole: PDF, Word, PowerPoint, HTML, Markdown or text. */
+export const useUploadToLibrary = () =>
+  useLibraryMutation((input: { file: File; kind: LibraryKind; title?: string; project?: string }) => {
+    const form = new FormData();
+    form.set("file", input.file);
+    form.set("kind", input.kind);
+    if (input.title) form.set("title", input.title);
+    if (input.project) form.set("project", input.project);
+    return api<LibraryFiled>("/api/library/upload", { method: "POST", form });
+  });
+
+/** Fetch a web page and keep it. */
+export const useFetchToLibrary = () =>
+  useLibraryMutation((input: { url: string; kind: LibraryKind; title?: string; refresh: LibraryRefresh }) =>
+    post<LibraryFiled>("/api/library/url", input),
+  );
+
+/** Keep a GitHub repository as a snapshot: its README, its tree and the files picked. */
+export const useLinkRepo = () =>
+  useLibraryMutation((input: { url: string; paths: string[]; kind: LibraryKind; title?: string; refresh: LibraryRefresh }) =>
+    post<LibraryFiled>("/api/library/repo", input),
+  );
+
+/** Change an item's kind or how often it is fetched again. */
+export const useUpdateLibraryItem = () =>
+  useLibraryMutation((input: { path: string; kind?: LibraryKind; refresh?: LibraryRefresh }) =>
+    put<LibraryItem>("/api/library/item", input),
+  );
+
+/** Fetch an item again now. */
+export const useRefreshLibraryItem = () =>
+  useLibraryMutation((path: string) => post<LibraryRefreshed>("/api/library/refresh", { path }));

@@ -516,6 +516,12 @@ class BrainKitAdapter:
                     dated=str(meta.get("dated") or "")[:10] or None,
                     sections=parts.get(path, 0),
                     work=str(meta.get("type") or "") == "file",
+                    library=str(meta.get("library") or "") or None,
+                    source_url=str(meta.get("source_url") or "") or None,
+                    source_repo=str(meta.get("source_repo") or "") or None,
+                    source_paths=tuple(str(p) for p in (meta.get("source_paths") or [])),
+                    fetched_at=str(meta.get("fetched_at") or "") or None,
+                    refresh=str(meta.get("refresh") or "") or None,
                 )
             )
         assets = []
@@ -952,6 +958,8 @@ class BrainKitAdapter:
         status: str | None = None,
         origin: str = "app",
         wait: bool = False,
+        library: dict[str, Any] | None = None,
+        replaces: str | None = None,
     ) -> BrainProposal:
         with self._lock:
             result = self.brain.add_file(
@@ -965,6 +973,8 @@ class BrainKitAdapter:
                 origin=origin,
                 wait=wait,
                 source=f"{WORKSPACE_SOURCE}{proposer}",
+                library=library or None,
+                replaces=replaces or None,
             )
         found = result.data
         outcome = str(found.get("status") or ("refused" if result.is_error else "pending"))

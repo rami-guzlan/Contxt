@@ -1,4 +1,4 @@
-import { useSkills } from "../../api/hooks";
+import { useLibrary, useSkills } from "../../api/hooks";
 import { SectionFrame, Stat } from "../../components/SectionFrame";
 
 // Work: where the Brain gets put to use. Each tab answers one question: how you ask (Compose),
@@ -7,6 +7,7 @@ import { SectionFrame, Stat } from "../../components/SectionFrame";
 // from the Brain, and what it makes waits for your yes.
 export function WorkLayout() {
   const { data: skills } = useSkills();
+  const { data: library } = useLibrary();
   return (
     <SectionFrame
       title="Work"
@@ -16,11 +17,13 @@ export function WorkLayout() {
       tabs={[
         { to: "/work", label: "Overview", end: true },
         { to: "/work/skills", label: "Skills", badge: skills?.waiting.length ?? 0 },
+        { to: "/work/library", label: "Library" },
         { to: "/work/outputs", label: "Outputs" },
       ]}
       stats={
         <dl className="stats">
           <Stat label="Skills" value={skills?.skills.length} />
+          <Stat label="Library" value={library?.length} />
         </dl>
       }
     />

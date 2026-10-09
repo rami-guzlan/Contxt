@@ -1765,3 +1765,49 @@ export interface AgentSkill {
   /** The Brain holds its own skill of this name, used instead. */
   own: boolean;
 }
+
+// ------------------------------------------------------------------ Work: the Library
+
+export type LibraryKind = "guide" | "reference" | "influence";
+export type LibraryRefresh = "never" | "weekly" | "monthly";
+
+/** A document kept whole, by what it is for: a guide to follow, a reference to read whole, an
+ * influence whose taste to borrow; with where it was fetched from and what uses it. */
+export interface LibraryItem {
+  path: string;
+  title: string;
+  kind: LibraryKind;
+  summary: string;
+  entry_id: string | null;
+  source_url: string | null;
+  source_repo: string | null;
+  source_paths: string[];
+  fetched_at: string | null;
+  refresh: LibraryRefresh;
+  updated: string | null;
+  dated: string | null;
+  version: number | null;
+  size: number;
+  original: string | null;
+  project: string | null;
+  project_title: string | null;
+  used_by: { skills: string[]; agents?: string[]; workflows?: string[] };
+}
+
+export interface LibraryItemFull extends LibraryItem {
+  text: string;
+  checked_at: string | null;
+}
+
+/** What filing in the Library did: as the Brain files any document, or "unchanged" when the
+ * text was already there. */
+export interface LibraryFiled extends Omit<BrainFiled, "status"> {
+  status: BrainFiled["status"] | "unchanged";
+}
+
+export interface LibraryRefreshed {
+  status: "applied" | "pending" | "unchanged" | "refused";
+  message: string;
+  path: string;
+  proposal_id: string | null;
+}

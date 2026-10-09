@@ -420,6 +420,8 @@ class FakeBrain:
         status=None,
         origin="app",
         wait=False,
+        library=None,
+        replaces=None,
     ):
         self.uploaded.append(
             {
@@ -433,6 +435,8 @@ class FakeBrain:
                 "status": status,
                 "origin": origin,
                 "wait": wait,
+                "library": library,
+                "replaces": replaces,
             }
         )
         if self.file_policy == "apply" and not wait:

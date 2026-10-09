@@ -4,7 +4,7 @@
 
 import { Link } from "react-router";
 
-import { useOutputs, useSkills } from "../../api/hooks";
+import { useLibrary, useOutputs, useSkills } from "../../api/hooks";
 import { LatestRuns } from "../../components/SkillWork";
 import { Section } from "../../components/ui";
 import { plural } from "../../lib/format";
@@ -21,6 +21,7 @@ interface Part {
 export function WorkOverviewPage() {
   const { data: skills } = useSkills();
   const { data: outputs } = useOutputs();
+  const { data: library } = useLibrary();
   const parts: Part[] = [
     {
       title: "Compose",
@@ -53,6 +54,8 @@ export function WorkOverviewPage() {
       title: "Library",
       question: "What good looks like",
       text: "Guides to follow, references to read whole, and influences whose taste to borrow, kept current.",
+      to: "/work/library",
+      count: library ? plural(library.length, "item") : undefined,
     },
     {
       title: "Outputs",
