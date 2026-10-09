@@ -4,7 +4,7 @@
 // take it as the doc's next version, add it at the end, keep it as a new doc, or leave it.
 
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { docExportUrl, useBrainProjects, useDocAction, useDocRuns, useLinkDocProjects, useSkills, useUseDocResult, useWorkAgents } from "../../api/hooks";
 import type { Note, SkillRun, Task } from "../../api/types";
@@ -97,6 +97,9 @@ export function DocWithAi({ note, beforeAsk }: { note: Note; beforeAsk: () => Pr
       <ErrorNote error={action.error} />
       {task ? <Working key={task.id} task={task} waiting="It waits for a model: run it here, or paste the prompt into a connected AI." /> : null}
       <DocRuns note={note} />
+      <p className="small">
+        <Link to={`/work/compose?doc=${encodeURIComponent(note.id)}`}>Open in Compose</Link>: more skills, documents and the whole prompt.
+      </p>
       <p className="small">
         Take it with you:{" "}
         <a href={docExportUrl(note.id, "md")} download>

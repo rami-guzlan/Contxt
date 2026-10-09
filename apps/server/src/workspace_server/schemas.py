@@ -493,3 +493,51 @@ class WorkspaceContinueIn(Body):
 class WorkspaceUseIn(Body):
     task_id: str = Field(min_length=1, max_length=80)
     how: str = Field(pattern="^(version|append|new)$")
+
+
+# ------------------------------------------------------------------------- Compose
+
+
+class ComposePicks(Body):
+    """What goes with a request: skills in order, one agent, notes, documents, a project."""
+
+    skills: list[str] = Field(default_factory=list, max_length=6)
+    agent: str | None = Field(default=None, max_length=64)
+    docs: list[str] = Field(default_factory=list, max_length=5)
+    library: list[str] = Field(default_factory=list, max_length=5)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class ComposeIn(ComposePicks):
+    request: str = Field(min_length=1, max_length=8000)
+
+    def spec(self) -> dict[str, Any]:
+        return {
+            "request": self.request,
+            "skills": self.skills,
+            "agent": self.agent,
+            "docs": self.docs,
+            "library": self.library,
+            "project": self.project,
+        }
+
+
+class ComposeRunIn(ComposeIn):
+    prompt_id: str | None = Field(default=None, max_length=80)
+
+
+class ComposeImproveIn(ComposeIn):
+    model: str | None = Field(default=None, max_length=140)
+
+
+class PromptIn(Body):
+    title: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=8000)
+    picks: ComposePicks = Field(default_factory=ComposePicks)
+
+
+class PromptPatch(Body):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    body: str | None = Field(default=None, min_length=1, max_length=8000)
+    picks: ComposePicks | None = None
+    expected_version: int | None = None

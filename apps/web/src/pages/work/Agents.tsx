@@ -503,6 +503,12 @@ function AskIt({ agent }: { agent: WorkAgent }) {
           >
             {ask.isPending ? "Asking…" : "Ask"}
           </button>
+          <Link
+            className="small"
+            to={`/work/compose?agent=${encodeURIComponent(agent.name)}${project ? `&project=${encodeURIComponent(project)}` : ""}${text.trim() ? `&ask=${encodeURIComponent(text.trim())}` : ""}`}
+          >
+            Open in Compose
+          </Link>
         </div>
         <ErrorNote error={ask.error} />
         {task ? <Working key={task.id} task={task} waiting="It waits for a model: run it here, or paste the prompt into a connected AI." /> : null}

@@ -3599,10 +3599,13 @@ button.record.live {
   align-items: baseline;
   cursor: pointer;
 }
+.picked-list,
 .picked-skills {
   list-style: none;
   padding: 0;
   margin: 0.3rem 0 0;
+}
+.picked-skills {
   counter-reset: picked;
 }
 .picked-skills > li::before {
@@ -5300,5 +5303,95 @@ li.missing {
   .workspace-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.3rem;
+  }
+}
+
+/* Compose: the request and its picks beside the whole prompt the model gets. */
+.compose-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.compose-ask,
+.compose-prompt {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.compose-ask > *,
+.compose-prompt > * {
+  min-width: 0;
+}
+
+.compose-ask textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.compose-prompt {
+  position: sticky;
+  top: 1rem;
+}
+
+.compose-prompt h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.compose-prompt .copy-block pre {
+  max-height: 32rem;
+  overflow: auto;
+}
+
+.compose-pickers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.compose-pickers select {
+  width: 100%;
+}
+
+.compose-actions {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.compose-size {
+  margin: 0;
+}
+
+.compose-parts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.85rem;
+}
+
+.compose-improved {
+  display: grid;
+  gap: 0.6rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .compose-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compose-prompt {
+    position: static;
   }
 }

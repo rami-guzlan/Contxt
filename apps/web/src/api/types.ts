@@ -1927,3 +1927,50 @@ export interface WorkspaceView {
   /** For one project: the agents that work on it. */
   agents?: { name: string; role: string; last_run?: { task_id: string; status: string; at: string } | null }[];
 }
+
+// ------------------------------------------------------------------ Work: Compose
+
+/** What goes with a request: skills in order, one agent, notes, documents, a project. */
+export interface ComposePicks {
+  skills: string[];
+  agent: string | null;
+  docs: string[];
+  library: string[];
+  project: string | null;
+}
+
+export interface ComposeSpec extends ComposePicks {
+  request: string;
+}
+
+/** The whole prompt a model gets, its size in tokens, and the short request for any AI. */
+export interface ComposeAssembly {
+  title: string;
+  prompt: string;
+  tokens: number;
+  /** Counted exactly (a tokenizer), or estimated from the characters. */
+  exact: boolean;
+  parts: { label: string; tokens: number }[];
+  brief: { available: boolean; entries: number; note: string | null };
+  short: string;
+  short_tokens: number;
+  skills: string[];
+  agent: string | null;
+  makes_files: boolean;
+}
+
+/** A prompt saved from Compose: its words with versions, its picks, and how often it ran. */
+export interface SavedPrompt {
+  id: string;
+  title: string;
+  body: string;
+  picks: ComposePicks;
+  revision: number;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  uses: number;
+  last_used: string | null;
+  versions: { revision: number; title: string; body: string; at: string }[];
+}

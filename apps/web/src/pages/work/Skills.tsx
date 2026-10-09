@@ -14,7 +14,6 @@ import {
   LatestRuns,
   NewSkill,
   RunSkill,
-  RunSkills,
   Saved,
   SkillEditor,
   SkillHistory,
@@ -71,9 +70,24 @@ export function SkillsPage() {
         A skill is how your AI makes something, step by step. Run one here, or just ask for it in any AI you connect: it finds the skill.
       </FirstVisitTip>
       {writing ? (
-        <NewSkill capture={teaching && capture ? { id: capture.id, title: capture.title } : null} onClose={() => setParams({})} />
+        <NewSkill
+          capture={teaching && capture ? { id: capture.id, title: capture.title } : null}
+          initial={params.get("ask") ?? ""}
+          onClose={() => setParams({})}
+        />
       ) : null}
-      {data.skills.some((s) => s.use === "run") ? <RunSkills skills={data.skills} /> : null}
+      {data.skills.some((s) => s.use === "run") ? (
+        <section className="skill-panel" aria-label="Run skills">
+          <h2>Run skills</h2>
+          <p className="muted small">
+            Run one or several in Compose, in the order you pick, with your notes and documents, and see the whole prompt your AI gets
+            before it runs.
+          </p>
+          <Link className="button primary" to="/work/compose">
+            Open Compose
+          </Link>
+        </section>
+      ) : null}
       <LatestRuns />
       <BuiltIns />
       {data.waiting.length ? (

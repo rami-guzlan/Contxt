@@ -33,6 +33,7 @@ from .services.brain import Brain
 from .services.bus import Bus
 from .services.captures import Captures
 from .services.catchup import CatchUp
+from .services.compose import Compose
 from .services.context import Context
 from .services.distill import Distillation
 from .services.docs import Docs
@@ -42,6 +43,7 @@ from .services.movein import MovingIn
 from .services.notes import Note, Notes
 from .services.onboarding import Onboarding
 from .services.projects import Projects
+from .services.prompts import Prompts
 from .services.runtime import Runtime
 from .services.skills import Skills
 from .services.tasks import Tasks
@@ -80,6 +82,8 @@ class Workspace:
         self.agent = KnowledgeAgent(rt, self.brain)
         self.agents = Agents(rt, self.brain, self.skills, self.notes)
         self.docs = Docs(rt, self.notes, self.brain, self.skills, self.agents)
+        self.prompts = Prompts(rt, self.skills)
+        self.compose = Compose(rt, self.brain, self.skills, self.agents, self.notes, self.prompts)
 
     # ---------------------------------------------------------------- lifecycle
 

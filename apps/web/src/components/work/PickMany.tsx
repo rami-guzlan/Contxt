@@ -17,6 +17,7 @@ export function PickMany({
   empty,
   max = 20,
   hint,
+  ordered = false,
 }: {
   label: string;
   options: PickOption[];
@@ -26,6 +27,8 @@ export function PickMany({
   empty: string;
   max?: number;
   hint?: string;
+  /** The order picked matters (skills followed in turn): the chips are numbered. */
+  ordered?: boolean;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -70,7 +73,7 @@ export function PickMany({
         ) : null}
       </div>
       {value.length ? (
-        <ol className="chips picked-skills" aria-label={`${label}: chosen`}>
+        <ol className={ordered ? "chips picked-list picked-skills" : "chips picked-list"} aria-label={`${label}: chosen`}>
           {value.map((picked) => (
             <li key={picked} className="chip">
               {labels.get(picked) ?? picked}{" "}

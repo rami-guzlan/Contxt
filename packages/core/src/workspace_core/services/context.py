@@ -29,9 +29,10 @@ from workspace_core.storage.objects import StoredObject
 
 from .runtime import Runtime
 
-# Notes (services/notes.py), and the sheets and canvases kept from before: a person's own
-# material, made and saved through Notes, never captured, listed or searched here.
-WORK_KINDS = ("page", "sheet", "canvas")
+# Notes (services/notes.py), the sheets and canvases kept from before, and prompts saved in
+# Compose (services/prompts.py): a person's own material, never captured, listed or searched
+# here, and read by a model only when work assigned to it pins it.
+WORK_KINDS = ("page", "sheet", "canvas", "prompt")
 KINDS = (
     "note",
     "idea",

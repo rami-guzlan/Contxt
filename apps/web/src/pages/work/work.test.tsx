@@ -45,6 +45,7 @@ describe("Work", () => {
     const tabs = await screen.findByRole("navigation", { name: "Work sections" });
     expect(within(tabs).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual([
       "/work",
+      "/work/compose",
       "/work/workspace",
       "/work/skills",
       "/work/agents",
@@ -63,6 +64,7 @@ describe("Work", () => {
       "GET /api/library": [],
       "GET /api/agents": [],
       "GET /api/workspace/items": { items: [], projects: [] },
+      "GET /api/prompts": [],
     });
     renderAt(<WorkOverviewPage />, { path: "/work", route: "/work" });
     const parts = await screen.findByRole("list", { name: "The parts of Work" });
@@ -77,6 +79,7 @@ describe("Work", () => {
     ]);
     expect(within(parts).getByRole("link", { name: "Skills" })).toHaveAttribute("href", "/work/skills");
     expect(within(parts).getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/work/workspace");
+    expect(within(parts).getByRole("link", { name: "Compose" })).toHaveAttribute("href", "/work/compose");
     expect(await within(parts).findByText("1 skill")).toBeInTheDocument();
     expect(screen.getByText(/waiting in/)).toHaveTextContent("/one-pager");
   });

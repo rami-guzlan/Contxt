@@ -351,6 +351,18 @@ class Skills:
         mine = [t for t in self._tasks(who, RUN) if keep(dict(t.provenance.get("skill") or {}))]
         return self._shaped(who, mine[: max(1, min(int(limit), 50))], None)
 
+    def tally(self, who: Principal, key: Any) -> dict[str, dict[str, Any]]:
+        """How many runs count for each thing, and when the last one was made: `key(about)`
+        names what a run counts for (a saved prompt, say), or None."""
+        out: dict[str, dict[str, Any]] = {}
+        for task in self._tasks(who, RUN):  # newest first
+            found = key(dict(task.provenance.get("skill") or {}))
+            if not found:
+                continue
+            hit = out.setdefault(str(found), {"uses": 0, "last": task.created_at})
+            hit["uses"] += 1
+        return out
+
     def queue(
         self,
         who: Principal,

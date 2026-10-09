@@ -173,31 +173,17 @@ describe("the Skills place", () => {
     expect(screen.getByText(/Other skills build on it/)).toBeInTheDocument();
   });
 
-  it("runs several skills from the Skills page, in the order chosen", async () => {
-    const calls = mockApi({
-      ...side,
-      "POST /api/skills/runs": { status: 201, body: task("task_many") },
-      "GET /api/skills/runs": [{ ...doneRun, task_id: "task_many", skills: ["one-pager", "weekly-posts"] }],
-      "POST /api/runners/claude/runs": { status: 201, body: { id: "run_many", status: "running", events: [], task_title: "Run skills" } },
-      "GET /api/runners/runs/run_many": { id: "run_many", status: "running", events: [], task_title: "Run skills" },
-    });
-    const user = userEvent.setup();
+  it("sends running several skills to Compose", async () => {
+    mockApi({ ...side, "GET /api/skills/runs": [] });
     renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills" });
     const panel = await screen.findByRole("region", { name: "Run skills" });
-    await user.type(within(panel).getByLabelText("What do you need?"), "A one-pager, then posts from it.");
-    await user.click(within(panel).getByText("None: your Brain picks the one that fits"));
-    await user.click(within(panel).getByRole("checkbox", { name: /\/one-pager/ }));
-    await user.click(within(panel).getByRole("checkbox", { name: /\/weekly-posts/ }));
-    expect(within(panel).getByRole("list", { name: "Chosen skills, in order" })).toHaveTextContent(/one-pager.*weekly-posts/);
-    await user.click(within(panel).getByRole("button", { name: "Run 2 skills" }));
-    await waitFor(() =>
-      expect(calls.find((c) => c.method === "POST" && c.path === "/api/skills/runs")?.body).toEqual({
-        names: ["one-pager", "weekly-posts"],
-        ask: "A one-pager, then posts from it.",
-      }),
-    );
-    const latest = await screen.findByRole("region", { name: "Latest runs" });
-    expect(within(latest).getByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/work/skills/one-pager");
+    expect(within(panel).getByRole("link", { name: "Open Compose" })).toHaveAttribute("href", "/work/compose");
+  });
+
+  it("starts a new skill from words brought from Compose", async () => {
+    mockApi({ ...side, "GET /api/skills/runs": [] });
+    renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills?new=1&ask=Make%20a%20skill%20from%20my%20weekly%20posts" });
+    expect(await screen.findByLabelText("What should it do?")).toHaveValue("Make a skill from my weekly posts");
   });
 
   it("writes a new skill with your AI, started at once on this computer", async () => {

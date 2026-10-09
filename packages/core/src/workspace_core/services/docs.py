@@ -27,7 +27,7 @@ from workspace_core.errors import NotFound, ValidationFailed
 
 from .agents import Agents
 from .brain import Brain
-from .notes import Note, Notes, cut
+from .notes import MARKUP, Note, Notes, cut
 from .runtime import Runtime
 from .skills import Skills
 
@@ -76,6 +76,20 @@ stops{where}, in its own voice and shape, using only what the note, the Brain's 
 Save the result once with save_skill_result, with this run's run_id: a short title, and only the
 new part as Markdown (it goes after what is there). Then complete the task. Never publish or send
 anything."""
+
+
+def excerpt(body: str, limit: int = 160) -> str:
+    """A doc's opening in words: its lines without Markdown, headings and empty checkboxes left
+    out, so a template not filled in yet says nothing."""
+    words = []
+    for line in str(body or "").splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        text = MARKUP.sub("", line.strip() + " ")  # the space lets a bare "- [ ]" match
+        text = re.sub(r"\*\*|__|`", "", text).strip()
+        if text:
+            words.append(text)
+    return cut(" ".join(words), limit)
 
 
 def _kind(note: Note) -> str:
@@ -132,7 +146,7 @@ class Docs:
             "title": note.title,
             "kind": kind,
             "url": note.url,
-            "excerpt": "" if kind == "link" else cut(note.body, 160),
+            "excerpt": "" if kind == "link" else excerpt(note.body),
             "projects": [
                 {
                     "id": p,

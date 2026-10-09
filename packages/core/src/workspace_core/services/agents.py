@@ -26,7 +26,7 @@ from workspace_core.errors import NotFound, ValidationFailed
 
 from .agent import _json_in
 from .brain import Brain
-from .notes import Notes
+from .notes import Note, Notes
 from .runtime import Runtime
 from .skills import Skills, makes_files
 
@@ -75,6 +75,18 @@ they filled in.
 
 {form}
 """
+
+
+def pinned_notes_line(notes: builtins.list[Note]) -> str:
+    """The line that sends a run to the notes pinned for it (Workspace docs, say)."""
+    if len(notes) == 1:
+        note = notes[0]
+        return (
+            f"Work from the pinned note “{note.title}” ({note.id}): read it in full with "
+            "get_context_item first."
+        )
+    listed = ", ".join(f"“{n.title}” ({n.id})" for n in notes)
+    return f"Work from the pinned notes {listed}: read each in full with get_context_item first."
 
 
 def _clean_list(value: Any, field: str) -> builtins.list[str]:
@@ -271,6 +283,27 @@ class Agents:
         `capture_id`, a note it works from (a Workspace doc: "I outline, you write"), pinned at
         the version it is now."""
         who.require("tasks.write")
+        doc = self.notes.get(who, capture_id) if capture_id else None
+        plan = self.plan(who, name, ask=ask, project=project, docs=[doc] if doc else None)
+        if doc is not None:
+            plan["about"]["capture"] = {"id": doc.id, "title": doc.title, "revision": doc.revision}
+        return self.skills.queue(who, **plan)
+
+    def plan(
+        self,
+        who: Principal,
+        name: str,
+        *,
+        ask: str,
+        project: str | None = None,
+        docs: builtins.list[Note] | None = None,
+        skills: builtins.list[str] | None = None,
+        library: builtins.list[str] | None = None,
+    ) -> dict[str, Any]:
+        """What asking the agent sends a model, without starting anything (Compose shows it
+        first): the run's title and purpose, its instructions, the request the Brain briefs it
+        on, its record, and what it pins. `docs` are notes it works from; `skills` and
+        `library` add to what the agent points to."""
         found = self.get(who, name)
         agent, resolved = found["agent"], found["resolved"]
         if agent.get("status") == "archived":
@@ -280,10 +313,16 @@ class Agents:
             raise ValidationFailed("Say what you need from it.", field="ask")
         if len(ask) > MAX_ASK:
             raise ValidationFailed(f"Keep the request under {MAX_ASK:,} characters.", field="ask")
-        skills = [s["name"] for s in resolved["skills"] if not s["missing"]]
-        library = [d["path"] for d in resolved["library"] if not d["missing"]]
+        own = [s["name"] for s in resolved["skills"] if not s["missing"]]
+        added = [n for n in skills or [] if n not in own]
+        names = [*own, *added]
+        paths = list(
+            dict.fromkeys(
+                [d["path"] for d in resolved["library"] if not d["missing"]] + list(library or [])
+            )
+        )
         held = {s.name: s for s in self.brain.files(who).skills}
-        files_mode = any(makes_files(held.get(n)) for n in skills)
+        files_mode = any(makes_files(held.get(n)) for n in names)
         instructions = INSTRUCTIONS.format(
             name=agent["name"], owner=who.name, role=found["prompt"].strip()
         )
@@ -294,18 +333,18 @@ class Agents:
             if focus is None:
                 raise NotFound(f"No project {project}.", project=project)
             extra += f"\n\nThis is for the project {focus.title} ({focus.id})."
-        if library:
+        if added:
             extra += (
-                "\n\nRead these documents whole with get_brain_reference: "
-                + ", ".join(library)
-                + "."
+                "\n\nFollow these skills too, in this order, reading each in full with "
+                "get_brain_skill first: " + ", ".join(f"/{n}" for n in added) + "."
             )
-        doc = self.notes.get(who, capture_id) if capture_id else None
-        if doc is not None:
+        if paths:
             extra += (
-                f"\n\nWork from the pinned note “{doc.title}” ({doc.id}): read it in full with "
-                "get_context_item first."
+                "\n\nRead these documents whole with get_brain_reference: " + ", ".join(paths) + "."
             )
+        notes = [d for d in docs or [] if d is not None]
+        if notes:
+            extra += "\n\n" + pinned_notes_line(notes)
         meetings = self._meetings(who, agent)
         if meetings:
             extra += (
@@ -320,29 +359,26 @@ class Agents:
         if focus is not None:
             request += f"\nProject: {focus.title}"
         about: dict[str, Any] = {
-            "name": skills[0] if skills else "",
-            "names": skills,
+            "name": names[0] if names else "",
+            "names": names,
             "ask": ask,
             "agent": agent["name"],
             "files": files_mode,
         }
         if focus is not None:
             about["project"] = {"id": focus.id, "title": focus.title}
-        if library:
-            about["attached"] = library
-        pins = [("context_item", m.id, m.revision) for m in meetings]
-        if doc is not None:
-            about["capture"] = {"id": doc.id, "title": doc.title, "revision": doc.revision}
-            pins.insert(0, ("context_item", doc.id, doc.revision))
-        return self.skills.queue(
-            who,
-            title=f"Ask {agent['name']}",
-            purpose=f"The agent {agent['name']} works on what {who.name} asked.",
-            instructions=instructions,
-            request=request,
-            about=about,
-            pins=pins,
-        )
+        if paths:
+            about["attached"] = paths
+        pins = [("context_item", n.id, n.revision) for n in notes]
+        pins += [("context_item", m.id, m.revision) for m in meetings]
+        return {
+            "title": f"Ask {agent['name']}",
+            "purpose": f"The agent {agent['name']} works on what {who.name} asked.",
+            "instructions": instructions,
+            "request": request,
+            "about": about,
+            "pins": pins,
+        }
 
     def _meetings(self, who: Principal, agent: dict[str, Any]) -> builtins.list[Any]:
         """The recordings and transcripts from the last days the agent reads, newest first:

@@ -2,8 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api, get, post, put, query } from "./client";
+import { api, del, get, post, put, query } from "./client";
 import type {
+  ComposeAssembly,
+  ComposePicks,
+  ComposeSpec,
+  SavedPrompt,
   BackupFile,
   BackupMade,
   LocalModels,
@@ -461,16 +465,6 @@ export function useRunSkill() {
   return useMutation({
     mutationFn: ({ name, ...body }: { name: string; ask: string; capture_id?: string; project?: string; files?: string[] }) =>
       post<Task>(`${skillPath(name)}/runs`, body),
-    onSettled: () => invalidate(keys.skills, keys.tasks),
-  });
-}
-
-/** A run from the Skills page: the skills chosen, followed in order (none: the one that fits). */
-export function useRunSkills() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (body: { names: string[]; ask: string; capture_id?: string; project?: string; files?: string[] }) =>
-      post<Task>("/api/skills/runs", body),
     onSettled: () => invalidate(keys.skills, keys.tasks),
   });
 }
@@ -1277,3 +1271,58 @@ export function useUseDocResult() {
 }
 
 export const docExportUrl = (id: string, format: "md" | "docx") => `/api/workspace/${encodeURIComponent(id)}/export?format=${format}`;
+
+// ------------------------------------------------------------------ Work: Compose
+
+const promptsKey = ["prompts"] as const;
+
+/** The whole prompt a model gets for a request and its picks, its size, and the short request
+ * for any AI. Nothing runs and nothing is recorded. */
+export const useAssembled = (spec: ComposeSpec | null) =>
+  useQuery({
+    queryKey: ["compose", spec],
+    queryFn: () => post<ComposeAssembly>("/api/compose/assemble", spec),
+    enabled: !!spec && !!spec.request.trim(),
+    staleTime: 30_000,
+    retry: false,
+  });
+
+/** Have the chosen model rewrite the request with what was picked; nothing changes until taken. */
+export const useImprovePrompt = () =>
+  useMutation({ mutationFn: (spec: ComposeSpec) => post<WorkJob>("/api/compose/improve", spec) });
+
+/** Run it here: a task like any skill run; from a saved prompt, it counts as a use. */
+export function useComposeRun() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (input: ComposeSpec & { prompt_id?: string }) => post<Task>("/api/compose/run", input),
+    onSuccess: () => invalidate(keys.tasks, keys.skills, promptsKey),
+  });
+}
+
+/** Saved prompts, the most used first; `q` finds them by their words. */
+export const useSavedPrompts = (q = "", archived = false) =>
+  useQuery({
+    queryKey: [...promptsKey, q, archived],
+    queryFn: () => get<SavedPrompt[]>(`/api/prompts${query({ q: q || undefined, archived: archived ? "true" : undefined })}`),
+  });
+
+/** Save a prompt, or (with `id`) change one: new words are a new version. */
+export function useSavePrompt() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id?: string; title: string; body: string; picks: ComposePicks; expected_version?: number }) =>
+      id ? put<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}`, input) : post<SavedPrompt>("/api/prompts", input),
+    onSuccess: () => invalidate(promptsKey),
+  });
+}
+
+/** Set a saved prompt aside, or bring it back. */
+export function useArchivePrompt() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, back = false }: { id: string; back?: boolean }) =>
+      back ? post<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}/restore`) : del<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}`),
+    onSuccess: () => invalidate(promptsKey),
+  });
+}

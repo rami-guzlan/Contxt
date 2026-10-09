@@ -4,7 +4,7 @@
 
 import { Link } from "react-router";
 
-import { useLibrary, useOutputs, useSkills, useWorkAgents, useWorkspace } from "../../api/hooks";
+import { useLibrary, useOutputs, useSavedPrompts, useSkills, useWorkAgents, useWorkspace } from "../../api/hooks";
 import { LatestRuns } from "../../components/SkillWork";
 import { Section } from "../../components/ui";
 import { plural } from "../../lib/format";
@@ -24,11 +24,14 @@ export function WorkOverviewPage() {
   const { data: library } = useLibrary();
   const { data: agents } = useWorkAgents();
   const { data: workspace } = useWorkspace();
+  const { data: prompts } = useSavedPrompts();
   const parts: Part[] = [
     {
       title: "Compose",
       question: "How you ask",
       text: "A prompt box with your skills, agents, docs and library to pick from. See the whole prompt, improve it and save it.",
+      to: "/work/compose",
+      count: prompts ? plural(prompts.length, "saved prompt") : undefined,
     },
     {
       title: "Workspace",

@@ -44,6 +44,7 @@ const WorkAgentPage = page(() => import("./pages/work/Agents"), "WorkAgentPage")
 const NewWorkAgentPage = page(() => import("./pages/work/Agents"), "NewWorkAgentPage");
 const SkillPage = page(() => import("./pages/work/Skills"), "SkillPage");
 const SkillsPage = page(() => import("./pages/work/Skills"), "SkillsPage");
+const ComposePage = page(() => import("./pages/work/Compose"), "ComposePage");
 const WorkspacePage = page(() => import("./pages/work/Workspace"), "WorkspacePage");
 const WorkspaceDocPage = page(() => import("./pages/work/Workspace"), "WorkspaceDocPage");
 
@@ -114,6 +115,7 @@ export function App() {
           </Route>
           <Route path="/work" element={<WorkLayout />}>
             <Route index element={<WorkOverviewPage />} />
+            <Route path="compose" element={<ComposePage />} />
             <Route path="workspace" element={<WorkspacePage />} />
             <Route path="workspace/:docId" element={<WorkspaceDocPage />} />
             <Route path="skills" element={<SkillsPage />} />

@@ -9,6 +9,7 @@ import zipfile
 import pytest
 
 from workspace_core.errors import NotFound, ValidationFailed
+from workspace_core.services.docs import TEMPLATES, excerpt
 
 OUTLINE = "## The points, in order\n\n1. Polls run on Tuesdays.\n2. Video keeps its budget.\n"
 
@@ -211,3 +212,13 @@ def test_a_doc_leaves_as_markdown_or_word(ws, owner):
     assert 'w:val="Title"' in xml and 'w:val="Heading2"' in xml and "<w:b/>" in xml
     with pytest.raises(ValidationFailed):
         ws.docs.export(owner, doc.id, fmt="pdf")
+
+
+def test_an_excerpt_reads_as_words_and_an_untouched_template_says_nothing():
+    for _, body in TEMPLATES.values():
+        assert excerpt(body) == ""
+    text = (
+        "## Goal\n\nFill the **November** webinar.\n\n1. The problem.\n"
+        "- [ ] book the room\n> Keep it short."
+    )
+    assert excerpt(text) == "Fill the November webinar. The problem. book the room Keep it short."
