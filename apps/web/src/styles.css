@@ -4891,3 +4891,93 @@ button.big,
     width: 100vw;
   }
 }
+/* Home's flashcards: what to keep an eye on, one card at a time (or all of them). */
+
+.flashcards {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.flashcards:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius);
+}
+
+.flashcards-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.flashcards-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.flashcard-one {
+  display: grid;
+}
+
+.flashcard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.7rem;
+}
+
+.flashcard {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  min-height: 9rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--neutral);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.flashcard p {
+  margin: 0;
+}
+
+.flashcard.attention {
+  border-left-color: var(--active);
+}
+
+.flashcard.calm {
+  border-left-color: var(--done);
+}
+
+.flashcard.info {
+  border-left-color: var(--accent);
+}
+
+.flashcard.soon {
+  border-left-style: dashed;
+}
+
+.flashcard-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.flashcard-count {
+  font-family: var(--serif);
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.flashcard-title {
+  font-weight: 600;
+}
+
+.flashcard-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}

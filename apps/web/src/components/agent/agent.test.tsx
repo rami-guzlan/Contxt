@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentOverview, AgentQuestion } from "../../api/types";
 import { AgentPage } from "../../pages/brain/Agent";
+import { Flashcards } from "../Flashcards";
 import { mockApi, renderAt } from "../../test/render";
 import { AgentProvider } from "./AgentContext";
 import { AgentDock, AgentPanel } from "./AgentPanel";
@@ -168,5 +169,46 @@ describe("the knowledge agent", () => {
     expect(screen.getByRole("button", { name: "Open the knowledge agent" })).toHaveTextContent("1");
     await user.click(within(toast).getByRole("button", { name: "Not now" }));
     await waitFor(() => expect(calls.find((c) => c.path === "/api/brain/agent/suggestions/dismiss")?.body).toEqual({ key: "stale:abc" }));
+  });
+});
+
+describe("Home's flashcards", () => {
+  it("show what to keep an eye on one at a time, what the agent did, and what is coming", async () => {
+    const calls = mockApi({
+      "GET /api/brain/agent": overview,
+      "GET /api/brain/agent/suggestions": [
+        { key: "stale:abc", kind: "stale", title: "3 notes are past their review", detail: "The agent can sort them.", count: 3, action: "freshen-up", link: null },
+        { key: "clashes:def", kind: "clashes", title: "1 suggestion may disagree", detail: "In Catch up.", count: 1, action: null, link: "/catch-up" },
+      ],
+      "POST /api/brain/agent/suggestions/dismiss": { status: 204 },
+    });
+    const user = userEvent.setup();
+    renderAt(
+      <AgentProvider>
+        <Flashcards />
+      </AgentProvider>,
+    );
+    const first = await screen.findByRole("article", { name: "3 notes are past their review" });
+    expect(within(first).getByText("Stale context")).toBeInTheDocument();
+    expect(within(first).getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("1 of 4")).toBeInTheDocument(); // two suggestions, the agent's last run, coming soon
+    await user.click(screen.getByRole("button", { name: "Next card" }));
+    expect(within(screen.getByRole("article", { name: "1 suggestion may disagree" })).getByRole("link", { name: "Open" })).toHaveAttribute("href", "/catch-up");
+    await user.click(screen.getByRole("button", { name: "Next card" }));
+    expect(screen.getByRole("article", { name: /Freshen up/ })).toHaveTextContent("1 to retire.");
+    await user.click(screen.getByRole("button", { name: "See all 4" }));
+    expect(screen.getByRole("article", { name: "Agents and workflows of your own" })).toBeInTheDocument();
+    await user.click(within(screen.getByRole("article", { name: "3 notes are past their review" })).getByRole("button", { name: "Got it" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/brain/agent/suggestions/dismiss")?.body).toEqual({ key: "stale:abc" }));
+  });
+
+  it("say so when nothing needs a look", async () => {
+    mockApi({ "GET /api/brain/agent": { ...overview, runs: [] }, "GET /api/brain/agent/suggestions": [] });
+    renderAt(
+      <AgentProvider>
+        <Flashcards />
+      </AgentProvider>,
+    );
+    expect(await screen.findByRole("article", { name: "Nothing needs a look" })).toBeInTheDocument();
   });
 });
