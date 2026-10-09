@@ -42,4 +42,45 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   Settings, On this computer, too). Nothing downloads on its own: a Brain, its MCP server
   included, matches by words until you ask (`BRAIN_LOCAL_MODELS=0` lets it fetch on first
   use).
+- Must-holds (`load: domain`): a rule that goes first into every brief whenever its domain
+  comes up (its trigger words, an area the request reaches, its topics, or, with a model, its
+  meaning), outside the note budget, in every packet of a conversation, flagged when stale.
+  The startup context lists the domains that have must-holds with their titles and ids; up to
+  three critical ones show their line in full. Set on a note's page ("When does this apply?"),
+  offered in Catch up for rules that read like safety, health, legal, privacy or money lines,
+  and proposed by the knowledge agent. In the demo Brains they take constraint recall on
+  requests that never name the rule from 47% to 100% (`docs/evals/`).
+- The baseline check: every note proposal is read against the notes it may disagree with,
+  by words, figures, names and polarity at once, and by the owner's own AI (Claude Code, no
+  tools) in the background. Nothing goes in on its own over a note it may disagree with or
+  over a baseline (a rule, a must-hold, a standing note, a note you confirmed or AIs use a
+  lot); what went in and the AI then reads as disagreeing comes back in Catch up with one tap
+  to take it back. Revising a baseline takes a reason, kept in the journal, and a rule or a
+  must-hold shows what it reaches first; a day to think is one setting away. Catch up adds
+  "Changes a baseline" cards, a plain word after a run of quick yeses, "Still right?" spot
+  checks, and Home shows how many approvals were taken back within a month.
+- Dated values: a note can say the day a changing value was true (`as_of`) and the last day
+  it holds (`valid_until`). A brief carries the newest of two dated values for the same thing,
+  labelled "as of", and lists the older ones as older values, never as current; a question
+  about a project gets the project's newest dated values too. A newer dated value is an
+  update, not a disagreement, and Catch up offers to retire the older one. Past its last day,
+  a note is flagged for a check. The knowledge agent dates the figures it proposes.
+- Run contracts: every AI work run the app starts carries a contract (its objective, checks,
+  must-holds, scope and budget) that opens its prompt; Claude Code's own hooks, from a
+  settings file made for the run, refuse what is out of scope or over budget, bring the
+  contract back as the run goes (and a must-hold's line as soon as its domain shows up), and
+  send back a run that never finished; the app's MCP replies repeat the contract's line; the
+  run's record keeps what the hooks did.
+- Dissent: any AI can challenge a note with its evidence (`challenge_note`, and
+  `propose_challenge` for the app's AI work); accepted, the note is disputed and keeps the
+  challenge as its other view, which planning and decision work sees; turned down, it does
+  not come back on the same evidence. A weekly cross-check, on by default, reads your most used
+  notes and oldest baselines against the rest of the Brain (and lets your own AI read three
+  pairs a week): one belief to look at, at most, each week. An external challenger, offered
+  and off until you turn it on, argues against a few beliefs once a week with the web as its
+  only extra tool, blind to the Brain's own view of them.
+- Safeguard evaluations (`scripts/safeguards_eval.py`): must-hold recall with decoys and
+  held-out requests, disagreement detection on labeled and held-out pairs (with your own
+  AI's verdicts, `--ask-model`), false alarms on the demo Brains, dated values, and seeded
+  wrong beliefs for the cross-check.
 - Source-available under the PolyForm Shield License 1.0.0.

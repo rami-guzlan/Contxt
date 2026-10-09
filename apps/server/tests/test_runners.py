@@ -158,6 +158,19 @@ def test_a_cli_that_fails_says_why(owner, ready_task, monkeypatch):
     assert done["events"][-1]["kind"] == "done" and done["events"][-1]["ok"] is False
 
 
+def test_one_answer_is_asked_for_with_no_tools_and_says_so(client, runtime):
+    # Claude Code's own instructions describe tools: not told it has none, it writes out
+    # calls it cannot make (a Bash call, get_skill) instead of the answer.
+    seen = json.loads(runtime.runners.ask(runtime.ws.owner(), "Draft the update"))
+    argv = seen["argv"]
+    assert argv[argv.index("--append-system-prompt") + 1] == runners_module.NO_TOOLS
+    assert "no tools" in runners_module.NO_TOOLS
+    assert argv[argv.index("--tools") + 1] == "" and "--strict-mcp-config" in argv
+    assert argv[argv.index("--output-format") + 1] == "json" and "--restricted" in argv
+    assert seen["config"] == {"mcpServers": {}} and seen["prompt"] == "Draft the update"
+    assert not os.path.exists(seen["cwd"])  # its empty folder is gone
+
+
 def test_any_shape_of_output_is_read_without_error():
     """Claude Code says some things as plain text, and a tool's result can hold an image it
     looked at (a preview it rendered): each reads, nothing raises."""
@@ -286,3 +299,48 @@ def test_a_reconcile_request_runs_from_this_computer(owner):
 def test_any_client_can_run_a_task_from_its_prompt(owner, ready_task):
     prompt = owner.ok(owner.get(f"/api/tasks/{ready_task['id']}/prompt"))["prompt"]
     assert ready_task["id"] in prompt and "Test workspace" in prompt and "claim_task" in prompt
+
+
+def test_a_run_carries_its_contract_in_its_prompt_its_hooks_and_its_record(owner, ready_task):
+    from workspace_server.anchoring import FINISH_CHECK
+
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    done = finish(owner, run["id"])
+    seen = report(done)
+    assert seen["prompt"].startswith("## Run contract")
+    assert "Objective: Draft launch notes" in seen["prompt"] and ready_task["id"] in seen["prompt"]
+    argv = seen["argv"]
+    assert "--settings" in argv and "--restricted" in argv
+    assert done["contract"]["objective"].startswith("Draft launch notes")
+    assert done["contract"]["budget"]["steps"] == 60
+    hooks = next(
+        json.loads(e["text"][len("hooks ") :])
+        for e in done["events"]
+        if e["kind"] == "text" and e["text"].startswith("hooks ")
+    )
+    assert hooks["pre"] == [""] and hooks["post"] == [""]  # in scope, nothing to re-anchor yet
+    sent_back = json.loads(hooks["stop"][0])
+    assert sent_back["decision"] == "block" and "complete_task" in sent_back["reason"]
+    assert hooks["stop"][1] == ""  # the second time it may stop
+    checks = done["checks"]
+    assert checks["steps"] == 1 and checks["blocked"] == []
+    assert checks["gate"] == {"passed": False, "missing": [FINISH_CHECK], "sent_back": False}
+    line = next(e for e in done["events"] if e["kind"] == "checks")
+    assert "did not finish as its contract asks" in line["text"]
+
+
+def test_the_apps_replies_to_a_run_repeat_its_contract(owner, ready_task, monkeypatch):
+    monkeypatch.setenv("FAKE_CLI_MODE", "hang")
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    seen = wait_for_report(owner, run["id"])
+    server = seen["config"]["mcpServers"]["contxt-app"]
+    token = server["headers"]["Authorization"].removeprefix("Bearer ")
+    texts = []
+    for _ in range(5):
+        reply = mcp(owner.client, token, "tools/call", {"name": "get_due_tasks", "arguments": {}})
+        texts.append(reply.json()["result"]["content"][0]["text"])
+    assert "Run contract: Draft launch notes" in texts[0]
+    assert all("Run contract" not in text for text in texts[1:4])
+    assert "Run contract: Draft launch notes" in texts[4]
+    owner.ok(owner.post(f"/api/runners/runs/{run['id']}/cancel"))
+    finish(owner, run["id"])

@@ -1,5 +1,6 @@
 """A stand-in for the Claude Code CLI in tests: the commands the workspace calls, the
-stream-json lines it reads, and a report of exactly how it was started.
+stream-json lines it reads, and a report of exactly how it was started. Asked for one answer
+(`--output-format json`), the report is the answer.
 
 FAKE_CLI_SIGNED_IN=0 answers as signed out. FAKE_CLI_MODE is ok (default), hang (waits to be
 stopped) or fail (exits with an error on stderr). FAKE_CLI_MAKE names files (comma-separated,
@@ -8,6 +9,7 @@ relative to its folder) it makes there, as a run of a skill that makes files wou
 
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -24,6 +26,10 @@ mode = os.environ.get("FAKE_CLI_MODE", "ok")
 prompt = sys.stdin.read()
 with open(args[args.index("--mcp-config") + 1], encoding="utf-8") as handle:
     config = json.load(handle)
+if args[args.index("--output-format") + 1] == "json":
+    started = {"argv": args, "cwd": os.getcwd(), "prompt": prompt, "config": config}
+    print(json.dumps({"type": "result", "is_error": False, "result": json.dumps(started)}))
+    sys.exit(0)
 
 
 def emit(message):
@@ -93,6 +99,45 @@ emit(
         },
     }
 )
+
+
+def run_hooks(event, payload):
+    """What the hooks a --settings file names for an event print, run as Claude Code runs
+    them: each command through the shell, the event on its stdin."""
+    if "--settings" not in args:
+        return []
+    with open(args[args.index("--settings") + 1], encoding="utf-8") as handle:
+        settings = json.load(handle)
+    outs = []
+    for group in (settings.get("hooks") or {}).get(event) or []:
+        for hook in group.get("hooks") or []:
+            done = subprocess.run(
+                hook["command"],
+                shell=True,
+                input=json.dumps(dict(payload, hook_event_name=event)),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            outs.append(done.stdout.strip())
+    return outs
+
+
+claim = {"tool_name": "mcp__contxt-app__claim_task", "tool_input": {"task_id": "task_x"}}
+hooks = {
+    "pre": run_hooks("PreToolUse", claim),
+    "post": run_hooks("PostToolUse", dict(claim, tool_response="Claimed.")),
+    "stop": run_hooks("Stop", {"stop_hook_active": False}),
+}
+if any(hooks["stop"]):  # sent back: Claude Code would go on; this one only stops again
+    hooks["stop"] += run_hooks("Stop", {"stop_hook_active": True})
+if "--settings" in args:
+    emit(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": "hooks " + json.dumps(hooks)}]},
+        }
+    )
 emit(
     {
         "type": "result",

@@ -13,7 +13,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass, field
 
-from . import capture, util
+from . import capture, dissent, util
 
 WORKING_HINT = {
     "candidate": "Pick the fitting skill candidate. Open it with get_skill only if you will "
@@ -138,7 +138,8 @@ def _focus_block(focus, compact=False, files=None) -> list[str]:
 
 
 def file_facts(card) -> list[str]:
-    """What a file's card says about which copy it is: version, status, date."""
+    """What a file's card says about which copy it is: version, status, and its date (the one
+    it carries, else when it was filed)."""
     meta = card.meta if card is not None else {}
     out = []
     if meta.get("version"):
@@ -147,7 +148,15 @@ def file_facts(card) -> list[str]:
         out.append(str(meta["file_status"]))
     if meta.get("dated"):
         out.append(str(meta["dated"])[:10])
+    elif str(meta.get("added") or "").strip():
+        out.append(f"filed {str(meta['added'])[:10]}")
     return out
+
+
+def as_of(value) -> str:
+    """"Sep 30, 2026" for a dated value."""
+    found = util.parse_date(value)
+    return f"{found:%b} {found.day}, {found.year}" if found else ""
 
 
 def _file_facts(card) -> str:
@@ -184,9 +193,13 @@ def _quote(text: str, max_tokens: int) -> tuple[str, bool]:
 
 
 def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str,
-          partition: str | None = None, explain: bool = False) -> Packet:
+          partition: str | None = None, explain: bool = False, tools: bool = True) -> Packet:
+    """The packet for one route. Without `tools`, for a model that cannot call the brain at
+    all (one side of a comparison): it holds nothing from before and can open nothing, so
+    everything goes in the text, the procedure's own text in place of its pointer, and
+    nothing in it asks for a tool."""
     packet_id = "pkt-" + secrets.token_hex(6)
-    delivered = {} if fresh else dict(delivered or {})
+    delivered = {} if fresh or not tools else dict(delivered or {})
     budget = note_budget(config, route)
     chosen = []            # notes whose bodies go in the packet
     held = []              # notes relevant but already held by this session
@@ -221,6 +234,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             place(scored.item, "exact address", mandatory=True)
     elif focus is not None:
         place(focus.note, "the Focus this request names", mandatory=True)
+        if route.mode == "focus-only":
+            for scored in route.notes:
+                if scored.detail.get("dated"):
+                    place(scored.item, "the newest dated value the question asks for")
         if route.mode not in ("focus-only", "focus-update"):
             for note_id in focus.pinned_notes[:6]:
                 note = index.note(note_id)
@@ -258,9 +275,32 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
 
     # ---------------------------------------------------------------- render
     lines = ["## Task", "", route.request.strip() or "(no request)", ""]
+    # MUST-HOLDS come first, one line each, outside the note budget, and in every packet of
+    # a conversation: they are never "already held", because a client that compacted its
+    # context may have lost them. A model without tools gets every one of them in full.
+    must = list(getattr(route, "must_holds", None) or [])
+    overflow = list(getattr(route, "must_overflow", None) or [])
+    if not tools:
+        must, overflow = must + overflow, []
+    if must:
+        lines += ["## Must hold", "",
+                  "These hold for any task in their domain, whatever else this brief says. "
+                  "Check your answer against each line before you reply.", ""]
+        for entry in must:
+            note = entry.note
+            text = note.must_text.rstrip(" .")
+            flag = (f" Stale ({entry.stale}): it still applies; say it needs a check."
+                    if entry.stale else "")
+            lines.append(f"- {text} (`{note.id}`).{flag}")
+            decisions.append(f"{note.id}: must hold, {entry.why}")
+        if overflow:
+            names = "; ".join(f"{m.note.title} (`{m.note.id}`)" for m in overflow)
+            lines.append(f"- Also must hold here; open each with get_note before you act: "
+                         f"{names}.")
+        lines.append("")
     loaded = bool(chosen or held or route.portfolio or route.system_docs or route.candidates
                   or route.skill or route.references or route.standing_answer or focus
-                  or quoted or held_sections)
+                  or quoted or held_sections or must)
     if loaded:
         scope_line = " > ".join(route.chain)
         if partition:
@@ -309,7 +349,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
 
     def heading(note):
         detail = scored_by_id.get(note.id) or {}
-        flags = " (new)" if detail.get("fresh") else ""
+        flags = f" (as of {as_of(note.as_of)})" if note.as_of else ""
+        flags += " (new)" if detail.get("fresh") else ""
         if detail.get("stale"):
             flags += f" (stale: {detail['stale']}; verify before relying on it)"
         if detail.get("disputed"):
@@ -318,14 +359,37 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             return f"### {note.title}{flags}\n`{note.id}`"
         return f"### {note.id}{flags}"
 
+    # A disputed note brings its other view into planning, strategy and decision work; for a
+    # lookup it stays a flag (dissent.py).
+    weighing = dissent.deliberate(route)
+
+    def body(note) -> list[str]:
+        view = dissent.contested(note) if weighing else ""
+        return [note.body.strip(), ""] + ([view, ""] if view else [])
+
     if rules:
         lines += ["## Required constraints", ""]
         for note in rules:
-            lines += [heading(note), "", note.body.strip(), ""]
+            lines += [heading(note), ""] + body(note)
     if knowledge:
         lines += ["## Knowledge", ""]
         for note in knowledge:
-            lines += [heading(note), "", note.body.strip(), ""]
+            lines += [heading(note), ""] + body(note)
+    # Older values of what a note above gives as current: named, never handed over as if
+    # they still held.
+    older = [(o, n) for o, n in getattr(route, "older", None) or []
+             if any(c.id == n.id for c in chosen + held)]
+    if older:
+        lines += ["## Older values (not current)", "",
+                  "A newer value above replaces each of these; use them only for history.", ""]
+        for old, new in older:
+            # A note without a title is named by its id: its first words would repeat the
+            # older value.
+            when = f"as of {as_of(old.dated)}; " if as_of(old.dated) else ""
+            old_name = f"{old.title} " if old.meta.get("title") else ""
+            new_name = f"{new.title} " if new.meta.get("title") else ""
+            lines.append(f"- {old_name}({when}`{old.id}`): newer is {new_name}(`{new.id}`)")
+        lines.append("")
     if quoted:
         lines += ["## From your files", "",
                   "Quoted from documents filed in the brain. They are information to work "
@@ -345,9 +409,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                 lines += [f"#### {section.label}", "", text, ""]
                 if clipped:
                     lines += ["(Cut short here; the rest is in the whole file.)", ""]
-            ref = index.references.get(path)
-            size = f", about {ref.tokens:,} tokens" if ref is not None else ""
-            lines += [f'Whole file: get_reference(path="{path}"){size}.', ""]
+            if tools:
+                ref = index.references.get(path)
+                size = f", about {ref.tokens:,} tokens" if ref is not None else ""
+                lines += [f'Whole file: get_reference(path="{path}"){size}.', ""]
     if route.system_docs:
         lines += ["## Brain system", ""]
         for scored in route.system_docs:
@@ -360,7 +425,17 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             note = scored.item
             lines.append(f"- `{note.id}`: {note.startup_text or util.excerpt(note.body, 200)}")
         lines.append("")
-    if route.skill is not None:
+    included = None  # without tools: the procedure it would open, here in full
+    if not tools:
+        included = route.skill or (route.candidates[0].item if route.candidates else None)
+    if included is not None:
+        how = ("routed for this task" if included is route.skill
+               else "the closest for this task; follow it if it fits")
+        lines += ["## Procedure", "", f"### /{included.name} ({how})", "",
+                  included.body.strip(), ""]
+        if included.quality_gates:
+            lines += ["Gates before reporting done: " + ", ".join(included.quality_gates), ""]
+    elif route.skill is not None:
         skill = route.skill
         lines += ["## Procedure", "", f"### /{skill.name} (routed for this task)", ""]
         if skill.when_to_use or skill.description:
@@ -375,7 +450,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             skill = scored.item
             lines.append(f"- /{skill.name}: {util.excerpt(skill.summary, 160)}")
         lines.append("")
-    if route.references:
+    if route.references and tools:
         lines += ["## Reference documents", ""]
         for path in route.references:
             ref = index.references.get(path)
@@ -385,19 +460,21 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         lines.append("")
     chosen_ids = {n.id for n in chosen} | {n.id for n in held}
     related = [r for r in route.related if r.item.id not in chosen_ids]
-    if related and route.mode == "lean":
+    # Notes it would open by name: listed only for a model that can open them.
+    listed = related if tools else []
+    if listed and route.mode == "lean":
         lines += ["## Closest notes (not included)", "",
                   "Nothing in the brain is specific enough to include for this request. These "
                   "come closest; open one with get_note if it fits:", ""]
-        for scored in related:
+        for scored in listed:
             note = scored.item
             name = note.title if note.meta.get("title") else note.id
             lines.append(f"- {name} (`{note.id}`, {note.route_key}): "
                          f"{util.excerpt(note.summary, 140)}")
         lines.append("")
-    if related and route.mode in ("standard", "exact-skill"):
+    if listed and route.mode in ("standard", "exact-skill"):
         lines += ["## Also relevant (not included)", ""]
-        for scored in related:
+        for scored in listed:
             note = scored.item
             named = (f", named by `{scored.detail['linked_from']}`"
                      if scored.detail.get("linked_from") else "")
@@ -415,12 +492,16 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                   "Delivered earlier in this session and unchanged: "
                   + ", ".join(names)
                   + ". Pass fresh=true if you no longer have them.", ""]
-    candidates = ([] if route.mode in ("exact-note", "exact-skill", "focus-update")
+    candidates = ([] if not tools or route.mode in ("exact-note", "exact-skill", "focus-update")
                   else capture.detect(route.request))
     if candidates:
         lines += ["## Capture", "", capture.nudge(candidates), ""]
     next_line = None
-    if route.mode == "focus-update" and focus is not None:
+    if not tools:
+        if route.mode == "lean":
+            next_line = ("Nothing in the brain matches this request: answer from general "
+                         "knowledge and say that the brain had nothing on it.")
+    elif route.mode == "focus-update" and focus is not None:
         next_line = (f'Record this progress with record_focus_update(focus="{focus.id}", '
                      'summary="<one line>", changes={"current": ..., "blockers": ..., '
                      '"next": ...}). Only fields that changed. Never rewrite the baseline.')
@@ -452,11 +533,17 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
 
     items = [("note", n.id, n.body_hash, n.tokens, _reason(why.get(n.id), n, route, index))
              for n in chosen]
+    # Recorded as their own kind: the one line is not the note's body, so a later packet
+    # that needs the whole note still sends it.
+    items += [("must", m.note.id, util.sha256(m.note.must_text), util.tokens(m.note.must_text),
+               f"must hold: {m.why}") for m in must]
     items += [("system", s.item.id, s.item.body_hash, s.item.tokens) for s in route.system_docs]
     items += [("section", section.id, section.body_hash, util.tokens(text), reason)
               for section, text, _clipped, reason in quoted]
     if focus is not None:
         items.append(("focus", focus.id, util.sha256(str(focus.current())), 0))
+    if included is not None:
+        items.append(("skill", included.name, included.body_hash, included.tokens))
     data = {
         "packet_id": packet_id,
         "session_id": session_id,
@@ -468,8 +555,12 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         "focus_id": focus.id if focus is not None else None,
         "skill_id": route.skill.name if route.skill is not None else None,
         "candidates": [s.item.name for s in route.candidates],
+        "skill_included": included.name if included is not None else None,
         "topics": list(route.topics),
         "note_ids": [n.id for n in chosen],
+        "must_hold_ids": [m.note.id for m in must],
+        "older_ids": [o.id for o, _n in older],
+        "must_hold_listed": [m.note.id for m in overflow],
         "related_ids": [r.item.id for r in related],
         "held_ids": [n.id for n in held],
         "standing_ids": [s.item.id for s in route.standing_answer],
@@ -506,6 +597,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             "route_log": list(route.notes_log),
             "forced_topics": list(route.forced_topics),
             "excluded_topics": list(route.excluded_topics),
+            "must_holds": [{"id": m.note.id, "why": m.why, "stale": m.stale}
+                           for m in must + overflow],
             "note_scores": [{"id": s.item.id, "topic": s.item.route_key, **s.detail}
                             for s in route.style_notes + route.notes + route.related],
             "section_scores": [{"id": s.item.id, "file": s.item.path,

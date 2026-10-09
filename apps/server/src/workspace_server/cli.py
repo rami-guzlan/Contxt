@@ -297,6 +297,8 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     import uvicorn
 
     from .app import Runtime, create_app
+    from .challenger import ChallengerWorker
+    from .checks import CheckWorker
     from .digests import DigestWorker
     from .speech import TranscriptionWorker
     from .worker import Worker
@@ -309,12 +311,18 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     worker = None if args.no_worker else Worker(runtime.ws, settings.worker_interval)
     transcriber = None if args.no_worker else TranscriptionWorker(runtime.ws, runtime.speech)
     digester = None if args.no_worker else DigestWorker(runtime.ws, runtime.runners)
+    checker = None if args.no_worker else CheckWorker(runtime.ws, runtime.runners)
+    challenger = None if args.no_worker else ChallengerWorker(runtime.ws, runtime.runners)
     if worker:
         worker.start()
     if transcriber:
         transcriber.start()
     if digester:
         digester.start()
+    if checker:
+        checker.start()
+    if challenger:
+        challenger.start()
     print(f"Contxt on {settings.base_url}")
     print(f"Sign in: {settings.base_url}/auth/login?token={runtime.owner_token}")
     print(f"The app's MCP endpoint, for the AI work it starts: {settings.base_url}/mcp")
@@ -343,6 +351,10 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
             transcriber.stop()
         if digester:
             digester.stop()
+        if checker:
+            checker.stop()
+        if challenger:
+            challenger.stop()
     return 0
 
 

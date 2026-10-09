@@ -146,17 +146,27 @@ function About({
   const [editing, setEditing] = useState(false);
   const [minor, setMinor] = useState(false);
   const [changingDetails, setChangingDetails] = useState(false);
+  // A new text for a baseline is a revision: it says why, in a few words.
+  const [why, setWhy] = useState("");
+  const [editProblem, setEditProblem] = useState<string | null>(null);
   const approver = policies?.approver ?? "";
+  const baseline = details?.baseline ?? "";
 
   function save(changed: { title: string; summary: string; body: string }) {
     const initial = { title: entry.title, summary: entry.summary, body: entry.text };
+    const revises = !!baseline && !minor && changed.body.trim() !== entry.text.trim();
+    if (revises && (why.match(/[\w'-]+/g) ?? []).length < 4) {
+      setEditProblem(`This note is a baseline (${baseline}): say in a few words (four at least) why it changes.`);
+      return;
+    }
+    setEditProblem(null);
     decide.mutate(
       {
         decisions: [
           {
             action: "edit",
             entry_id: id,
-            reason: "Edited on its page",
+            reason: revises ? why.trim() : "Edited on its page",
             ...changes(initial, changed),
             body: changed.body.trim(),
             ...(minor ? { minor: true } : {}),
@@ -165,11 +175,24 @@ function About({
       },
       {
         onSuccess: (outcome) => {
+          const refused = outcome.results.find((r) => !r.ok);
+          if (refused) {
+            setEditProblem(refused.message);
+            return;
+          }
           setEditing(false);
           setMinor(false);
+          setWhy("");
           onDecided(describeOutcome(outcome));
         },
       },
+    );
+  }
+
+  function markBaseline(on: boolean) {
+    decide.mutate(
+      { decisions: [{ action: "update", entry_id: id, fields: { baseline: on ? "true" : "" } }] },
+      { onSuccess: (outcome) => onDecided(describeOutcome(outcome)) },
     );
   }
 
@@ -214,6 +237,16 @@ function About({
             <input type="checkbox" checked={minor} onChange={(event) => setMinor(event.target.checked)} /> A small fix (a typo,
             the wording): not new knowledge, so models are not told it changed
           </label>
+          {baseline && !minor ? (
+            <Field label="Why does it change?" hint={`It is a baseline (${baseline}): the reason is kept with the change.`}>
+              <input value={why} onChange={(event) => setWhy(event.target.value)} />
+            </Field>
+          ) : null}
+          {editProblem ? (
+            <p className="warning small" role="alert">
+              {editProblem}
+            </p>
+          ) : null}
         </div>
       ) : (
         <div className="document">
@@ -263,6 +296,9 @@ function About({
                 ["Last checked", details ? (details.checked ? day(details.verified) : "not yet") : day(entry.verified)],
                 ["Next check", details ? nextCheck(details) : null],
                 ["Confidence", entry.confidence ? label(entry.confidence) : null],
+                ["Baseline", baseline ? `Yes: ${baseline}` : null],
+                ["As of", details?.as_of ? day(details.as_of) : null],
+                ["Valid until", details?.valid_until ? day(details.valid_until) : null],
                 ["Sensitivity", details?.classification ? label(details.classification) : null],
                 ["Used", details ? `${plural(details.uses.d30, "time")} in 30 days` : null],
                 ["Source", entry.source],
@@ -270,6 +306,20 @@ function About({
               ]}
             />
           )}
+          {details && !changingDetails ? (
+            <p className="small">
+              {details.baseline_marked ? (
+                <button type="button" className="link small" disabled={decide.isPending} onClick={() => markBaseline(false)}>
+                  Not a baseline you marked any more
+                </button>
+              ) : !baseline ? (
+                <button type="button" className="link small" disabled={decide.isPending} onClick={() => markBaseline(true)}>
+                  Mark it a baseline
+                </button>
+              ) : null}
+              {!baseline ? <span className="muted"> A change to a baseline waits for you, with a reason.</span> : null}
+            </p>
+          ) : null}
           {details?.supersedes?.length ? (
             <p className="small">
               It replaced:{" "}
@@ -282,6 +332,7 @@ function About({
             </p>
           ) : null}
         </Section>
+        {details ? <WhenItApplies details={details} onDecided={onDecided} /> : null}
         {summary?.file ? (
           <Section title="Filed document">
             <p>
@@ -327,6 +378,133 @@ function About({
         </Section>
       </aside>
     </div>
+  );
+}
+
+/** When a note reaches a model, in plain words. */
+const LOADS: { value: string; label: string; hint: string }[] = [
+  { value: "standing", label: "Always", hint: "In every session's startup context." },
+  {
+    value: "domain",
+    label: "Whenever its domain comes up",
+    hint: "A must-hold: it goes first into every brief about its domain, even when a request never mentions it.",
+  },
+  { value: "on-demand", label: "When relevant", hint: "When a request is about it." },
+  { value: "manual", label: "Only when asked for", hint: "Opened by name or found by a search, never sent on its own." },
+];
+
+function loadLabel(load?: string) {
+  return LOADS.find((l) => l.value === (load ?? "on-demand"))?.label ?? load ?? "";
+}
+
+/** When this note reaches a model: always, as a must-hold for its domains, when relevant, or
+ * only when asked for. A must-hold also says which domains it covers, the words that bring
+ * them in, its one line, and whether that line goes into every session. One undo point. */
+function WhenItApplies({ details, onDecided }: { details: InventoryItem; onDecided: (decided: Decided) => void }) {
+  const decide = useBrainDecisions();
+  const initial = {
+    load: details.load ?? "on-demand",
+    applies_to: (details.applies_to ?? []).join(", ") || details.area,
+    triggers: (details.triggers ?? []).join(", "),
+    must_text: details.must_text ?? "",
+    critical: details.critical ? "true" : "false",
+  };
+  const [form, setForm] = useState(initial);
+  const [open, setOpen] = useState(false);
+  const set = (key: keyof typeof form, value: string) => setForm((now) => ({ ...now, [key]: value }));
+  const must = form.load === "domain";
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const fields: Record<string, string> = {};
+    const keys: (keyof typeof form)[] = must ? ["load", "applies_to", "triggers", "must_text", "critical"] : ["load"];
+    for (const key of keys) {
+      if (form[key] !== initial[key] || (must && initial.load !== "domain" && key === "applies_to")) fields[key] = form[key];
+    }
+    if (!Object.keys(fields).length) return setOpen(false);
+    decide.mutate(
+      { decisions: [{ action: "update", entry_id: details.id, fields }] },
+      {
+        onSuccess: (outcome) => {
+          if (outcome.results.every((r) => r.ok)) {
+            setOpen(false);
+            onDecided(describeOutcome(outcome));
+          }
+        },
+      },
+    );
+  }
+
+  return (
+    <Section
+      title="When does this apply?"
+      actions={
+        !open ? (
+          <button type="button" className="link" onClick={() => setOpen(true)}>
+            Change
+          </button>
+        ) : null
+      }
+    >
+      {open ? (
+        <form className="stack" onSubmit={submit} aria-label="When this note reaches a model">
+          <Field label="It reaches a model" hint={LOADS.find((l) => l.value === form.load)?.hint}>
+            <select value={form.load} onChange={(event) => set("load", event.target.value)}>
+              {LOADS.map((l) => (
+                <option key={l.value} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {must ? (
+            <>
+              <Field label="Its domains" hint="Areas (food), area/topic pairs (food/diet) or project ids, comma separated.">
+                <input value={form.applies_to} onChange={(event) => set("applies_to", event.target.value)} />
+              </Field>
+              <Field label="Words that bring it in" hint="When a request uses one, this goes into the brief: dinner, lunchbox, restaurant.">
+                <textarea rows={3} value={form.triggers} onChange={(event) => set("triggers", event.target.value)} />
+              </Field>
+              <Field label="The rule in one line" hint="What every brief shows. Empty: its startup line or summary.">
+                <input value={form.must_text} onChange={(event) => set("must_text", event.target.value)} />
+              </Field>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={form.critical === "true"}
+                  onChange={(event) => set("critical", event.target.checked ? "true" : "false")}
+                />{" "}
+                Critical: its line also goes into every session's startup context, for models that cannot ask for a brief (at most three)
+              </label>
+            </>
+          ) : null}
+          <div className="row">
+            <button type="submit" className="primary" disabled={decide.isPending}>
+              Save
+            </button>
+            <button type="button" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </div>
+          <ErrorNote error={decide.error} />
+          {decide.data?.results.filter((r) => !r.ok).map((r) => (
+            <p key={r.id} className="error" role="alert">
+              {r.message}
+            </p>
+          ))}
+        </form>
+      ) : (
+        <KeyValues
+          rows={[
+            ["It reaches a model", loadLabel(details.load)],
+            ["Its domains", details.load === "domain" ? (details.applies_to ?? []).join(", ") : null],
+            ["Comes in when a request mentions", details.load === "domain" ? (details.triggers ?? []).join(", ") || "only its domains" : null],
+            ["Every brief shows", details.load === "domain" ? details.must_text : null],
+            ["Critical", details.critical ? "Also in every session's startup context" : null],
+          ]}
+        />
+      )}
+    </Section>
   );
 }
 

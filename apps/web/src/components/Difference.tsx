@@ -23,6 +23,7 @@ export const FAIR = "Same model, same request, same settings. The only differenc
 function pieceUrl(piece: DifferencePiece | undefined, id: string): string | null {
   if (!id) return null;
   if (piece?.kind === "project" || piece?.kind === "focus") return `/projects/${encodeURIComponent(id)}`;
+  if (piece?.kind === "skill") return `/skills/${encodeURIComponent(id)}`;
   if (piece?.kind === "section" || piece?.kind === "reference") return null;
   return entryUrl(id);
 }

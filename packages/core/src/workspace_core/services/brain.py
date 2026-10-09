@@ -36,6 +36,7 @@ MAX_FILE = 10 * 1024 * 1024  # the Brain's own ceiling for one document or asset
 ACTIONS = (
     "approve",
     "reject",
+    "unschedule",  # a scheduled revision waits for a decision again
     "archive",
     "edit",
     "restore",
@@ -56,12 +57,25 @@ ENTRY_FIELDS = (
     "area",
     "topic",
     "aliases",  # a project's other names, comma separated
+    # When it reaches a model: standing, domain (a must-hold), on-demand or manual, and for
+    # a must-hold the domains it covers, the words that bring it in (both comma separated),
+    # its one line and whether the startup context shows that line in full.
+    "load",
+    "applies_to",
+    "triggers",
+    "must_text",
+    "critical",
+    "baseline",  # the owner marks it a baseline: a change to it waits, with a reason
+    "as_of",  # the day a changing value was true (YYYY-MM-DD)
+    "valid_until",  # the last day it holds
 )
+FIELD_LIMITS = {"triggers": 1200, "applies_to": 600}  # characters; other fields take 200
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,80}$")  # a version: a commit, or "current"
 MAX_TEXT = 60_000  # characters in one entry a person writes or edits
 SUMMARY_LIMIT = 200  # characters in the one line a list shows for an entry
 MAX_DECISIONS = 200
 TOPIC = re.compile(r"^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9-]*$")
+DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ENTRY_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,120}$")
 FILE_STATUS = re.compile(r"^[a-z][a-z -]{0,29}$")  # draft, sent, final, in review
 # What a project update may change, as the Brain's Focus journal keeps it.
@@ -216,7 +230,9 @@ def _decision(item: dict[str, Any]) -> dict[str, Any]:
                     field="fields",
                 )
             out["fields"] = {
-                str(k): ("" if v is None else " ".join(str(v).split())[:200])
+                str(k): (
+                    "" if v is None else " ".join(str(v).split())[: FIELD_LIMITS.get(str(k), 200)]
+                )
                 for k, v in fields.items()
             }
         return out
@@ -609,6 +625,50 @@ class Brain:
             )
         return entry
 
+    def challenge(
+        self,
+        who: Principal,
+        *,
+        note_id: str,
+        claim: str,
+        evidence: str,
+        source: str = "",
+        run_id: str | None = None,
+    ) -> BrainProposal:
+        """Challenge an entry: a claim, its evidence and where it comes from. It waits for a
+        person; accepted, the entry is disputed and keeps the challenge as its other view."""
+        who.require("brain.propose")
+        claim, evidence = " ".join(str(claim or "").split()), str(evidence or "").strip()
+        source = " ".join(str(source or "").split())
+        if not ENTRY_ID.match(str(note_id or "")):
+            raise ValidationFailed("Name the entry to challenge.", field="note_id")
+        if not claim or len(claim) > 600:
+            raise ValidationFailed("Say the claim in at most 600 characters.", field="claim")
+        if not evidence or len(evidence) > 2000:
+            raise ValidationFailed(
+                "Give the evidence in at most 2,000 characters.", field="evidence"
+            )
+        result = self.rt.brain.challenge(
+            str(note_id),
+            claim=claim,
+            evidence=evidence,
+            source=source[:300],
+            proposer=proposer(who),
+        )
+        with self.rt.write() as tx:
+            tx.emit(
+                "brain.challenged",
+                actor_id=who.actor_id,
+                subject_type="brain_entry",
+                subject_id=str(note_id),
+                data={
+                    "status": result.status,
+                    "proposal": result.proposal_id,
+                    **({"run_id": run_id} if run_id else {}),
+                },
+            )
+        return result
+
     def proposals(self, who: Principal) -> list[dict[str, Any]]:
         who.require("brain.read")
         return self.rt.brain.proposals()
@@ -747,6 +807,7 @@ class Brain:
                     {
                         "approve": "brain.approved",
                         "reject": "brain.rejected",
+                        "unschedule": "brain.unscheduled",
                         "archive": "brain.archived",
                         "edit": "brain.edited",
                         "restore": "brain.restored",
@@ -981,9 +1042,10 @@ class Brain:
         return made
 
     def preview(
-        self, who: Principal, request: str, *, project: str | None = None
+        self, who: Principal, request: str, *, project: str | None = None, tools: bool = True
     ) -> dict[str, Any]:
-        """What an AI would be handed for this request, and why, recording nothing."""
+        """What an AI would be handed for this request, and why, recording nothing. Without
+        `tools`, as a model that cannot call the Brain needs it (see BrainPort.preview)."""
         who.require("brain.read")
         text = str(request or "").strip()
         if not text:
@@ -992,7 +1054,7 @@ class Brain:
             raise ValidationFailed(
                 f"A request to preview is at most {MAX_REQUEST:,} characters.", field="request"
             )
-        return self.rt.brain.preview(text, project=str(project or "").strip() or None)
+        return self.rt.brain.preview(text, project=str(project or "").strip() or None, tools=tools)
 
     def propose(
         self,
@@ -1014,8 +1076,15 @@ class Brain:
         origin: str | None = None,
         goal: str | None = None,
         project: str | None = None,
+        must_hold: dict[str, Any] | None = None,
+        as_of: str | None = None,
+        valid_until: str | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
+
+        `must_hold` ({applies_to, triggers, must_text}) proposes a rule as a must-hold: one
+        that goes into every brief whenever its domain comes up. Only a person can make one
+        critical.
 
         Made during a run, the proposal names the run and its task among its sources, so the
         work that produced it (a distillation request, say) can show what came of it. It can
@@ -1027,7 +1096,8 @@ class Brain:
         first sentence. `origin` says where it came from (`doc:<item>@r<version>` for a
         selection in a doc, say); without one it is read from the run or the first source.
         `goal` names the owner's goal it serves; `project` the active project it belongs to,
-        by id or name (it is then kept with that project)."""
+        by id or name (it is then kept with that project). `as_of` is the day a changing value
+        was true (a total, a count, a version), `valid_until` the last day it holds."""
         who.require("brain.propose")
         title, statement = " ".join(str(title or "").split()), str(statement or "").strip()
         if not title or not statement:
@@ -1093,6 +1163,30 @@ class Brain:
                     field="project",
                 )
             extra["project_id"] = found.id
+        if must_hold:
+            if not isinstance(must_hold, dict):
+                raise ValidationFailed(
+                    "must_hold is {applies_to, triggers, must_text}.", field="must_hold"
+                )
+            limits = {"applies_to": 600, "triggers": 1200, "must_text": 400}
+            held = {
+                key: " ".join(str(must_hold.get(key) or "").split())
+                for key in limits
+                if str(must_hold.get(key) or "").strip()
+            }
+            for key, limit in limits.items():
+                if len(held.get(key, "")) > limit:
+                    raise ValidationFailed(
+                        f"must_hold.{key} is at most {limit} characters.", field="must_hold"
+                    )
+            extra["must_hold"] = held
+        for name, value in (("as_of", as_of), ("valid_until", valid_until)):
+            text = str(value or "").strip()
+            if not text:
+                continue
+            if not DAY.match(text):
+                raise ValidationFailed(f"{name} is a date, YYYY-MM-DD.", field=name)
+            extra[name] = text
         request = {
             "title": title,
             "statement": statement,

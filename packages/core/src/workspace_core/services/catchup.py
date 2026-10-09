@@ -10,11 +10,22 @@ Everything that needs governance falls in one of three tiers:
   that disagrees with a note or nearly repeats one, a change to a note or its retirement, a
   skill, a suggestion that carries private detail, anything the review cannot settle.
 
+A suggestion that changes, retires or disagrees with a BASELINE (brainkit/baseline.py: a rule,
+a must-hold, a standing note, a note the owner confirmed or AIs use a lot) gets a card of its
+own: the old and new side by side with both dates, who approved the old one and how much AIs
+use it, and for a rule or a must-hold the briefs it reached. It never joins a quick group, and
+revising the baseline takes a reason of a few words. What went in on its own and a model then
+read as disagreeing comes back as "Went in, but disagrees", with the undo point that takes it
+back. A revision the owner scheduled (a day to think) is listed until it goes in, with a way
+to cancel it.
+
 Upkeep comes in small doses, never all at once: a few notes to confirm each week (the most
-used first), a pair of possible duplicates, text to tidy, and the notes no AI has used in two
-months. After a run of the same yes, an offer to decide once ("let facts from your AI go
-straight in") turns repeated decisions into a rule; it is offered, never imposed, and never
-under the Regulated preset.
+used first), a pair of possible duplicates, text to tidy, the notes no AI has used in two
+months, and two "Still right?" spot checks on what went in on its own or was kept in a few
+seconds. The share of approvals taken back within a month is shown with the health score, as
+the sign that approvals drift. After a run of the same yes, an offer to decide once ("let
+facts from your AI go straight in") turns repeated decisions into a rule; it is offered,
+never imposed, and never under the Regulated preset.
 
 "Later" hides an item for a few days; what the person set aside stays away. Their state (when
 they last caught up, what is snoozed or set aside) is kept in the workspace's settings. What
@@ -44,7 +55,52 @@ from .runtime import Runtime
 SNOOZE_DAYS = 3
 AWAY_DAYS = 3  # this long away, and the recap comes before the to-dos
 RECAP_DAYS = 7  # the window for someone who never caught up
-QUOTA = {"recheck": 3, "duplicate": 2, "tidy": 2}  # upkeep per rolling week
+QUOTA = {
+    "recheck": 3,
+    "duplicate": 2,
+    "tidy": 2,
+    "musthold": 1,
+    "spot": 2,
+    "older": 2,
+    "belief": 1,  # the cross-check's one belief to look at
+}
+CHALLENGER_BASELINES = 25  # this many baselines, and the external challenger is offered
+QUICK_SECONDS = 4  # a judgment kept this fast is spot-checked later
+SPOT_DAYS = 30  # what went in on its own, or was kept that fast, this recently
+DRIFT_DAYS = 30  # an approval taken back within this long counts as drift
+# The pace that earns a plain word on the next card: this many judgments kept, each this fast.
+PACE = {"cards": 5, "seconds": 6}
+# A rule that reads like safety, health, money, law or privacy is offered as a must-hold: one
+# that goes into every brief whenever its area comes up, whatever the request's relevance.
+MUST_CUES = re.compile(
+    r"\b(allerg\w*|peanut\w*|epipen|asthma|diabet\w*|medication\w*|medical|safety|hazard\w*|"
+    r"legal|lawyer\w*|compliance|regulat\w*|gdpr|hipaa|finra|confidential|privacy|"
+    r"password\w*|secrets?|credential\w*|budget\w*|insurance)\b",
+    re.IGNORECASE,
+)
+GENERIC_WORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "our",
+    "your",
+    "their",
+    "this",
+    "that",
+    "every",
+    "each",
+    "rule",
+    "rules",
+    "note",
+    "how",
+    "what",
+    "when",
+    "who",
+    "never",
+    "always",
+    "only",
+}
 UNUSED_DAYS = 60
 UNUSED_MIN = 3
 NUDGE_DAYS = 30  # captures read for the nudges
@@ -54,12 +110,20 @@ OFFER_RUN = 5  # this many of the same yes in a row earns an offer to decide onc
 OFFER_DAYS = 60
 SECONDS = {
     "judgment": 40,
+    "baseline": 60,
+    "went_in": 30,
+    "spot": 15,
+    "older": 10,
+    "challenge": 45,
+    "belief": 30,
+    "challenger": 15,
     "quick": 8,
     "recheck": 15,
     "duplicate": 30,
     "tidy": 25,
     "unused": 10,
     "offer": 5,
+    "musthold": 20,
 }
 KEY = re.compile(r"^(?:[a-z_]+:[A-Za-z0-9_.:|@/-]{1,300}|unused)$")
 MAX_BODY = 1500  # characters of a note or suggestion a card shows
@@ -127,7 +191,15 @@ def judgment_kind(row: dict[str, Any], analysis: dict[str, Any]) -> str | None:
     """Why a suggestion needs the person's judgment, or None when it is a quick yes."""
     kind = str(row.get("kind") or "")
     overlaps = analysis.get("overlaps") or []
-    if analysis.get("conflicts") or any(o.get("may_contradict") for o in overlaps):
+    if kind == "note.challenge":
+        return "challenge"
+    if analysis.get("baseline"):
+        return "baseline"
+    if (
+        analysis.get("conflicts")
+        or any(o.get("may_contradict") for o in overlaps)
+        or analysis.get("tensions")
+    ):
         return "conflict"
     if analysis.get("problems"):
         return "problem"
@@ -280,8 +352,10 @@ class CatchUp:
         areas = {a.key: a.label for a in catalog.areas}
         projects = port.projects()
         self._project_titles = {p.id: p.title for p in projects}
-        judgment, quick = self._suggestions(review.proposals, rows, areas, hidden)
-        upkeep = self._upkeep(attention, inventory, rows, hidden, now)
+        judgment, quick, scheduled = self._suggestions(review.proposals, rows, areas, hidden)
+        judgment += self._went_in(attention, hidden)
+        points = port.checkpoints(200)
+        upkeep = self._upkeep(attention, inventory, rows, hidden, now, points, policies)
         events = port.activity(
             since=iso(now - timedelta(days=OFFER_DAYS)),
             actions=["approved", "rejected"],
@@ -301,7 +375,7 @@ class CatchUp:
         if legacy is not None and legacy["key"] in hidden:
             legacy = None
         seconds = (
-            SECONDS["judgment"] * len(judgment)
+            sum(SECONDS.get(card["type"], SECONDS["judgment"]) for card in judgment)
             + SECONDS["quick"] * len(quick)
             + sum(SECONDS.get(card["type"], 20) for card in upkeep)
             + SECONDS["offer"] * len(offered)
@@ -325,12 +399,18 @@ class CatchUp:
                 "handled": recap.get("went_in_total", len(handled)),
                 "snoozed": sum(1 for key in hidden if key in state.get("snoozed", {})),
             },
-            "health": dict(health(inventory, attention, now), unsaved=port.unsaved()),
+            "health": dict(
+                health(inventory, attention, now),
+                unsaved=port.unsaved(),
+                drift=drift(points, now),
+            ),
             "recap": recap,
             "handled": handled,
             "judgment": judgment,
             "quick": quick,
             "upkeep": upkeep,
+            "scheduled": scheduled,
+            "pace": PACE,
             "offers": offered,
             "legacy": legacy,
             "nudges": [n for n in self._nudges(now, projects) if n["key"] not in hidden],
@@ -343,14 +423,28 @@ class CatchUp:
         rows: dict[str, dict[str, Any]],
         areas: dict[str, str],
         hidden: set[str],
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
         judgment: list[dict[str, Any]] = []
+        scheduled: list[dict[str, Any]] = []
         groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for row in sorted(proposals, key=lambda r: str(r.get("created") or "")):
             key = f"proposal:{row['id']}"
+            analysis = row.get("analysis") or {}
+            if analysis.get("scheduled"):
+                # Decided, going in later: listed with a way to cancel, never asked again.
+                planned = analysis["scheduled"]
+                scheduled.append(
+                    {
+                        "proposal_id": str(row["id"]),
+                        "title": str(row.get("title") or row.get("summary") or row["id"]),
+                        "at": planned.get("for"),
+                        "reason": planned.get("reason") or "",
+                        "baseline": (analysis.get("baseline") or {}).get("title"),
+                    }
+                )
+                continue
             if key in hidden:
                 continue
-            analysis = row.get("analysis") or {}
             why = judgment_kind(row, analysis)
             if why is None:
                 kind = "file" if row.get("kind") == "file.add" else note_kind(row)
@@ -387,7 +481,9 @@ class CatchUp:
                 }
             )
         quick.sort(key=lambda g: (-g["count"], g["title"]))
-        return judgment, quick
+        # Baselines first: they are what an AI follows everywhere.
+        judgment.sort(key=lambda card: card["type"] != "baseline")
+        return judgment, quick, scheduled
 
     def _card(
         self,
@@ -399,13 +495,29 @@ class CatchUp:
         """One decision to make, in plain words, with what to recommend and why."""
         kind = str(row.get("kind") or "")
         overlaps = analysis.get("overlaps") or []
+        tensions = analysis.get("tensions") or []
         other: dict[str, Any] | None = None
         detail = ""
-        if why == "conflict":
-            other = (analysis.get("conflicts") or [None])[0] or next(
-                (o for o in overlaps if o.get("may_contradict")), None
+        if why == "challenge":
+            other = analysis.get("challenged")
+            detail = str((analysis.get("challenge") or {}).get("claim") or "")
+        elif why == "baseline":
+            other = analysis.get("baseline")
+            detail = str((other or {}).get("tension") or "")
+            detail = detail[:1].upper() + detail[1:] + ("." if detail else "")
+        elif why == "conflict":
+            other = (
+                (analysis.get("conflicts") or [None])[0]
+                or next((o for o in overlaps if o.get("may_contradict")), None)
+                or (tensions or [None])[0]
             )
-            detail = str((other or {}).get("contradiction") or "")
+            found = next((t for t in tensions if t.get("id") == (other or {}).get("id")), None)
+            detail = str(
+                (other or {}).get("contradiction")
+                or (found or {}).get("why")
+                or ((found or {}).get("model") or {}).get("settle")
+                or ""
+            )
             detail = detail[:1].upper() + detail[1:] + ("." if detail else "")
         elif why == "close":
             other = next((o for o in overlaps if o.get("close")), None)
@@ -415,6 +527,12 @@ class CatchUp:
         recommend = self._recommend(row, analysis, why, other, rows, source)
         note = note_kind(row) if kind.startswith("note.") else kind.split(".")[0]
         shapes = note in ("rule", "identity") or why == "skill"
+        verdict = next(
+            (t.get("model") for t in tensions if t.get("id") == (other or {}).get("id")), None
+        )
+        actions = list(ACTIONS[why])
+        if why == "baseline" and (other or {}).get("change") != "disagree":
+            actions.remove("both_hold")  # a new version of the note itself: one or the other
         return {
             "key": f"proposal:{row['id']}",
             "proposal_id": str(row["id"]),
@@ -440,15 +558,82 @@ class CatchUp:
                 else None
             ),
             "duplicates": [d.get("id") for d in analysis.get("duplicates") or []],
-            "why": WHY.get(why, "").format(
-                other=(other or {}).get("title") or "a note",
-                detail=detail,
-                problem=(analysis.get("problems") or [""])[0],
-                private=(row.get("target") or {}).get("private") or "private detail",
+            "why": " ".join(
+                WHY.get(why, "")
+                .format(
+                    other=(other or {}).get("title") or "a note",
+                    detail=detail,
+                    problem=(analysis.get("problems") or [""])[0],
+                    private=(row.get("target") or {}).get("private") or "private detail",
+                    baseline_line=_baseline_line(other or {}),
+                )
+                .split()
             ),
             "recommend": recommend,
-            "actions": ACTIONS[why],
+            "actions": actions,
+            "baseline": dict(other, body=_clip((other or {}).get("body") or ""))
+            if why == "baseline" and other
+            else None,
+            "check": {
+                "model": (analysis.get("checks") or {}).get("model") or "none",
+                "verdict": verdict,
+            },
+            "held": analysis.get("held"),
         }
+
+    def _went_in(self, attention: dict[str, Any], hidden: set[str]) -> list[dict[str, Any]]:
+        """What went in on its own and a model then read as disagreeing with a note: a card
+        each, with the undo point that takes it back."""
+        out: list[dict[str, Any]] = []
+        for item in attention.get("went_in") or []:
+            key = str(item.get("key") or "")
+            if not key or key in hidden:
+                continue
+            note, other = item.get("note") or {}, item.get("with") or {}
+            verdict = item.get("model") or {}
+            settle = str(verdict.get("settle") or "")
+            point = item.get("checkpoint")
+            reason = (
+                f"Your AI read both: they disagree. {settle}"
+                if settle
+                else "Your AI read both and found they disagree."
+            )
+            out.append(
+                {
+                    "key": key,
+                    "proposal_id": None,
+                    "entry_id": str(note.get("id") or ""),
+                    "checkpoint": point,
+                    "goal": None,
+                    "project": None,
+                    "type": "went_in",
+                    "kind": "note",
+                    "tag": TAGS["went_in"],
+                    "shapes": False,
+                    "title": str(note.get("title") or note.get("id") or ""),
+                    "summary": _clip(note.get("summary") or "", 300),
+                    "body": _clip(note.get("body") or ""),
+                    "source": "Went in on its own",
+                    "at": note.get("at"),
+                    "topic": str(note.get("route_key") or ""),
+                    "with": {
+                        "id": other.get("id"),
+                        "title": other.get("title"),
+                        "body": _clip(other.get("body") or ""),
+                        "score": None,
+                    },
+                    "duplicates": [],
+                    "why": WHY["went_in"].format(other=other.get("title") or "a note"),
+                    "recommend": _advice("undo" if point else "review", reason),
+                    "actions": ["undo", "keep_both", "later"]
+                    if point
+                    else ["review", "keep_both", "later"],
+                    "baseline": None,
+                    "check": {"model": "done", "verdict": verdict or None},
+                    "held": None,
+                }
+            )
+        return out
 
     def _serves(self, row: dict[str, Any]) -> dict[str, Any]:
         """The goal and the project the knowledge agent tagged a suggestion with."""
@@ -534,6 +719,59 @@ class CatchUp:
         stale = bool(found.get("stale")) or found.get("confidence") == "disputed"
         uses = int((found.get("uses") or {}).get("d30") or 0)
         verified = str(found.get("verified") or "")[:10]
+        if why == "challenge":
+            if found.get("checked") and verified:
+                return _advice(
+                    "keep_note",
+                    f"You confirmed your note on {verified}; keep it unless the evidence is "
+                    "newer than that.",
+                )
+            return _advice(
+                "dispute",
+                "It comes with evidence. Disputed, your note stays, flagged, with this view "
+                "beside it in planning work, and you can revise it after.",
+            )
+        if why == "baseline":
+            change = str((other or {}).get("change") or "")
+            relation = next(
+                (
+                    str((t.get("model") or {}).get("relation") or "")
+                    for t in analysis.get("tensions") or []
+                    if t.get("id") == (other or {}).get("id")
+                ),
+                "",
+            )
+            if change == "retire":
+                if uses:
+                    return _advice(
+                        "keep_mine",
+                        f"AIs still used it in {uses} chat{'s' if uses != 1 else ''} this month.",
+                    )
+                return _advice("revise", "No AI has used it lately; say why it goes.")
+            if relation == "narrows":
+                return _advice(
+                    "both_hold",
+                    "Your AI read both: this one is a narrower case. Both can hold once each "
+                    "says where it applies.",
+                )
+            if stale:
+                return _advice(
+                    "revise", "Your note is past its check date, so this may be the newer word."
+                )
+            if source == "You":
+                return _advice("revise", "You wrote this more recently than your note.")
+            if verified:
+                return _advice("keep_mine", f"You confirmed your note on {verified}.")
+            if uses:
+                return _advice(
+                    "keep_mine",
+                    f"AIs used your note in {uses} chat{'s' if uses != 1 else ''} this month, "
+                    "and nothing says it changed.",
+                )
+            return _advice(
+                "keep_mine",
+                "Nothing says your note changed. Keep it, unless this is the newer word.",
+            )
         if why == "conflict":
             if stale:
                 return _advice(
@@ -607,10 +845,14 @@ class CatchUp:
         rows: dict[str, dict[str, Any]],
         hidden: set[str],
         now: datetime,
+        points: list[dict[str, Any]] | None = None,
+        policies: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """This week's dose of upkeep: notes to confirm (most used first), possible duplicates,
-        text to tidy, and the notes no AI has used in two months, within the weekly quotas."""
-        done = self._done_this_week(now)
+        text to tidy, spot checks on quick approvals, and the notes no AI has used in two
+        months, within the weekly quotas."""
+        points = self.rt.brain.checkpoints(200) if points is None else points
+        done = self._done_this_week(now, points)
         out: list[dict[str, Any]] = []
 
         def uses(entry_id: str) -> int:
@@ -672,6 +914,74 @@ class CatchUp:
                     "why": str(item.get("why") or ""),
                 }
             )
+        if done.get("musthold", 0) < QUOTA["musthold"]:
+            offer = self._must_hold_offer(inventory, hidden)
+            if offer is not None:
+                out.append(offer)
+        out += self._spot_checks(rows, hidden, now, points, QUOTA["spot"] - done.get("spot", 0))
+        policies = policies or {}
+        # The weekly cross-check: one belief something in the Brain says otherwise about.
+        if policies.get("cross_check", True) and done.get("belief", 0) < QUOTA["belief"]:
+            for finding in self.rt.brain.cross_check():
+                if finding["key"] in hidden:
+                    continue
+                out.append(
+                    {
+                        "key": finding["key"],
+                        "type": "belief",
+                        "id": finding["id"],
+                        "title": str(finding.get("title") or finding["id"]),
+                        "summary": _clip(finding.get("body") or "", 300),
+                        "why": str(finding.get("why") or ""),
+                        "found_by": str(finding.get("found_by") or ""),
+                        "baseline": str(finding.get("baseline") or ""),
+                        "evidence": finding.get("evidence") or {},
+                    }
+                )
+                break
+        # The external challenger, offered once the Brain has many baselines or a stale one.
+        if not policies.get("challenger") and "offer:challenger" not in hidden:
+            baselines = sum(
+                1
+                for r in inventory
+                if r.get("type") == "note" and r.get("live") and r.get("baseline")
+            )
+            stale = any(
+                (rows.get(r["id"]) or {}).get("baseline") for r in attention.get("recheck") or []
+            )
+            if baselines >= CHALLENGER_BASELINES or stale:
+                out.append(
+                    {
+                        "key": "offer:challenger",
+                        "type": "challenger",
+                        "baselines": baselines,
+                        "stale": stale,
+                    }
+                )
+        # A value and its newer value: briefs already carry the newer; retiring the older
+        # keeps the Brain tidy.
+        dated = [d for d in attention.get("dated") or [] if d["key"] not in hidden]
+        for pair in dated[: max(0, QUOTA["older"] - done.get("older", 0))]:
+            out.append(
+                {
+                    "key": pair["key"],
+                    "type": "older",
+                    "older": self._side(
+                        pair["older"]["id"],
+                        pair["older"].get("title"),
+                        rows,
+                        uses(pair["older"]["id"]),
+                    ),
+                    "newer": self._side(
+                        pair["newer"]["id"],
+                        pair["newer"].get("title"),
+                        rows,
+                        uses(pair["newer"]["id"]),
+                    ),
+                    "older_as_of": pair.get("older_as_of"),
+                    "newer_as_of": pair.get("newer_as_of"),
+                }
+            )
         if "unused" not in hidden:
             idle = self._unused(inventory, now)
             if len(idle) >= UNUSED_MIN:
@@ -685,6 +995,106 @@ class CatchUp:
                     }
                 )
         return out
+
+    @staticmethod
+    def _must_hold_offer(
+        inventory: list[dict[str, Any]], hidden: set[str]
+    ) -> dict[str, Any] | None:
+        """One rule a week that reads like a constraint to never miss (an allergy, a budget,
+        a legal or privacy line) and still competes on relevance: offered as a must-hold for
+        its area, with a few words from it to start its triggers. The most used goes first."""
+        candidates = [
+            row
+            for row in inventory
+            if row.get("type") == "note"
+            and row.get("live")
+            and row.get("kind") == "rule"
+            and row.get("load") == "on-demand"
+            and f"musthold:{row['id']}" not in hidden
+            and MUST_CUES.search(f"{row.get('title') or ''} {row.get('summary') or ''}")
+        ]
+        if not candidates:
+            return None
+        row = max(
+            candidates,
+            key=lambda r: (int(((r.get("uses") or {}).get("d30")) or 0), str(r.get("id"))),
+        )
+        words = re.findall(
+            r"[a-z][a-z'-]{2,}", f"{row.get('title') or ''} {row.get('summary') or ''}".lower()
+        )
+        triggers = [w for w in dict.fromkeys(words) if w not in GENERIC_WORDS][:6]
+        area = str(row.get("area") or "")
+        return {
+            "key": f"musthold:{row['id']}",
+            "type": "musthold",
+            "id": row["id"],
+            "title": str(row.get("title") or row["id"]),
+            "summary": _clip(row.get("summary") or "", 300),
+            "area": area,
+            "area_label": str(row.get("area_label") or area),
+            "triggers": triggers,
+            "recommend": _advice(
+                "make_must_hold",
+                f"It reads like a rule that should never be missed. As a must-hold it goes "
+                f"into every brief whenever {row.get('area_label') or area} comes up, even "
+                "when a request does not mention it.",
+            ),
+        }
+
+    def _spot_checks(
+        self,
+        rows: dict[str, dict[str, Any]],
+        hidden: set[str],
+        now: datetime,
+        points: list[dict[str, Any]],
+        left: int,
+    ) -> list[dict[str, Any]]:
+        """ "Still right?" for what nobody looked at closely: notes that went in on their own,
+        or were kept in a few seconds, in the last month and not confirmed since. The most
+        used first, `left` of them."""
+        if left <= 0:
+            return []
+        since = iso(now - timedelta(days=SPOT_DAYS))
+        found: dict[str, tuple[str, str]] = {}  # note: (when, why)
+        for event in self.rt.brain.activity(since=since, actions=["auto-applied"], limit=200):
+            note_id = str(event.get("note") or "")
+            at = str(event.get("at") or "")
+            if note_id and at >= since and event.get("action") == "auto-applied":
+                found.setdefault(note_id, (at, f"It went in on its own on {at[:10]}."))
+        for point in points:
+            seconds = (point.get("source") or {}).get("seconds")
+            at = str(point.get("at") or "")
+            if at < since or point.get("undone_by") or not isinstance(seconds, (int, float)):
+                continue
+            if seconds >= QUICK_SECONDS:
+                continue
+            for decision in point.get("decisions") or []:
+                if decision.get("action") == "approved" and decision.get("note"):
+                    found.setdefault(
+                        str(decision["note"]),
+                        (at, f"You kept it in {max(1, round(seconds))} seconds on {at[:10]}."),
+                    )
+        out: list[dict[str, Any]] = []
+        for note_id, (at, why) in found.items():
+            row = rows.get(note_id) or {}
+            if not row.get("live") or f"spot:{note_id}" in hidden:
+                continue
+            if row.get("checked") and str(row.get("verified") or "") >= at[:10]:
+                continue  # confirmed since
+            out.append(
+                {
+                    "key": f"spot:{note_id}",
+                    "type": "spot",
+                    "id": note_id,
+                    "title": str(row.get("title") or note_id),
+                    "summary": _clip(row.get("summary") or "", 300),
+                    "why": why,
+                    "uses": int((row.get("uses") or {}).get("d30") or 0),
+                    "last_used": (row.get("uses") or {}).get("last"),
+                }
+            )
+        out.sort(key=lambda r: (-int(r["uses"]), str(r["title"])))
+        return out[:left]
 
     @staticmethod
     def _side(
@@ -724,16 +1134,18 @@ class CatchUp:
         out.sort(key=lambda r: (str(r["last_used"] or ""), str(r["title"])))
         return out
 
-    def _done_this_week(self, now: datetime) -> dict[str, int]:
+    def _done_this_week(
+        self, now: datetime, points: list[dict[str, Any]] | None = None
+    ) -> dict[str, int]:
         """Upkeep done in the last seven days, by kind, from the undo points' sources."""
         since = iso(now - timedelta(days=7))
         done: dict[str, int] = {}
-        for point in self.rt.brain.checkpoints(200):
+        for point in self.rt.brain.checkpoints(200) if points is None else points:
             if str(point.get("at") or "") < since or point.get("undone_by"):
                 continue
             key = str((point.get("source") or {}).get("catch_up") or "")
             kind = key.split(":")[0]
-            if kind in ("recheck", "twin", "tidy"):
+            if kind in ("recheck", "twin", "tidy", "musthold", "spot", "older", "belief"):
                 done[kind] = done.get(kind, 0) + 1
         return done
 
@@ -803,6 +1215,9 @@ class CatchUp:
 
 
 TAGS = {
+    "challenge": "A challenge to your note",
+    "baseline": "Changes a baseline",
+    "went_in": "Went in, but disagrees",
     "conflict": "Might disagree with your note",
     "close": "Close to a note you have",
     "duplicate": "Said twice",
@@ -814,6 +1229,9 @@ TAGS = {
     "problem": "Needs a closer look",
 }
 WHY = {
+    "challenge": "Says your note “{other}” is wrong or out of date: {detail}",
+    "baseline": "{baseline_line} {detail}",
+    "went_in": "It went in on its own, and your AI then read it as disagreeing with “{other}”.",
     "conflict": "Disagrees with your note “{other}”. {detail}",
     "close": "Very close to your note “{other}”.",
     "duplicate": "Another suggestion says much the same.",
@@ -826,6 +1244,9 @@ WHY = {
 }
 # The choices a card offers, the recommended one moved first by the page.
 ACTIONS = {
+    "challenge": ["dispute", "keep_note", "revise_note", "later"],
+    "baseline": ["revise", "keep_mine", "both_hold", "later"],
+    "went_in": ["undo", "keep_both", "later"],
     "conflict": ["keep_mine", "use_this", "keep_both", "edit", "later"],
     "close": ["keep_mine", "use_this", "keep_both", "edit", "later"],
     "duplicate": ["keep_one", "not_this", "later"],
@@ -836,6 +1257,40 @@ ACTIONS = {
     "skill": ["review", "keep", "not_this", "later"],
     "problem": ["review", "not_this", "later"],
 }
+
+
+def _baseline_line(baseline: dict[str, Any]) -> str:
+    """What a baseline card is about, in one sentence."""
+    title, why = baseline.get("title") or "a note", baseline.get("why") or "a baseline"
+    change = baseline.get("change")
+    if change == "retire":
+        return f"Retires “{title}”, a baseline: {why}."
+    if change == "revise":
+        return f"A new version of “{title}”, a baseline: {why}."
+    return f"May disagree with “{title}”, a baseline: {why}."
+
+
+def drift(points: list[dict[str, Any]], now: datetime) -> dict[str, Any]:
+    """How many approvals of the last two months were taken back within DRIFT_DAYS: the sign
+    that approvals drift. Only undo points that approved something count."""
+    since = iso(now - timedelta(days=2 * DRIFT_DAYS))
+    approvals = undone = 0
+    for point in points:
+        at = str(point.get("at") or "")
+        if at < since or point.get("undoes"):
+            continue
+        if not any(d.get("action") == "approved" for d in point.get("decisions") or []):
+            continue
+        approvals += 1
+        back = str(point.get("undone_at") or "")
+        if back and parse_iso(back) - parse_iso(at) <= timedelta(days=DRIFT_DAYS):
+            undone += 1
+    return {
+        "approvals": approvals,
+        "undone": undone,
+        "share": round(undone / approvals, 3) if approvals else None,
+        "days": DRIFT_DAYS,
+    }
 
 
 def _slug(text: str) -> str:

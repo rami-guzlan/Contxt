@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from workspace_core.errors import PermissionDenied, ValidationFailed
-from workspace_core.services.catchup import QUOTA, health, judgment_kind, offers
+from workspace_core.services.catchup import QUOTA, drift, health, judgment_kind, offers
 
 
 def propose(ws, who, title, **fields):
@@ -160,3 +160,225 @@ def test_only_the_person_sets_items_aside(ws, owner, connect):
     for act in (ws.catch_up.seen, lambda who: ws.catch_up.snooze(who, "unused")):
         with pytest.raises(PermissionDenied):
             act(claude)
+
+
+def test_a_rule_that_reads_like_a_safety_line_is_offered_as_a_must_hold(ws, owner, brain):
+    from workspace_core.ports import BrainEntry
+
+    brain.entries["nut-rule"] = BrainEntry(
+        id="nut-rule",
+        title="No peanuts at school",
+        text="Ollie is allergic to peanuts.",
+        scope="company",
+        kind="rule",
+        status="approved",
+        revision="r1",
+    )
+    rows = [
+        {
+            "type": "note",
+            "id": "nut-rule",
+            "title": "No peanuts at school",
+            "summary": "Ollie is allergic to peanuts: no peanuts in lunches.",
+            "kind": "rule",
+            "load": "on-demand",
+            "live": True,
+            "area": "family",
+            "area_label": "Family",
+            "uses": {"d30": 2},
+        },
+        {
+            "type": "note",
+            "id": "posting-days",
+            "title": "Posting days",
+            "summary": "Post on Tuesdays and Thursdays.",
+            "kind": "rule",
+            "load": "on-demand",
+            "live": True,
+            "area": "brand",
+            "uses": {"d30": 9},
+        },
+    ]
+    brain.inventory = lambda: rows
+    (card,) = [c for c in ws.catch_up.plan(owner)["upkeep"] if c["type"] == "musthold"]
+    assert (card["id"], card["area"]) == ("nut-rule", "family")
+    assert card["recommend"]["action"] == "make_must_hold"
+    assert "peanuts" in card["triggers"] and "the" not in card["triggers"]
+    # Making it a must-hold is an owner decision on the entry, counted against this week's dose.
+    ws.brain.decide_many(
+        owner,
+        [
+            {
+                "action": "update",
+                "entry_id": "nut-rule",
+                "fields": {"load": "domain", "applies_to": "family", "triggers": "lunch, snack"},
+            }
+        ],
+        source={"catch_up": card["key"]},
+    )
+    assert brain.batches[-1]["decisions"][0]["fields"]["load"] == "domain"
+    assert not [c for c in ws.catch_up.plan(owner)["upkeep"] if c["type"] == "musthold"]
+
+
+def test_must_hold_fields_are_details_a_person_can_set(ws, owner):
+    with pytest.raises(ValidationFailed):
+        ws.brain.decide_many(
+            owner, [{"action": "update", "entry_id": "voice-guide", "fields": {"weight": "1"}}]
+        )
+    long = ", ".join(f"word{i}" for i in range(150))
+    out = ws.brain.decide_many(
+        owner,
+        [{"action": "update", "entry_id": "voice-guide", "fields": {"triggers": long}}],
+    )
+    assert out["results"][0]["ok"]
+
+
+def test_a_change_to_a_baseline_is_a_card_of_its_own_never_a_quick_yes(ws, owner, brain):
+    made = propose(ws, owner, "Headlines in title case", kind="rule", topic="brand/voice")
+    brain.analysis[made.proposal_id] = {
+        "route_key": "brand/voice",
+        "tensions": [
+            {
+                "id": "voice-guide",
+                "title": "Voice guide",
+                "body": "Write plainly. No hype.",
+                "why": "one rules out what the other allows",
+                "baseline": "it is a rule",
+                "found_by": "close to it",
+                "model": None,
+            }
+        ],
+        "baseline": {
+            "id": "voice-guide",
+            "title": "Voice guide",
+            "body": "Write plainly. No hype.",
+            "change": "disagree",
+            "why": "it is a rule",
+            "tension": "one rules out what the other allows",
+            "uses": 0,
+            "impact": {"conversations": 0, "recent": [], "domains": []},
+        },
+        "checks": {"pairs": 1, "read": 0, "model": "waiting"},
+    }
+    plan = ws.catch_up.plan(owner)
+    assert plan["quick"] == []
+    (card,) = plan["judgment"]
+    assert (card["type"], card["tag"]) == ("baseline", "Changes a baseline")
+    assert card["actions"] == ["revise", "keep_mine", "both_hold", "later"]
+    assert card["baseline"]["id"] == "voice-guide" and card["check"]["model"] == "waiting"
+    assert "a baseline: it is a rule" in card["why"]
+    assert card["recommend"]["action"] == "revise"  # the person wrote it, in the app
+    assert plan["seconds"] == 60
+
+
+def test_what_went_in_on_its_own_comes_back_once_as_a_spot_check(ws, owner, brain, clock):
+    brain.events.insert(
+        0,
+        {
+            "at": (clock.now() - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "action": "auto-applied",
+            "note": "voice-guide",
+        },
+    )
+    plan = ws.catch_up.plan(owner)
+    (spot,) = [c for c in plan["upkeep"] if c["type"] == "spot"]
+    assert spot["key"] == "spot:voice-guide" and "went in on its own" in spot["why"]
+    ws.brain.decide_many(
+        owner,
+        [{"action": "verify", "entry_id": "voice-guide"}],
+        source={"catch_up": "spot:voice-guide", "seconds": 9},
+    )
+    for _ in range(QUOTA["spot"] - 1):
+        brain.points.insert(0, {"at": brain.points[0]["at"], "source": {"catch_up": "spot:x"}})
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "spot"]  # this week's dose is used
+
+
+def test_drift_is_the_share_of_approvals_taken_back_within_a_month():
+    now = datetime(2026, 10, 8, tzinfo=UTC)
+    points = [
+        {
+            "at": "2026-10-01T10:00:00Z",
+            "decisions": [{"action": "approved"}],
+            "undone_at": "2026-10-03T10:00:00Z",
+        },
+        {"at": "2026-09-20T10:00:00Z", "decisions": [{"action": "approved"}], "undone_at": None},
+        {"at": "2026-09-15T10:00:00Z", "decisions": [{"action": "rejected"}]},
+        {"at": "2026-10-04T10:00:00Z", "decisions": [], "undoes": "cp-1"},
+        {"at": "2026-06-01T10:00:00Z", "decisions": [{"action": "approved"}]},
+    ]
+    assert drift(points, now) == {"approvals": 2, "undone": 1, "share": 0.5, "days": 30}
+
+
+def test_a_value_with_a_newer_one_is_offered_for_retirement(ws, owner, brain):
+    brain.watch["dated"] = [
+        {
+            "key": "older:mrr-august|mrr-september",
+            "older": {"id": "mrr-august", "title": "MRR, August"},
+            "newer": {"id": "mrr-september", "title": "MRR, September"},
+            "older_as_of": "2026-08-31",
+            "newer_as_of": "2026-09-30",
+        }
+    ]
+    plan = ws.catch_up.plan(owner)
+    (card,) = [c for c in plan["upkeep"] if c["type"] == "older"]
+    assert (card["older"]["id"], card["newer"]["id"]) == ("mrr-august", "mrr-september")
+    assert card["older_as_of"] == "2026-08-31" and card["key"] == "older:mrr-august|mrr-september"
+
+
+def test_a_challenge_is_a_card_of_its_own(ws, owner, brain):
+    made = propose(ws, owner, "Voice guide is out of date", kind="rule")
+    brain.proposed[-1]["kind"] = "note.challenge"  # as the real inbox names a challenge
+    brain.analysis[made.proposal_id] = {
+        "challenged": {"id": "voice-guide", "title": "Voice guide", "body": "Write plainly."},
+        "challenge": {"claim": "We now write in a playful voice.", "evidence": "The 2026 brief."},
+    }
+    plan = ws.catch_up.plan(owner)
+    (card,) = plan["judgment"]
+    assert (card["type"], card["tag"]) == ("challenge", "A challenge to your note")
+    assert card["with"]["id"] == "voice-guide"
+    assert card["actions"] == ["dispute", "keep_note", "revise_note", "later"]
+    assert "We now write in a playful voice." in card["why"]
+
+
+def test_the_cross_check_shows_one_belief_a_week(ws, owner, brain):
+    finding = {
+        "key": "belief:voice-guide",
+        "id": "voice-guide",
+        "title": "Voice guide",
+        "body": "Write plainly. No hype.",
+        "why": "one rules out what the other allows",
+        "found_by": "words and figures",
+        "baseline": "it is a rule",
+        "evidence": {"kind": "proposal", "id": "p9", "title": "Hype", "text": "Use hype."},
+    }
+    brain.findings = [finding, dict(finding, key="belief:other", id="other")]
+    plan = ws.catch_up.plan(owner)
+    (card,) = [c for c in plan["upkeep"] if c["type"] == "belief"]
+    assert card["id"] == "voice-guide" and card["evidence"]["kind"] == "proposal"
+    ws.brain.decide_many(
+        owner,
+        [{"action": "verify", "entry_id": "voice-guide"}],
+        source={"catch_up": "belief:voice-guide"},
+    )
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "belief"]  # one a week
+    brain.policy["cross_check"] = False
+    brain.points.clear()
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "belief"]  # turned off
+
+
+def test_the_challenger_is_offered_once_there_are_many_baselines(ws, owner, brain, monkeypatch):
+    from workspace_core.services import catchup
+
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "challenger"]
+    monkeypatch.setattr(catchup, "CHALLENGER_BASELINES", 1)
+    brain.baselines = {"voice-guide": "it is a rule"}
+    plan = ws.catch_up.plan(owner)
+    (card,) = [c for c in plan["upkeep"] if c["type"] == "challenger"]
+    assert card["key"] == "offer:challenger" and card["baselines"] == 1
+    brain.policy["challenger"] = True
+    plan = ws.catch_up.plan(owner)
+    assert not [c for c in plan["upkeep"] if c["type"] == "challenger"]

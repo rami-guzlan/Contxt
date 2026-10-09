@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS ledger_meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS outputs (
     path TEXT PRIMARY KEY, session_id TEXT, at TEXT, title TEXT, client TEXT);
 CREATE TABLE IF NOT EXISTS dismissed (key TEXT PRIMARY KEY, at TEXT);
+CREATE TABLE IF NOT EXISTS verdicts (
+    key TEXT PRIMARY KEY, relation TEXT, detail TEXT, at TEXT);
 """
 
 # How an item reached a conversation: the usage_daily column each way counts in.
@@ -328,6 +330,80 @@ class Ledger:
                           "opened" if row["packet_id"] == FOLLOWUP else "packet")
         return {"daily": daily, "recent": recent}
 
+    def reach(self, item: str, *, days: int = 30, limit: int = 3) -> dict:
+        """How far one note reaches, from the detail window: the conversations it went into
+        in the last `days` days (as a note or as a must-hold's line) and the most recent
+        requests that received it, newest first."""
+        since = (util.now() - _dt.timedelta(days=max(1, int(days)))
+                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._connect() as conn:
+            count = conn.execute(
+                "SELECT COUNT(DISTINCT session_id) AS n FROM deliveries WHERE item = ? AND "
+                "kind IN ('note', 'must') AND at >= ?", (item, since)).fetchone()
+            rows = conn.execute(
+                "SELECT p.request, MAX(d.at) AS at, s.label AS client FROM deliveries d "
+                "JOIN packets p ON p.id = d.packet_id LEFT JOIN sessions s ON s.id = p.session_id "
+                "WHERE d.item = ? AND d.kind IN ('note', 'must') AND COALESCE(p.request, '') != '' "
+                "GROUP BY p.request ORDER BY MAX(d.at) DESC LIMIT ?",
+                (item, max(1, int(limit)))).fetchall()
+        return {"conversations": int(count["n"] or 0),
+                "recent": [{"request": r["request"], "at": r["at"], "client": r["client"] or ""}
+                           for r in rows]}
+
+    # ------------------------------------------------------------------ model checks
+    def verdicts(self, keys) -> dict[str, dict]:
+        """What a model already said about pairs of texts, by pair key: {"relation",
+        "detail", "at"}. A pair is asked about once; a new text is a new pair."""
+        keys = [str(k) for k in keys or [] if k]
+        if not keys:
+            return {}
+        out = {}
+        with self._connect() as conn:
+            for start in range(0, len(keys), 500):
+                chunk = keys[start:start + 500]
+                marks = ",".join("?" * len(chunk))
+                for row in conn.execute(
+                        f"SELECT key, relation, detail, at FROM verdicts WHERE key IN ({marks})",
+                        chunk):
+                    try:
+                        detail = json.loads(row["detail"] or "{}")
+                    except ValueError:
+                        detail = {}
+                    out[row["key"]] = {"relation": row["relation"], "detail": detail,
+                                       "at": row["at"]}
+        return out
+
+    def record_verdicts(self, rows) -> int:
+        """Keep a model's verdicts: [{"key", "relation", "detail"}]."""
+        now = util.now_iso()
+        kept = 0
+        with self._connect() as conn:
+            for row in rows or []:
+                if not row.get("key") or not row.get("relation"):
+                    continue
+                conn.execute(
+                    "INSERT INTO verdicts (key, relation, detail, at) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET relation = excluded.relation, "
+                    "detail = excluded.detail, at = excluded.at",
+                    (str(row["key"]), str(row["relation"]),
+                     json.dumps(row.get("detail") or {}, ensure_ascii=False), now))
+                kept += 1
+        return kept
+
+    def verdicts_stamp(self) -> str:
+        """Changes when a verdict comes in: what a cached review is checked against."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS n, MAX(at) AS at FROM verdicts").fetchone()
+        return f"{row['n']}:{row['at'] or ''}"
+
+    def verdicts_since(self, since: str, *, prefix: str = "") -> int:
+        """Pairs a model was asked about since an ISO moment (those whose key starts with
+        `prefix`): what a cap counts."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS n FROM verdicts WHERE at >= ? AND key LIKE ?",
+                               (since, prefix.replace("%", "") + "%")).fetchone()
+        return int(row["n"] or 0)
+
     def handouts(self, kind: str, item: str) -> list[dict]:
         """Every delivery of one item still in the detail window, oldest first: session,
         version (`hash`) and when. Recall reads it: who got an older version."""
@@ -354,22 +430,27 @@ class Ledger:
 
     def weekly(self, weeks: int = 8) -> list[dict]:
         """Conversations the brain served in each of the last `weeks` weeks, oldest first:
-        [{"start", "end", "conversations", "packets"}], a week ending today last. Packets are
-        kept for the retention window, so weeks before it count none."""
+        [{"start", "end", "conversations", "packets"}], a week ending today last. The days
+        are the owner's (`util.today()`): packets are stamped in UTC, and each counts on the
+        owner's date when it came. Packets are kept for the retention window, so weeks
+        before it count none."""
         weeks = max(1, min(int(weeks), 26))
-        today = util.now().date()
+        today = util.today_date()
         start = today - _dt.timedelta(days=7 * weeks - 1)
         buckets = [{"start": (start + _dt.timedelta(days=7 * i)).isoformat(),
                     "end": (start + _dt.timedelta(days=7 * i + 6)).isoformat(),
                     "sessions": set(), "packets": 0} for i in range(weeks)]
+        # A day early: no time zone is a whole day from UTC, and the offset check below
+        # drops the packets from before the owner's first day.
+        since = (start - _dt.timedelta(days=1)).isoformat()
         with self._connect() as conn:
-            rows = conn.execute("SELECT session_id, substr(at, 1, 10) AS day FROM packets "
-                                "WHERE at >= ?", (start.isoformat(),)).fetchall()
+            rows = conn.execute("SELECT session_id, at FROM packets WHERE at >= ?",
+                                (since,)).fetchall()
         for row in rows:
-            try:
-                offset = (_dt.date.fromisoformat(row["day"]) - start).days // 7
-            except ValueError:
+            day = util.local_date(row["at"])
+            if day is None:
                 continue
+            offset = (day - start).days // 7
             if 0 <= offset < weeks:
                 buckets[offset]["sessions"].add(row["session_id"])
                 buckets[offset]["packets"] += 1

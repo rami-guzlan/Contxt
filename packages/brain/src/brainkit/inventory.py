@@ -11,7 +11,8 @@ their origin is read from it (`origin_of`), so nothing has to be rewritten.
 """
 from __future__ import annotations
 
-from . import history, util
+from . import baseline, history, util
+from . import frontmatter as fm
 
 ORIGIN_KINDS = {
     "conversation": "An AI conversation",
@@ -80,6 +81,18 @@ def note_row(st, note, *, created=None, changes=0, use=None) -> dict:
         "topic": note.route_key, "topic_label": st.index.topic_label(note.route_key),
         "scope": note.scope, "partition": note.partition, "status": note.status,
         "live": note.live, "load": note.load, "tokens": note.tokens,
+        # a must-hold's domains, the words that bring it in, its line, and whether the
+        # startup context shows that line in full
+        "applies_to": note.applies_to if note.must_hold else [],
+        "triggers": note.triggers if note.must_hold else [],
+        "must_text": note.must_text if note.must_hold else "",
+        "critical": bool(note.must_hold and note.critical),
+        # why a change to it waits for a reason (baseline.py), or ""; marked by the owner
+        "baseline": (baseline.why(note, config, int(use.get("d30") or 0)) or "")
+        if note.live else "",
+        "baseline_marked": bool(fm.as_bool(note.meta.get("baseline"))),
+        # when a changing value was true, and the last day it holds
+        "as_of": note.as_of or None, "valid_until": note.valid_until or None,
         "added": note.added, "updated": str(note.meta.get("updated") or "")[:10],
         "revised": str(note.meta.get("revised") or "")[:10],
         "verified": note.verified, "confidence": note.confidence,

@@ -229,6 +229,60 @@ function Approval() {
           </label>
         ))}
       </fieldset>
+      <fieldset className="stack-tight">
+        <legend className="sr-only">Changes to your baselines</legend>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={!!policies.revision_delay}
+            disabled={set.isPending}
+            onChange={(event) => set.mutate({ revision_delay: event.target.checked } as never)}
+          />{" "}
+          Give me a day before a rule or a must-hold changes
+          <span className="muted small"> You decide now; it goes in 24 hours later, and you can cancel it in Catch up until then.</span>
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={policies.model_checks !== false}
+            disabled={set.isPending}
+            onChange={(event) => set.mutate({ model_checks: event.target.checked } as never)}
+          />{" "}
+          Let my AI double-check disagreements
+          <span className="muted small">
+            {" "}
+            With Claude Code connected, it reads a suggestion beside the notes it may disagree with, up to 60 pairs a day. Without it, words and
+            figures are checked alone.
+          </span>
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={policies.cross_check !== false}
+            disabled={set.isPending}
+            onChange={(event) => set.mutate({ cross_check: event.target.checked } as never)}
+          />{" "}
+          Cross-check my beliefs each week
+          <span className="muted small">
+            {" "}
+            Your most used notes and oldest baselines are read against the rest of your Brain; at most one belief to look at a week.
+          </span>
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={!!policies.challenger}
+            disabled={set.isPending}
+            onChange={(event) => set.mutate({ challenger: event.target.checked } as never)}
+          />{" "}
+          Let a challenger argue against my beliefs
+          <span className="muted small">
+            {" "}
+            Once a week, Claude Code looks for current evidence on the web against a few of your beliefs, each only as a claim to test. It uses some
+            of your quota and changes nothing: it raises challenges for you to settle.
+          </span>
+        </label>
+      </fieldset>
       {set.isSuccess ? (
         <p className="small" role="status">
           <Check className="button-icon" aria-hidden="true" /> Saved, with an undo point.

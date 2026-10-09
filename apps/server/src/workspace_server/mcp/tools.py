@@ -264,9 +264,26 @@ def propose_brain_entry(
         summary=_str(args, "summary"),
         goal=_str(args, "goal"),
         project=_str(args, "project"),
+        must_hold=args.get("must_hold") or None,
+        as_of=_str(args, "as_of"),
+        valid_until=_str(args, "valid_until"),
     )
     # Refused is a failure the model must notice; a duplicate (the same proposal retried) is
     # not.
+    return result.message, {"proposal": asdict(result)}, result.status == "refused"
+
+
+def propose_challenge(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    result = ws.brain.challenge(
+        who,
+        note_id=str(_str(args, "note_id", True)),
+        claim=str(_str(args, "claim", True)),
+        evidence=str(_str(args, "evidence", True)),
+        source=str(args.get("source") or ""),
+        run_id=_str(args, "run_id"),
+    )
     return result.message, {"proposal": asdict(result)}, result.status == "refused"
 
 
@@ -575,6 +592,41 @@ TOOLS: dict[str, Tool] = {
                         "description": "The id of the active project it belongs to: it is kept "
                         "with that project.",
                     },
+                    "as_of": {
+                        "type": "string",
+                        "description": "For a value that changes (a total, a count, a balance, "
+                        "a version): the day it was true, YYYY-MM-DD. Give it whenever the "
+                        "statement gives such a figure.",
+                    },
+                    "valid_until": {
+                        "type": "string",
+                        "description": "The last day it holds, YYYY-MM-DD, when it says so.",
+                    },
+                    "must_hold": {
+                        "type": "object",
+                        "description": "Only for a rule that must never be missed whenever its "
+                        "subject comes up (an allergy or another health or safety limit, a "
+                        "legal, money or privacy line): it then goes into every brief about "
+                        "its domain, even when a request never mentions it. A person decides.",
+                        "properties": {
+                            "applies_to": {
+                                "type": "string",
+                                "description": "The Brain's area (or area/topic) it covers, "
+                                "comma separated.",
+                            },
+                            "triggers": {
+                                "type": "string",
+                                "description": "A dozen or so words and short phrases a request "
+                                "in that domain would use, beyond the rule's own words, comma "
+                                "separated (for an allergy: dinner, lunchbox, restaurant, "
+                                "birthday party).",
+                            },
+                            "must_text": {
+                                "type": "string",
+                                "description": "The rule in one line, as every brief will show it.",
+                            },
+                        },
+                    },
                     "run_id": {
                         "type": "string",
                         "description": "The run_id from claim_task, when proposing as part of "
@@ -585,6 +637,25 @@ TOOLS: dict[str, Tool] = {
                 ["title", "statement"],
             ),
             propose_brain_entry,
+            "brain.propose",
+        ),
+        Tool(
+            "propose_challenge",
+            "Challenge an entry the Brain holds when you found evidence that it is wrong or out "
+            "of date: the entry's id, what the evidence says instead, the evidence quoted and "
+            "its source (a link and its date, a file). It waits for a person and never changes "
+            "the entry; a challenge turned down before is not taken again on the same evidence.",
+            _obj(
+                {
+                    "note_id": {"type": "string", "description": "The entry challenged."},
+                    "claim": {"type": "string", "description": "What the evidence says."},
+                    "evidence": {"type": "string", "description": "The evidence, quoted."},
+                    "source": {"type": "string", "description": "Where it comes from."},
+                    "run_id": RUN,
+                },
+                ["note_id", "claim", "evidence"],
+            ),
+            propose_challenge,
             "brain.propose",
         ),
         Tool(

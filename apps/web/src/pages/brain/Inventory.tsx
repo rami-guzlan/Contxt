@@ -401,6 +401,16 @@ function ItemTitle({ item }: { item: InventoryItem }) {
       <span className="chips">
         {item.type !== "note" ? <span className="chip">{item.type === "skill" ? "Skill" : "Document"}</span> : null}
         {item.load === "standing" ? <span className="chip chip-standing">In every task</span> : null}
+        {item.load === "domain" ? (
+          <span className="chip chip-standing" title={`Goes first into every brief about ${(item.applies_to ?? []).join(", ")}`}>
+            {item.critical ? "Must hold, critical" : "Must hold"}
+          </span>
+        ) : null}
+        {item.baseline && item.load !== "domain" && item.load !== "standing" ? (
+          <span className="chip" title={`A baseline: ${item.baseline}. A change to it waits for you, with a reason.`}>
+            Baseline
+          </span>
+        ) : null}
         {!item.live ? <span className="chip chip-archived">Archived</span> : null}
         {item.partition ? <span className="chip">{item.partition}</span> : null}
       </span>

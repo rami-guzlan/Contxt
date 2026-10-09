@@ -146,3 +146,33 @@ def test_an_undone_approval_is_waiting_again(ws, owner, notes, connect):
     assert ws.distill.requests(owner)[0].proposals[0].status == "approved"
     ws.brain.undo(owner, point["id"])
     assert ws.distill.requests(owner)[0].proposals[0].status == "pending"
+
+
+def test_a_proposal_can_suggest_a_must_hold_and_waits_like_any_other(ws, owner, brain):
+    made = ws.brain.propose(
+        owner,
+        title="Peanut allergy",
+        statement="Ollie is allergic to peanuts.",
+        kind="rule",
+        evidence="Taylor said so",
+        must_hold={
+            "applies_to": "food",
+            "triggers": "dinner, lunchbox, restaurant",
+            "must_text": "No peanuts for Ollie, ever.",
+        },
+    )
+    assert made.status == "pending"
+    sent = brain.proposed[-1]["extra"]["must_hold"]
+    assert sent == {
+        "applies_to": "food",
+        "triggers": "dinner, lunchbox, restaurant",
+        "must_text": "No peanuts for Ollie, ever.",
+    }
+    with pytest.raises(ValidationFailed):
+        ws.brain.propose(
+            owner,
+            title="Bad",
+            statement="Bad.",
+            evidence="x",
+            must_hold={"must_text": "x" * 500},
+        )

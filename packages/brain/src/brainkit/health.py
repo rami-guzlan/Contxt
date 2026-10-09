@@ -16,6 +16,31 @@ def _result(message, data=None, is_error=False):
     return Result(message, data or {}, is_error)
 
 
+INDEX_TOKENS = 250    # the startup index of must-hold domains should stay this small
+
+
+def must_hold_warnings(config, index, chain) -> list[str]:
+    """What the owner should look at about must-holds: an index past its size, more critical
+    must-holds than the startup context shows, and a must-hold with nothing to bring it into
+    play but its own area."""
+    out = []
+    index_tokens = util.tokens("\n".join(kernel_mod.must_hold_index(config, index, chain)))
+    if index_tokens > INDEX_TOKENS:
+        out.append(f"the must-hold index is {index_tokens} tokens, over {INDEX_TOKENS}: "
+                   "fewer must-holds, or shorter titles")
+    musts = kernel_mod.must_hold_notes(index, chain)
+    critical = [n.id for n in musts if n.critical]
+    shown = set(kernel_mod.critical_ids(musts))
+    if len(critical) > len(shown):
+        out.append("more must-holds are critical than the startup context shows in full: "
+                   + ", ".join(c for c in critical if c not in shown))
+    for note in musts:
+        if not note.triggers and note.applies_to == [note.area]:
+            out.append(f"{note.id}: a must-hold with no triggers comes up only when a request "
+                       f"reaches its area ({note.area}); add a few words that bring it in")
+    return out
+
+
 def report(brain, *, strict=False):
     st = brain.state()
     config, index, snapshot = st.config, st.index, st.snapshot
@@ -108,6 +133,7 @@ def report(brain, *, strict=False):
                  f"fingerprint {fingerprint}")
     if kernel_tokens > budget:
         problems.append(f"kernel is {kernel_tokens} tokens, over the {budget} budget")
+    warnings += must_hold_warnings(config, index, owner_chain)
     on_disk = kernel_mod.file_fingerprint(brain.repo_root)
     if on_disk != fingerprint:
         warnings.append(f"CLAUDE.md is stale (has {on_disk}, current {fingerprint}); "

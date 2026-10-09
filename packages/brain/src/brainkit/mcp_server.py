@@ -83,6 +83,21 @@ AGENT_TOOLS = [
          "query": {"type": "string", "description": "What you need, in a few words."},
          "limit": {"type": "integer", "description": "How many hits (default 8)."},
          "session_id": _STR}, "required": ["query"]}},
+    {"name": "challenge_note",
+     "description": "When the person says, or evidence you found shows, that a note the Brain "
+                    "holds is wrong or out of date, raise a challenge: the note's id, what you "
+                    "claim instead, the evidence and where it comes from. It waits for the "
+                    "owner and never changes the note; a challenge turned down before is not "
+                    "taken again without new evidence.",
+     "inputSchema": {"type": "object", "properties": {
+         "note_id": {"type": "string", "description": "The note challenged."},
+         "claim": {"type": "string", "description": "What you claim instead, in one or two "
+                   "sentences."},
+         "evidence": {"type": "string", "description": "The evidence for it, quoted or "
+                      "summarized."},
+         "source": {"type": "string", "description": "Where the evidence comes from: a file, "
+                    "a page, a person, a date."},
+         "session_id": _STR}, "required": ["note_id", "claim", "evidence"]}},
     {"name": "propose_note",
      "description": "Capture durable knowledge as it comes up, without being asked: a rule, "
                     "correction, preference, decision or changed fact the person states that "
@@ -91,7 +106,10 @@ AGENT_TOOLS = [
                     "in an existing area/topic when one fits; the reply names the closest "
                     "topics when yours is new. Your own scope applies at once; shared knowledge "
                     "applies or waits for the owner as their policy says (the reply tells you "
-                    "which). The same text twice returns the waiting proposal.",
+                    "which). Anything that may disagree with a note, or changes a baseline (a "
+                    "rule, a must-hold, a note the owner confirmed), waits for the owner "
+                    "whatever the policy, and the reply says why. The same text twice returns "
+                    "the waiting proposal.",
      "inputSchema": {"type": "object", "properties": {
          "area": {"type": "string", "description": "Where it is filed, for example brand, "
                   "customers, sales, operations, people, projects."},
@@ -102,7 +120,26 @@ AGENT_TOOLS = [
          "kind": {"type": "string", "enum": ["fact", "rule", "identity", "state"]},
          "text": {"type": "string", "description": "One durable idea."},
          "scope": {"type": "string", "description": "company | dept:<name> | person:<name>"},
-         "load": {"type": "string", "enum": ["standing", "on-demand"]},
+         "load": {"type": "string", "enum": ["standing", "domain", "on-demand"],
+                  "description": "standing: every session. domain: a must-hold, in every "
+                                 "brief whenever its domain comes up (a safety, legal, money "
+                                 "or privacy constraint). on-demand: when relevant."},
+         "applies_to": {"type": "string", "description": "For load domain: the areas, "
+                        "area/topic pairs or project ids it covers, comma-separated (its own "
+                        "area when omitted)."},
+         "triggers": {"type": "string", "description": "For load domain: words and short "
+                      "phrases that bring the domain into play, comma-separated, for example "
+                      "dinner, lunchbox, restaurant, birthday party."},
+         "must_text": {"type": "string", "description": "For load domain: the rule in one "
+                       "line, as a brief will show it."},
+         "critical": {"type": "boolean", "description": "For load domain, only for a rule "
+                      "that must never be missed (a life-safety or legal one): its line also "
+                      "goes in every session's startup context. At most three per Brain."},
+         "as_of": {"type": "string", "description": "For a value that changes (a total, a "
+                   "count, a balance, a version): the day it was true, YYYY-MM-DD. A newer "
+                   "dated value for the same thing updates the older one in briefs."},
+         "valid_until": {"type": "string", "description": "The last day it holds, "
+                         "YYYY-MM-DD; after it, the note is flagged for a check."},
          "evidence": _STR, "source": _STR,
          "supersedes": {"type": "string", "description": "Note ids this one replaces; they "
                         "retire when it is approved. With target_id, a merge: the changed note "
@@ -232,13 +269,19 @@ HANDLERS = {
     "get_skill": lambda b, a: b.skill(a.get("name"), partition=a.get("partition"),
                                       session_id=a.get("session_id")),
     "get_reference": lambda b, a: b.reference(a.get("path"), session_id=a.get("session_id")),
+    "challenge_note": lambda b, a: b.challenge(
+        a.get("note_id"), claim=a.get("claim"), evidence=a.get("evidence"),
+        source=a.get("source") or "", session_id=a.get("session_id")),
     "propose_note": lambda b, a: b.propose(
         area=a.get("area") or a.get("layer"), topic=a.get("topic"), text=a.get("text"),
         scope=a.get("scope"), load=a.get("load") or None,
         evidence=a.get("evidence") or "", source=a.get("source") or "",
         supersedes=a.get("supersedes"), target_id=a.get("target_id"),
         title=a.get("title"), summary=a.get("summary") or a.get("index_line"),
-        note_kind=a.get("kind"), session_id=a.get("session_id"), capture_origin="chat"),
+        note_kind=a.get("kind"), session_id=a.get("session_id"), capture_origin="chat",
+        applies_to=a.get("applies_to") or None, triggers=a.get("triggers") or None,
+        must_text=a.get("must_text") or None, critical=a.get("critical"),
+        as_of=a.get("as_of") or None, valid_until=a.get("valid_until") or None),
     "propose_skill": lambda b, a: b.propose_skill(
         name=a.get("name"), category=a.get("category"), description=a.get("description"),
         when_to_use=a.get("when_to_use"), triggers=a.get("triggers"), loads=a.get("loads"),

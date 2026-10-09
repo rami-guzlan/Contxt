@@ -152,7 +152,9 @@ def test_two_entries_are_merged_by_a_model_and_compared_before_anything_changes(
     )
     assert not reply["isError"], reply
     (card,) = owner.ok(owner.get("/api/brain/catch-up"))["judgment"]
-    assert card["type"] == "change" and card["with"]["id"] == "rules-style-001"
+    # A rule is a baseline: its new version is compared side by side and needs a reason.
+    assert card["type"] == "baseline" and card["with"]["id"] == "rules-style-001"
+    assert card["baseline"]["change"] == "revise" and "both_hold" not in card["actions"]
 
 
 def test_a_preset_is_chosen_over_rest(owner):
@@ -168,3 +170,31 @@ def test_dictation_says_when_speech_to_text_is_not_set_up(owner, model):
     assert refused.status_code == 409 and "speech model" in refused.json()["error"]["message"]
     by_model = model.client.post("/api/speech/transcribe", headers=model.headers, files=audio)
     assert by_model.status_code == 403
+
+
+def test_a_model_can_suggest_a_must_hold_and_it_waits_for_the_owner(owner, model, runtime):
+    made = propose(
+        model,
+        title="Rush jobs",
+        statement="Never promise a rush job without asking the studio lead first.",
+        kind="rule",
+        must_hold={
+            "applies_to": "facts",
+            "triggers": "rush, asap, deadline",
+            "must_text": "Never promise a rush job without asking the studio lead.",
+        },
+    )
+    brain = runtime.ws.rt.brain.brain
+    proposal = brain.state().snapshot.proposals[made["proposal_id"]]
+    assert proposal.target["load"] == "domain"
+    assert proposal.target["triggers"] == ["rush", "asap", "deadline"]
+    assert "critical" not in proposal.target  # only the owner makes one critical
+    owner.ok(
+        owner.post(
+            "/api/brain/decisions",
+            json={"decisions": [{"action": "approve", "proposal_id": made["proposal_id"]}]},
+        )
+    )
+    packet = brain.context("Can we turn the brochure around asap?", record=False)
+    assert made["entry_id"] in packet.data["must_hold_ids"]
+    assert "## Must-hold domains" in packet.text

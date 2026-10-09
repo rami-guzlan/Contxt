@@ -7,7 +7,10 @@ topic: audience
 kind: rule
 scope: company
 status: approved
-load: on-demand
+load: domain
+applies_to: customers
+triggers: [target, targeting, audience, audiences, prospect, prospects, outreach, cold email, account list, lead list, ads, advertise, advertising, campaign, segment, icp, go after, machine shops, contract manufacturers, outside the us]
+must_text: "Never target companies under 100 employees, pharmaceutical contract manufacturers, or plants outside the US."
 added: 2026-08-04
 source: Jordan Avery, in conversation
 supersedes: none

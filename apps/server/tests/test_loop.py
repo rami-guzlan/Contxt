@@ -15,6 +15,7 @@ TOOLS = {
     "get_brain_skill",
     "get_brain_reference",
     "propose_brain_entry",
+    "propose_challenge",
     "save_digest",
     "save_skill_result",
     "propose_brain_skill",

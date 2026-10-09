@@ -1,0 +1,29 @@
+{
+  "about": "Wrong beliefs seeded into a demo Brain as baselines, added months ago (an outdated belief is an old one), each with evidence elsewhere in the Brain that it is wrong (another note, a waiting proposal, or a proposal the owner turned down). The internal cross-check shows one belief a week: a case succeeds when the seeded belief is among the first two it shows (two weekly cycles), with that evidence.",
+  "cases": [
+    {"id": "loopline-price", "brain": "entrepreneur", "what": "an outdated price",
+     "belief": {"id": "loopline-price", "area": "ventures", "topic": "loopline", "title": "Loopline price", "kind": "fact", "added": "2026-02-16", "body": "Loopline costs $49 per seat per month."},
+     "evidence": {"kind": "proposal", "area": "ventures", "topic": "loopline", "text": "Loopline now costs $59 per seat per month, after the October price change."}},
+    {"id": "seed-lead", "brain": "entrepreneur", "what": "a reversed decision",
+     "belief": {"id": "seed-lead-decision", "area": "fundraising", "topic": "seed-round", "title": "Who leads the seed round", "kind": "fact", "added": "2026-02-16", "body": "We will not take money from Northwind Ventures for the seed round."},
+     "evidence": {"kind": "note", "id": "seed-lead-update", "area": "fundraising", "topic": "seed-round", "title": "Seed lead agreed", "body": "Northwind Ventures can lead the seed round: we agreed terms on October 2."}},
+    {"id": "line-brief-day", "brain": "knowledge-company", "what": "an outdated schedule",
+     "belief": {"id": "line-brief-day", "area": "marketing", "topic": "newsletter", "title": "Line Brief send day", "kind": "fact", "added": "2026-02-16", "body": "The Line Brief goes out every Tuesday at 6:00 AM Eastern."},
+     "evidence": {"kind": "note", "id": "line-brief-move", "area": "marketing", "topic": "newsletter", "title": "Line Brief moves", "body": "From November, The Line Brief goes out every Thursday at 6:00 AM Eastern."}},
+    {"id": "paid-ads", "brain": "knowledge-company", "what": "a reversed decision",
+     "belief": {"id": "no-paid-linkedin-ads", "area": "marketing", "topic": "channels", "title": "Paid LinkedIn ads", "kind": "rule", "added": "2026-02-16", "body": "We never run paid ads on LinkedIn."},
+     "evidence": {"kind": "rejected", "area": "marketing", "topic": "channels", "text": "Run paid LinkedIn ads for the Q4 webinar series, at $2,000 a month."}},
+    {"id": "tidyq-python", "brain": "programmer", "what": "an outdated requirement",
+     "belief": {"id": "tidyq-python-support", "area": "projects", "topic": "tidyq", "title": "tidyq Python support", "kind": "fact", "added": "2026-02-16", "body": "tidyq supports Python 3.9 and later."},
+     "evidence": {"kind": "note", "id": "tidyq-python-update", "area": "projects", "topic": "tidyq", "title": "tidyq drops old Pythons", "body": "tidyq now requires Python 3.11 or later; support for 3.9 and 3.10 was dropped."}},
+    {"id": "friday-deploys", "brain": "programmer", "what": "a reversed rule",
+     "belief": {"id": "no-friday-deploys", "area": "work", "topic": "deploys", "title": "Friday deploys", "kind": "rule", "added": "2026-02-16", "body": "Never deploy on Fridays."},
+     "evidence": {"kind": "proposal", "area": "work", "topic": "deploys", "text": "Small deploys on Fridays are fine when the change sits behind a feature flag."}},
+    {"id": "soccer-day", "brain": "personal", "what": "an outdated schedule",
+     "belief": {"id": "soccer-practice-time", "area": "family", "topic": "ollie", "title": "Soccer practice time", "kind": "fact", "added": "2026-02-16", "body": "Ollie's soccer practice is on Saturdays at 9:00 AM."},
+     "evidence": {"kind": "note", "id": "soccer-practice-move", "area": "family", "topic": "ollie", "title": "Soccer practice moved", "body": "Ollie's soccer practice moved to Sundays at 10:00 AM for the fall season."}},
+    {"id": "allowance", "brain": "personal", "what": "an outdated amount",
+     "belief": {"id": "ollie-allowance", "area": "money", "topic": "budget", "title": "Ollie's allowance", "kind": "fact", "added": "2026-02-16", "body": "Ollie's allowance is $5 a week."},
+     "evidence": {"kind": "rejected", "area": "money", "topic": "budget", "text": "Ollie's allowance went up to $8 a week in October."}}
+  ]
+}

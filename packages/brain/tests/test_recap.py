@@ -1,13 +1,17 @@
 """The recap since a moment, and conversations served by week."""
+import datetime as dt
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from brainkit import governance, util
 from brainkit.api import Brain
 from tests import fixture
+
+NEW_YORK = dt.timezone(dt.timedelta(hours=-4))  # summer time, as in October
 
 
 class RecapTests(unittest.TestCase):
@@ -62,14 +66,23 @@ class RecapTests(unittest.TestCase):
         self.assertEqual((item["checkpoint"], item["live"]), (None, False))
 
     def test_conversations_by_week(self):
-        self.brain.context("How long do web projects take?", session_id="sess-week001")
-        self.brain.context("And motion work?", session_id="sess-week001")
-        self.brain.context("Headline rules?", session_id="sess-week002")
-        weeks = self.brain.weekly(4).data["weeks"]
+        # The weeks are the owner's days. The clock and the time zone are pinned to 9 pm in
+        # New York, when UTC is already on the next day, so this holds at any hour anywhere.
+        with mock.patch.object(util, "local", lambda moment: moment.astimezone(NEW_YORK)), \
+                mock.patch.object(util, "now") as clock:
+            clock.return_value = dt.datetime(2026, 10, 1, 1, 0, tzinfo=dt.timezone.utc)
+            self.brain.context("Headline rules?", session_id="sess-week000")  # Sept 30, 9 pm
+            clock.return_value = dt.datetime(2026, 10, 8, 1, 0, tzinfo=dt.timezone.utc)
+            self.brain.context("How long do web projects take?", session_id="sess-week001")
+            self.brain.context("And motion work?", session_id="sess-week001")
+            self.brain.context("Headline rules?", session_id="sess-week002")  # Oct 7, 9 pm
+            self.assertEqual(util.today(), "2026-10-07")
+            weeks = self.brain.weekly(4).data["weeks"]
         self.assertEqual(len(weeks), 4)
-        self.assertEqual(weeks[-1]["end"], util.today())
+        self.assertEqual((weeks[-1]["start"], weeks[-1]["end"]), ("2026-10-01", "2026-10-07"))
         self.assertEqual((weeks[-1]["conversations"], weeks[-1]["packets"]), (2, 3))
-        self.assertEqual(sum(w["conversations"] for w in weeks[:-1]), 0)
+        self.assertEqual((weeks[-2]["conversations"], weeks[-2]["packets"]), (1, 1))
+        self.assertEqual(sum(w["conversations"] for w in weeks[:-2]), 0)
 
 
 if __name__ == "__main__":

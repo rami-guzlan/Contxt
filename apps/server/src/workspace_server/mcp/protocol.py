@@ -13,6 +13,7 @@ from workspace_core.domain.policy import Principal
 from workspace_core.errors import WorkspaceError
 from workspace_core.workspace import Workspace
 
+from ..anchoring import Contracts
 from ..templates import TemplateLibrary
 from .tools import TOOLS, visible
 
@@ -39,9 +40,13 @@ def _result(msg_id: Any, result: dict[str, Any]) -> dict[str, Any]:
 
 
 class McpHandler:
-    def __init__(self, ws: Workspace, library: TemplateLibrary) -> None:
+    def __init__(
+        self, ws: Workspace, library: TemplateLibrary, contracts: Contracts | None = None
+    ) -> None:
         self.ws = ws
         self.library = library
+        # Inside a run the app started, replies end with the run's contract now and then.
+        self.contracts = contracts
 
     def handle(
         self, message: Any, who: Principal, protocol_version: str | None = None
@@ -123,6 +128,9 @@ class McpHandler:
             answer = tool.handler(self.ws, who, arguments)
             text, data = answer[0], answer[1]
             failed = bool(answer[2]) if len(answer) > 2 else False
+            anchor = self.contracts.line(who) if self.contracts is not None else None
+            if anchor:
+                text = f"{text}\n\n{anchor}"
             result: dict[str, Any] = {
                 "content": [{"type": "text", "text": text}],
                 "isError": failed,

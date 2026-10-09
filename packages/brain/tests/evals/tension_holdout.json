@@ -1,0 +1,26 @@
+{
+  "about": "Held-out disagreement pairs, written after checks 1 and 2 were fixed and never used to tune them.",
+  "pairs": [
+    {"a": "The newsletter goes out every other Tuesday.", "b": "The newsletter goes out every Monday.", "relation": "contradicts"},
+    {"a": "Budget for the offsite is $12,000.", "b": "The offsite budget is capped at $8,000.", "relation": "contradicts"},
+    {"a": "Kai reviews every pull request touching payments.", "b": "Payments pull requests no longer need Kai's review.", "relation": "contradicts"},
+    {"a": "Office hours are 9 to 5 on weekdays.", "b": "Office hours are 8 to 4 on weekdays.", "relation": "contradicts"},
+    {"a": "We only sell to banks in the US.", "b": "Start selling to credit unions in Canada next quarter.", "relation": "contradicts"},
+    {"a": "Code freeze starts December 15.", "b": "Code freeze starts December 1.", "relation": "contradicts"},
+    {"a": "Taylor's flights must have an aisle seat.", "b": "Book Taylor a window seat on every flight.", "relation": "contradicts"},
+    {"a": "The annual plan costs $480.", "b": "The annual plan costs $520.", "relation": "contradicts"},
+
+    {"a": "Deploy on weekdays only.", "b": "During the holiday week, deploy only on Tuesday.", "relation": "narrows"},
+    {"a": "Every invoice needs a PO number.", "b": "Invoices under $100 do not need a PO number.", "relation": "narrows"},
+    {"a": "Send the agenda a day before the meeting.", "b": "Put the decisions we need at the top of the agenda.", "relation": "extends"},
+    {"a": "Use the brand font in every deck.", "b": "Use the brand font in every deck, at 14 points or larger for body text.", "relation": "extends"},
+    {"a": "Never share client data in public channels.", "b": "Client data stays out of public channels.", "relation": "agrees"},
+    {"a": "The rent is $2,400 a month.", "b": "We pay $2,400 in rent each month.", "relation": "agrees"},
+    {"a": "Ollie's soccer practice is on Saturdays.", "b": "Soccer practice for Ollie happens every Saturday.", "relation": "agrees"},
+    {"a": "Standups are 15 minutes.", "b": "Keep standups to 15 minutes.", "relation": "agrees"},
+    {"a": "The car insurance renews in June.", "b": "Pick up the dry cleaning on Friday.", "relation": "unrelated"},
+    {"a": "Lead with runway in investor updates.", "b": "The office wifi password changes monthly.", "relation": "unrelated"},
+    {"a": "Tests must pass before merging.", "b": "The design review is on Thursdays.", "relation": "unrelated"},
+    {"a": "Reply to customer emails within one day.", "b": "Reply to enterprise customers within four hours.", "relation": "narrows"}
+  ]
+}

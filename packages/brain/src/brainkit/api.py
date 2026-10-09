@@ -30,6 +30,14 @@ from .vault import Vault
 
 
 
+def review_stamp(brain) -> str:
+    """Changes when a model's verdict comes in."""
+    try:
+        return brain.ledger.verdicts_stamp()
+    except Exception:
+        return ""
+
+
 class Result:
     __slots__ = ("text", "data", "is_error")
 
@@ -247,13 +255,16 @@ class Brain:
         return chain, partitions
 
     # ------------------------------------------------------------------ kernel
-    def kernel(self, principal=None, via=None) -> Result:
+    def kernel(self, principal=None, via=None, tools=True) -> Result:
+        """The startup context. Without `tools`, as a model that cannot call the brain needs
+        it: nothing in it asks for a tool (its fingerprint is then of that text)."""
         caller = self.caller(principal, via)
         if isinstance(caller, Result):
             return caller
         chain, partitions = caller
         st = self.state()
-        text, fingerprint = kernel_mod.render(st.config, st.index, st.scopes, chain, partitions)
+        text, fingerprint = kernel_mod.render(st.config, st.index, st.scopes, chain, partitions,
+                                              tools=tools)
         return Result(text, {"fingerprint": fingerprint, "scope_chain": chain,
                              "tokens": util.tokens(text),
                              "budget": st.config.budgets.get("kernel_tokens")})
@@ -276,8 +287,12 @@ class Brain:
     def context(self, request, *, principal=None, via=None, partition=None,
                 session_id=None, fresh=False, focus=None, task_type=None,
                 startup_fingerprint=None, explain=False, record=True,
-                include_kernel=None) -> Result:
-        """Route one request and return one bounded context packet."""
+                include_kernel=None, tools=True) -> Result:
+        """Route one request and return one bounded context packet.
+
+        Without `tools`, the packet for a model that cannot call the brain at all: it holds
+        nothing from before and cannot continue a session, so nothing in the text asks for a
+        tool, the procedure comes in full, and nothing is recorded."""
         if not str(request or "").strip():
             return error("get_task_context needs the request text.")
         st = self.state()
@@ -295,28 +310,32 @@ class Brain:
                                 task_type_override=task_type, previous=previous)
         packet = packets_mod.build(route, config=st.config, index=st.index,
                                    delivered=delivered, fresh=bool(fresh), session_id=session,
-                                   partition=partition, explain=explain)
+                                   partition=partition, explain=explain, tools=tools)
         kernel_text, kernel_fp = kernel_mod.render(st.config, st.index, st.scopes, chain,
                                                    partitions)
-        kernel_held = (("kernel", kernel_fp) in delivered) or (
-            str(startup_fingerprint or "").strip() == kernel_fp)
+        kernel_held = tools and (("kernel", kernel_fp) in delivered or (
+            str(startup_fingerprint or "").strip() == kernel_fp))
         if include_kernel is not None:
             kernel_held = not include_kernel
         parts = []
-        if not kernel_held:
+        if not kernel_held and tools:
             parts.append("# Startup context (kernel " + kernel_fp + ")\n\n" + kernel_text)
+        elif not kernel_held:
+            parts.append("# Startup context\n\n" + kernel_mod.render(
+                st.config, st.index, st.scopes, chain, partitions, tools=False)[0])
         parts.append("# Task context\n\n" + packet.text)
         status = "continuing" if continuing else "new"
-        parts.append(
-            "## Continuity\n\n"
-            f"session_id: {session} ({status}). When a later message asks for something "
-            "new, call get_task_context again with this session_id; it sends only what is new. "
-            "Pass it on every other call too, and fresh=true after a compaction.\n"
-            f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n")
+        if tools:
+            parts.append(
+                "## Continuity\n\n"
+                f"session_id: {session} ({status}). When a later message asks for something "
+                "new, call get_task_context again with this session_id; it sends only what is "
+                "new. Pass it on every other call too, and fresh=true after a compaction.\n"
+                f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n")
         data = dict(packet.data)
         data.update({"kernel_fingerprint": kernel_fp, "kernel_included": not kernel_held,
                      "session_status": status, "vault_fingerprint": st.fingerprint[:12]})
-        if record:
+        if record and tools:
             items = list(packet.items)
             if ("kernel", kernel_fp) not in delivered:
                 # Held from now on either way: delivered in this packet, or proven by the
@@ -329,12 +348,16 @@ class Brain:
                                data, items)
         return Result("\n\n".join(parts), data)
 
-    def preview(self, request, *, principal=None, focus=None, partition=None) -> Result:
+    def preview(self, request, *, principal=None, focus=None, partition=None,
+                tools=True) -> Result:
         """What an AI would be handed for this request, and why each piece is there, without
         recording a delivery: the packet as a conversation would get it (its kernel aside) and
-        a plain account of the project, procedure, notes and file sections it chose."""
+        a plain account of the project, procedure, notes and file sections it chose. Without
+        `tools`, the packet as a model that cannot call the brain needs it (one side of a
+        comparison): nothing in it asks for a tool, and the procedure it would open comes in
+        full (`skill_included` names it)."""
         result = self.context(request, principal=principal, focus=focus, partition=partition,
-                              explain=True, record=False, include_kernel=False)
+                              explain=True, record=False, include_kernel=False, tools=tools)
         if result.is_error:
             return result
         st = self.state()
@@ -358,13 +381,22 @@ class Brain:
                     if row["id"] in set(data.get("section_ids") or [])]
         focus_id = data.get("focus_id")
         found = st.index.focuses.get(focus_id) if focus_id else None
+        # The must-holds in play for the request (a run's contract carries them): each line and
+        # the words that bring its domain into play.
+        must = []
+        for row in trace.get("must_holds") or []:
+            note = st.index.note(row.get("id"))
+            if note is not None:
+                must.append({"id": note.id, "title": note.title, "line": note.must_text,
+                             "triggers": list(note.triggers), "why": row.get("why") or ""})
         text = result.text.split("## Continuity", 1)[0].rstrip() + "\n"
         return Result(text, {
             "request": str(request), "mode": data.get("mode"),
             "tokens": data.get("token_count"),
             "project": ({"id": found.id, "title": found.title} if found is not None else None),
             "procedure": data.get("skill_id"), "candidates": data.get("candidates") or [],
-            "notes": notes, "sections": sections,
+            "skill_included": data.get("skill_included"),
+            "notes": notes, "sections": sections, "must_holds": must,
             "related": data.get("related_ids") or [], "log": trace.get("route_log") or []})
 
     # ------------------------------------------------------------------ follow-ups
@@ -766,10 +798,62 @@ class Brain:
             usage = self.ledger.usage(since)
         except Exception:
             usage = {}
-        total = len(clashes) + len(twins) + len(flagged) + len(recheck)
+        went_in = review.went_in_disagreements(self)
+        dated = review.dated_pairs(st)
+        total = (len(clashes) + len(twins) + len(flagged) + len(recheck) + len(went_in)
+                 + len(dated))
         return Result(f"{total} thing(s) want a look." if total else "Nothing wants a look.",
                       {"clashes": clashes, "twins": twins, "flagged": flagged,
-                       "recheck": recheck, "usage": usage, "days": days})
+                       "recheck": recheck, "went_in": went_in, "dated": dated,
+                       "usage": usage, "days": days})
+
+    def pending_checks(self, limit: int = 4) -> Result:
+        """Pairs of notes a model should read side by side next (check 3 of the baseline
+        check): waiting proposals first, then what went in on its own lately (review.py)."""
+        from . import review
+        batches = review.pending_checks(self, limit=limit)
+        return Result(f"{sum(len(b['pairs']) for b in batches)} pair(s) to read.",
+                      {"batches": batches})
+
+    def record_checks(self, verdicts) -> Result:
+        """Keep what a model read in pairs of notes: [{"key", "relation", "detail"}]."""
+        from . import review
+        rows = [v for v in verdicts or [] if isinstance(v, dict)
+                and v.get("relation") in review.RELATIONS]
+        kept = self.ledger.record_verdicts(rows)
+        return Result(f"{kept} verdict(s) kept.", {"kept": kept})
+
+    def challenge(self, note_id, *, claim, evidence, source="", **kwargs) -> Result:
+        """Raise a challenge to a note, with its evidence: it waits for the owner (dissent.py)."""
+        from . import dissent
+        return self._write(lambda: dissent.propose(self, note_id, claim=claim,
+                                                   evidence=evidence, source=source, **kwargs))
+
+    def cross_check(self) -> Result:
+        """What the weekly cross-check finds: beliefs something in the Brain says otherwise
+        about, each with its evidence (dissent.py). Kept until the vault or a verdict
+        changes."""
+        from . import dissent
+        st = self.state()
+        stamp = (st.fingerprint, review_stamp(self))
+        cached = getattr(self, "_cross", None)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        found = dissent.cross_check(self)
+        result = Result(f"{len(found)} belief(s) to look at.", {"findings": found})
+        self._cross = (stamp, result)
+        return result
+
+    def challenge_targets(self, limit=3) -> Result:
+        """The beliefs the external challenger argues against this week (dissent.py)."""
+        from . import dissent
+        found = dissent.targets(self, limit=limit)
+        return Result(f"{len(found)} belief(s) to test.", {"targets": found})
+
+    def apply_scheduled(self, **kwargs) -> Result:
+        """Scheduled revisions whose time has come go in (governance.apply_scheduled)."""
+        from . import governance
+        return self._write(lambda: governance.apply_scheduled(self, **kwargs))
 
     def health(self) -> Result:
         from . import health

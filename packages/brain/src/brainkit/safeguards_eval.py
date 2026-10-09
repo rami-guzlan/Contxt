@@ -1,0 +1,381 @@
+"""Safeguard evaluations: must-hold recall, disagreement detection and dated values.
+
+Phase 0 of the safeguards work: put a number on each gap before building, then keep the
+numbers as regression checks. Every evaluation runs on a scratch copy of a vault and a
+throwaway session ledger, so nothing here touches a real Brain or its history.
+
+MUST-HOLD RECALL. For a constraint note, requests from its domain that never name it ("plan
+Tuesday dinner" for a peanut allergy) and decoys from other domains. The constraint counts as
+delivered when the packet carries it: in its "Must hold" section, among the notes it selected,
+or in the startup context when the note is standing. `relevance_only` first sets every target
+note to `load: on-demand` in the copy, which measures what relevance alone does.
+
+DISAGREEMENT. Labeled pairs of statements (contradicts, narrows, extends, agrees, unrelated).
+A detector says whether the second disagrees with the first; recall and precision are over
+"contradicts". A model's verdicts on the same pairs (check 3) are read from a file, and
+scored alone and as the app decides: the model's reading wins where it has one. Pairs are
+short and close, so they say little about false alarms in a lived-in Brain: `held_ordinary`
+proposes every live note of each demo Brain against the rest of its Brain and counts how many
+checks 1 and 2 would hold.
+
+DATED VALUES. Two or more dated notes give a figure for the same subject; a request asks for
+it. The packet should carry the newest and leave the older ones out, or mark them as older.
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import tempfile
+
+from . import frontmatter as fm
+from . import util
+
+KNOWLEDGE = "knowledge"
+
+
+# ---------------------------------------------------------------------------- scratch vaults
+def copy_vault(src: str, models_dir: str | None = None) -> str:
+    """A scratch copy of `src` (a vault folder) without its runtime state. With `models_dir`
+    (a folder holding a downloaded embedding model), the copy can match by meaning."""
+    root = tempfile.mkdtemp(prefix="brain-safeguards-")
+    dest = os.path.join(root, "vault")
+    shutil.copytree(src, dest, ignore=shutil.ignore_patterns(".brain", ".git"))
+    if models_dir:
+        target = os.path.join(dest, ".brain", "models")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.copytree(models_dir, target)
+    return dest
+
+
+def _note_files(vault: str) -> dict[str, str]:
+    """{note id: path} for every note file under knowledge/."""
+    out = {}
+    for base, _dirs, files in os.walk(os.path.join(vault, KNOWLEDGE)):
+        for name in files:
+            if not name.endswith(".md"):
+                continue
+            path = os.path.join(base, name)
+            meta, _body, _errors = fm.parse(util.read_text(path))
+            if meta.get("id"):
+                out[str(meta["id"])] = path
+    return out
+
+
+def set_meta(vault: str, note_ids, **changes) -> list[str]:
+    """Rewrite these notes' front matter in place (a scratch copy only): a value of None
+    removes the key. Returns the ids it changed."""
+    files = _note_files(vault)
+    done = []
+    for note_id in note_ids:
+        path = files.get(note_id)
+        if path is None:
+            continue
+        meta, body, _errors = fm.parse(util.read_text(path))
+        for key, value in changes.items():
+            if value is None:
+                meta.pop(key, None)
+            else:
+                meta[key] = value
+        util.atomic_write(path, fm.dump(meta, body, order=["id", "title", "summary"]))
+        done.append(note_id)
+    return done
+
+
+def add_notes(vault: str, notes) -> None:
+    """Write notes straight into a scratch copy (bypassing governance, which is fine for a
+    measurement): each a dict with id, area, topic, body and any other front matter."""
+    for spec in notes:
+        meta = {key: value for key, value in spec.items() if key != "body"}
+        meta.setdefault("status", "approved")
+        meta.setdefault("scope", "company")
+        meta.setdefault("load", "on-demand")
+        meta.setdefault("kind", "state")
+        meta.setdefault("added", util.today())
+        meta.setdefault("supersedes", "none")
+        folder = os.path.join(vault, KNOWLEDGE, meta["area"], meta["topic"])
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, f"{meta['added']}-{meta['id']}.md")
+        util.atomic_write(path, fm.dump(meta, spec["body"], order=["id", "title", "summary"]))
+
+
+def open_brain(vault: str, semantic: bool = False):
+    from .api import Brain
+    from .sessions import Ledger
+    brain = Brain(vault, embeddings=semantic, rerank=False)
+    scratch = tempfile.mkdtemp(prefix="brain-safeguards-ledger-")
+    brain._ledger = Ledger(os.path.join(scratch, "sessions.sqlite"), 30)
+    return brain
+
+
+def _delivered(brain, data) -> set[str]:
+    """Every note id this packet carried, the startup context's standing notes included."""
+    st = brain.state()
+    chain = data.get("scope_chain") or []
+    standing = {n.id for n in st.index.notes.values() if n.standing and n.scope in chain}
+    return (set(data.get("note_ids") or []) | set(data.get("must_hold_ids") or [])
+            | set(data.get("standing_ids") or []) | standing)
+
+
+# ---------------------------------------------------------------------------- must-holds
+def must_hold_eval(brain, cases) -> dict:
+    """Recall over in-domain requests and the inclusion rate over decoys, per note and in all.
+    Held-out requests (written after a must-hold's triggers were fixed) are scored apart."""
+    rows, misses, decoy_hits = [], [], []
+    hit = total = decoy_in = decoys = held_hit = held_total = 0
+    for case in cases:
+        note = case["note"]
+        got = 0
+        for request in case.get("held_out") or []:
+            data = brain.context(request, record=False, include_kernel=False).data
+            held_total += 1
+            if note in _delivered(brain, data):
+                held_hit += 1
+            else:
+                misses.append({"note": note, "request": request, "held_out": True,
+                               "listed": note in set(data.get("related_ids") or [])})
+        for request in case.get("requests") or []:
+            data = brain.context(request, record=False, include_kernel=False).data
+            total += 1
+            if note in _delivered(brain, data):
+                hit += 1
+                got += 1
+            else:
+                misses.append({"note": note, "request": request,
+                               "listed": note in set(data.get("related_ids") or [])})
+        dgot = 0
+        for request in case.get("decoys") or []:
+            data = brain.context(request, record=False, include_kernel=False).data
+            decoys += 1
+            # A decoy counts only what this request's packet chose, not the startup context.
+            chosen = set(data.get("note_ids") or []) | set(data.get("must_hold_ids") or [])
+            if note in chosen:
+                decoy_in += 1
+                dgot += 1
+                decoy_hits.append({"note": note, "request": request})
+        rows.append({"note": note, "recall": round(got / max(1, len(case.get("requests") or [])), 3),
+                     "decoy_rate": round(dgot / max(1, len(case.get("decoys") or [])), 3)})
+    return {"recall": round(hit / total, 3) if total else 1.0,
+            "decoy_rate": round(decoy_in / decoys, 3) if decoys else 0.0,
+            "held_out_recall": round(held_hit / held_total, 3) if held_total else None,
+            "held_out": held_total,
+            "requests": total, "decoys": decoys, "by_note": rows, "misses": misses,
+            "decoy_hits": decoy_hits}
+
+
+def run_must_holds(brains_root: str, spec: dict, *, relevance_only: bool = False,
+                   models_dir: str | None = None) -> dict:
+    """Run the must-hold cases for every packaged Brain they name."""
+    by_brain: dict[str, list] = {}
+    for case in spec.get("cases") or []:
+        by_brain.setdefault(case["brain"], []).append(case)
+    results, rows, misses, decoy_hits = {}, [], [], []
+    hit = total = decoy_in = decoys = held_hit = held_total = 0
+    for name, cases in sorted(by_brain.items()):
+        vault = copy_vault(os.path.join(brains_root, name, "vault"), models_dir)
+        try:
+            if relevance_only:
+                set_meta(vault, [c["note"] for c in cases], load="on-demand",
+                         applies_to=None, triggers=None, critical=None)
+            brain = open_brain(vault, semantic=bool(models_dir))
+            try:
+                result = must_hold_eval(brain, cases)
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+        results[name] = result
+        hit += round(result["recall"] * result["requests"])
+        total += result["requests"]
+        decoy_in += round(result["decoy_rate"] * result["decoys"])
+        decoys += result["decoys"]
+        if result["held_out"]:
+            held_hit += round(result["held_out_recall"] * result["held_out"])
+            held_total += result["held_out"]
+        rows += [dict(r, brain=name) for r in result["by_note"]]
+        misses += [dict(m, brain=name) for m in result["misses"]]
+        decoy_hits += [dict(d, brain=name) for d in result["decoy_hits"]]
+    return {"recall": round(hit / total, 3) if total else 1.0,
+            "decoy_rate": round(decoy_in / decoys, 3) if decoys else 0.0,
+            "held_out_recall": round(held_hit / held_total, 3) if held_total else None,
+            "held_out": held_total,
+            "requests": total, "decoys": decoys, "by_note": rows, "misses": misses,
+            "decoy_hits": decoy_hits, "brains": results}
+
+
+# ---------------------------------------------------------------------------- disagreement
+def tension_eval(pairs, detect) -> dict:
+    """`detect(existing, proposed)` is truthy when the second disagrees with the first."""
+    tp = fp = fn = tn = 0
+    missed, wrong = [], []
+    for pair in pairs:
+        positive = pair["relation"] == "contradicts"
+        said = bool(detect(pair["a"], pair["b"]))
+        if positive and said:
+            tp += 1
+        elif positive:
+            fn += 1
+            missed.append(pair)
+        elif said:
+            fp += 1
+            wrong.append(pair)
+        else:
+            tn += 1
+    recall = tp / (tp + fn) if tp + fn else 1.0
+    precision = tp / (tp + fp) if tp + fp else 1.0
+    return {"recall": round(recall, 3), "precision": round(precision, 3),
+            "pairs": len(pairs), "contradictions": tp + fn, "missed": missed,
+            "false_alarms": wrong}
+
+
+def app_decides(verdict: str | None, cheap: bool) -> bool:
+    """The app's call on a pair: a model's reading wins when there is one (only
+    "contradicts" counts here; "narrows" is shown as a narrower case), else checks 1 and 2."""
+    if verdict:
+        return verdict == "contradicts"
+    return cheap
+
+
+def verdicts_eval(pairs, verdicts, cheap) -> dict:
+    """Check 3 alone and as the app decides, from `verdicts` ({(a, b): relation})."""
+    model = tension_eval(pairs, lambda a, b: verdicts.get((a, b)) == "contradicts")
+    combined = tension_eval(pairs, lambda a, b: app_decides(verdicts.get((a, b)),
+                                                            bool(cheap(a, b))))
+    read = sum(1 for p in pairs if verdicts.get((p["a"], p["b"])))
+    exact = sum(1 for p in pairs if verdicts.get((p["a"], p["b"])) == p["relation"])
+    return {"model": model, "combined": combined, "read": read, "exact": exact}
+
+
+DEMO_BRAINS = ("personal", "entrepreneur", "programmer", "knowledge-company")
+
+
+def held_ordinary(brains_root: str, names=DEMO_BRAINS) -> dict:
+    """Every live note of each demo Brain, proposed against the rest of its Brain: how many
+    checks 1 and 2 would hold. The demo notes do not disagree with each other, so each one
+    held is a false alarm a person would have to clear."""
+    from . import baseline
+    total, held = 0, []
+    for name in names:
+        vault = copy_vault(os.path.join(brains_root, name, "vault"))
+        try:
+            brain = open_brain(vault)
+            try:
+                st = brain.state()
+                chain, partitions = brain.caller(st=st)
+                for note in sorted(st.index.notes.values(), key=lambda n: n.id):
+                    if st.config.is_focus(note):
+                        continue
+                    total += 1
+                    found = baseline.tensions(brain, note.body, area=note.area,
+                                              topic=note.topic, chain=chain,
+                                              partitions=partitions, exclude={note.id})
+                    if found:
+                        held.append({"brain": name, "note": note.id, "with": found[0]["id"],
+                                     "why": found[0]["why"]})
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+    return {"notes": total, "held": held,
+            "rate": round(len(held) / total, 3) if total else 0.0}
+
+
+# ---------------------------------------------------------------------------- dated values
+def run_time_cases(brains_root: str, cases, *, models_dir: str | None = None) -> dict:
+    """For each case, add its dated notes to a scratch copy and ask its request. Success is
+    the newest value delivered without an older one left unmarked beside it."""
+    rows = []
+    good = 0
+    for case in cases:
+        vault = copy_vault(os.path.join(brains_root, case["brain"], "vault"), models_dir)
+        try:
+            add_notes(vault, case["notes"])
+            brain = open_brain(vault, semantic=bool(models_dir))
+            try:
+                data = brain.context(case["request"], record=False,
+                                     include_kernel=False).data
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+        delivered = set(data.get("note_ids") or [])
+        older_marked = set(data.get("older_ids") or [])
+        newest = case["newest"] in delivered
+        stale_left = [o for o in case["older"] if o in delivered and o not in older_marked]
+        ok = newest and not stale_left
+        good += ok
+        rows.append({"id": case["id"], "newest_delivered": newest,
+                     "older_unmarked": stale_left, "ok": ok})
+    return {"score": round(good / len(cases), 3) if cases else 1.0, "cases": rows}
+
+
+# ---------------------------------------------------------------------------- dissent
+def run_seeded_beliefs(brains_root: str, cases, *, ask=None) -> dict:
+    """Each case seeds a wrong belief (marked a baseline) and the evidence against it (a note,
+    a waiting proposal, or one the owner turned down) in a scratch copy of a demo Brain, then
+    asks the cross-check. One belief shows a week, so a case succeeds when its belief is among
+    the first two findings (two weekly cycles), with that evidence. `ask(batch) -> verdicts`,
+    when given, first reads two weeks' worth of the cross-check's model pairs, as the app's
+    worker would."""
+    from . import dissent
+    rows, good = [], 0
+    for case in cases:
+        vault = copy_vault(os.path.join(brains_root, case["brain"], "vault"))
+        belief = dict(case["belief"], baseline=True)
+        evidence = case["evidence"]
+        try:
+            notes = [belief]
+            if evidence["kind"] == "note":
+                notes.append({k: v for k, v in evidence.items() if k != "kind"})
+                notes[-1]["kind"] = "fact"
+            add_notes(vault, notes)
+            brain = open_brain(vault)
+            try:
+                expected = evidence.get("id")
+                if evidence["kind"] in ("proposal", "rejected"):
+                    made = brain.propose(area=evidence["area"], topic=evidence["topic"],
+                                         text=evidence["text"], force_pending=True)
+                    expected = made.data.get("proposal_id")
+                    if evidence["kind"] == "rejected":
+                        brain.reject(expected, "Not now")
+                if ask is not None:
+                    for batch in dissent.cross_pairs(brain,
+                                                     limit=2 * dissent.CROSS_MODEL_PAIRS):
+                        brain.record_checks(ask(batch))
+                found = brain.cross_check().data["findings"]
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+        ranked = [f["id"] for f in found]
+        hit = next((f for f in found[:2] if f["id"] == belief["id"]), None)
+        ok = hit is not None and hit["evidence"]["id"] == expected
+        good += ok
+        rows.append({"id": case["id"], "what": case["what"], "evidence": evidence["kind"],
+                     "ok": ok, "place": ranked.index(belief["id"]) + 1
+                     if belief["id"] in ranked else None,
+                     "found_by": hit["found_by"] if hit else None, "findings": len(found)})
+    return {"score": round(good / len(cases), 3) if cases else 1.0, "cases": rows}
+
+
+def cross_check_noise(brains_root: str, names=DEMO_BRAINS) -> dict:
+    """What the cross-check shows on each demo Brain as it is, where nothing was seeded: every
+    finding there is one a person would clear for nothing."""
+    out = {}
+    for name in names:
+        vault = copy_vault(os.path.join(brains_root, name, "vault"))
+        try:
+            brain = open_brain(vault)
+            try:
+                out[name] = [{"id": f["id"], "with": f["evidence"]["id"], "why": f["why"]}
+                             for f in brain.cross_check().data["findings"]]
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+    return out
+
+
+def load_spec(path: str) -> dict:
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)

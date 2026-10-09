@@ -349,10 +349,14 @@ class BrainPort(Protocol):
         """Record progress on a project: one append-only update, never a rewrite."""
         ...
 
-    def preview(self, request: str, *, project: str | None = None) -> dict[str, Any]:
+    def preview(
+        self, request: str, *, project: str | None = None, tools: bool = True
+    ) -> dict[str, Any]:
         """What an AI would be handed for this request, and why each piece is there,
         recording nothing: {"text", "mode", "tokens", "project", "procedure", "notes",
-        "sections", "related"}."""
+        "sections", "related", "skill_included"}. Without `tools`, as a model that cannot
+        call the Brain needs it: nothing in the text asks for a tool, and the procedure it
+        would open comes in full (`skill_included` names it)."""
         ...
 
     # ---- the supply chain: what the Brain holds, where it came from, where it went
@@ -428,8 +432,9 @@ class BrainPort(Protocol):
         [{"start", "end", "conversations", "packets"}]."""
         ...
 
-    def kernel(self) -> dict[str, Any]:
-        """The startup context every conversation gets once: {"text", "tokens"}."""
+    def kernel(self, *, tools: bool = True) -> dict[str, Any]:
+        """The startup context every conversation gets once: {"text", "tokens"}. Without
+        `tools`, as a model that cannot call the Brain needs it: nothing asks for a tool."""
         ...
 
     def unsaved(self) -> list[str]:
@@ -485,6 +490,37 @@ class BrainPort(Protocol):
         nothing."""
         ...
 
+    # ---- the baseline check: what a model should read side by side, and scheduled changes
+
+    def pending_checks(self, limit: int = 4) -> list[dict[str, Any]]:
+        """Statements a model should read beside the notes they may disagree with, oldest
+        first: [{"subject", "title", "text", "pairs": [{"key", "id", "title", "text"}]}]."""
+        ...
+
+    def record_checks(self, verdicts: list[dict[str, Any]]) -> int:
+        """Keep a model's verdicts on pairs: [{"key", "relation", "detail"}]."""
+        ...
+
+    def apply_scheduled(self) -> dict[str, Any]:
+        """Revisions the owner scheduled whose time has come go in: {"applied", "returned"}."""
+        ...
+
+    # ---- dissent: challenges, the weekly cross-check, the external challenger's targets
+
+    def challenge(
+        self, note_id: str, *, claim: str, evidence: str, source: str, proposer: str
+    ) -> BrainProposal:
+        """Challenge a note with a claim and its evidence: it waits for review."""
+        ...
+
+    def cross_check(self) -> list[dict[str, Any]]:
+        """Beliefs something in the Brain says otherwise about, each with its evidence."""
+        ...
+
+    def challenge_targets(self, limit: int = 3) -> list[dict[str, Any]]:
+        """The beliefs the external challenger tests this week, each as a claim only."""
+        ...
+
 
 class NoBrain:
     """The workspace without long-term context. Nothing breaks; nothing is remembered."""
@@ -535,7 +571,16 @@ class NoBrain:
         return BrainCatalog()
 
     def attention(self) -> dict[str, Any]:
-        return {"clashes": [], "twins": [], "flagged": [], "recheck": [], "usage": {}, "days": 7}
+        return {
+            "clashes": [],
+            "twins": [],
+            "flagged": [],
+            "recheck": [],
+            "went_in": [],
+            "dated": [],
+            "usage": {},
+            "days": 7,
+        }
 
     def files(self) -> BrainFiles:
         return BrainFiles()
@@ -573,13 +618,16 @@ class NoBrain:
     def project_update(self, project_id: str, **_: Any) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to follow projects in.")
 
-    def preview(self, request: str, *, project: str | None = None) -> dict[str, Any]:
+    def preview(
+        self, request: str, *, project: str | None = None, tools: bool = True
+    ) -> dict[str, Any]:
         return {
             "text": "",
             "mode": "none",
             "tokens": 0,
             "project": None,
             "procedure": None,
+            "skill_included": None,
             "notes": [],
             "sections": [],
             "related": [],
@@ -639,7 +687,7 @@ class NoBrain:
     def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
         return []
 
-    def kernel(self) -> dict[str, Any]:
+    def kernel(self, *, tools: bool = True) -> dict[str, Any]:
         return {"text": "", "tokens": 0}
 
     def unsaved(self) -> list[str]:
@@ -676,6 +724,24 @@ class NoBrain:
 
     def move_in(self, sources: list[dict[str, Any]], *, name: str = "") -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to move into.")
+
+    def pending_checks(self, limit: int = 4) -> list[dict[str, Any]]:
+        return []
+
+    def record_checks(self, verdicts: list[dict[str, Any]]) -> int:
+        return 0
+
+    def apply_scheduled(self) -> dict[str, Any]:
+        return {"applied": [], "returned": []}
+
+    def challenge(self, note_id: str, **_: Any) -> BrainProposal:
+        raise Conflict("This workspace has no Brain to challenge.")
+
+    def cross_check(self) -> list[dict[str, Any]]:
+        return []
+
+    def challenge_targets(self, limit: int = 3) -> list[dict[str, Any]]:
+        return []
 
 
 class TextExtractor(Protocol):

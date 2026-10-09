@@ -82,6 +82,9 @@ class FakeBrain:
             "days": 7,
         }
         self.events: list[dict] = []  # journal records activity() adds, newest first
+        self.findings: list[dict] = []  # what the weekly cross-check finds
+        self.baselines: dict[str, str] = {}  # entry id: why it is a baseline
+        self.challenged: list[dict] = []  # challenges raised
         self.builtin: dict[str, bool] = {"knowledge-check": False, "wrap-up": True}
         self.entries = {
             "voice-guide": BrainEntry(
@@ -492,7 +495,7 @@ class FakeBrain:
         self.updates.append(made)
         return {"id": project_id, "seq": len(self.updates)}
 
-    def preview(self, request, *, project=None):
+    def preview(self, request, *, project=None, tools=True):
         self.previewed.append((request, project))
         return {
             "text": f"## Task\n\n{request}",
@@ -534,6 +537,7 @@ class FakeBrain:
             "owner": "person:owner",
             "live": True,
             "uses": {"total": len(self.used)},
+            "baseline": self.baselines.get(entry.id, ""),
         }
 
     def inventory(self):
@@ -594,6 +598,22 @@ class FakeBrain:
     def policies(self):
         return dict(self.policy)
 
+    def cross_check(self):
+        return list(self.findings)
+
+    def challenge_targets(self, limit=3):
+        return [{"id": e.id, "claim": e.text, "title": e.title} for e in self.entries.values()][
+            :limit
+        ]
+
+    def challenge(self, note_id, *, claim, evidence, source, proposer):
+        self.challenged.append(
+            {"note_id": note_id, "claim": claim, "evidence": evidence, "source": source}
+        )
+        return BrainProposal(
+            status="pending", message="Challenge proposed.", proposal_id=f"challenge-{note_id}"
+        )
+
     def set_policies(self, changes):
         self.policy.update(changes)
         return {"status": "updated", "policy": dict(self.policy), "checkpoint": {"id": "cp-policy"}}
@@ -631,7 +651,7 @@ class FakeBrain:
     def work_given(self, run_id):
         return [{"kind": "note", "id": "voice-guide", "title": "Voice guide", "tokens": 5}]
 
-    def kernel(self):
+    def kernel(self, *, tools=True):
         return {"text": "# Startup\nWrite plainly.", "tokens": 6}
 
     def requests(self, *, limit=50, before=None, client=None):

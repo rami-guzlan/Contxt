@@ -714,8 +714,73 @@ class BrainKitAdapter:
             data[key] = [r for r in data[key] if r["a"] in visible and r["b"] in visible]
         for key in ("flagged", "recheck"):
             data[key] = [r for r in data[key] if r["id"] in visible]
+        data["went_in"] = [
+            r
+            for r in data.get("went_in") or []
+            if r["note"]["id"] in visible and r["with"]["id"] in visible
+        ]
+        data["dated"] = [
+            r
+            for r in data.get("dated") or []
+            if r["older"]["id"] in visible and r["newer"]["id"] in visible
+        ]
         data["usage"] = {k: v for k, v in data["usage"].items() if k in visible}
         return data
+
+    def pending_checks(self, limit: int = 4) -> list[dict[str, Any]]:
+        return list(self.brain.pending_checks(limit).data.get("batches") or [])
+
+    def record_checks(self, verdicts: list[dict[str, Any]]) -> int:
+        return int(self.brain.record_checks(verdicts).data.get("kept") or 0)
+
+    def challenge(
+        self, note_id: str, *, claim: str, evidence: str, source: str, proposer: str
+    ) -> BrainProposal:
+        found = self._visible_id(note_id)
+        if found is None:
+            return BrainProposal(status="refused", message=f"No entry {note_id} to challenge.")
+        with self._lock:
+            result = self.brain.challenge(
+                found,
+                claim=claim,
+                evidence=evidence,
+                source=source,
+                reason=f"a challenge from {proposer}",
+            )
+        data = result.data
+        status = str(data.get("status") or ("refused" if result.is_error else "pending"))
+        if result.is_error and status != "duplicate":
+            status = "refused"
+        return BrainProposal(
+            status=status,
+            message=result.text,
+            proposal_id=data.get("proposal_id"),
+            entry_id=data.get("id"),
+        )
+
+    def cross_check(self) -> list[dict[str, Any]]:
+        visible = {n.id for n in self._visible_notes(self.brain.state())}
+        return [
+            f for f in self.brain.cross_check().data.get("findings") or [] if f["id"] in visible
+        ]
+
+    def challenge_targets(self, limit: int = 3) -> list[dict[str, Any]]:
+        visible = {n.id for n in self._visible_notes(self.brain.state())}
+        return [
+            t
+            for t in self.brain.challenge_targets(limit).data.get("targets") or []
+            if t["id"] in visible
+        ]
+
+    def apply_scheduled(self) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.apply_scheduled()
+        if result.is_error:
+            raise Conflict(result.text)
+        return {
+            "applied": list(result.data.get("applied") or []),
+            "returned": list(result.data.get("returned") or []),
+        }
 
     def history(self, entry_id: str) -> list[dict[str, Any]]:
         rows = []
@@ -989,8 +1054,10 @@ class BrainKitAdapter:
             raise Conflict(result.text)
         return found
 
-    def preview(self, request: str, *, project: str | None = None) -> dict[str, Any]:
-        result = self.brain.preview(request, focus=project or None)
+    def preview(
+        self, request: str, *, project: str | None = None, tools: bool = True
+    ) -> dict[str, Any]:
+        result = self.brain.preview(request, focus=project or None, tools=tools)
         if result.is_error:
             raise ValidationFailed(result.text)
         data: dict[str, Any] = dict(result.data)
@@ -1024,6 +1091,21 @@ class BrainKitAdapter:
         if kind == "decision" and not revises:
             # A decision is a fact the capture policy knows as a decision.
             extra = dict(extra or {}, type="decision")
+        # A must-hold the proposer suggests: the Brain checks its fields like any other.
+        extra = dict(extra or {})
+        must = extra.pop("must_hold", None) or {}
+        # Dates the Brain checks like any other field.
+        dated = {name: extra.pop(name) for name in ("as_of", "valid_until") if extra.get(name)}
+        must_fields: dict[str, Any] = (
+            {
+                "load": "domain",
+                "applies_to": must.get("applies_to") or None,
+                "triggers": must.get("triggers") or None,
+                "must_text": must.get("must_text") or None,
+            }
+            if must
+            else {}
+        )
         with self._lock:
             result = self.brain.propose(
                 title=title,
@@ -1045,6 +1127,8 @@ class BrainKitAdapter:
                 target_id=revises or None,
                 origin=origin,
                 extra=extra or None,
+                **must_fields,
+                **dated,
             )
         data = result.data
         status = str(data.get("status") or ("refused" if result.is_error else "pending"))
@@ -1115,8 +1199,8 @@ class BrainKitAdapter:
         pieces = self.brain.work_given(run_id).data.get("pieces") or []
         return [p for p in pieces if p["kind"] != "note" or p["id"] in seen]
 
-    def kernel(self) -> dict[str, Any]:
-        found = self.brain.kernel()
+    def kernel(self, *, tools: bool = True) -> dict[str, Any]:
+        found = self.brain.kernel(tools=tools)
         return {"text": found.text, "tokens": int(found.data.get("tokens") or 0)}
 
     def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
