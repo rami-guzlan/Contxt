@@ -110,8 +110,8 @@ export function RunSkill({ name, triggers, makesFiles }: { name: string; trigger
 }
 
 /** The latest runs from here and from every skill, each with what came of it. */
-export function LatestRuns() {
-  const { data: runs } = useLatestSkillRuns(5);
+export function LatestRuns({ limit = 5 }: { limit?: number }) {
+  const { data: runs } = useLatestSkillRuns(limit);
   if (!runs?.length) return null;
   return (
     <section className="latest-runs" aria-label="Latest runs">

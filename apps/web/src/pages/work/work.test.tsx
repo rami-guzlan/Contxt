@@ -91,7 +91,68 @@ describe("Work", () => {
     expect(within(parts).getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/work/workspace");
     expect(within(parts).getByRole("link", { name: "Compose" })).toHaveAttribute("href", "/work/compose");
     expect(await within(parts).findByText("1 skill")).toBeInTheDocument();
-    expect(screen.getByText(/waiting in/)).toHaveTextContent("/one-pager");
+    const waiting = screen.getByRole("list", { name: "Waiting for you" });
+    expect(within(waiting).getByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/review");
+    // Nothing made yet: the way in, one step at a time.
+    const start = screen.getByRole("list", { name: "Start here" });
+    expect(within(start).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual([
+      "/work/compose",
+      "/work/skills?new=1",
+      "/work/agents/new",
+      "/work/workflows/new",
+    ]);
+  });
+
+  it("shows the team with each agent's heartbeat, the flows, and what is worth a look", async () => {
+    const flow = {
+      id: "wf_1",
+      name: "Case study every month",
+      description: "",
+      project: null,
+      schedule: { kind: "monthly", day: 1, time: "09:00" },
+      when: "Monthly on day 1 at 09:00 (America/New_York)",
+      ai: false,
+      steps: [{ kind: "agent", agent: "case-writer", ask: "This month's case study." }],
+      runner: "claude",
+      output: { kind: "outputs" },
+      enabled: true,
+      timezone: "America/New_York",
+      next_due_at: "2026-11-01T13:00:00.000000Z",
+      revision: 1,
+      version: 1,
+      created_at: "2026-10-01T10:00:00Z",
+      updated_at: "2026-10-01T10:00:00Z",
+      archived_at: null,
+      last_run: null,
+      running: false,
+    };
+    mockApi({
+      "GET /api/skills": { ...skills, waiting: [] },
+      "GET /api/outputs": { root: "C:/home/outputs", folders: [], files: [] },
+      "GET /api/skills/runs": [],
+      "GET /api/library": [],
+      "GET /api/agents": [{ ...writer, last_run: null }],
+      "GET /api/workspace/items": { items: [], projects: [] },
+      "GET /api/prompts": [],
+      "GET /api/workflows": [flow],
+      "GET /api/workflows/waiting": [],
+      "GET /api/brain/agent": { model: "claude", suggestions: true, actions: [], questions: [], runs: [], models: [], working: [] },
+      "GET /api/skills/suggestions": { suggestions: [], matched_by: "words" },
+      "GET /api/work/attention": { stale_skills: [{ name: "weekly-posts", last_edited: null, changed: [{ key: "brand/voice", title: "brand/voice", at: "2026-10-05T10:00:00Z" }] }], broken_agents: [{ name: "case-writer", broken: ["/gone-skill"] }] },
+    });
+    renderAt(<WorkOverviewPage />, { path: "/work", route: "/work" });
+    const team = await screen.findByRole("list", { name: "Your team" });
+    expect(await within(team).findByRole("link", { name: "case-writer" })).toHaveAttribute("href", "/work/agents/case-writer");
+    expect(within(team).getByText("Idle")).toBeInTheDocument();
+    expect(within(team).getByText(/next/)).toBeInTheDocument();
+    expect(within(team).getByRole("link", { name: "New agent" })).toHaveAttribute("href", "/work/agents/new");
+    expect(screen.queryByRole("list", { name: "Start here" })).not.toBeInTheDocument();
+    const flows = screen.getByRole("list", { name: "Your workflows" });
+    expect(within(flows).getByRole("link", { name: "Case study every month" })).toHaveAttribute("href", "/work/workflows/wf_1");
+    const look = await screen.findByRole("list", { name: "Worth a look" });
+    expect(within(look).getByRole("link", { name: "/weekly-posts" })).toHaveAttribute("href", "/work/skills/weekly-posts");
+    expect(within(look).getByText(/points to what is gone: \/gone-skill/)).toBeInTheDocument();
+    expect(screen.getByText("Nothing waits for you.", { exact: false })).toBeInTheDocument();
   });
 });
 

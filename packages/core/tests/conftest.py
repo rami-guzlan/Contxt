@@ -706,12 +706,15 @@ class FakeBrain:
         found = getattr(self, "kept_agents", {}).get(name)
         if found is None:
             return None
+        known = {"weekly-posts", *(s.name for s in self.extra_skills)}
         resolved = {
-            "skills": [{"name": s, "missing": False, "description": ""} for s in found["skills"]],
+            "skills": [
+                {"name": s, "missing": s not in known, "description": ""} for s in found["skills"]
+            ],
             "library": [{"path": p, "missing": False, "title": p} for p in found["library"]],
             "context": [{"key": c, "missing": False} for c in found["context"]],
             "projects": [],
-            "broken": [],
+            "broken": [f"/{s}" for s in found["skills"] if s not in known],
         }
         prompt = f"# You are working as {name}\n\n{found['role']}\n\n{found['prompt']}\n"
         return {"agent": dict(found), "resolved": resolved, "prompt": prompt}

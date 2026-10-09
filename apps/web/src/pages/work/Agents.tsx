@@ -106,7 +106,20 @@ export function WorkAgentsPage() {
   );
 }
 
-export function AgentCard({ agent }: { agent: WorkAgent }) {
+/** How an agent is doing: idle, working, waiting for you or paused, and its next run. */
+export interface Heartbeat {
+  status: "idle" | "working" | "waiting" | "paused";
+  next?: string | null;
+}
+
+const BEAT_WORDS: Record<Heartbeat["status"], string> = {
+  idle: "Idle",
+  working: "Working",
+  waiting: "Waiting for you",
+  paused: "Paused",
+};
+
+export function AgentCard({ agent, heartbeat }: { agent: WorkAgent; heartbeat?: Heartbeat }) {
   const pointers = [
     agent.skills.length ? plural(agent.skills.length, "skill") : "",
     agent.library.length ? plural(agent.library.length, "document") : "",
@@ -131,6 +144,12 @@ export function AgentCard({ agent }: { agent: WorkAgent }) {
               </li>
             ))}
           </ul>
+        ) : null}
+        {heartbeat ? (
+          <p className="small agent-beat">
+            <span className={`beat beat-${heartbeat.status}`}>{BEAT_WORDS[heartbeat.status]}</span>
+            {heartbeat.next ? <span className="muted"> · next {when(heartbeat.next)}</span> : null}
+          </p>
         ) : null}
         <p className="muted small">
           {agent.last_run ? (

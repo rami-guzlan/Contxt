@@ -242,3 +242,11 @@ def test_a_connector_steps_run_loads_the_owners_servers_with_only_its_tools(owne
     allowed = argv[argv.index("--allowedTools") + 1 : argv.index("--no-session-persistence")]
     assert allowed == ["mcp__contxt-app", *tools]
     assert argv[argv.index("--tools") + 1] == ""  # still no built-in tools
+    deadline = time.monotonic() + 30  # let the run end before the app closes
+    while time.monotonic() < deadline:
+        if owner.ok(owner.get(f"/api/runners/runs/{started['id']}"))["status"] not in (
+            "starting",
+            "running",
+        ):
+            break
+        time.sleep(0.2)

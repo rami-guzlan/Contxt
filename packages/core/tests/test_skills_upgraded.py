@@ -150,3 +150,16 @@ def test_a_prompt_run_often_becomes_a_suggestion(ws, owner, connect):
     (one,) = ws.suggestions.list(owner)["suggestions"]
     assert (one["kind"], one["count"], one["prompt_id"]) == ("prompt", 3, saved.id)
     assert one["ask"].startswith('Make a skill from my saved prompt "Weekly posts"')
+
+
+def test_works_overview_names_stale_skills_and_broken_agents(ws, owner, brain):
+    assert ws.work_attention(owner) == {"stale_skills": [], "broken_agents": []}
+    brain.changed_loads = [
+        {"key": "rules/voice", "title": "rules/voice", "at": "2026-09-20T09:00:00Z"}
+    ]
+    ws.agents.save(
+        owner, "case-writer", {"role": "Writes case studies", "skills": ["gone-skill"]}, "Write."
+    )
+    found = ws.work_attention(owner)
+    assert [s["name"] for s in found["stale_skills"]] == ["weekly-posts"]
+    assert found["broken_agents"] == [{"name": "case-writer", "broken": ["/gone-skill"]}]

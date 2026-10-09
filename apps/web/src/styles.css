@@ -5169,7 +5169,9 @@ button.big,
 }
 
 .agent-card-main .chips {
-  margin-top: 0.35rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
 }
 
 .agent-card-name {
@@ -5681,4 +5683,58 @@ li.missing {
   font-family: var(--font);
   font-size: 0.9rem;
   width: 100%;
+}
+
+/* Work's overview: the team with its heartbeat beside what waits, then the flows. */
+.overview-top {
+  align-items: start;
+}
+
+.agent-roster.compact {
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+}
+
+.agent-new {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  border-style: dashed;
+  background: transparent;
+}
+
+.agent-beat {
+  margin: 0.25rem 0 0;
+}
+
+.beat {
+  font-weight: 600;
+}
+
+.beat::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  margin-right: 0.35rem;
+  background: var(--neutral);
+  vertical-align: 0.05rem;
+}
+
+.beat-working::before {
+  background: var(--active);
+}
+
+.beat-waiting::before {
+  background: var(--review);
+}
+
+.beat-idle::before {
+  background: var(--done);
+}
+
+.start-here {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.35rem;
 }

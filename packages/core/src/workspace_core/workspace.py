@@ -19,6 +19,7 @@ from workspace_core.db.engine import Database, sqlite_url
 from workspace_core.domain.policy import Principal
 from workspace_core.domain.records import WorkspaceInfo
 from workspace_core.domain.schedule import zone
+from workspace_core.errors import WorkspaceError
 from workspace_core.ids import new_id
 from workspace_core.ports import BrainHit, BrainPort, BrainProject, NoBrain, TextExtractor
 from workspace_core.storage.objects import ObjectStore
@@ -209,6 +210,30 @@ class Workspace:
                 if any(follows(s) for s in w.steps)
             ],
         }
+
+    def work_attention(self, who: Principal) -> dict[str, Any]:
+        """What in Work needs a look: skills whose loads changed after their last edit, and
+        agents whose pointers no longer resolve (a skill deleted, a topic renamed)."""
+        stale = []
+        for skill in self.brain.files(who).skills[:40]:
+            found = self.rt.brain.skill_freshness(skill.name)
+            if found and found.get("changed"):
+                stale.append(
+                    {
+                        "name": skill.name,
+                        "last_edited": found.get("last_edited"),
+                        "changed": found["changed"],
+                    }
+                )
+        broken = []
+        for agent in self.agents.list(who):
+            try:
+                resolved = self.agents.get(who, agent["name"])["resolved"]
+            except WorkspaceError:
+                continue
+            if resolved.get("broken"):
+                broken.append({"name": agent["name"], "broken": list(resolved["broken"])})
+        return {"stale_skills": stale, "broken_agents": broken}
 
     def counts(self, who: Principal) -> dict[str, Any]:
         """The numbers the navigation and the status show: what waits for the person in

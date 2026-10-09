@@ -1483,3 +1483,16 @@ export function usePushSkill() {
 }
 
 export const skillExportUrl = (name: string) => `/api/skills/${encodeURIComponent(name)}/export`;
+
+/** What in Work needs a look: skills whose loads changed since their last edit, and agents
+ * whose pointers broke. */
+export const useWorkAttention = () =>
+  useQuery({
+    queryKey: [...keys.skills, "work-attention"],
+    queryFn: () =>
+      get<{
+        stale_skills: { name: string; last_edited: string | null; changed: { key: string; title: string; at: string }[] }[];
+        broken_agents: { name: string; broken: string[] }[];
+      }>("/api/work/attention"),
+    staleTime: 60_000,
+  });
