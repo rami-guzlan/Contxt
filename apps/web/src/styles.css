@@ -4801,6 +4801,11 @@ button.big,
   opacity: 0.6;
 }
 
+.agent-models-group {
+  margin: 0.5rem 0 0.1rem;
+  color: var(--muted);
+}
+
 .agent-actions {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));

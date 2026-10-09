@@ -13,6 +13,7 @@ import { AgentStrip } from "./AgentStrip";
 afterEach(() => {
   vi.restoreAllMocks();
   window.sessionStorage.clear();
+  window.localStorage.clear();
 });
 
 const question: AgentQuestion = {
@@ -90,7 +91,8 @@ describe("the knowledge agent", () => {
     const user = userEvent.setup();
     renderAt(<AgentPage />, { path: "/brain/agent", route: "/brain/agent" });
     expect(await screen.findByRole("radio", { name: /Claude Code \(your CLI\)/ })).toBeChecked();
-    await user.click(screen.getByRole("radio", { name: /qwen3:1\.7b \(local\)/ }));
+    await user.click(screen.getByRole("radio", { name: /qwen3:1\.7b/ }));
+    expect(screen.getByText(/On this computer, through Ollama: free and private/)).toBeInTheDocument();
     await waitFor(() => expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ model: "ollama:qwen3:1.7b" }));
     expect(screen.getByText("Retire this note?")).toBeInTheDocument();
     expect(screen.getByText(/Last .*: 1 to retire\./)).toBeInTheDocument();
@@ -169,6 +171,8 @@ describe("the knowledge agent", () => {
     expect(screen.getByRole("button", { name: "Open the knowledge agent" })).toHaveTextContent("1");
     await user.click(within(toast).getByRole("button", { name: "Not now" }));
     await waitFor(() => expect(calls.find((c) => c.path === "/api/brain/agent/suggestions/dismiss")?.body).toEqual({ key: "stale:abc" }));
+    // set aside, it pops up no more; it stays on the button's count until the Brain changes
+    expect(screen.queryByRole("article", { name: "3 notes are past their review" })).not.toBeInTheDocument();
   });
 });
 

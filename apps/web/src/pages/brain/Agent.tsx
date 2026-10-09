@@ -59,28 +59,38 @@ export function AgentPage() {
 
 function Models({ models, value, suggestions }: { models: AgentModel[]; value: string; suggestions: boolean }) {
   const settings = useAgentSettings();
+  const local = models.filter((m) => m.kind === "local");
+  const choice = (m: AgentModel, detail: string) => (
+    <label key={m.id} className={m.available ? "agent-model" : "agent-model unavailable"}>
+      <input
+        type="radio"
+        name="agent-model"
+        value={m.id}
+        checked={m.id === value}
+        disabled={!m.available || settings.isPending}
+        onChange={() => settings.mutate({ model: m.id })}
+      />
+      <span>
+        <strong>{m.label.replace(/ \(local\)$/, "")}</strong>
+        <span className="muted small"> {detail}</span>
+      </span>
+    </label>
+  );
   return (
     <Section title="The model it works through">
       <fieldset className="agent-models">
         <legend className="sr-only">Model</legend>
-        {models.map((m) => (
-          <label key={m.id} className={m.available ? "agent-model" : "agent-model unavailable"}>
-            <input
-              type="radio"
-              name="agent-model"
-              value={m.id}
-              checked={m.id === value}
-              disabled={!m.available || settings.isPending}
-              onChange={() => settings.mutate({ model: m.id })}
-            />
-            <span>
-              <strong>{m.label}</strong>
-              <span className="muted small"> {m.detail}</span>
-              {m.kind === "local" ? <span className="muted small"> · free and private; less careful, so it reads a shorter map</span> : null}
-            </span>
-          </label>
-        ))}
-        {!models.some((m) => m.kind === "local") ? (
+        {models.filter((m) => m.kind !== "local").map((m) => choice(m, m.detail))}
+        {local.length ? (
+          <>
+            <p className="agent-models-group small">
+              On this computer, through Ollama: free and private, but small, so they read a shorter map and are less careful. Good for a quick
+              first pass.
+            </p>
+            {local.map((m) => choice(m, m.detail.replace(/^On this computer through Ollama, ?/, "")))}
+          </>
+        ) : null}
+        {!local.length ? (
           <p className="muted small">
             Run a small model on this computer to save tokens: install Ollama, pull a model (for example <code>ollama pull qwen3:1.7b</code>), and
             it shows here.

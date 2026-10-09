@@ -178,3 +178,27 @@ def test_a_conversation_reads_the_map_and_what_the_brain_found(ws, owner, brain)
     assert kept["proposal_id"] and brain.proposed[-1]["origin"] == "agent:chat"
     with pytest.raises(ValidationFailed):
         ws.agent.chat_prompt(owner, "  ")
+
+
+def test_words_to_ask_for_a_skill_are_real_phrases_once_each(ws, owner, brain):
+    skill = {"kind": "skill", "ids": ["weekly-posts"], "title": "/weekly-posts", "text": "..."}
+    brain.gathered["tidy-skills"] = [skill, {**skill, "ids": ["other"], "title": "/other"}]
+    _, gathered = ws.agent.action_prompt(owner, "tidy-skills")
+    run = ws.agent.apply_action(
+        owner,
+        "tidy-skills",
+        gathered,
+        answer(
+            {
+                "ref": "c1",
+                "verdict": "triggers",
+                "triggers": ["...", "Draft the week's posts", "draft the week's posts", "ok"],
+            },
+            {"ref": "c2", "verdict": "triggers", "triggers": ["...", "…"]},
+        ),
+        model="ollama:qwen3:1.7b",
+    )
+    assert (run["questions"], run["skipped"]) == (1, 1)  # a small model's placeholder is no answer
+    (question,) = ws.agent.overview(owner)["questions"]
+    assert question["triggers"] == ["draft the week's posts"]
+    assert question["target"] == {"type": "skill", "id": "weekly-posts", "title": "/weekly-posts"}

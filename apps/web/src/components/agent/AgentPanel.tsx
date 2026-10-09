@@ -336,15 +336,46 @@ export function ActionTurn({ jobId, action }: { jobId: string | null; action?: A
   );
 }
 
+const SEEN = "contxt.agent.seen";
+const SHOWN_SECONDS = 15; // a suggestion pops up for this long, then lives on the button's count
+
+function loadSeen(): string[] {
+  try {
+    const found = JSON.parse(window.localStorage.getItem(SEEN) ?? "[]") as unknown;
+    return Array.isArray(found) ? found.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Bottom right: the agent's suggestions as the Brain changes, and the button that opens the
- * panel. Set one aside and it stays away for a few days, or until what it counts changes. */
+ * panel. Each pops up once, when it is new (what it counts changed); after a few seconds, or
+ * once acted on, it lives on the button's count, Home's flashcards and the agent's page. Not
+ * now sets it aside for a few days everywhere. */
 export function AgentDock() {
   const panel = useAgentPanel();
   const { data: suggestions } = useAgentSuggestions();
   const dismiss = useDismissAgentSuggestion();
-  const [hidden, setHidden] = useState(false);
+  const [seen, setSeen] = useState<string[]>(loadSeen);
+  const markSeen = (keys: string[]) =>
+    setSeen((current) => {
+      const next = [...new Set([...current, ...keys])].slice(-200);
+      try {
+        window.localStorage.setItem(SEEN, JSON.stringify(next));
+      } catch {
+        // without storage, a suggestion pops up again on the next visit
+      }
+      return next;
+    });
+  const fresh = (suggestions ?? []).filter((s) => !seen.includes(s.key));
+  const shown = fresh.slice(0, 2);
+  const showing = shown.map((s) => s.key).join("|");
+  useEffect(() => {
+    if (!showing) return;
+    const later = window.setTimeout(() => markSeen(showing.split("|")), SHOWN_SECONDS * 1000);
+    return () => window.clearTimeout(later);
+  }, [showing]);
   if (panel.open) return null;
-  const shown = hidden ? [] : (suggestions ?? []).slice(0, 2);
   const count = suggestions?.length ?? 0;
   return (
     <div className="agent-dock">
@@ -354,15 +385,30 @@ export function AgentDock() {
           <p className="muted small">{s.detail}</p>
           <div className="row small">
             {s.action ? (
-              <button type="button" className="primary" onClick={() => panel.openPanel({ action: s.action ?? undefined })}>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  markSeen([s.key]);
+                  panel.openPanel({ action: s.action ?? undefined });
+                }}
+              >
                 Run it
               </button>
             ) : s.link ? (
-              <Link className="button primary" to={s.link}>
+              <Link className="button primary" to={s.link} onClick={() => markSeen([s.key])}>
                 Open
               </Link>
             ) : null}
-            <button type="button" className="link" disabled={dismiss.isPending} onClick={() => dismiss.mutate({ key: s.key })}>
+            <button
+              type="button"
+              className="link"
+              disabled={dismiss.isPending}
+              onClick={() => {
+                markSeen([s.key]);
+                dismiss.mutate({ key: s.key });
+              }}
+            >
               Not now
             </button>
           </div>
@@ -370,8 +416,8 @@ export function AgentDock() {
       ))}
       <div className="row agent-dock-row">
         {shown.length ? (
-          <button type="button" className="link small" onClick={() => setHidden(true)}>
-            Hide suggestions
+          <button type="button" className="link small" onClick={() => markSeen(fresh.map((s) => s.key))}>
+            Hide
           </button>
         ) : null}
         <button type="button" className="agent-open" onClick={() => panel.openPanel()} aria-label="Open the knowledge agent">

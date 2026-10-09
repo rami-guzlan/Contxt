@@ -138,6 +138,17 @@ def _key(*parts: str) -> str:
     return "|".join(p for p in parts if p)[:300]
 
 
+def _phrases(value: Any) -> list[str]:
+    """Words to ask for something, as a model gave them: real phrases only (a small model
+    copies the procedure's "..." placeholder), lower case, once each, at most eight."""
+    out: list[str] = []
+    for item in value if isinstance(value, list) else []:
+        phrase = _words(item, 80).lower().strip(" .\"'")
+        if len(re.findall(r"[a-z]", phrase)) >= 3 and phrase not in out:
+            out.append(phrase)
+    return out[:8]
+
+
 def _short(ids: list[str]) -> str:
     return hashlib.sha256("|".join(sorted(ids)).encode()).hexdigest()[:10]
 
@@ -543,9 +554,9 @@ class KnowledgeAgent:
             elif verdict == "dispute":
                 question["ask"] = "Mark this note disputed until you settle it?"
             elif verdict == "triggers":
-                question["triggers"] = [
-                    _words(t, 80) for t in finding.get("triggers") or [] if _words(t, 80)
-                ][:8]
+                question["triggers"] = _phrases(finding.get("triggers"))
+                if not question["triggers"]:
+                    return None
                 question["ask"] = "Give this must-hold the words that bring it up?"
             else:
                 question["ask"] = question["text"] or "Is this still true?"
@@ -558,9 +569,9 @@ class KnowledgeAgent:
         elif kind in ("skill",) or (action == "tidy-skills" and kind == "pair"):
             name = self._which(candidate, finding, "which")
             question["target"] = {"type": "skill", "id": name, "title": f"/{name}"}
-            question["triggers"] = [
-                _words(t, 80) for t in finding.get("triggers") or [] if _words(t, 80)
-            ][:8]
+            question["triggers"] = _phrases(finding.get("triggers"))
+            if verdict == "triggers" and not question["triggers"]:
+                return None
             question["ask"] = (
                 "Retire this skill?" if verdict == "retire" else "Ask for it with these words?"
             )

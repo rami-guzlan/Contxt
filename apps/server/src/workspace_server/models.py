@@ -152,6 +152,9 @@ class Models:
                 "model": choice.id.split(":", 1)[1],
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
+                # A thinking model (qwen3, say) would otherwise write pages before it answers,
+                # slow on a laptop's CPU; the procedure already says how to think.
+                "think": False,
                 "options": {"temperature": 0.2, "num_ctx": 8192},
             }
             if json_only:

@@ -146,7 +146,14 @@ export function AgentQuestionCard({ question, compact = false }: { question: Age
             </>
           ) : (
             <>
-              {link ? (
+              {question.target.type === "skill" && question.verdict === "triggers" && question.triggers?.length ? (
+                <Link
+                  className="button primary"
+                  to={`/skills/${encodeURIComponent(question.target.id)}?tab=procedure&add=${encodeURIComponent(question.triggers.join("|"))}`}
+                >
+                  Add these words
+                </Link>
+              ) : link ? (
                 <Link className="button primary" to={link}>
                   Open it
                 </Link>

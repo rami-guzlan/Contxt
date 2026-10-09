@@ -756,8 +756,17 @@ interface SkillText {
   body: string;
 }
 
-/** Your own new version of a skill: it applies at once, and Undo takes it back. */
-export function SkillEditor({ skill, onDone }: { skill: SkillText; onDone: (checkpoint: BrainCheckpoint | null) => void }) {
+/** Your own new version of a skill: it applies at once, and Undo takes it back. `saved` is the
+ * skill's words to ask for it as they are now, when the editor opens with others added. */
+export function SkillEditor({
+  skill,
+  saved: savedTriggers,
+  onDone,
+}: {
+  skill: SkillText;
+  saved?: string[];
+  onDone: (checkpoint: BrainCheckpoint | null) => void;
+}) {
   const edit = useEditSkill();
   const [description, setDescription] = useState(skill.description);
   const [whenToUse, setWhenToUse] = useState(skill.when_to_use);
@@ -772,7 +781,7 @@ export function SkillEditor({ skill, onDone }: { skill: SkillText; onDone: (chec
         body,
         description: description.trim() !== skill.description ? description.trim() : undefined,
         when_to_use: whenToUse.trim() !== skill.when_to_use ? whenToUse.trim() : undefined,
-        triggers: triggers.trim() !== skill.triggers.join("\n")
+        triggers: triggers.trim() !== (savedTriggers ?? skill.triggers).join("\n")
           ? triggers.split("\n").map((t) => t.trim()).filter(Boolean)
           : undefined,
         reason: reason.trim() || undefined,
