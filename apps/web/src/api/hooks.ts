@@ -447,6 +447,25 @@ export function useRunSkill() {
   });
 }
 
+/** A run from the Skills page: the skills chosen, followed in order (none: the one that fits). */
+export function useRunSkills() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { names: string[]; ask: string; capture_id?: string; project?: string; files?: string[] }) =>
+      post<Task>("/api/skills/runs", body),
+    onSettled: () => invalidate(keys.skills, keys.tasks),
+  });
+}
+
+/** The latest runs from the Skills page and every skill; looked at again while one goes. */
+export const useLatestSkillRuns = (limit = 5) =>
+  useQuery({
+    queryKey: [...keys.skills, "latest-runs", limit],
+    queryFn: () => get<SkillRun[]>(`/api/skills/runs${query({ limit })}`),
+    refetchInterval: (q) =>
+      (q.state.data ?? []).some((r) => ["ready", "claimed", "in_progress"].includes(r.status)) ? 4000 : false,
+  });
+
 export function useImproveSkill() {
   const invalidate = useInvalidate();
   return useMutation({

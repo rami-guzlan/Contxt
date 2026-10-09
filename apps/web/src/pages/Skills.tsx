@@ -11,8 +11,10 @@ import type { BrainCheckpoint, SkillCard, SkillVersion } from "../api/types";
 import { Markdown } from "../components/Markdown";
 import {
   ImproveSkill,
+  LatestRuns,
   NewSkill,
   RunSkill,
+  RunSkills,
   Saved,
   SkillEditor,
   SkillHistory,
@@ -83,6 +85,8 @@ export function SkillsPage() {
       {writing ? (
         <NewSkill capture={teaching && capture ? { id: capture.id, title: capture.title } : null} onClose={() => setParams({})} />
       ) : null}
+      {data.skills.some((s) => s.use === "run") ? <RunSkills skills={data.skills} /> : null}
+      <LatestRuns />
       <BuiltIns />
       {data.waiting.length ? (
         <p className="notice small">

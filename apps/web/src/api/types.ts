@@ -722,6 +722,9 @@ export interface SkillCards {
 export interface SkillRun {
   task_id: string;
   skill: string;
+  /** Every skill it followed: several when chosen on the Skills page; none when the Brain
+   * picked the one that fit. */
+  skills?: string[];
   kind: "run" | "improve";
   ask: string;
   status: TaskStatus;

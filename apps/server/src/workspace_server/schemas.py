@@ -270,6 +270,12 @@ class SkillRunIn(Body):
     files: list[str] = Field(default_factory=list, max_length=5)
 
 
+class SkillsRunIn(SkillRunIn):
+    """A run from the Skills page: the skills to follow, in order (none: the one that fits)."""
+
+    names: list[str] = Field(default_factory=list, max_length=6)
+
+
 class SkillImproveIn(Body):
     ask: str = Field(min_length=1, max_length=4000)
     capture_id: str | None = None  # an example brought in or written (an edited result, say)

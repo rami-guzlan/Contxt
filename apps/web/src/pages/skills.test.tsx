@@ -173,6 +173,33 @@ describe("the Skills place", () => {
     expect(screen.getByText(/Other skills build on it/)).toBeInTheDocument();
   });
 
+  it("runs several skills from the Skills page, in the order chosen", async () => {
+    const calls = mockApi({
+      ...side,
+      "POST /api/skills/runs": { status: 201, body: task("task_many") },
+      "GET /api/skills/runs": [{ ...doneRun, task_id: "task_many", skills: ["one-pager", "weekly-posts"] }],
+      "POST /api/runners/claude/runs": { status: 201, body: { id: "run_many", status: "running", events: [], task_title: "Run skills" } },
+      "GET /api/runners/runs/run_many": { id: "run_many", status: "running", events: [], task_title: "Run skills" },
+    });
+    const user = userEvent.setup();
+    renderAt(<SkillsPage />, { path: "/skills", route: "/skills" });
+    const panel = await screen.findByRole("region", { name: "Run skills" });
+    await user.type(within(panel).getByLabelText("What do you need?"), "A one-pager, then posts from it.");
+    await user.click(within(panel).getByText("None: your Brain picks the one that fits"));
+    await user.click(within(panel).getByRole("checkbox", { name: /\/one-pager/ }));
+    await user.click(within(panel).getByRole("checkbox", { name: /\/weekly-posts/ }));
+    expect(within(panel).getByRole("list", { name: "Chosen skills, in order" })).toHaveTextContent(/one-pager.*weekly-posts/);
+    await user.click(within(panel).getByRole("button", { name: "Run 2 skills" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "POST" && c.path === "/api/skills/runs")?.body).toEqual({
+        names: ["one-pager", "weekly-posts"],
+        ask: "A one-pager, then posts from it.",
+      }),
+    );
+    const latest = await screen.findByRole("region", { name: "Latest runs" });
+    expect(within(latest).getByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/skills/one-pager");
+  });
+
   it("writes a new skill with your AI, started at once on this computer", async () => {
     const calls = mockApi({
       ...side,

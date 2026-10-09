@@ -68,6 +68,46 @@ def test_only_the_run_saves_its_result_and_only_into_a_skill_run(ws, owner, conn
         ws.skills.save_result(stranger, run_id=claim.run.id, title="Mine", text="Not mine.")
 
 
+def test_the_skills_page_runs_several_skills_in_order_or_lets_the_brain_pick(
+    ws, owner, connect, brain
+):
+    claude = connect()
+    brain.extra_skills.append(
+        BrainSkill(
+            name="tidy-copy",
+            category="writing",
+            description="Tighten copy",
+            triggers=["tidy this"],
+            artifacts=["post"],
+        )
+    )
+    task = ws.skills.run_many(
+        owner, ["weekly-posts", "/tidy-copy", "weekly-posts"], ask="Posts on polls, then tighten."
+    )
+    assert task.title == "Run /weekly-posts, /tidy-copy"
+    text = ws.bus.claim(claude, task.id).packet["instructions"]["text"]
+    assert "in this order: /weekly-posts, /tidy-copy" in text and "Posts on polls" in text
+    assert "working directory" not in text  # neither makes files
+    # It shows on both skills' pages, and first among the latest runs.
+    assert [r["task_id"] for r in ws.skills.runs(owner, "tidy-copy")] == [task.id]
+    assert ws.skills.runs(owner, "weekly-posts")[0]["skills"] == ["weekly-posts", "tidy-copy"]
+    assert ws.skills.recent(owner)[0]["task_id"] == task.id
+    # One chosen: that skill's own run.
+    assert ws.skills.run_many(owner, ["weekly-posts"], ask="One post.").title == "Run /weekly-posts"
+    # None chosen: the run follows the skill the Brain finds for the request.
+    picked = ws.skills.run_many(owner, [], ask="Something for Tuesday.")
+    assert picked.title == "Run what fits: Something for Tuesday."
+    assert "names no skill" in ws.bus.claim(claude, picked.id).packet["instructions"]["text"]
+    latest = ws.skills.recent(owner)[0]
+    assert (latest["task_id"], latest["skills"], latest["skill"]) == (picked.id, [], "")
+    with pytest.raises(ValidationFailed, match="at most 6"):
+        ws.skills.run_many(owner, [f"s{i}" for i in range(7)], ask="Too many.")
+    with pytest.raises(NotFound):
+        ws.skills.run_many(owner, ["weekly-posts", "no-such-skill"], ask="Anything.")
+    with pytest.raises(ValidationFailed):
+        ws.skills.run_many(owner, [], ask="  ")
+
+
 def test_asking_needs_words_a_known_skill_and_things_the_person_can_see(ws, owner):
     with pytest.raises(ValidationFailed):
         ws.skills.run(owner, "weekly-posts", ask=" ")
