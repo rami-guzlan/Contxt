@@ -69,6 +69,10 @@ import type {
   SkillVersion,
   Task,
   WorkspaceEvent,
+  AgentJob,
+  AgentOverview,
+  AgentSkill,
+  AgentSuggestion,
 } from "./types";
 
 export const keys = {
@@ -949,3 +953,96 @@ export function useMakeBackup() {
 
 export const backupUrl = (name: string) => `/api/backups/${encodeURIComponent(name)}`;
 
+
+// ---- the knowledge agent
+
+const agentKey = [...keys.brain, "agent"] as const;
+
+/** The agent's page: the model and the ones here, its actions, questions and last runs. */
+export const useAgent = () =>
+  useQuery({
+    queryKey: agentKey,
+    queryFn: () => get<AgentOverview>("/api/brain/agent"),
+    // While it works, look again so its runs and questions arrive.
+    refetchInterval: (q) => (q.state.data?.working.length ? 4000 : false),
+  });
+
+/** What the agent would bring up now; looked at again every minute, as the Brain changes. */
+export const useAgentSuggestions = (enabled = true) =>
+  useQuery({
+    queryKey: [...agentKey, "suggestions"],
+    queryFn: () => get<AgentSuggestion[]>("/api/brain/agent/suggestions"),
+    enabled,
+    refetchInterval: 60_000,
+  });
+
+export const useAgentMap = (enabled = true) =>
+  useQuery({
+    queryKey: [...agentKey, "map"],
+    queryFn: () => get<{ counts: Record<string, number>; text: string }>("/api/brain/agent/map"),
+    enabled,
+  });
+
+export const useAgentSkills = (enabled = true) =>
+  useQuery({ queryKey: [...agentKey, "skills"], queryFn: () => get<AgentSkill[]>("/api/brain/agent/skills"), enabled });
+
+export function useAgentSettings() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { model?: string; suggestions?: boolean }) => put<AgentOverview>("/api/brain/agent/settings", body),
+    onSettled: () => invalidate(agentKey),
+  });
+}
+
+/** Start one upkeep action; it runs in the background. */
+export function useRunAgentAction() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ action, model }: { action: string; model?: string }) =>
+      post<AgentJob>(`/api/brain/agent/actions/${encodeURIComponent(action)}`, model ? { model } : {}),
+    onSettled: () => invalidate(agentKey),
+  });
+}
+
+/** One turn of the conversation; it runs in the background. */
+export function useAgentChat() {
+  return useMutation({
+    mutationFn: (body: { message: string; history: { role: "user" | "agent"; text: string }[]; model?: string }) =>
+      post<AgentJob>("/api/brain/agent/chat", body),
+  });
+}
+
+/** One job, looked at again until it is done. */
+export const useAgentJob = (id: string | null) =>
+  useQuery({
+    queryKey: [...agentKey, "job", id],
+    queryFn: () => get<AgentJob>(`/api/brain/agent/jobs/${encodeURIComponent(id ?? "")}`),
+    enabled: !!id,
+    refetchInterval: (q) => (q.state.data && ["done", "failed"].includes(q.state.data.status) ? false : 1500),
+  });
+
+export function useAnswerAgentQuestion() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { key: string; do: "verify" | "retire" | "dispute" | "answer" | "done" | "dismiss"; text?: string }) =>
+      post<{ key: string; do: string; proposal_id?: string; checkpoint?: string }>("/api/brain/agent/questions/answer", body),
+    onSettled: () => invalidate(keys.brain, keys.catchUp, keys.home),
+  });
+}
+
+export function useKeepAgentNote() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { title: string; text: string; kind: string; said?: string }) =>
+      post<{ status: string; proposal_id: string | null; message: string }>("/api/brain/agent/notes", body),
+    onSettled: () => invalidate(keys.brain, keys.catchUp, keys.home),
+  });
+}
+
+export function useDismissAgentSuggestion() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { key: string; days?: number }) => post<void>("/api/brain/agent/suggestions/dismiss", body),
+    onSettled: () => invalidate(agentKey),
+  });
+}

@@ -1,0 +1,172 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type { AgentOverview, AgentQuestion } from "../../api/types";
+import { AgentPage } from "../../pages/brain/Agent";
+import { mockApi, renderAt } from "../../test/render";
+import { AgentProvider } from "./AgentContext";
+import { AgentDock, AgentPanel } from "./AgentPanel";
+import { AgentStrip } from "./AgentStrip";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.sessionStorage.clear();
+});
+
+const question: AgentQuestion = {
+  key: "freshen-up|retire|note|holiday-card|Retire this note?",
+  action: "freshen-up",
+  verdict: "retire",
+  ask: "Retire this note?",
+  why: "The holiday card went out.",
+  text: "",
+  target: { type: "note", id: "holiday-card", title: "Holiday card" },
+  at: "2026-10-09T10:00:00Z",
+  status: "open",
+  run: "arun_1",
+};
+
+const overview: AgentOverview = {
+  model: "claude",
+  suggestions: true,
+  actions: [
+    { id: "tidy-repeats", label: "Find repeats", blurb: "Notes that say the same thing." },
+    { id: "freshen-up", label: "Freshen up", blurb: "Stale notes." },
+  ],
+  questions: [question],
+  runs: [
+    {
+      id: "arun_1",
+      action: "freshen-up",
+      label: "Freshen up",
+      model: "claude",
+      at: "2026-10-09T10:00:00Z",
+      summary: "1 to retire.",
+      checked: 1,
+      found: 1,
+      proposed: 0,
+      questions: 1,
+      fine: 0,
+      skipped: 0,
+      proposals: [],
+      notes: [],
+    },
+  ],
+  models: [
+    { id: "claude", label: "Claude Code (your CLI)", kind: "cli", available: true, detail: "On this computer", brief: false },
+    { id: "ollama:qwen3:1.7b", label: "qwen3:1.7b (local)", kind: "local", available: true, detail: "Through Ollama", brief: true },
+  ],
+  working: [],
+};
+
+const job = (id: string, extra: object) => ({
+  id,
+  kind: "action",
+  action: "tidy-repeats",
+  model: "claude",
+  model_label: "Claude Code (your CLI)",
+  message: "",
+  status: "done",
+  result: {},
+  error: null,
+  started_at: "2026-10-09T10:00:00Z",
+  finished_at: "2026-10-09T10:00:30Z",
+  ...extra,
+});
+
+describe("the knowledge agent", () => {
+  it("shows its model, actions, questions and what it did, and runs an action", async () => {
+    const calls = mockApi({
+      "GET /api/brain/agent": overview,
+      "GET /api/brain/agent/suggestions": [],
+      "PUT /api/brain/agent/settings": { ...overview, model: "ollama:qwen3:1.7b" },
+      "POST /api/brain/agent/actions/tidy-repeats": { status: 201, body: job("ajob_1", { status: "running" }) },
+      "GET /api/brain/agent/jobs/ajob_1": job("ajob_1", {
+        result: { id: "arun_2", summary: "One pair says the same thing.", proposed: 1, questions: 0, notes: [] },
+      }),
+    });
+    const user = userEvent.setup();
+    renderAt(<AgentPage />, { path: "/brain/agent", route: "/brain/agent" });
+    expect(await screen.findByRole("radio", { name: /Claude Code \(your CLI\)/ })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: /qwen3:1\.7b \(local\)/ }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ model: "ollama:qwen3:1.7b" }));
+    expect(screen.getByText("Retire this note?")).toBeInTheDocument();
+    expect(screen.getByText(/Last .*: 1 to retire\./)).toBeInTheDocument();
+    const card = screen.getByRole("article", { name: "Find repeats" });
+    await user.click(within(card).getByRole("button", { name: "Run it" }));
+    expect(await within(card).findByText("One pair says the same thing.")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "Catch up" })).toHaveAttribute("href", "/catch-up");
+  });
+
+  it("answers a question in one tap", async () => {
+    const calls = mockApi({
+      "GET /api/brain/agent": overview,
+      "GET /api/brain/agent/suggestions": [],
+      "POST /api/brain/agent/questions/answer": { key: question.key, do: "retire", checkpoint: "cp-1" },
+    });
+    const user = userEvent.setup();
+    renderAt(<AgentPage />, { path: "/brain/agent", route: "/brain/agent" });
+    await user.click(await screen.findByRole("button", { name: "Retire it" }));
+    expect(await screen.findByText(/Retired\./)).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/api/brain/agent/questions/answer")?.body).toEqual({ key: question.key, do: "retire" });
+  });
+
+  it("asks from the strip above the map and answers in the side panel, with actions and notes to keep", async () => {
+    const calls = mockApi({
+      "GET /api/brain/agent": overview,
+      "GET /api/brain/agent/suggestions": [],
+      "POST /api/brain/agent/chat": { status: 201, body: job("ajob_9", { kind: "chat", status: "running" }) },
+      "GET /api/brain/agent/jobs/ajob_9": job("ajob_9", {
+        kind: "chat",
+        result: {
+          reply: "Start with the **stale** notes.",
+          run: ["freshen-up"],
+          notes: [{ title: "Reviews on Fridays", text: "Client reviews happen on Fridays.", kind: "fact" }],
+        },
+      }),
+      "POST /api/brain/agent/notes": { status: 201, body: { status: "pending", proposal_id: "p9", message: "" } },
+    });
+    const user = userEvent.setup();
+    renderAt(
+      <AgentProvider>
+        <AgentStrip />
+        <AgentPanel />
+      </AgentProvider>,
+    );
+    await user.type(await screen.findByLabelText("Ask the knowledge agent"), "What should I tidy first?");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    const panel = await screen.findByRole("complementary", { name: "Knowledge agent" });
+    expect(within(panel).getByText("What should I tidy first?")).toBeInTheDocument();
+    expect(await within(panel).findByText("stale")).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/api/brain/agent/chat")?.body).toEqual({ message: "What should I tidy first?", history: [] });
+    expect(within(panel).getByRole("button", { name: "Run Freshen up" })).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Keep it" }));
+    expect(await within(panel).findByText(/it waits in/)).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/api/brain/agent/notes")?.body).toMatchObject({
+      title: "Reviews on Fridays",
+      said: "What should I tidy first?",
+    });
+  });
+
+  it("brings up suggestions at the bottom right, and sets one aside", async () => {
+    const calls = mockApi({
+      "GET /api/brain/agent": overview,
+      "GET /api/brain/agent/suggestions": [
+        { key: "stale:abc", kind: "stale", title: "3 notes are past their review", detail: "The agent can sort them.", count: 3, action: "freshen-up", link: null },
+      ],
+      "POST /api/brain/agent/suggestions/dismiss": { status: 204 },
+    });
+    const user = userEvent.setup();
+    renderAt(
+      <AgentProvider>
+        <AgentDock />
+      </AgentProvider>,
+    );
+    const toast = await screen.findByRole("article", { name: "3 notes are past their review" });
+    expect(within(toast).getByRole("button", { name: "Run it" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open the knowledge agent" })).toHaveTextContent("1");
+    await user.click(within(toast).getByRole("button", { name: "Not now" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/brain/agent/suggestions/dismiss")?.body).toEqual({ key: "stale:abc" }));
+  });
+});

@@ -7,6 +7,7 @@ import { Link, Navigate, useSearchParams } from "react-router";
 
 import { useBrainInventory, useBrainProjects, useGoals } from "../../api/hooks";
 import type { InventoryItem } from "../../api/types";
+import { AgentStrip } from "../../components/agent/AgentStrip";
 import { AreaMap, BrainMap } from "../../components/BrainMap";
 import { FirstVisitTip } from "../../components/Tips";
 import { ErrorNote, Loading, Section } from "../../components/ui";
@@ -50,6 +51,7 @@ function Knows() {
       <FirstVisitTip id="brain">
         This is what your AIs can know, in the words they receive. Each request gets only the few notes it needs; open one to edit it.
       </FirstVisitTip>
+      <AgentStrip />
       <BrainMap compact />
       <Section title="Your goals">
         {goals?.exists ? (

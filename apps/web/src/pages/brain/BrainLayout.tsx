@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
 
-import { useBrainCatalog, useBrainFiles, useBrainGaps, useBrainStatus } from "../../api/hooks";
+import { useAgent, useBrainCatalog, useBrainFiles, useBrainGaps, useBrainStatus } from "../../api/hooks";
 import { Empty, Loading } from "../../components/ui";
 
 interface Tab {
@@ -52,6 +52,7 @@ export function BrainLayout() {
   const { data: catalog } = useBrainCatalog();
   const { data: files } = useBrainFiles();
   const { data: gaps } = useBrainGaps(30);
+  const { data: agent } = useAgent();
   const fileCount = files ? files.references.length + files.assets.length : undefined;
   return (
     <Frame
@@ -63,6 +64,7 @@ export function BrainLayout() {
         { to: "/brain/entries", label: "Notes" },
         { to: "/brain/files", label: "Files" },
         { to: "/brain/questions", label: "Questions", badge: gaps?.length ?? 0 },
+        { to: "/brain/agent", label: "Knowledge agent", badge: agent?.questions.length ?? 0 },
       ]}
       stats={
         <dl className="stats">

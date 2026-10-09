@@ -168,6 +168,7 @@ export function RunSkills({ skills }: { skills: SkillCard[] }) {
 
 /** Pick any of your skills; they are followed in the order picked. */
 function SkillsPicker({ skills, value, onChange }: { skills: SkillCard[]; value: string[]; onChange: (names: string[]) => void }) {
+  const [open, setOpen] = useState(false);
   const [find, setFind] = useState("");
   const wanted = find.trim().toLowerCase();
   const shown = skills.filter((s) => !wanted || s.name.toLowerCase().includes(wanted) || s.description.toLowerCase().includes(wanted));
@@ -175,26 +176,30 @@ function SkillsPicker({ skills, value, onChange }: { skills: SkillCard[]; value:
   return (
     <div className="field">
       <span className="field-label">Skills to use (optional)</span>
-      <details className="multi-pick">
-        <summary>{value.length ? `${value.length} chosen` : "None: your Brain picks the one that fits"}</summary>
-        <div className="multi-pick-panel">
-          {skills.length > 8 ? (
-            <input type="search" aria-label="Find a skill" placeholder="Find a skill" value={find} onChange={(event) => setFind(event.target.value)} />
-          ) : null}
-          <ul className="multi-pick-list" aria-label="Your skills">
-            {shown.map((skill) => (
-              <li key={skill.name}>
-                <label>
-                  <input type="checkbox" checked={value.includes(skill.name)} disabled={!value.includes(skill.name) && value.length >= 6} onChange={() => toggle(skill.name)} />
-                  <span>/{skill.name}</span>
-                  {skill.description ? <span className="muted small"> {skill.description.split(/(?<=[.!?])\s/)[0]}</span> : null}
-                </label>
-              </li>
-            ))}
-            {!shown.length ? <li className="muted small">No skill matches.</li> : null}
-          </ul>
-        </div>
-      </details>
+      <div className="multi-pick">
+        <button type="button" className="multi-pick-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {value.length ? `${value.length} chosen` : "None: your Brain picks the one that fits"}
+        </button>
+        {open ? (
+          <div className="multi-pick-panel">
+            {skills.length > 8 ? (
+              <input type="search" aria-label="Find a skill" placeholder="Find a skill" value={find} onChange={(event) => setFind(event.target.value)} />
+            ) : null}
+            <ul className="multi-pick-list" aria-label="Your skills">
+              {shown.map((skill) => (
+                <li key={skill.name}>
+                  <label>
+                    <input type="checkbox" checked={value.includes(skill.name)} disabled={!value.includes(skill.name) && value.length >= 6} onChange={() => toggle(skill.name)} />
+                    <span>/{skill.name}</span>
+                    {skill.description ? <span className="muted small"> {skill.description.split(/(?<=[.!?])\s/)[0]}</span> : null}
+                  </label>
+                </li>
+              ))}
+              {!shown.length ? <li className="muted small">No skill matches.</li> : null}
+            </ul>
+          </div>
+        ) : null}
+      </div>
       {value.length ? (
         <ol className="chips picked-skills" aria-label="Chosen skills, in order">
           {value.map((name) => (
