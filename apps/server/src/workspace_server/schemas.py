@@ -373,3 +373,233 @@ class AgentKeepIn(Body):
     text: str = Field(min_length=1, max_length=2000)
     kind: str = Field(default="fact", pattern="^(fact|rule|decision|preference)$")
     said: str = Field(default="", max_length=4000)
+
+
+# ------------------------------------------------------------------------- the Library
+
+LIBRARY_KIND = "^(guide|reference|influence)$"
+LIBRARY_REFRESH = "^(never|weekly|monthly)$"
+
+
+class LibraryWriteIn(Body):
+    """A guide (or any item) written in the Library itself, in Markdown."""
+
+    title: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=200_000)
+    kind: str = Field(default="guide", pattern=LIBRARY_KIND)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class LibraryUrlIn(Body):
+    """A web page to fetch and keep."""
+
+    url: str = Field(min_length=9, max_length=2000)
+    kind: str = Field(default="influence", pattern=LIBRARY_KIND)
+    title: str = Field(default="", max_length=200)
+    refresh: str = Field(default="never", pattern=LIBRARY_REFRESH)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class LibraryRepoIn(Body):
+    """A GitHub repository to keep as a snapshot: its README, its tree and the files picked."""
+
+    url: str = Field(min_length=20, max_length=500)
+    paths: list[str] = Field(default_factory=list, max_length=20)
+    kind: str = Field(default="influence", pattern=LIBRARY_KIND)
+    title: str = Field(default="", max_length=200)
+    refresh: str = Field(default="never", pattern=LIBRARY_REFRESH)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class LibraryItemIn(Body):
+    """Change what kind of item a document is, or how often it is fetched again."""
+
+    path: str = Field(min_length=1, max_length=500)
+    kind: str | None = Field(default=None, pattern=LIBRARY_KIND)
+    refresh: str | None = Field(default=None, pattern=LIBRARY_REFRESH)
+
+
+class LibraryRefreshIn(Body):
+    path: str = Field(min_length=1, max_length=500)
+
+
+# ------------------------------------------------------------------------- agents
+
+
+class AgentForm(Body):
+    """An agent's role, written like a job description: the Brain checks what each field means."""
+
+    role: str = Field(default="", max_length=300)
+    responsibilities: list[str] = Field(default_factory=list, max_length=20)
+    goals: list[str] = Field(default_factory=list, max_length=20)
+    projects: list[str] = Field(default_factory=list, max_length=20)
+    skills: list[str] = Field(default_factory=list, max_length=20)
+    library: list[str] = Field(default_factory=list, max_length=20)
+    context: list[str] = Field(default_factory=list, max_length=20)
+    meetings_days: int = Field(default=0, ge=0, le=90)
+    boundaries: list[str] = Field(default_factory=list, max_length=20)
+    output: str = Field(default="outputs", pattern="^(outputs|workspace|proposals)$")
+    output_shape: str = Field(default="", max_length=500)
+    runner: str = Field(default="claude", max_length=90)
+    review: bool = True
+
+
+class AgentSaveIn(AgentForm):
+    name: str = Field(min_length=1, max_length=64)
+    prompt: str = Field(default="", max_length=30_000)
+
+
+class AgentPromptIn(AgentForm):
+    """Ask the chosen model to write the operating prompt from the form (saved or not)."""
+
+    name: str = Field(default="", max_length=64)
+    model: str | None = Field(default=None, max_length=140)
+
+
+class AgentAskIn(Body):
+    ask: str = Field(min_length=1, max_length=4000)
+    project: str | None = Field(default=None, max_length=200)
+
+
+# ------------------------------------------------------------------------- the Workspace
+
+
+class WorkspaceDocIn(Body):
+    template: str = Field(default="blank", pattern="^(blank|outline|plan|decision|progress)$")
+    title: str = Field(default="", max_length=300)
+    projects: list[str] = Field(default_factory=list, max_length=10)
+
+
+class WorkspaceLinkIn(Body):
+    url: str = Field(min_length=8, max_length=2000)
+    title: str = Field(default="", max_length=300)
+    projects: list[str] = Field(default_factory=list, max_length=10)
+
+
+class WorkspaceProjectsIn(Body):
+    projects: list[str] = Field(default_factory=list, max_length=10)
+
+
+class WorkspaceDraftIn(Body):
+    skill: str | None = Field(default=None, max_length=80)
+    agent: str | None = Field(default=None, max_length=64)
+    ask: str = Field(default="", max_length=2000)
+
+
+class WorkspaceContinueIn(Body):
+    where: str = Field(default="", max_length=300)
+
+
+class WorkspaceUseIn(Body):
+    task_id: str = Field(min_length=1, max_length=80)
+    how: str = Field(pattern="^(version|append|new)$")
+
+
+# ------------------------------------------------------------------------- Compose
+
+
+class ComposePicks(Body):
+    """What goes with a request: skills in order, one agent, notes, documents, a project."""
+
+    skills: list[str] = Field(default_factory=list, max_length=6)
+    agent: str | None = Field(default=None, max_length=64)
+    docs: list[str] = Field(default_factory=list, max_length=5)
+    library: list[str] = Field(default_factory=list, max_length=5)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class ComposeIn(ComposePicks):
+    request: str = Field(min_length=1, max_length=8000)
+
+    def spec(self) -> dict[str, Any]:
+        return {
+            "request": self.request,
+            "skills": self.skills,
+            "agent": self.agent,
+            "docs": self.docs,
+            "library": self.library,
+            "project": self.project,
+        }
+
+
+class ComposeRunIn(ComposeIn):
+    prompt_id: str | None = Field(default=None, max_length=80)
+
+
+class ComposeImproveIn(ComposeIn):
+    model: str | None = Field(default=None, max_length=140)
+
+
+class PromptIn(Body):
+    title: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=8000)
+    picks: ComposePicks = Field(default_factory=ComposePicks)
+
+
+class PromptPatch(Body):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    body: str | None = Field(default=None, min_length=1, max_length=8000)
+    picks: ComposePicks | None = None
+    expected_version: int | None = None
+
+
+# ------------------------------------------------------------------------- Workflows
+
+
+class WorkflowIn(Body):
+    """A workflow from the builder: its steps (checked in full by the workflow service), when it
+    runs, where it runs and where what it makes goes."""
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    project: str | None = Field(default=None, max_length=200)
+    schedule: dict[str, Any] = Field(default_factory=lambda: {"kind": "manual"})
+    ai: bool = False
+    steps: list[dict[str, Any]] = Field(min_length=1, max_length=12)
+    runner: str = Field(default="claude", pattern="^(claude|any)$")
+    output: dict[str, Any] = Field(default_factory=lambda: {"kind": "outputs"})
+    enabled: bool = True
+    expected_version: int | None = None
+
+    def fields(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "project": self.project,
+            "schedule": self.schedule,
+            "ai": self.ai,
+            "steps": self.steps,
+            "runner": self.runner,
+            "output": self.output,
+            "enabled": self.enabled,
+        }
+
+
+class WorkflowRunIn(Body):
+    request: str = Field(default="", max_length=4000)
+
+
+class WorkflowDecideIn(Body):
+    go: bool
+    edit: str | None = Field(default=None, max_length=400000)
+    note: str = Field(default="", max_length=500)
+
+
+# ------------------------------------------------------------------------- Skills, upgraded
+
+
+class SkillGitIn(Body):
+    """A skill in a GitHub repository: its address (a repository, or a folder in one)."""
+
+    url: str = Field(min_length=19, max_length=500)
+    path: str = Field(default="", max_length=300)
+
+
+class SkillPushIn(Body):
+    """Where in Claude Code the copy goes: the person's own skills, or a project's."""
+
+    project_dir: str | None = Field(default=None, max_length=1000)
+
+
+class SuggestionDismissIn(Body):
+    key: str = Field(min_length=1, max_length=80)

@@ -1,24 +1,25 @@
-// The quickest ways to bring something into the Brain: talk, upload, or write. Everything lands
-// in Capture first, private to you, until you pull from it or file it.
+// The quickest ways to bring something into the Brain: talk or upload (each lands in Capture
+// first), or write (a doc in Work, Workspace). All of it stays private to you until you pull from
+// it or file it.
 
 import { NotebookPen } from "lucide-react";
 import { useNavigate } from "react-router";
 
-import { useBringIn, useCreateNote } from "../api/hooks";
+import { useBringIn, useNewDoc } from "../api/hooks";
 import { UploadButton } from "./CaptureParts";
 import { TalkButton } from "./Talk";
 import { ErrorNote } from "./ui";
 
 export function BringIn() {
-  const create = useCreateNote();
+  const create = useNewDoc();
   const bring = useBringIn();
   const navigate = useNavigate();
   return (
     <section className="bring-in" aria-label="Bring something in" data-tour="home-bring-in">
       <h2>Bring something in</h2>
       <p className="muted">
-        Hold the button or Space to talk to your Brain, bring in a recording, a transcript or a file, or write a note. It stays private in
-        Capture until you pull from it.
+        Hold the button or Space to talk to your Brain, bring in a recording, a transcript or a file, or write in your Workspace. It stays
+        private until you pull from it.
       </p>
       <div className="row">
         <TalkButton big />
@@ -35,7 +36,7 @@ export function BringIn() {
         <button
           type="button"
           disabled={create.isPending}
-          onClick={() => create.mutate({}, { onSuccess: (note) => navigate(`/capture/${note.id}`) })}
+          onClick={() => create.mutate({ template: "blank" }, { onSuccess: (doc) => navigate(`/work/workspace/${encodeURIComponent(doc.id)}`) })}
         >
           <NotebookPen className="button-icon" aria-hidden="true" />
           Write

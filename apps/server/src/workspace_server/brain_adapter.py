@@ -516,6 +516,12 @@ class BrainKitAdapter:
                     dated=str(meta.get("dated") or "")[:10] or None,
                     sections=parts.get(path, 0),
                     work=str(meta.get("type") or "") == "file",
+                    library=str(meta.get("library") or "") or None,
+                    source_url=str(meta.get("source_url") or "") or None,
+                    source_repo=str(meta.get("source_repo") or "") or None,
+                    source_paths=tuple(str(p) for p in (meta.get("source_paths") or [])),
+                    fetched_at=str(meta.get("fetched_at") or "") or None,
+                    refresh=str(meta.get("refresh") or "") or None,
                 )
             )
         assets = []
@@ -628,6 +634,56 @@ class BrainKitAdapter:
             return None
         return list(result.data.get("versions") or [])
 
+    def skill_freshness(self, name: str) -> dict[str, Any] | None:
+        st = self.brain.state()
+        chain, partitions = self._view(st)
+        skill = st.index.skills.get(str(name or "").strip().lstrip("/"))
+        if skill is None or not Scopes.admits(skill.scope, skill.partition, chain, partitions):
+            return None
+        versions = self.skill_versions(skill.name) or []
+        edited = str(versions[0].get("at") or "") if versions else ""
+        changed: list[dict[str, Any]] = []
+        for key in skill.loads:
+            when, title = self._load_changed(st, str(key))
+            if when and edited and when > edited:
+                changed.append({"key": str(key), "title": title, "at": when})
+        return {"last_edited": edited or None, "changed": changed}
+
+    def _load_changed(self, st: Any, key: str) -> tuple[str | None, str]:
+        """When what a skill loads last changed on disk (a document, or the newest note on a
+        topic or in an area), and what to call it."""
+        clean = key.strip().strip("/")
+        if clean.startswith("references/"):
+            ref = st.index.references.get(clean)
+            paths, title = ([clean], ref.title) if ref is not None else ([], clean)
+        else:
+            paths = [
+                n.path
+                for n in st.index.notes.values()
+                if n.route_key == clean or n.route_key.startswith(clean + "/") or n.area == clean
+            ]
+            title = clean
+        times = []
+        for rel in paths:
+            try:
+                times.append(os.path.getmtime(self.brain.vault.path(*rel.split("/"))))
+            except OSError:
+                continue
+        if not times:
+            return None, title
+        return datetime.fromtimestamp(max(times), UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), title
+
+    def embed(self, texts: list[str]) -> list[list[float]] | None:
+        embedder = getattr(self.brain, "embedder", None)
+        if embedder is None or not texts:
+            return None
+        try:
+            vectors = embedder.embed([str(t) for t in texts])
+        except Exception:  # no model here, or it failed: callers compare by words
+            log.warning("embedding failed", exc_info=True)
+            return None
+        return [list(v) for v in vectors] if vectors else None
+
     def propose_skill(
         self,
         *,
@@ -644,6 +700,8 @@ class BrainKitAdapter:
         loads: list[str] | None = None,
         reason: str = "",
         evidence: str = "",
+        files: list[dict[str, Any]] | None = None,
+        depends_on: list[str] | None = None,
     ) -> BrainProposal:
         source = f"{WORKSPACE_SOURCE}{proposer}"
         if sources:
@@ -666,6 +724,8 @@ class BrainKitAdapter:
                 triggers=triggers,
                 artifacts=artifacts,
                 loads=loads,
+                depends_on=depends_on,
+                files=files,
                 body=body,
                 scope=scope,
                 reason=reason or ("a change proposed from the workspace" if target else ""),
@@ -952,6 +1012,8 @@ class BrainKitAdapter:
         status: str | None = None,
         origin: str = "app",
         wait: bool = False,
+        library: dict[str, Any] | None = None,
+        replaces: str | None = None,
     ) -> BrainProposal:
         with self._lock:
             result = self.brain.add_file(
@@ -965,6 +1027,8 @@ class BrainKitAdapter:
                 origin=origin,
                 wait=wait,
                 source=f"{WORKSPACE_SOURCE}{proposer}",
+                library=library or None,
+                replaces=replaces or None,
             )
         found = result.data
         outcome = str(found.get("status") or ("refused" if result.is_error else "pending"))
@@ -1243,6 +1307,43 @@ class BrainKitAdapter:
 
     def agent_skills(self) -> list[dict[str, Any]]:
         return list(self.brain.agent_skills().data.get("skills") or [])
+
+    # ---- Work: agents
+
+    def agents(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        return list(self.brain.agents(archived=archived).data.get("agents") or [])
+
+    def agent(self, name: str) -> dict[str, Any] | None:
+        result = self.brain.agent(name)
+        if result.is_error:
+            return None
+        return dict(result.data)
+
+    def save_agent(
+        self, name: str, fields: dict[str, Any], prompt: str, *, label: str | None = None
+    ) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.save_agent(name, fields, prompt, label=label)
+        if result.is_error:
+            raise ValidationFailed(result.text, problems=result.data.get("problems") or [])
+        return dict(result.data)
+
+    def archive_agent(self, name: str) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.archive_agent(name)
+        if result.is_error:
+            raise NotFound(result.text, name=name)
+        return dict(result.data)
+
+    def agent_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
+        result = self.brain.agent_versions(name, with_text=with_text)
+        if result.is_error:
+            return None
+        return list(result.data.get("versions") or [])
+
+    def work_skill(self, name: str) -> str | None:
+        result = self.brain.work_skill(name)
+        return None if result.is_error else str(result.data.get("text") or "")
 
     def weekly(self, weeks: int = 8) -> list[dict[str, Any]]:
         return list(self.brain.weekly(weeks).data.get("weeks") or [])

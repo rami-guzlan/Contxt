@@ -167,6 +167,15 @@ class BrainFile:
     dated: str | None = None
     sections: int = 0
     work: bool = False
+    # In the Library, from its card: what kind of item it is (guide, reference, influence),
+    # where it was fetched from (a page, or a repository and the files picked from it), when,
+    # and how often it is fetched again (never, weekly, monthly).
+    library: str | None = None
+    source_url: str | None = None
+    source_repo: str | None = None
+    source_paths: tuple[str, ...] = ()
+    fetched_at: str | None = None
+    refresh: str | None = None
 
 
 @dataclass(frozen=True)
@@ -289,14 +298,28 @@ class BrainPort(Protocol):
         loads: list[str] | None = None,
         reason: str = "",
         evidence: str = "",
+        files: list[dict[str, Any]] | None = None,
+        depends_on: list[str] | None = None,
     ) -> BrainProposal:
         """A new skill, or a new version of one: it waits for review (`pending`), or is
-        `duplicate` when a proposal for that skill already waits, or `refused`."""
+        `duplicate` when a proposal for that skill already waits, or `refused`. `files` are
+        the skill's own files ({"path", "content_base64"}), beside its SKILL.md."""
         ...
 
     def skill_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
         """Every version of a skill's procedure, newest first; None when there is no such
         skill."""
+        ...
+
+    def skill_freshness(self, name: str) -> dict[str, Any] | None:
+        """When the skill was last edited, and what it loads (notes, documents) that changed
+        since: {"last_edited", "changed": [{"key", "title", "at"}]}; None when there is no
+        such skill."""
+        ...
+
+    def embed(self, texts: list[str]) -> list[list[float]] | None:
+        """Vectors for `texts` from the Brain's local model, to compare by meaning; None
+        when no model is here (callers then compare by words)."""
         ...
 
     def skill_folder(self, name: str) -> str | None:
@@ -322,11 +345,14 @@ class BrainPort(Protocol):
         status: str | None = None,
         origin: str = "app",
         wait: bool = False,
+        library: dict[str, Any] | None = None,
+        replaces: str | None = None,
     ) -> BrainProposal:
         """File a document or asset (in a project, as a new version of one already there
-        when its name says so). The Brain's capture policy decides whether it is filed at
-        once, with an undo point (`status` applied), or waits for review (pending); `wait`
-        makes it wait whatever the policy says."""
+        when its name says so, or of the one `replaces` names). The Brain's capture policy
+        decides whether it is filed at once, with an undo point (`status` applied), or waits
+        for review (pending); `wait` makes it wait whatever the policy says. `library` gives a
+        document its Library fields on its card."""
         ...
 
     def projects(self) -> list[BrainProject]:
@@ -454,6 +480,36 @@ class BrainPort(Protocol):
     def agent_skills(self) -> list[dict[str, Any]]:
         """The knowledge agent's procedures: [{"name", "description", "when_to_use",
         "triggers", "text", "own"}]."""
+        ...
+
+    # ---- Work: agents, roles kept in the Brain (agents/<name>/AGENT.md)
+
+    def agents(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        """The agents the owner defined, each its role, pointers and operating prompt."""
+        ...
+
+    def agent(self, name: str) -> dict[str, Any] | None:
+        """One agent: {"agent", "resolved" (each pointer as it is now, and what no longer
+        resolves), "prompt" (its role as a model gets it)}; None when there is no such agent."""
+        ...
+
+    def save_agent(
+        self, name: str, fields: dict[str, Any], prompt: str, *, label: str | None = None
+    ) -> dict[str, Any]:
+        """Create or change an agent as the owner: applied at once, one undo point. Raises
+        ValidationFailed with the Brain's words when the role is not right."""
+        ...
+
+    def archive_agent(self, name: str) -> dict[str, Any]:
+        """Hide an agent; its file stays, with an undo point."""
+        ...
+
+    def agent_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
+        """Every saved version of an agent, newest first; None when there is no such agent."""
+        ...
+
+    def work_skill(self, name: str) -> str | None:
+        """A procedure Work follows with a model (agent-builder, prompt-improver)."""
         ...
 
     def unsaved(self) -> list[str]:
@@ -622,6 +678,12 @@ class NoBrain:
     def skill_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
         return None
 
+    def skill_freshness(self, name: str) -> dict[str, Any] | None:
+        return None
+
+    def embed(self, texts: list[str]) -> list[list[float]] | None:
+        return None
+
     def skill_folder(self, name: str) -> str | None:
         return None
 
@@ -726,6 +788,26 @@ class NoBrain:
 
     def agent_skills(self) -> list[dict[str, Any]]:
         return []
+
+    def agents(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        return []
+
+    def agent(self, name: str) -> dict[str, Any] | None:
+        return None
+
+    def save_agent(
+        self, name: str, fields: dict[str, Any], prompt: str, **_: Any
+    ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep agents in.")
+
+    def archive_agent(self, name: str) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep agents in.")
+
+    def agent_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
+        return None
+
+    def work_skill(self, name: str) -> str | None:
+        return None
 
     def unsaved(self) -> list[str]:
         return []

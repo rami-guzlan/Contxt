@@ -1120,6 +1120,71 @@ class Brain:
             return error(str(exc), action=str(action or ""))
         return Result(f"{len(found['candidates'])} candidate(s) for {action}.", found)
 
+    # ------------------------------------------------------------------ Work: agents
+
+    def agents(self, *, principal=None, partition=None, archived=False) -> Result:
+        """The agents the caller may see: roles written like a job description (agents.py)."""
+        from . import agents
+        caller = self.caller(principal, None, partition)
+        if isinstance(caller, Result):
+            return caller
+        found = agents.list_agents(self, *caller, archived=bool(archived))
+        text = "\n".join(f"- {a['name']}: {a['role']}" for a in found) or "No agents yet."
+        return Result(text, {"agents": found})
+
+    def agent(self, name, *, principal=None, partition=None) -> Result:
+        """One agent: its role, its pointers as each is now (and which no longer resolve), and
+        the prompt a model gets for it before the brief of a task."""
+        from . import agents
+        caller = self.caller(principal, None, partition)
+        if isinstance(caller, Result):
+            return caller
+        found = agents.get(self, name, *caller)
+        if found is None:
+            return error(f"No agent named {name!r} is available to {' > '.join(caller[0])}.",
+                         name=str(name or ""))
+        resolved = agents.resolve(self, found, *caller)
+        prompt = agents.assemble(self, found, resolved)
+        return Result(prompt, {"agent": found, "resolved": resolved, "prompt": prompt})
+
+    def agent_prompt(self, name, *, session_id=None, principal=None, partition=None) -> Result:
+        """An agent's role as a connected AI takes it on (MCP get_agent): the assembled prompt,
+        then how to get the brief for the task in front of it."""
+        found = self.agent(name, principal=principal, partition=partition)
+        if found.is_error:
+            return found
+        text = found.text + (
+            "\nFor the task in front of you, call get_task_context with the request"
+            + (f" and session_id {session_id}" if session_id else "")
+            + ", and follow this role with what it brings.\n")
+        return Result(text, found.data)
+
+    def save_agent(self, name, fields, prompt, **kwargs) -> Result:
+        """Create or change an agent: the owner's change, one undo point (agents.py)."""
+        from . import agents
+        return self._write(lambda: agents.save(self, name, fields, prompt, **kwargs))
+
+    def archive_agent(self, name, **kwargs) -> Result:
+        from . import agents
+        return self._write(lambda: agents.archive(self, name, **kwargs))
+
+    def agent_versions(self, name, *, limit=30, with_text=False) -> Result:
+        """Every saved version of an agent, newest first, from git."""
+        from . import agents
+        rows = agents.versions(self, name, limit=limit, with_text=with_text)
+        if rows is None:
+            return error(f"No agent named {name!r}.", name=str(name or ""))
+        return Result(f"{len(rows)} version(s).", {"agent": str(name), "versions": rows})
+
+    def work_skill(self, name) -> Result:
+        """A procedure Work follows with a model: writing an agent's prompt, improving a prompt
+        (agents.py); the brain's own skill of that name replaces the shipped one."""
+        from . import agents
+        text = agents.work_skill_text(self, name)
+        if text is None:
+            return error(f"No Work procedure {name!r}.", name=str(name or ""))
+        return Result(f"/{name}", {"name": str(name), "text": text})
+
     def goals(self) -> Result:
         """The questions about what this brain is for, and the owner's answers (goals.py)."""
         from . import goals

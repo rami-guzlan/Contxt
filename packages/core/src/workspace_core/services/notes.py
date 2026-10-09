@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import builtins
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
@@ -45,8 +45,12 @@ LINK = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
 # *a*, **a**, ***a***, and _a_ or __a__ standing alone (not inside a snake_case word)
 EMPHASIS = re.compile(r"(\*{1,3})(?=\S)(.+?)(?<=\S)\1|(?<!\w)(_{1,3})(?=\S)(.+?)(?<=\S)\3(?!\w)")
 STATUS = re.compile(r"^[a-z][a-z -]{0,29}$")
-# What a capture is (its item's `source_label`); anything else is a note typed here.
-CAPTURE_KINDS = ("note", "talk", "recording", "transcript", "document")
+# What a capture is (its item's `source_label`); anything else is a note typed here. A "link"
+# is a Workspace item that points somewhere (a calendar, a sheet, a folder): its `url`.
+CAPTURE_KINDS = ("note", "talk", "recording", "transcript", "document", "link")
+# A note linked to a project carries a label naming it: linked, never copied, still private.
+PROJECT_LABEL = "project:"
+MAX_PROJECTS = 10
 SPOKEN = ("talk", "recording")
 TRANSCRIBING = ("pending", "working")
 TRANSCRIPTION_STATES = ("pending", "working", "ready", "failed")
@@ -123,6 +127,8 @@ class Note:
     original: dict[str, Any] | None = None  # what was brought in: filename, mime, size
     transcription: dict[str, Any] | None = None  # state, progress, duration, error
     digest: dict[str, Any] | None = None  # its summary and key points, or how far it is
+    projects: builtins.list[str] = field(default_factory=list)  # the projects it is linked to
+    url: str | None = None  # where a link points
 
 
 @dataclass(frozen=True)
@@ -194,11 +200,23 @@ class Notes:
 
     # ---------------------------------------------------------------- writing
 
-    def create(self, who: Principal, *, title: str = "", body: Any = None) -> Note:
-        """A new note in the caller's own space."""
+    def create(
+        self,
+        who: Principal,
+        *,
+        title: str = "",
+        body: Any = None,
+        projects: builtins.list[str] | None = None,
+        url: str | None = None,
+    ) -> Note:
+        """A new note in the caller's own space, linked to projects when given; with `url`, a
+        link (a calendar, a sheet, a folder) kept as a note that points there."""
         who.require("context.write")
         _person(who)
         text = clean_body(body)
+        link = _url(url) if url else None
+        if link and not text.strip():
+            text = link
         with self.rt.write() as tx:
             row = tx.insert(
                 schema.context_items,
@@ -210,7 +228,7 @@ class Notes:
                     "kind": KIND,
                     "title": _named({"title": UNTITLED}, title or None, text) or UNTITLED,
                     "body": text,
-                    "url": None,
+                    "url": link,
                     "object_key": None,
                     "filename": None,
                     "mime": None,
@@ -220,8 +238,8 @@ class Notes:
                     "shadow_status": "none",
                     "idea_state": None,
                     "memory_state": None,
-                    "labels": [],
-                    "source_label": None,
+                    "labels": project_labels([], projects or []),
+                    "source_label": "link" if link else None,
                     "revision": 1,
                     "last_referenced_at": None,
                     "provenance": {"made_by": who.actor_id},
@@ -300,6 +318,24 @@ class Notes:
             )
             return self._notes(tx, [row])[0]
 
+    def set_projects(self, who: Principal, note_id: str, projects: builtins.list[str]) -> Note:
+        """Link a note to these projects (and no others). A link is a label: the note stays
+        private, and is never copied."""
+        with self.rt.write() as tx:
+            row = self._writable(tx, who, note_id)
+            labels = project_labels(row["labels"] or [], projects)
+            if labels != sorted(row["labels"] or []):
+                row = tx.update(schema.context_items, row, {"labels": labels})
+                tx.emit(
+                    "note.linked",
+                    actor_id=who.actor_id,
+                    subject_type="context_item",
+                    subject_id=row["id"],
+                    data={"projects": _projects(row)},
+                    noise=True,
+                )
+            return self._notes(tx, [row])[0]
+
     def name_version(self, who: Principal, note_id: str, label: str) -> Note:
         """Name the current version and seal it: the next save starts a new one."""
         text = " ".join(str(label or "").split())[:200]
@@ -319,6 +355,43 @@ class Notes:
                 subject_type="context_item",
                 subject_id=row["id"],
                 data={"revision": row["revision"], "label": text},
+            )
+            return self._notes(tx, [row])[0]
+
+    def add_version(self, who: Principal, note_id: str, *, body: Any, label: str) -> Note:
+        """Text from elsewhere (what an AI made, taken by the owner) as a new version of its own,
+        named and sealed: the version before it stays whole, and the next edit starts afresh."""
+        text = " ".join(str(label or "").split())[:200]
+        if not text:
+            raise ValidationFailed("Give the version a name.", field="label")
+        with self.rt.write() as tx:
+            row = self._writable(tx, who, note_id)
+            if row["archived_at"]:
+                raise Conflict(f"“{row['title']}” is archived. Restore it first.")
+            revisions = schema.context_item_revisions
+            # Seal the version the owner was writing in, so the next one never joins it.
+            tx.conn.execute(
+                revisions.update()
+                .where(revisions.c.item_id == row["id"], revisions.c.revision == row["revision"])
+                .values(sealed=True)
+            )
+            row = tx.update(
+                schema.context_items,
+                row,
+                {"body": clean_body(body), "revision": row["revision"] + 1},
+            )
+            record_revision(tx, who, row)
+            tx.conn.execute(
+                revisions.update()
+                .where(revisions.c.item_id == row["id"], revisions.c.revision == row["revision"])
+                .values(label=text, sealed=True)
+            )
+            tx.emit(
+                "note.edited",
+                actor_id=who.actor_id,
+                subject_type="context_item",
+                subject_id=row["id"],
+                data={"revision": row["revision"], "title": row["title"], "label": text},
             )
             return self._notes(tx, [row])[0]
 
@@ -519,6 +592,8 @@ class Notes:
                 original=_original(row),
                 transcription=_transcription(row),
                 digest=_digest(row),
+                projects=_projects(row),
+                url=row.get("url"),
             )
             for row in rows
         ]
@@ -526,6 +601,33 @@ class Notes:
 
 def _project(row: dict[str, Any]) -> str | None:
     return row["scope_id"] if row["scope_kind"] == "project" else None
+
+
+def project_labels(labels: builtins.list[str], projects: builtins.list[str]) -> builtins.list[str]:
+    """A note's labels with its project links set to `projects` (other labels kept)."""
+    wanted = list(dict.fromkeys(str(p).strip() for p in projects if str(p).strip()))
+    if len(wanted) > MAX_PROJECTS:
+        raise ValidationFailed(f"Link a note to at most {MAX_PROJECTS} projects.", field="projects")
+    for project in wanted:
+        if len(project) > 120 or not re.match(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$", project):
+            raise ValidationFailed(f"{project!r} is not a project's id.", field="projects")
+    kept = [str(label) for label in labels if not str(label).startswith(PROJECT_LABEL)]
+    return sorted(set(kept + [PROJECT_LABEL + p for p in wanted]))
+
+
+def _projects(row: dict[str, Any]) -> builtins.list[str]:
+    return [
+        str(label)[len(PROJECT_LABEL) :]
+        for label in row.get("labels") or []
+        if str(label).startswith(PROJECT_LABEL)
+    ]
+
+
+def _url(url: str) -> str:
+    text = str(url or "").strip()
+    if not re.match(r"^https?://\S+$", text) or len(text) > 2000:
+        raise ValidationFailed("A link is an http:// or https:// address.", field="url")
+    return text
 
 
 def _capture(row: dict[str, Any]) -> str:

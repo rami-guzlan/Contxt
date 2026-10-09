@@ -23,17 +23,21 @@ from .deps import error_response
 from .difference import Differences
 from .extractor import DocumentExtractor
 from .knowledge_agent import AgentWork
+from .library import Library
 from .mcp.protocol import McpHandler
 from .models import Models
 from .outputs import Outputs
 from .routes import (
     agent,
+    agents,
     backups,
     brain,
     bus,
     captures,
+    compose,
     connections,
     legacy,
+    library,
     mcp,
     notes,
     outputs,
@@ -41,6 +45,9 @@ from .routes import (
     runners,
     skills,
     system,
+    work,
+    workflows,
+    workspace,
 )
 from .runners import Runners
 from .settings import Settings
@@ -61,6 +68,7 @@ class Runtime:
     outputs: Outputs
     models: Models
     agent: AgentWork
+    library: Library
     closed: bool = False
 
     def close(self) -> None:
@@ -126,6 +134,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         outputs=Outputs(ws, settings.exports_dir or os.path.join(settings.data_dir, "exports")),
         models=models,
         agent=AgentWork(ws, models),
+        library=Library(ws, settings.data_dir),
     )
 
 
@@ -161,6 +170,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         notes,
         captures,
         agent,
+        agents,
         brain,
         outputs,
         proof,
@@ -169,7 +179,12 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         connections,
         runners,
         legacy,
+        library,
         backups,
+        workspace,
+        compose,
+        workflows,
+        work,
         mcp,
     )
     for module in routers:

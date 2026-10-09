@@ -326,7 +326,7 @@ function ProposalDetail({
       ) : analysis.skill_before ? (
         <div className="relation">
           <p className="relation-head">
-            A new version of <Link to={`/skills/${encodeURIComponent(analysis.skill?.name ?? "")}`}>{name}</Link>: approving puts it to
+            A new version of <Link to={`/work/skills/${encodeURIComponent(analysis.skill?.name ?? "")}`}>{name}</Link>: approving puts it to
             work for every AI you connect, and Undo brings the old one back.
           </p>
           <Compare

@@ -19,6 +19,7 @@ from workspace_core.db.engine import Database, sqlite_url
 from workspace_core.domain.policy import Principal
 from workspace_core.domain.records import WorkspaceInfo
 from workspace_core.domain.schedule import zone
+from workspace_core.errors import WorkspaceError
 from workspace_core.ids import new_id
 from workspace_core.ports import BrainHit, BrainPort, BrainProject, NoBrain, TextExtractor
 from workspace_core.storage.objects import ObjectStore
@@ -26,23 +27,29 @@ from workspace_core.storage.objects import ObjectStore
 from .clock import iso
 from .services.actors import Actors
 from .services.agent import KnowledgeAgent
+from .services.agents import Agents
 from .services.approvals import Approvals
 from .services.artifacts import Artifacts, Destination
 from .services.brain import Brain
 from .services.bus import Bus
 from .services.captures import Captures
 from .services.catchup import CatchUp
+from .services.compose import Compose
 from .services.context import Context
 from .services.distill import Distillation
+from .services.docs import Docs
 from .services.events import Events
 from .services.legacy import Legacy
 from .services.movein import MovingIn
 from .services.notes import Note, Notes
 from .services.onboarding import Onboarding
 from .services.projects import Projects
+from .services.prompts import Prompts
 from .services.runtime import Runtime
 from .services.skills import Skills
+from .services.suggest import SkillSuggestions
 from .services.tasks import Tasks
+from .services.workflows import Workflows
 
 
 @dataclass
@@ -76,6 +83,15 @@ class Workspace:
         self.catch_up = CatchUp(rt, self.brain, self.legacy)
         self.move_in = MovingIn(rt)
         self.agent = KnowledgeAgent(rt, self.brain)
+        self.agents = Agents(rt, self.brain, self.skills, self.notes)
+        self.docs = Docs(rt, self.notes, self.brain, self.skills, self.agents)
+        self.prompts = Prompts(rt, self.skills)
+        self.compose = Compose(rt, self.brain, self.skills, self.agents, self.notes, self.prompts)
+        self.suggestions = SkillSuggestions(rt, self.prompts)
+        self.workflows = Workflows(
+            rt, self.brain, self.skills, self.compose, self.notes, self.prompts, self.artifacts
+        )
+        self.catch_up.checks = self.workflows.waiting
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -174,6 +190,50 @@ class Workspace:
         if who.can("context.read"):
             results.notes = self.notes.search(who, query, limit=limit)
         return results
+
+    def skill_users(self, who: Principal, name: str) -> dict[str, Any]:
+        """What uses a skill: the skills that build on it, the agents that point to it and the
+        workflows with a step that follows it."""
+        skill = self.skills.find(who, name)
+
+        def follows(step: dict[str, Any]) -> bool:
+            return step.get("skill") == skill.name or skill.name in (step.get("skills") or [])
+
+        return {
+            "skills": [s.name for s in self.brain.files(who).skills if skill.name in s.depends_on],
+            "agents": [
+                a["name"] for a in self.agents.list(who) if skill.name in (a.get("skills") or [])
+            ],
+            "workflows": [
+                {"id": w.id, "name": w.name}
+                for w in self.workflows.list(who)
+                if any(follows(s) for s in w.steps)
+            ],
+        }
+
+    def work_attention(self, who: Principal) -> dict[str, Any]:
+        """What in Work needs a look: skills whose loads changed after their last edit, and
+        agents whose pointers no longer resolve (a skill deleted, a topic renamed)."""
+        stale = []
+        for skill in self.brain.files(who).skills[:40]:
+            found = self.rt.brain.skill_freshness(skill.name)
+            if found and found.get("changed"):
+                stale.append(
+                    {
+                        "name": skill.name,
+                        "last_edited": found.get("last_edited"),
+                        "changed": found["changed"],
+                    }
+                )
+        broken = []
+        for agent in self.agents.list(who):
+            try:
+                resolved = self.agents.get(who, agent["name"])["resolved"]
+            except WorkspaceError:
+                continue
+            if resolved.get("broken"):
+                broken.append({"name": agent["name"], "broken": list(resolved["broken"])})
+        return {"stale_skills": stale, "broken_agents": broken}
 
     def counts(self, who: Principal) -> dict[str, Any]:
         """The numbers the navigation and the status show: what waits for the person in

@@ -2,8 +2,21 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api, get, post, put, query } from "./client";
+import { api, del, get, post, put, query } from "./client";
 import type {
+  SkillAbout,
+  SkillBroughtIn,
+  SkillCopy,
+  SkillSuggestion,
+  Connectors,
+  Workflow,
+  WorkflowForm,
+  WorkflowRun,
+  WorkflowTemplate,
+  ComposeAssembly,
+  ComposePicks,
+  ComposeSpec,
+  SavedPrompt,
   BackupFile,
   BackupMade,
   LocalModels,
@@ -73,6 +86,19 @@ import type {
   AgentOverview,
   AgentSkill,
   AgentSuggestion,
+  LibraryFiled,
+  LibraryItem,
+  LibraryItemFull,
+  LibraryKind,
+  LibraryRefresh,
+  LibraryRefreshed,
+  WorkAgent,
+  WorkAgentForm,
+  WorkAgentFull,
+  WorkDraft,
+  WorkJob,
+  DocTemplate,
+  WorkspaceView,
 } from "./types";
 
 export const keys = {
@@ -88,6 +114,7 @@ export const keys = {
   onboarding: ["onboarding"] as const,
   legacy: ["legacy"] as const,
   skills: ["skills"] as const,
+  library: ["library"] as const,
 };
 
 export function useInvalidate() {
@@ -447,16 +474,6 @@ export function useRunSkill() {
   return useMutation({
     mutationFn: ({ name, ...body }: { name: string; ask: string; capture_id?: string; project?: string; files?: string[] }) =>
       post<Task>(`${skillPath(name)}/runs`, body),
-    onSettled: () => invalidate(keys.skills, keys.tasks),
-  });
-}
-
-/** A run from the Skills page: the skills chosen, followed in order (none: the one that fits). */
-export function useRunSkills() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (body: { names: string[]; ask: string; capture_id?: string; project?: string; files?: string[] }) =>
-      post<Task>("/api/skills/runs", body),
     onSettled: () => invalidate(keys.skills, keys.tasks),
   });
 }
@@ -1061,3 +1078,421 @@ export function useDismissAgentSuggestion() {
     onSettled: () => invalidate(agentKey),
   });
 }
+// ------------------------------------------------------------------ Work: the Library
+
+export const useLibrary = () => useQuery({ queryKey: keys.library, queryFn: () => get<LibraryItem[]>("/api/library") });
+
+export const useLibraryItem = (path: string) =>
+  useQuery({
+    queryKey: [...keys.library, "item", path],
+    queryFn: () => get<LibraryItemFull>(`/api/library/item${query({ path })}`),
+    enabled: !!path,
+  });
+
+function useLibraryMutation<I, O>(send: (input: I) => Promise<O>) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: send,
+    onSuccess: () => invalidate(keys.library, keys.brain, keys.home, keys.events),
+  });
+}
+
+/** Keep a guide (or a reference) written in the Library itself. */
+export const useWriteToLibrary = () =>
+  useLibraryMutation((input: { title: string; text: string; kind: LibraryKind; project?: string }) =>
+    post<LibraryFiled>("/api/library/write", input),
+  );
+
+/** Keep a document whole: PDF, Word, PowerPoint, HTML, Markdown or text. */
+export const useUploadToLibrary = () =>
+  useLibraryMutation((input: { file: File; kind: LibraryKind; title?: string; project?: string }) => {
+    const form = new FormData();
+    form.set("file", input.file);
+    form.set("kind", input.kind);
+    if (input.title) form.set("title", input.title);
+    if (input.project) form.set("project", input.project);
+    return api<LibraryFiled>("/api/library/upload", { method: "POST", form });
+  });
+
+/** Fetch a web page and keep it. */
+export const useFetchToLibrary = () =>
+  useLibraryMutation((input: { url: string; kind: LibraryKind; title?: string; refresh: LibraryRefresh }) =>
+    post<LibraryFiled>("/api/library/url", input),
+  );
+
+/** Keep a GitHub repository as a snapshot: its README, its tree and the files picked. */
+export const useLinkRepo = () =>
+  useLibraryMutation((input: { url: string; paths: string[]; kind: LibraryKind; title?: string; refresh: LibraryRefresh }) =>
+    post<LibraryFiled>("/api/library/repo", input),
+  );
+
+/** Change an item's kind or how often it is fetched again. */
+export const useUpdateLibraryItem = () =>
+  useLibraryMutation((input: { path: string; kind?: LibraryKind; refresh?: LibraryRefresh }) =>
+    put<LibraryItem>("/api/library/item", input),
+  );
+
+/** Fetch an item again now. */
+export const useRefreshLibraryItem = () =>
+  useLibraryMutation((path: string) => post<LibraryRefreshed>("/api/library/refresh", { path }));
+
+// ------------------------------------------------------------------ Work: agents
+
+const agentsKey = ["work-agents"] as const;
+
+export const useWorkAgents = (archived = false) =>
+  useQuery({ queryKey: [...agentsKey, { archived }], queryFn: () => get<WorkAgent[]>(`/api/agents${archived ? "?archived=true" : ""}`) });
+
+export const useWorkAgent = (name: string) =>
+  useQuery({
+    queryKey: [...agentsKey, name],
+    queryFn: () => get<WorkAgentFull>(`/api/agents/${encodeURIComponent(name)}`),
+    enabled: !!name,
+  });
+
+export const useWorkAgentVersions = (name: string) =>
+  useQuery({
+    queryKey: [...agentsKey, name, "versions"],
+    queryFn: () => get<SkillVersion[]>(`/api/agents/${encodeURIComponent(name)}/versions`),
+    enabled: !!name,
+  });
+
+/** What the agent was asked and what it made, newest first; looked at again while one runs. */
+export const useWorkAgentRuns = (name: string) =>
+  useQuery({
+    queryKey: [...agentsKey, name, "runs"],
+    queryFn: () => get<SkillRun[]>(`/api/agents/${encodeURIComponent(name)}/runs`),
+    enabled: !!name,
+    refetchInterval: (q) => ((q.state.data ?? []).some((r) => ["ready", "claimed", "in_progress"].includes(r.status)) ? 4000 : false),
+  });
+
+/** Save an agent: a new one (POST) or a change (PUT). */
+export function useSaveWorkAgent() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ form, isNew }: { form: WorkAgentForm; isNew: boolean }) =>
+      isNew ? post<WorkAgentFull>("/api/agents", form) : put<WorkAgentFull>(`/api/agents/${encodeURIComponent(form.name)}`, form),
+    onSuccess: () => invalidate(agentsKey, keys.brain, keys.library),
+  });
+}
+
+export function useArchiveWorkAgent() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (name: string) => api<unknown>(`/api/agents/${encodeURIComponent(name)}`, { method: "DELETE" }),
+    onSuccess: () => invalidate(agentsKey),
+  });
+}
+
+/** Have the chosen model write the operating prompt from the form; nothing is saved. */
+export const useWriteAgentPrompt = () =>
+  useMutation({
+    mutationFn: (form: Omit<WorkAgentForm, "prompt">) => post<WorkJob>("/api/agents/prompt", form),
+  });
+
+export const useWorkJob = <R = WorkDraft,>(id: string | null) =>
+  useQuery({
+    queryKey: ["work-job", id],
+    queryFn: () => get<WorkJob<R>>(`/api/brain/agent/jobs/${encodeURIComponent(id ?? "")}`),
+    enabled: !!id,
+    refetchInterval: (q) => (q.state.data && ["done", "failed"].includes(q.state.data.status) ? false : 1500),
+  });
+
+/** Ask an agent for something: a run like a skill run. */
+export function useAskWorkAgent() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ name, ask, project }: { name: string; ask: string; project?: string }) =>
+      post<Task>(`/api/agents/${encodeURIComponent(name)}/run`, { ask, project: project || undefined }),
+    onSuccess: () => invalidate(agentsKey, keys.tasks, keys.skills),
+  });
+}
+
+export const useAddAgentToClaudeCode = () =>
+  useMutation({
+    mutationFn: (name: string) => post<{ path: string; replaced: boolean }>(`/api/agents/${encodeURIComponent(name)}/claude-code`),
+  });
+
+// ------------------------------------------------------------------ Work: the Workspace
+
+const workspaceKey = ["workspace"] as const;
+
+/** The Workspace by project (or what was set aside); for one project, also the agents that work on it. */
+export const useWorkspace = (project = "", archived = false) =>
+  useQuery({
+    queryKey: [...workspaceKey, project, archived],
+    queryFn: () => get<WorkspaceView>(`/api/workspace/items${query({ project: project || undefined, archived: archived ? "true" : undefined })}`),
+  });
+
+function useWorkspaceMutation<I, O>(send: (input: I) => Promise<O>) {
+  const invalidate = useInvalidate();
+  return useMutation({ mutationFn: send, onSuccess: () => invalidate(workspaceKey, keys.notes) });
+}
+
+export const useNewDoc = () =>
+  useWorkspaceMutation((input: { template: DocTemplate; title?: string; projects?: string[] }) => post<Note>("/api/workspace/docs", input));
+
+export const useNewLink = () =>
+  useWorkspaceMutation((input: { url: string; title?: string; projects?: string[] }) => post<Note>("/api/workspace/links", input));
+
+export const useImportDoc = () =>
+  useWorkspaceMutation((input: { file: File; projects?: string[] }) => {
+    const form = new FormData();
+    form.set("file", input.file);
+    if (input.projects?.length) form.set("projects", input.projects.join(","));
+    return api<Note>("/api/workspace/import", { method: "POST", form });
+  });
+
+export const useLinkDocProjects = () =>
+  useWorkspaceMutation(({ id, projects }: { id: string; projects: string[] }) =>
+    put<Note>(`/api/workspace/${encodeURIComponent(id)}/projects`, { projects }),
+  );
+
+/** Ask AI about a doc: draft from it (a skill or an agent), push back on it, or continue it. */
+export function useDocAction() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, action, skill, agent, ask, where }: { id: string; action: "draft" | "push-back" | "continue"; skill?: string; agent?: string; ask?: string; where?: string }) =>
+      post<Task>(
+        `/api/workspace/${encodeURIComponent(id)}/${action}`,
+        action === "draft" ? { skill: skill || undefined, agent: agent || undefined, ask: ask ?? "" } : action === "continue" ? { where: where ?? "" } : {},
+      ),
+    onSuccess: (_task, input) => invalidate([...workspaceKey, "runs", input.id], keys.tasks, keys.skills),
+  });
+}
+
+export const useDocRuns = (id: string) =>
+  useQuery({
+    queryKey: [...workspaceKey, "runs", id],
+    queryFn: () => get<SkillRun[]>(`/api/workspace/${encodeURIComponent(id)}/runs`),
+    enabled: !!id,
+    refetchInterval: (q) => ((q.state.data ?? []).some((r) => ["ready", "claimed", "in_progress"].includes(r.status)) ? 4000 : false),
+  });
+
+/** Take what a run made: as the doc's next version, at its end, or as a new doc. */
+export function useUseDocResult() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, taskId, how }: { id: string; taskId: string; how: "version" | "append" | "new" }) =>
+      post<Note>(`/api/workspace/${encodeURIComponent(id)}/use`, { task_id: taskId, how }),
+    onSuccess: () => invalidate(workspaceKey, keys.notes),
+  });
+}
+
+export const docExportUrl = (id: string, format: "md" | "docx") => `/api/workspace/${encodeURIComponent(id)}/export?format=${format}`;
+
+// ------------------------------------------------------------------ Work: Compose
+
+const promptsKey = ["prompts"] as const;
+
+/** The whole prompt a model gets for a request and its picks, its size, and the short request
+ * for any AI. Nothing runs and nothing is recorded. */
+export const useAssembled = (spec: ComposeSpec | null) =>
+  useQuery({
+    queryKey: ["compose", spec],
+    queryFn: () => post<ComposeAssembly>("/api/compose/assemble", spec),
+    enabled: !!spec && !!spec.request.trim(),
+    staleTime: 30_000,
+    retry: false,
+  });
+
+/** Have the chosen model rewrite the request with what was picked; nothing changes until taken. */
+export const useImprovePrompt = () =>
+  useMutation({ mutationFn: (spec: ComposeSpec) => post<WorkJob>("/api/compose/improve", spec) });
+
+/** Run it here: a task like any skill run; from a saved prompt, it counts as a use. */
+export function useComposeRun() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (input: ComposeSpec & { prompt_id?: string }) => post<Task>("/api/compose/run", input),
+    onSuccess: () => invalidate(keys.tasks, keys.skills, promptsKey),
+  });
+}
+
+/** Saved prompts, the most used first; `q` finds them by their words. */
+export const useSavedPrompts = (q = "", archived = false) =>
+  useQuery({
+    queryKey: [...promptsKey, q, archived],
+    queryFn: () => get<SavedPrompt[]>(`/api/prompts${query({ q: q || undefined, archived: archived ? "true" : undefined })}`),
+  });
+
+/** Save a prompt, or (with `id`) change one: new words are a new version. */
+export function useSavePrompt() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id?: string; title: string; body: string; picks: ComposePicks; expected_version?: number }) =>
+      id ? put<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}`, input) : post<SavedPrompt>("/api/prompts", input),
+    onSuccess: () => invalidate(promptsKey),
+  });
+}
+
+/** Set a saved prompt aside, or bring it back. */
+export function useArchivePrompt() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, back = false }: { id: string; back?: boolean }) =>
+      back ? post<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}/restore`) : del<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}`),
+    onSuccess: () => invalidate(promptsKey),
+  });
+}
+
+// ------------------------------------------------------------------ Work: Workflows
+
+const workflowsKey = ["workflows"] as const;
+const going = (runs: WorkflowRun[] | undefined) => (runs ?? []).some((r) => r.status === "running" || r.status === "waiting");
+
+export const useWorkflows = (archived = false) =>
+  useQuery({
+    queryKey: [...workflowsKey, "list", archived],
+    queryFn: () => get<Workflow[]>(`/api/workflows${archived ? "?archived=true" : ""}`),
+    refetchInterval: (q) => ((q.state.data ?? []).some((w) => w.running) ? 5000 : false),
+  });
+
+export const useWorkflow = (id: string) =>
+  useQuery({
+    queryKey: [...workflowsKey, "one", id],
+    queryFn: () => get<Workflow>(`/api/workflows/${encodeURIComponent(id)}`),
+    enabled: !!id,
+  });
+
+export const useWorkflowTemplates = () =>
+  useQuery({ queryKey: [...workflowsKey, "templates"], queryFn: () => get<WorkflowTemplate[]>("/api/workflows/templates") });
+
+/** Runs, newest first: of one workflow, or of all; looked at again while one goes. */
+export const useWorkflowRuns = (id = "") =>
+  useQuery({
+    queryKey: [...workflowsKey, "runs", id],
+    queryFn: () => get<WorkflowRun[]>(id ? `/api/workflows/${encodeURIComponent(id)}/runs` : "/api/workflows/runs"),
+    refetchInterval: (q) => (going(q.state.data) ? 4000 : false),
+  });
+
+/** Runs waiting for you: a check, or a step a person must unblock. */
+export const useWaitingRuns = () =>
+  useQuery({
+    queryKey: [...workflowsKey, "waiting"],
+    queryFn: () => get<WorkflowRun[]>("/api/workflows/waiting"),
+    refetchInterval: 15000,
+  });
+
+/** What one step made, in full. */
+export const useStepResult = (runId: string, index: number | null) =>
+  useQuery({
+    queryKey: [...workflowsKey, "step", runId, index],
+    queryFn: () => get<{ title: string; text: string; version: number | null; artifact_id: string | null }>(`/api/workflows/runs/${encodeURIComponent(runId)}/steps/${index}`),
+    enabled: !!runId && index !== null,
+  });
+
+/** The MCP servers Claude Code here connects to; asked only when wanted (it starts them). */
+export const useConnectors = (wanted: boolean) =>
+  useQuery({ queryKey: [...workflowsKey, "connectors"], queryFn: () => get<Connectors>("/api/workflows/connectors"), enabled: wanted, staleTime: 60_000 });
+
+function useWorkflowMutation<I, O>(send: (input: I) => Promise<O>) {
+  const invalidate = useInvalidate();
+  return useMutation({ mutationFn: send, onSuccess: () => invalidate(workflowsKey, keys.tasks, workspaceKey) });
+}
+
+/** Save a workflow, or (with `id`) change it: a new revision. */
+export const useSaveWorkflow = () =>
+  useWorkflowMutation(({ id, ...form }: WorkflowForm & { id?: string; expected_version?: number }) =>
+    id ? put<Workflow>(`/api/workflows/${encodeURIComponent(id)}`, form) : post<Workflow>("/api/workflows", form),
+  );
+
+export const useArchiveWorkflow = () =>
+  useWorkflowMutation(({ id, back = false }: { id: string; back?: boolean }) =>
+    back ? post<Workflow>(`/api/workflows/${encodeURIComponent(id)}/restore`) : del<Workflow>(`/api/workflows/${encodeURIComponent(id)}`),
+  );
+
+export const useRunWorkflow = () =>
+  useWorkflowMutation(({ id, request = "" }: { id: string; request?: string }) =>
+    post<WorkflowRun>(`/api/workflows/${encodeURIComponent(id)}/run`, { request }),
+  );
+
+/** At a check: go on (with your edit, if any), or stop here. */
+export const useDecideCheck = () =>
+  useWorkflowMutation(({ runId, go, edit, note = "" }: { runId: string; go: boolean; edit?: string; note?: string }) =>
+    post<WorkflowRun>(`/api/workflows/runs/${encodeURIComponent(runId)}/decide`, { go, edit, note }),
+  );
+
+export const useStopRun = () =>
+  useWorkflowMutation((runId: string) => post<WorkflowRun>(`/api/workflows/runs/${encodeURIComponent(runId)}/stop`));
+
+/** A workflow file another Contxt made: it comes in switched off. */
+export const useImportWorkflow = () =>
+  useWorkflowMutation((file: File) => file.text().then((text) => post<Workflow>("/api/workflows/import", JSON.parse(text))));
+
+export const workflowExportUrl = (id: string) => `/api/workflows/${encodeURIComponent(id)}/export`;
+
+// ------------------------------------------------------------------ Work: Skills, upgraded
+
+export const useSkillAbout = (name: string) =>
+  useQuery({
+    queryKey: [...keys.skills, "about", name],
+    queryFn: () => get<SkillAbout>(`/api/skills/${encodeURIComponent(name)}/about`),
+    enabled: !!name,
+  });
+
+export const useSkillSuggestions = () =>
+  useQuery({
+    queryKey: [...keys.skills, "suggestions"],
+    queryFn: () => get<{ suggestions: SkillSuggestion[]; matched_by: "meaning" | "words" }>("/api/skills/suggestions"),
+    staleTime: 60_000,
+  });
+
+export function useDismissSuggestion() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (key: string) => post<null>("/api/skills/suggestions/dismiss", { key }),
+    onSuccess: () => invalidate([...keys.skills, "suggestions"]),
+  });
+}
+
+/** A skill from a zip, or from a folder picked in the browser (each file with its path). */
+export function useBringInSkill() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (input: { zip: File } | { files: File[] }) => {
+      const form = new FormData();
+      if ("zip" in input) form.set("file", input.zip);
+      else
+        for (const file of input.files) {
+          form.append("files", file);
+          form.append("paths", (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name);
+        }
+      return api<SkillBroughtIn>("/api/skills/import", { method: "POST", form });
+    },
+    onSuccess: () => invalidate(keys.skills, keys.brain),
+  });
+}
+
+export function useBringInSkillFromGit() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (input: { url: string; path?: string }) => post<SkillBroughtIn>("/api/skills/import/git", input),
+    onSuccess: () => invalidate(keys.skills, keys.brain),
+  });
+}
+
+/** Copy the skill into Claude Code, with a stamp of the version that went. */
+export function usePushSkill() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ name, projectDir }: { name: string; projectDir?: string }) =>
+      post<SkillCopy & { place: string }>(`/api/skills/${encodeURIComponent(name)}/push`, { project_dir: projectDir || undefined }),
+    onSuccess: (_made, input) => invalidate([...keys.skills, "about", input.name]),
+  });
+}
+
+export const skillExportUrl = (name: string) => `/api/skills/${encodeURIComponent(name)}/export`;
+
+/** What in Work needs a look: skills whose loads changed since their last edit, and agents
+ * whose pointers broke. */
+export const useWorkAttention = () =>
+  useQuery({
+    queryKey: [...keys.skills, "work-attention"],
+    queryFn: () =>
+      get<{
+        stale_skills: { name: string; last_edited: string | null; changed: { key: string; title: string; at: string }[] }[];
+        broken_agents: { name: string; broken: string[] }[];
+      }>("/api/work/attention"),
+    staleTime: 60_000,
+  });

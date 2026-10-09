@@ -23,7 +23,7 @@ function targetLink(question: AgentQuestion): string | null {
   const { type, id } = question.target;
   if (type === "note") return `/brain/entries/${encodeURIComponent(id)}`;
   if (type === "project") return `/projects/${encodeURIComponent(id)}`;
-  if (type === "skill") return `/skills/${encodeURIComponent(id)}`;
+  if (type === "skill") return `/work/skills/${encodeURIComponent(id)}`;
   if (type === "goals") return "/settings?tab=goals";
   return null;
 }
@@ -149,7 +149,7 @@ export function AgentQuestionCard({ question, compact = false }: { question: Age
               {question.target.type === "skill" && question.verdict === "triggers" && question.triggers?.length ? (
                 <Link
                   className="button primary"
-                  to={`/skills/${encodeURIComponent(question.target.id)}?tab=procedure&add=${encodeURIComponent(question.triggers.join("|"))}`}
+                  to={`/work/skills/${encodeURIComponent(question.target.id)}?tab=procedure&add=${encodeURIComponent(question.triggers.join("|"))}`}
                 >
                   Add these words
                 </Link>

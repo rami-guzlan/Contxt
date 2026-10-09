@@ -352,6 +352,51 @@ def propose_brain_skill(
     return text, {"proposal": asdict(result)}, result.status == "refused"
 
 
+def list_workflows(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any]]:
+    """The workflows the owner lets any AI start."""
+    found = [w for w in ws.workflows.list(ws.owner()) if w.ai and w.enabled]
+    rows = [
+        {
+            "name": w.name,
+            "id": w.id,
+            "description": w.description,
+            "steps": len(w.steps),
+            "running": w.running,
+        }
+        for w in found
+    ]
+    if not rows:
+        none = "No workflow is open to other AIs. Its owner can allow it on the workflow."
+        return none, {"workflows": []}
+    lines = [
+        f"- {r['name']} ({r['steps']} steps)"
+        + (f": {r['description']}" if r["description"] else "")
+        + (" [running now]" if r["running"] else "")
+        for r in rows
+    ]
+    return "Workflows you may start with run_workflow:\n" + "\n".join(lines), {"workflows": rows}
+
+
+def run_workflow(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Start a workflow the owner opened to other AIs; its steps run as the owner's work."""
+    owner = ws.owner()
+    found = ws.workflows.find(owner, str(_str(args, "name", True)))
+    run = ws.workflows.run(
+        owner,
+        found.id,
+        trigger="ai",
+        request=str(args.get("request") or ""),
+        asked_by=who.name,
+    )
+    text = (
+        f"Started “{found.name}” (run {run.id}): {len(run.steps)} steps. Its results wait in the "
+        "owner's Work; nothing is published or sent."
+    )
+    return text, {"run": run.to_dict()}
+
+
 def _strings(args: dict[str, Any], name: str) -> list[str] | None:
     """A list of short texts, given as a list or (as some clients send one) a single string."""
     value = args.get(name)
@@ -803,6 +848,29 @@ TOOLS: dict[str, Tool] = {
             ),
             propose_brain_skill,
             "brain.propose",
+        ),
+        Tool(
+            "list_workflows",
+            "The owner's workflows that any AI may start: steps that run as one thing (skills, "
+            "agents, prompts, checks), with what each is for.",
+            _obj({}),
+            list_workflows,
+            "tasks.claim",
+        ),
+        Tool(
+            "run_workflow",
+            "Start one of the owner's workflows by its name (see list_workflows), with an "
+            "optional request saying what this run is about. Its steps run as the owner's work "
+            "and wait for the owner's checks; nothing is published or sent.",
+            _obj(
+                {
+                    "name": {"type": "string", "description": "The workflow's name or id."},
+                    "request": {"type": "string", "description": "What this run is about."},
+                },
+                ["name"],
+            ),
+            run_workflow,
+            "tasks.claim",
         ),
     )
 }

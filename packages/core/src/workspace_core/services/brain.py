@@ -68,7 +68,11 @@ ENTRY_FIELDS = (
     "baseline",  # the owner marks it a baseline: a change to it waits, with a reason
     "as_of",  # the day a changing value was true (YYYY-MM-DD)
     "valid_until",  # the last day it holds
+    "library",  # a document's kind in the Library: guide, reference or influence
+    "refresh",  # how often the Library fetches it again: never, weekly or monthly
 )
+LIBRARY_KINDS = ("guide", "reference", "influence")
+LIBRARY_REFRESH = ("never", "weekly", "monthly")
 FIELD_LIMITS = {"triggers": 1200, "applies_to": 600}  # characters; other fields take 200
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,80}$")  # a version: a commit, or "current"
 MAX_TEXT = 60_000  # characters in one entry a person writes or edits
@@ -894,10 +898,16 @@ class Brain:
         topic: str | None = None,
         project: str | None = None,
         status: str | None = None,
+        library: dict[str, Any] | None = None,
+        replaces: str | None = None,
+        wait: bool = False,
     ) -> BrainProposal:
         """File a document or asset in the Brain, in a project when one is named (a file
         named like one already there is its new version). The Brain's capture policy decides
-        whether it is filed at once, with an undo point, or waits for a person's review."""
+        whether it is filed at once, with an undo point, or waits for a person's review;
+        `wait` makes it wait either way. `library` gives a document its Library fields (its
+        kind, source, when it was fetched, its refresh); `replaces` names the document this is
+        a new version of."""
         who.require("brain.propose")
         name = os.path.basename(str(filename or "").replace("\\", "/")).strip()
         if not name:
@@ -923,6 +933,9 @@ class Brain:
             status=copy,
             # A person in the workspace, or a model working through it.
             origin="app" if who.kind == "human" else "chat",
+            wait=wait,
+            library=library or None,
+            replaces=str(replaces or "").strip() or None,
         )
         if result.status == "refused":
             raise ValidationFailed(result.message, field="file")
@@ -960,6 +973,86 @@ class Brain:
                     },
                 )
         return result
+
+    # ---- the Library: documents kept whole, by what they are for
+
+    def library(self, who: Principal) -> list[dict[str, Any]]:
+        """Every document kept whole that this person may see, as Library items: its kind
+        (guide, reference or influence; a document filed before the Library is a reference),
+        where it came from and how often it is fetched again, and the skills that load it."""
+        who.require("brain.read")
+        files = self.rt.brain.files()
+        items = []
+        for ref in files.references:
+            items.append(
+                {
+                    "path": ref.path,
+                    "title": ref.title,
+                    "kind": ref.library or "reference",
+                    "summary": ref.description,
+                    "entry_id": ref.entry_id,
+                    "source_url": ref.source_url,
+                    "source_repo": ref.source_repo,
+                    "source_paths": list(ref.source_paths),
+                    "fetched_at": ref.fetched_at,
+                    "refresh": ref.refresh or "never",
+                    "updated": ref.updated,
+                    "dated": ref.dated,
+                    "version": ref.version,
+                    "size": ref.size,
+                    "original": ref.original,
+                    "project": ref.project,
+                    "project_title": ref.project_title,
+                    "used_by": {
+                        "skills": [s.name for s in files.skills if ref.path in s.loads],
+                    },
+                }
+            )
+        items.sort(key=lambda i: (str(i["updated"] or ""), i["title"]), reverse=True)
+        return items
+
+    def library_item(self, who: Principal, path: str) -> dict[str, Any]:
+        """One Library item, as the list gives it."""
+        found = next((i for i in self.library(who) if i["path"] == path), None)
+        if found is None:
+            raise NotFound(f"No document {path!r} in the Library.")
+        return found
+
+    def library_update(
+        self, who: Principal, path: str, *, kind: str | None = None, refresh: str | None = None
+    ) -> dict[str, Any]:
+        """Say what kind of item a document is, or how often it is fetched again: a change to
+        its card, as one undo point."""
+        fields: dict[str, Any] = {}
+        if kind is not None:
+            if kind not in LIBRARY_KINDS:
+                raise ValidationFailed(
+                    f"A Library item is one of {', '.join(LIBRARY_KINDS)}.", field="kind"
+                )
+            fields["library"] = kind
+        if refresh is not None:
+            if refresh not in LIBRARY_REFRESH:
+                raise ValidationFailed(
+                    f"Refresh is one of {', '.join(LIBRARY_REFRESH)}.", field="refresh"
+                )
+            fields["refresh"] = refresh
+        if not fields:
+            raise ValidationFailed("Say what to change: its kind or its refresh.")
+        item = self.library_item(who, path)
+        if not item["entry_id"]:
+            raise Conflict(
+                "This document has no card to keep its Library details on; file it again from"
+                " the Library to give it one."
+            )
+        result = self.decide_many(
+            who,
+            [{"action": "update", "entry_id": item["entry_id"], "fields": fields}],
+            label=f"Library: {item['title']}",
+        )
+        (outcome,) = result["results"]
+        if not outcome.get("ok"):
+            raise ValidationFailed(str(outcome.get("message") or "Not changed."))
+        return dict(self.library_item(who, path), checkpoint=result.get("checkpoint"))
 
     # ---- projects: the work the Brain follows across conversations
 

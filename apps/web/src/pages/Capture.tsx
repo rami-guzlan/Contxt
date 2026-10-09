@@ -1,12 +1,13 @@
 // Capture: everything brought in before it becomes Brain knowledge. Talk (hold Space or the
-// button), record a meeting, upload audio, a transcript or a document, or write a note. Each one
-// stays private to you until you pull from it or file it; audio turns into text on this computer.
+// button), record a meeting, upload audio, a transcript or a document. Each one stays private to
+// you until you pull from it or file it; audio turns into text on this computer. Writing lives in
+// Work, Workspace (docs and links are notes too, so nothing moved).
 
 import { AudioLines, NotebookPen, Square } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
-import { useBringIn, useCreateNote, useDistillRequests, useDownloadSpeech, useNotes, useSpeech } from "../api/hooks";
+import { useBringIn, useDistillRequests, useDownloadSpeech, useNewDoc, useNotes, useSpeech } from "../api/hooks";
 import type { CaptureKind, DistillRequest, Note } from "../api/types";
 import { CAPTURE_NAMES, KindIcon, TranscriptionState, UploadButton, duration } from "../components/CaptureParts";
 import { TalkButton, canRecord, useRecorder } from "../components/Talk";
@@ -20,8 +21,9 @@ const KINDS: { id: CaptureKind | "all"; label: string }[] = [
   { id: "recording", label: "Recordings" },
   { id: "transcript", label: "Transcripts" },
   { id: "document", label: "Documents" },
-  { id: "note", label: "Notes" },
 ];
+// Docs and links are written in Work, Workspace; Capture is the inbox for what comes in.
+const WRITTEN = new Set(["note", "link"]);
 const captureUrl = (id: string) => `/capture/${encodeURIComponent(id)}`;
 
 export function CapturePage() {
@@ -32,7 +34,7 @@ export function CapturePage() {
   const { data: pulls } = useDistillRequests();
   const bring = useBringIn();
   const [failures, setFailures] = useState<string[]>([]);
-  const create = useCreateNote();
+  const create = useNewDoc();
   const navigate = useNavigate();
 
   async function bringIn(files: FileList | File[]) {
@@ -50,9 +52,10 @@ export function CapturePage() {
     if (list.length === 1 && last) navigate(captureUrl(last.id));
   }
 
+  const brought = (notes ?? []).filter((n) => !WRITTEN.has(n.capture ?? "note"));
   const counts = new Map<string, number>();
-  for (const note of notes ?? []) counts.set(note.capture ?? "note", (counts.get(note.capture ?? "note") ?? 0) + 1);
-  const shown = (notes ?? []).filter((n) => kind === "all" || (n.capture ?? "note") === kind);
+  for (const note of brought) counts.set(note.capture ?? "note", (counts.get(note.capture ?? "note") ?? 0) + 1);
+  const shown = brought.filter((n) => kind === "all" || (n.capture ?? "note") === kind);
   return (
     <div
       className={over ? "page capture dropping" : "page capture"}
@@ -75,8 +78,8 @@ export function CapturePage() {
         keep what you want in Catch up.
       </FirstVisitTip>
       <p className="lede">
-        What you bring in waits here, private to you, until you pull from it or file it in the Brain. Talk, record a meeting, drop in audio, a
-        transcript or a document, or write.
+        What you bring in waits here, private to you, until you pull from it or file it in the Brain. Talk, record a meeting, or drop in audio,
+        a transcript or a document. To write or plan, use your <Link to="/work/workspace">Workspace</Link>.
       </p>
       <div className="capture-actions" data-tour="capture-actions">
         <TalkButton big />
@@ -85,10 +88,11 @@ export function CapturePage() {
         <button
           type="button"
           disabled={create.isPending}
-          onClick={() => create.mutate({}, { onSuccess: (note) => navigate(captureUrl(note.id)) })}
+          onClick={() => create.mutate({ template: "blank" }, { onSuccess: (doc) => navigate(`/work/workspace/${encodeURIComponent(doc.id)}`) })}
+          title="A new doc in your Workspace"
         >
           <NotebookPen className="button-icon" aria-hidden="true" />
-          New note
+          Write
         </button>
       </div>
       <p className="small muted">Hold Space anywhere (outside a text field) to talk; tap it to keep listening until you tap again.</p>
@@ -128,7 +132,7 @@ export function CapturePage() {
             why={
               archived
                 ? "Nothing is set aside."
-                : "Nothing here yet. Talk, drop in a recording or a transcript, or write a note: it stays private until you pull from it."
+                : "Nothing here yet. Talk, or drop in a recording, a transcript or a document: it stays private until you pull from it."
             }
           />
         )}

@@ -7,7 +7,7 @@ import pytest
 import sqlalchemy as sa
 
 from workspace_core.clock import FixedClock
-from workspace_core.errors import Conflict, NotFound
+from workspace_core.errors import Conflict, NotFound, ValidationFailed
 from workspace_core.ports import (
     BrainArea,
     BrainCatalog,
@@ -62,7 +62,7 @@ class FakeBrain:
         self.started: list[BrainProject] = []
         self.updates: list[dict] = []  # progress recorded on projects
         self.previewed: list[tuple] = []
-        self.requests: list[str] = []
+        self.briefed: list[str] = []  # what context() was asked for
         self.analysis: dict[str, dict] = {}  # extra review analysis, by proposal id
         self.batches: list[dict] = []
         self.points: list[dict] = []
@@ -103,7 +103,7 @@ class FakeBrain:
         return {"available": True, "name": "Fake brain", "principal": "person:owner"}
 
     def context(self, request, *, session_id=None):
-        self.requests.append(request)
+        self.briefed.append(request)
         return BrainContext(
             available=True,
             text="# Brain context\nWrite plainly. No hype.",
@@ -320,6 +320,8 @@ class FakeBrain:
         loads=None,
         reason="",
         evidence="",
+        files=None,
+        depends_on=None,
     ):
         known = {"weekly-posts", *(s.name for s in self.extra_skills)}
         if target and target not in known:
@@ -350,6 +352,8 @@ class FakeBrain:
                     "triggers": triggers,
                     "artifacts": artifacts,
                     "loads": loads,
+                    "depends_on": depends_on,
+                    "files": files,
                 },
                 "title": f"/{target or name}",
                 "statement": body,
@@ -384,6 +388,18 @@ class FakeBrain:
 
     def skill_folder(self, name):
         return self.skill_dir if name == "weekly-posts" else None
+
+    def skill_freshness(self, name):
+        if name != "weekly-posts":
+            return None
+        return {
+            "last_edited": "2026-09-01T10:00:00Z",
+            "changed": list(getattr(self, "changed_loads", [])),
+        }
+
+    def embed(self, texts):
+        vectors = getattr(self, "vectors", None)
+        return vectors(texts) if vectors else None
 
     def skill_source(self, name):
         return "1. Read the calendar.\n2. Draft." if name == "weekly-posts" else None
@@ -420,6 +436,8 @@ class FakeBrain:
         status=None,
         origin="app",
         wait=False,
+        library=None,
+        replaces=None,
     ):
         self.uploaded.append(
             {
@@ -433,6 +451,8 @@ class FakeBrain:
                 "status": status,
                 "origin": origin,
                 "wait": wait,
+                "library": library,
+                "replaces": replaces,
             }
         )
         if self.file_policy == "apply" and not wait:
@@ -676,8 +696,84 @@ class FakeBrain:
     def agent_skills(self):
         return [{"name": "tidy-repeats", "description": "Repeats.", "text": "...", "own": False}]
 
+    # ---- Work: agents, kept in memory the way the Brain keeps them in files
+
+    def agents(self, *, archived=False):
+        found = getattr(self, "kept_agents", {})
+        return [dict(a) for a in found.values() if archived or a["status"] != "archived"]
+
+    def agent(self, name):
+        found = getattr(self, "kept_agents", {}).get(name)
+        if found is None:
+            return None
+        known = {"weekly-posts", *(s.name for s in self.extra_skills)}
+        resolved = {
+            "skills": [
+                {"name": s, "missing": s not in known, "description": ""} for s in found["skills"]
+            ],
+            "library": [{"path": p, "missing": False, "title": p} for p in found["library"]],
+            "context": [{"key": c, "missing": False} for c in found["context"]],
+            "projects": [],
+            "broken": [f"/{s}" for s in found["skills"] if s not in known],
+        }
+        prompt = f"# You are working as {name}\n\n{found['role']}\n\n{found['prompt']}\n"
+        return {"agent": dict(found), "resolved": resolved, "prompt": prompt}
+
+    def save_agent(self, name, fields, prompt, *, label=None):
+        if not fields.get("role"):
+            raise ValidationFailed("Not saved: say in a line what it does (role).")
+        self.kept_agents = getattr(self, "kept_agents", {})
+        agent = {
+            "name": name,
+            "role": fields["role"],
+            "prompt": prompt,
+            "status": "active",
+            "output": fields.get("output") or "outputs",
+            "output_shape": fields.get("output_shape") or "",
+            "runner": fields.get("runner") or "claude",
+            "review": True,
+            "meetings_days": int(fields.get("meetings_days") or 0),
+            "scope": "",
+            "path": f"agents/{name}/AGENT.md",
+        }
+        for key in (
+            "responsibilities",
+            "goals",
+            "projects",
+            "skills",
+            "library",
+            "context",
+            "boundaries",
+        ):
+            agent[key] = list(fields.get(key) or [])
+        self.kept_agents[name] = agent
+        return {
+            "status": "saved",
+            "name": name,
+            "path": agent["path"],
+            "checkpoint": {"id": f"cp-agent-{name}"},
+        }
+
+    def archive_agent(self, name):
+        found = getattr(self, "kept_agents", {}).get(name)
+        if found is None:
+            raise NotFound(f"No agent named {name!r}.")
+        found["status"] = "archived"
+        return {"status": "saved", "name": name, "checkpoint": {"id": f"cp-archive-{name}"}}
+
+    def agent_versions(self, name, *, with_text=False):
+        found = getattr(self, "kept_agents", {}).get(name)
+        return None if found is None else [{"ref": "current", "at": "2026-09-28T13:00:00Z"}]
+
+    def work_skill(self, name):
+        return {
+            "agent-builder": "Write the agent's operating prompt.",
+            "prompt-improver": "Improve the request.",
+        }.get(name)
+
     def requests(self, *, limit=50, before=None, client=None):
-        return {"requests": [], "brain_tokens": 100, "apps": []}
+        rows = list(getattr(self, "request_rows", []))
+        return {"requests": rows[:limit], "brain_tokens": 100, "apps": []}
 
     def request(self, packet_id):
         from workspace_core.errors import NotFound

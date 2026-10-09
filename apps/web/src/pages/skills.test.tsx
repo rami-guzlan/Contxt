@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { AiWork } from "../components/AiWork";
 import { mockApi, renderAt } from "../test/render";
 import { ReviewPage } from "./brain/Review";
-import { SkillPage, SkillsPage } from "./Skills";
+import { SkillPage, SkillsPage } from "./work/Skills";
 
 const claude = {
   id: "claude",
@@ -133,12 +133,12 @@ const side = {
 describe("the Skills place", () => {
   it("shows each skill with what it makes and its last run, and what waits in Review", async () => {
     mockApi(side);
-    renderAt(<SkillsPage />, { path: "/skills", route: "/skills" });
-    expect(await screen.findByRole("link", { name: "/weekly-posts" })).toHaveAttribute("href", "/skills/weekly-posts");
+    renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills" });
+    expect(await screen.findByRole("link", { name: "/weekly-posts" })).toHaveAttribute("href", "/work/skills/weekly-posts");
     expect(screen.getByText(/Writes a post · ran/)).toBeInTheDocument();
     expect(screen.getByText("Ask: “draft this week's posts”")).toBeInTheDocument();
     expect(screen.getByText("Makes PDF and DOCX files")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Run /one-pager" })).toHaveAttribute("href", "/skills/one-pager");
+    expect(screen.getByRole("link", { name: "Run /one-pager" })).toHaveAttribute("href", "/work/skills/one-pager");
     expect(screen.getByText(/Waiting in/)).toHaveTextContent("/poll-recap");
     // One that other skills build on is kept, not run.
     expect(screen.getByText("Used by other skills (1 skill), not run on its own")).toBeInTheDocument();
@@ -153,9 +153,9 @@ describe("the Skills place", () => {
       ...side,
       "GET /api/brain/skills/shared-assets": { ...posts, name: "shared-assets", triggers: [], text: "# /shared-assets\n\nThe fonts." },
     });
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/shared-assets" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/shared-assets" });
     expect(await screen.findByText("The fonts.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/skills/one-pager");
+    expect(screen.getByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/work/skills/one-pager");
     expect(screen.queryByRole("tab", { name: "Run" })).not.toBeInTheDocument();
   });
 
@@ -168,36 +168,22 @@ describe("the Skills place", () => {
       },
       "GET /api/skills/weekly-posts/runs": [],
     });
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/weekly-posts" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/weekly-posts" });
     expect(await screen.findByRole("region", { name: "Run it" })).toBeInTheDocument();
     expect(screen.getByText(/Other skills build on it/)).toBeInTheDocument();
   });
 
-  it("runs several skills from the Skills page, in the order chosen", async () => {
-    const calls = mockApi({
-      ...side,
-      "POST /api/skills/runs": { status: 201, body: task("task_many") },
-      "GET /api/skills/runs": [{ ...doneRun, task_id: "task_many", skills: ["one-pager", "weekly-posts"] }],
-      "POST /api/runners/claude/runs": { status: 201, body: { id: "run_many", status: "running", events: [], task_title: "Run skills" } },
-      "GET /api/runners/runs/run_many": { id: "run_many", status: "running", events: [], task_title: "Run skills" },
-    });
-    const user = userEvent.setup();
-    renderAt(<SkillsPage />, { path: "/skills", route: "/skills" });
+  it("sends running several skills to Compose", async () => {
+    mockApi({ ...side, "GET /api/skills/runs": [] });
+    renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills" });
     const panel = await screen.findByRole("region", { name: "Run skills" });
-    await user.type(within(panel).getByLabelText("What do you need?"), "A one-pager, then posts from it.");
-    await user.click(within(panel).getByText("None: your Brain picks the one that fits"));
-    await user.click(within(panel).getByRole("checkbox", { name: /\/one-pager/ }));
-    await user.click(within(panel).getByRole("checkbox", { name: /\/weekly-posts/ }));
-    expect(within(panel).getByRole("list", { name: "Chosen skills, in order" })).toHaveTextContent(/one-pager.*weekly-posts/);
-    await user.click(within(panel).getByRole("button", { name: "Run 2 skills" }));
-    await waitFor(() =>
-      expect(calls.find((c) => c.method === "POST" && c.path === "/api/skills/runs")?.body).toEqual({
-        names: ["one-pager", "weekly-posts"],
-        ask: "A one-pager, then posts from it.",
-      }),
-    );
-    const latest = await screen.findByRole("region", { name: "Latest runs" });
-    expect(within(latest).getByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/skills/one-pager");
+    expect(within(panel).getByRole("link", { name: "Open Compose" })).toHaveAttribute("href", "/work/compose");
+  });
+
+  it("starts a new skill from words brought from Compose", async () => {
+    mockApi({ ...side, "GET /api/skills/runs": [] });
+    renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills?new=1&ask=Make%20a%20skill%20from%20my%20weekly%20posts" });
+    expect(await screen.findByLabelText("What should it do?")).toHaveValue("Make a skill from my weekly posts");
   });
 
   it("writes a new skill with your AI, started at once on this computer", async () => {
@@ -208,7 +194,7 @@ describe("the Skills place", () => {
       "GET /api/runners/runs/run_new": { id: "run_new", status: "running", events: [], task_title: "Write a new skill" },
     });
     const user = userEvent.setup();
-    renderAt(<SkillsPage />, { path: "/skills", route: "/skills" });
+    renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills" });
     await user.click(await screen.findByRole("button", { name: "New skill" }));
     const panel = screen.getByRole("region", { name: "New skill" });
     await user.type(within(panel).getByLabelText("What should it do?"), "Recap a week of polls as one post.");
@@ -228,7 +214,7 @@ describe("the Skills place", () => {
       "GET /api/runners": [],
     });
     const user = userEvent.setup();
-    renderAt(<SkillsPage />, { path: "/skills", route: "/skills?capture=ctx_kick" });
+    renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills?capture=ctx_kick" });
     expect(await screen.findByRole("link", { name: "Kickoff call" })).toHaveAttribute("href", "/capture/ctx_kick");
     await user.type(screen.getByLabelText("What should it do?"), "How we plan polls.");
     await user.click(screen.getByRole("button", { name: "Write it" }));
@@ -253,7 +239,7 @@ describe("one skill", () => {
       "POST /api/brain/files": { status: 201, body: { status: "applied", message: "Filed.", project: "q4" } },
     });
     const user = userEvent.setup();
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/weekly-posts" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/weekly-posts" });
     const panel = await screen.findByRole("region", { name: "Run it" });
     expect(within(panel).getByLabelText("What do you need?")).toHaveAttribute("placeholder", "For example: draft this week's posts");
     await user.type(within(panel).getByLabelText("What do you need?"), "Three posts on polls.");
@@ -274,14 +260,14 @@ describe("one skill", () => {
     // What an earlier run made, with what to do with it.
     expect(await screen.findByText("Reviews happen on Fridays.", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("Three posts on async reviews.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Save as note" }));
+    await user.click(screen.getByRole("button", { name: "Keep as a doc" }));
     await waitFor(() =>
       expect(calls.find((c) => c.method === "POST" && c.path === "/api/notes")?.body).toEqual({
         title: "Async posts",
         body: "**Monday:** Reviews happen on Fridays.",
       }),
     );
-    expect(await screen.findByRole("link", { name: "open the note" })).toHaveAttribute("href", "/capture/ctx_saved");
+    expect(await screen.findByRole("link", { name: "open the doc" })).toHaveAttribute("href", "/work/workspace/ctx_saved");
     await user.click(screen.getByRole("button", { name: "File in a project" }));
     expect(screen.getByLabelText("Project to file it in")).toHaveValue("q4"); // the project it ran for
     await user.click(screen.getByRole("button", { name: "File it" }));
@@ -304,7 +290,7 @@ describe("one skill", () => {
       "POST /api/skills/weekly-posts/runs": { status: 201, body: task("task_again") },
     });
     const user = userEvent.setup();
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/weekly-posts" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/weekly-posts" });
     expect(await screen.findByText("It hasn't started yet.")).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "Run now with Claude Code" }));
     await waitFor(() => expect(calls.find((c) => c.path === "/api/runners/claude/runs")?.body).toEqual({ task_id: "task_w" }));
@@ -336,7 +322,7 @@ describe("one skill", () => {
         },
       ],
     });
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/one-pager" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/one-pager" });
     expect(await screen.findByText(/It makes files, so it works in a folder of its own/)).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "acme one-pager.pdf" })).toHaveAttribute(
       "href",
@@ -353,7 +339,7 @@ describe("one skill", () => {
       "POST /api/brain/checkpoints/cp-7/undo": { undone: "cp-7", checkpoint: null },
     });
     const user = userEvent.setup();
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/weekly-posts?tab=procedure" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/weekly-posts?tab=procedure" });
     expect(await screen.findByText("Draft one post per day.")).toBeInTheDocument();
     expect(screen.getByText("“draft this week's posts”")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Edit" }));
@@ -381,7 +367,7 @@ describe("one skill", () => {
       "POST /api/skills/weekly-posts/improve": { status: 201, body: { ...task("task_4", "skill-draft"), status: "draft", assignee_id: null } },
     });
     const user = userEvent.setup();
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/weekly-posts?tab=improve" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/weekly-posts?tab=improve" });
     expect(await screen.findByText("Shorter hooks.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "See it in Review" })).toHaveAttribute("href", "/review");
     expect(screen.getByText("Its new version was turned down.")).toBeInTheDocument();
@@ -399,14 +385,14 @@ describe("one skill", () => {
       "POST /api/skills/weekly-posts/improve": { status: 201, body: { ...task("task_5", "skill-draft"), status: "draft", assignee_id: null } },
     });
     const user = userEvent.setup();
-    const first = renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/weekly-posts" });
+    const first = renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/weekly-posts" });
     expect(await screen.findByRole("link", { name: "Teach the skill from this" })).toHaveAttribute(
       "href",
-      "/skills/weekly-posts?tab=improve&example=art_1",
+      "/work/skills/weekly-posts?tab=improve&example=art_1",
     );
     first.unmount();
     // Where that link leads: Improve, learning from the result.
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/weekly-posts?tab=improve&example=art_1" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/weekly-posts?tab=improve&example=art_1" });
     const panel = await screen.findByRole("region", { name: "Improve it" });
     expect(await within(panel).findByText("Async posts")).toBeInTheDocument();
     expect(within(panel).getByLabelText("What should change?")).toHaveValue("Make what it makes come out like this example.");
@@ -428,7 +414,7 @@ describe("one skill", () => {
       ],
     });
     const user = userEvent.setup();
-    renderAt(<SkillPage />, { path: "/skills/:name", route: "/skills/weekly-posts?tab=history" });
+    renderAt(<SkillPage />, { path: "/work/skills/:name", route: "/work/skills/weekly-posts?tab=history" });
     await user.click(await screen.findByRole("button", { name: /fixture · Ana/ }));
     expect(screen.getByRole("region", { name: "Now" })).toHaveTextContent("1. Draft one post.");
     await user.click(screen.getByRole("button", { name: "Use this version again" }));
@@ -487,7 +473,7 @@ describe("AI work", () => {
   it("says what runs now and links each run to the page its work belongs to", async () => {
     mockApi({
       "GET /api/runners/runs": [
-        { id: "run_a", status: "running", task_title: "Run /weekly-posts", started_at: "2026-10-06T10:00:00Z", finished_at: null, link: "/skills/weekly-posts", made: [] },
+        { id: "run_a", status: "running", task_title: "Run /weekly-posts", started_at: "2026-10-06T10:00:00Z", finished_at: null, link: "/work/skills/weekly-posts", made: [] },
         {
           id: "run_b",
           status: "succeeded",
@@ -505,7 +491,7 @@ describe("AI work", () => {
     await user.click(await screen.findByRole("button", { name: "AI working (1)" }));
     const tray = screen.getByRole("dialog", { name: "AI work" });
     const links = within(tray).getAllByRole("link", { name: "Open" });
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/skills/weekly-posts", "/capture/ctx_kick"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/work/skills/weekly-posts", "/capture/ctx_kick"]);
     expect(within(tray).getByText(/made 1 file/)).toBeInTheDocument();
     await user.click(within(tray).getByRole("button", { name: "Watch" }));
     expect(await within(tray).findByText("Reading the calendar.")).toBeInTheDocument();

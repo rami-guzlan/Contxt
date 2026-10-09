@@ -343,6 +343,52 @@ class Skills:
         """The latest runs from the Skills page and from every skill, newest first."""
         return self._shaped(who, self._tasks(who, RUN)[: max(1, min(int(limit), 50))], None)
 
+    def runs_where(
+        self, who: Principal, keep: Any, *, limit: int = 20
+    ) -> builtins.list[dict[str, Any]]:
+        """Runs whose record `keep(about)` accepts (an agent's runs, say), newest first, shaped
+        the way a skill's page shows them."""
+        mine = [t for t in self._tasks(who, RUN) if keep(dict(t.provenance.get("skill") or {}))]
+        return self._shaped(who, mine[: max(1, min(int(limit), 50))], None)
+
+    def tally(self, who: Principal, key: Any) -> dict[str, dict[str, Any]]:
+        """How many runs count for each thing, and when the last one was made: `key(about)`
+        names what a run counts for (a saved prompt, say), or None."""
+        out: dict[str, dict[str, Any]] = {}
+        for task in self._tasks(who, RUN):  # newest first
+            found = key(dict(task.provenance.get("skill") or {}))
+            if not found:
+                continue
+            hit = out.setdefault(str(found), {"uses": 0, "last": task.created_at})
+            hit["uses"] += 1
+        return out
+
+    def queue(
+        self,
+        who: Principal,
+        *,
+        title: str,
+        purpose: str,
+        instructions: str,
+        request: str,
+        about: dict[str, Any],
+        pins: builtins.list[tuple[str, str, int]] | None = None,
+    ) -> Task:
+        """A run like a skill run (the same queue, result tool and review), for another part of
+        Work: an agent asked for something, a prompt run from Compose."""
+        who.require("tasks.write")
+        return self._ask_model(
+            who,
+            title=title,
+            purpose=purpose,
+            instructions=instructions,
+            request=request,
+            template=RUN,
+            contract=RUN_CONTRACT,
+            about=about,
+            pins=pins,
+        )
+
     def _shaped(
         self, who: Principal, mine: builtins.list[Task], name: str | None
     ) -> builtins.list[dict[str, Any]]:
@@ -406,6 +452,9 @@ class Skills:
                     "skill": name or (skills[0] if skills else ""),
                     "skills": skills,
                     "kind": "run" if task.template == RUN else "improve",
+                    "agent": about.get("agent") or None,
+                    # a Workspace doc's own runs: push back on it, or continue it
+                    "doc_action": about.get("doc_action") or None,
                     "ask": about.get("ask") or "",
                     "status": task.status,
                     "assignee_id": task.assignee_id,
@@ -828,6 +877,74 @@ class Skills:
         if made.status != "pending" or not made.proposal_id:
             raise Conflict(made.message)
         return self.brain.decide(who, made.proposal_id, approve=True, reason=why)
+
+    def import_skill(
+        self,
+        who: Principal,
+        *,
+        name: str,
+        description: str,
+        body: str,
+        category: str = "",
+        when_to_use: str = "",
+        triggers: builtins.list[str] | None = None,
+        artifacts: builtins.list[str] | None = None,
+        loads: builtins.list[str] | None = None,
+        depends_on: builtins.list[str] | None = None,
+        files: builtins.list[dict[str, Any]] | None = None,
+        source: str = "",
+    ) -> dict[str, Any]:
+        """A skill brought in from a zip, a folder or a Git repository, with its files: a new
+        skill, or a new version of the one by that name. Like the owner's own edit, it applies
+        at once, with an undo point."""
+        who.require("brain.govern")
+        wanted = str(name or "").strip().lstrip("/")
+        existing = next((s for s in self.brain.files(who).skills if s.name == wanted), None)
+        text = str(body or "").strip()
+        if not text:
+            raise ValidationFailed("Its SKILL.md has no steps.", field="body")
+        if len(text) > MAX_BODY:
+            raise ValidationFailed(f"A skill is at most {MAX_BODY:,} characters.", field="body")
+        why = f"Brought in from {source}"[:600] if source else "Brought in"
+        made = self.rt.brain.propose_skill(
+            proposer=proposer(who),
+            sources=[],
+            body=text,
+            target=existing.name if existing else None,
+            name=None if existing else wanted,
+            category=None if existing else (category or "imported"),
+            description=" ".join(str(description or "").split()) or None,
+            when_to_use=" ".join(str(when_to_use or "").split()) or None,
+            triggers=_names(triggers) if triggers else None,
+            artifacts=_names(artifacts, 20, 40) if artifacts else None,
+            loads=_names(loads, 30, 200) if loads else None,
+            depends_on=_names(depends_on, 12, 64) if depends_on else None,
+            files=files or None,
+            reason=why,
+        )
+        if made.status != "pending" or not made.proposal_id:
+            raise Conflict(made.message)
+        decided = self.brain.decide(who, made.proposal_id, approve=True, reason=why)
+        return {
+            "name": existing.name if existing else wanted,
+            "replaced": existing is not None,
+            "decision": decided,
+        }
+
+    def freshness(self, who: Principal, name: str) -> dict[str, Any]:
+        """When the skill was last edited and last used (run here, or asked for in an AI), and
+        what it loads that changed since its last edit."""
+        skill = self.find(who, name)
+        found = self.rt.brain.skill_freshness(skill.name) or {"last_edited": None, "changed": []}
+        here = next(
+            (t.created_at for t in self._tasks(who, RUN) if skill.name in self._skills_of(t)), None
+        )
+        asked = None
+        if who.can("brain.read"):
+            rows = self.rt.brain.requests(limit=200).get("requests") or []
+            asked = next((str(r.get("at")) for r in rows if r.get("skill") == skill.name), None)
+        used = max((t for t in (here, asked) if t), default=None)
+        return {**found, "last_used": used, "last_run_here": here, "last_asked": asked}
 
     # ---------------------------------------------------------------- files a run made
 

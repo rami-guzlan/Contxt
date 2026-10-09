@@ -14,7 +14,7 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
 - The web app, named for the person's questions: Home (one line on how you are doing, a health
   ring, what the Brain is for, the next steps, three pictures, your AI apps, ask your Brain, see
   the difference), Capture, Projects, Brain (what it knows, notes, files, questions it could not
-  answer), Skills, Outputs, Activity (what each AI asked and got; changes and undo points),
+  answer), Work, Activity (what each AI asked and got; changes and undo points),
   Catch up and Settings, in light or dark. "+ Add" talks, records, uploads or writes.
 - Catch up: a plan, never a pile. Handled for you, quick groups kept with one tap, decisions one
   at a time with a recommendation and its reason, upkeep in small weekly doses, offers to decide
@@ -95,8 +95,44 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   right as the Brain changes, made by code without a model.
 - Home's flashcards: what to keep an eye on, one card at a time (stale context, repeats,
   drift, gaps, quiet projects, the agent's questions and what it did), and what is coming.
-- The Skills page runs several skills at once, followed in the order chosen, or the one the
-  Brain finds for the request.
+- Work, where the Brain gets put to use: Overview, Compose, Workspace, Skills, Agents,
+  Workflows, Library and Outputs, in one tab. Everything in it reads from the Brain, and what it
+  makes waits for your yes: drafts, outputs and suggestions, never anything sent or published.
+  - Overview: your team of agents, each with its heartbeat (working, waiting for you, idle, its
+    next run); each workflow as a strip of boxes and arrows colored by its last run; what waits
+    for you; skills worth writing down, skills gone stale and agents whose pointers broke; and
+    the recent runs. An empty Work starts with the ladder: ask once in Compose, write it down as
+    a skill, give it a role, give it a schedule.
+  - Compose: a request and what goes with it (skills in order, one agent, your notes and docs,
+    documents to read whole, a project), with the whole prompt a model gets beside it and its
+    size in tokens, or a short version for any AI connected to the Brain. Improve has your AI
+    rewrite the request and say what changed; Run here, Save (with versions and how often each
+    ran), Make it a skill and Schedule it. Saved prompts stay private to the app.
+  - Workspace: where you think first. Docs from a template (outline, plan, decision, progress
+    update) or blank, links to the calendar or sheet you work from, and files brought in as
+    docs, each linked to any number of projects without copying. Your AI drafts from a doc with a
+    skill or an agent, pushes back on it (questions only) or continues it, only when you ask;
+    what it makes becomes the doc's next version, its end, or a new doc. Docs leave as Markdown
+    or Word. Each project's page has its own Workspace section; Capture stays the inbox.
+  - Agents: roles written like a job description and kept in the Brain (`agents/<name>/AGENT.md`),
+    pointing to the skills, library documents and areas they need, never copies. Your AI writes
+    the operating prompt from the form; `get_agent` assembles it with every pointer as it is now;
+    ask an agent for something, or add it to Claude Code as a subagent that always fetches the
+    current version.
+  - Workflows: steps run as one thing, on a schedule, with a button, or from any AI you open
+    them to (`list_workflows`, `run_workflow`). A step is a skill, an agent, a prompt, a
+    connector step (named, read-only tools of your own connectors, on Claude Code), a Brain
+    upkeep job or your check, where the run waits for a yes, your edit or a stop. Each step reads
+    what the one before made; a run missed while the app was off runs once, and says so. Four
+    templates; a workflow goes out and comes back as a file. Checks count in Catch up.
+  - Library: guides to follow, references to read whole and influences to borrow from, from an
+    upload, a page fetched by its address or a GitHub repository's snapshot, refreshed by hand,
+    weekly or monthly.
+  - Skills: bring one in from a zip, a folder or GitHub; take it out as a zip; copy it into
+    Claude Code with a stamp of the version, and see how far behind the copy is. Each skill says
+    when it was edited and used, what uses it and what it loads that changed since; asks your AIs
+    got again and again with no skill to follow, alike by meaning, are offered as skills to
+    write.
 - Activity: each request opens to every piece it got and what it opened after, and to the
   exact text it was handed and the startup context when that went with it.
 - Moving in takes files of any kind, zips included: documents, instruction files, any text,

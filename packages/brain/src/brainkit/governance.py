@@ -1186,10 +1186,11 @@ def unarchive(brain, note_id, *, reason="", actor=None):
 
 
 # What the owner sets on an entry directly: who answers for it, how often it is checked, how
-# sensitive it is, and where it is filed. An empty value clears the field.
+# sensitive it is, and where it is filed; on a document's card, what kind of Library item it is
+# and how often it is fetched again. An empty value clears the field.
 FIELDS = ("owner", "review_days", "review_by", "classification", "area", "topic", "aliases",
           "load", "applies_to", "triggers", "must_text", "critical", "baseline", "as_of",
-          "valid_until")
+          "valid_until", "library", "refresh")
 # When a note reaches a model: in every session, whenever its domain comes up (a must-hold),
 # when relevant, or only when asked for. Set together and checked by must_hold_fields.
 MUST_FIELDS = ("load", "applies_to", "triggers", "must_text", "critical")
@@ -1217,6 +1218,12 @@ def update(brain, note_id, fields, *, reason="", actor=None):
             problems.append(f"{name} is a date (YYYY-MM-DD)")
     if wanted.get("classification") and wanted["classification"] not in CLASSIFICATIONS:
         problems.append(f"classification is one of {', '.join(CLASSIFICATIONS)}")
+    if ("library" in wanted or "refresh" in wanted) and str(note.meta.get("type")) != "file":
+        problems.append("only a document's card goes in the Library")
+    if wanted.get("library") and wanted["library"] not in uploads.LIBRARY_KINDS:
+        problems.append(f"library is one of {', '.join(uploads.LIBRARY_KINDS)}")
+    if wanted.get("refresh") and wanted["refresh"] not in uploads.LIBRARY_REFRESH:
+        problems.append(f"refresh is one of {', '.join(uploads.LIBRARY_REFRESH)}")
     if wanted.get("owner") and not st.scopes.exists(wanted["owner"]):
         problems.append(f"owner {wanted['owner']!r} is not a scope declared in brain.json")
     area = wanted.get("area") or note.area

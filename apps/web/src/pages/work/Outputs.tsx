@@ -1,4 +1,4 @@
-// Outputs: what your AI made, in the outputs folder beside your Brain. Folders to organize,
+// Work, Outputs: what your AI made, in the outputs folder beside your Brain. Folders to organize,
 // files newest first, a download or a look in place, move and rename (never over another file,
 // never a delete), and for each file what it was made from: the skill run and what it was
 // handed, the export it came from, or the chat that saved it and what that chat got.
@@ -7,12 +7,13 @@ import { Download, Eye, FolderPlus } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { outputFileUrl, useMadeFrom, useMakeOutputFolder, useMoveOutput, useOutputs } from "../api/hooks";
-import type { OutputFile, RequestPiece } from "../api/types";
-import { Empty, ErrorNote, Loading } from "../components/ui";
-import { bytes, plural, when } from "../lib/format";
-import { RequestRow } from "./Activity";
-import { entryUrl } from "./brain/shared";
+import { outputFileUrl, useMadeFrom, useMakeOutputFolder, useMoveOutput, useOutputs } from "../../api/hooks";
+import type { OutputFile, RequestPiece } from "../../api/types";
+import { Empty, ErrorNote, Loading } from "../../components/ui";
+import { bytes, plural, when } from "../../lib/format";
+import { skillUrl } from "../../lib/links";
+import { RequestRow } from "../Activity";
+import { entryUrl } from "../brain/shared";
 
 const KIND_WORDS: Record<string, string> = {
   document: "Document",
@@ -34,11 +35,13 @@ export function OutputsPage() {
   if (!data) return <ErrorNote error={error} />;
   const files = folder === null ? data.files : data.files.filter((f) => f.folder === folder || f.folder.startsWith(`${folder}/`));
   return (
-    <div className="page outputs">
-      <p className="eyebrow">Outputs</p>
-      <h1>What your AI made</h1>
-      <p className="lede">Everything in your outputs folder, newest first, each with what it was made from.</p>
-      <p className="muted small">The folder: {data.root}</p>
+    <div className="work-tab outputs">
+      <div className="work-intro">
+        <p>
+          What your AI made: everything in your outputs folder, newest first, each with what it was made from.{" "}
+          <span className="muted small">The folder: {data.root}</span>
+        </p>
+      </div>
       <div className="outputs-layout">
         <nav className="folders" aria-label="Folders">
           <button type="button" className={folder === null ? "tab active" : "tab"} onClick={() => setFolder(null)}>
@@ -191,7 +194,7 @@ function MadeFromPanel({ path }: { path: string }) {
       {data.how === "skill" && data.skill_run ? (
         <>
           <p>
-            The skill <Link to={`/skills/${encodeURIComponent(data.skill_run.skill)}`}>/{data.skill_run.skill}</Link>, asked: “{data.skill_run.ask}”
+            The skill <Link to={skillUrl(data.skill_run.skill)}>/{data.skill_run.skill}</Link>, asked: “{data.skill_run.ask}”
             {data.skill_run.project ? ` for ${data.skill_run.project}` : ""}, {when(data.skill_run.created_at)}.
           </p>
           {data.skill_run.capture ? (

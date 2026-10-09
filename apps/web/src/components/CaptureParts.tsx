@@ -15,6 +15,7 @@ export const CAPTURE_NAMES: Record<CaptureKind, string> = {
   recording: "Recording",
   transcript: "Transcript",
   document: "Document",
+  link: "Link",
 };
 export const ACCEPT = "audio/*,video/*,.vtt,.srt,.txt,.md,.docx,.pdf,.pptx,.html,.htm";
 
@@ -70,7 +71,25 @@ export function TranscriptionState({ note, compact = false }: { note: Note; comp
 }
 
 /** What the capture came from: its audio to play, or its original to download. */
+/** "docs.google.com" for a link's address; the address itself when it does not parse. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host || url;
+  } catch {
+    return url;
+  }
+}
+
 export function CaptureSource({ note }: { note: Note }) {
+  if (note.url)
+    return (
+      <div className="capture-source">
+        <a className="button" href={note.url} target="_blank" rel="noreferrer">
+          Open {hostOf(note.url)}
+        </a>
+        <span className="muted small">A link you keep here. Write below what it is for and what to look at.</span>
+      </div>
+    );
   if (!note.original) return null;
   const spoken = note.capture === "talk" || note.capture === "recording";
   return (

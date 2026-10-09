@@ -14,7 +14,7 @@ import { AiActivityPage } from "./Activity";
 import { CatchUpPage } from "./CatchUp";
 import { FirstRunPage } from "./FirstRun";
 import { MoveInPage } from "./MoveIn";
-import { OutputsPage } from "./Outputs";
+import { OutputsPage } from "./work/Outputs";
 import { SettingsPage } from "./Settings";
 
 const decided = { results: [{ id: "p1", action: "reject", ok: true, message: "", data: {} }], checkpoint: { id: "cp-1", label: "Kept my note" } };
@@ -301,6 +301,25 @@ describe("catch up", () => {
     expect(calls.find((c) => c.path === "/api/brain/decisions")?.body).toMatchObject({
       decisions: [{ action: "unschedule", proposal_id: "p7" }],
     });
+  });
+
+  it("lists Work's checks, and starts no queue when only they are left", async () => {
+    mockApi({
+      "GET /api/brain/catch-up": plan({
+        judgment: [],
+        quick: [],
+        upkeep: [],
+        offers: [],
+        nudges: [],
+        counts: { judgment: 0, quick: 0, quick_items: 0, upkeep: 0, offers: 0, legacy: 0, handled: 0, snoozed: 0, checks: 1 },
+        work: [{ run_id: "wfr_1", workflow_id: "wf_1", workflow: "Weekly posts", ask: "Read the posts first.", started_at: stamp }],
+      }),
+    });
+    renderAt(<CatchUpPage />, { path: "/catch-up", route: "/catch-up" });
+    const waiting = await screen.findByRole("region", { name: "Waiting in Work" });
+    expect(within(waiting).getByRole("link", { name: "Weekly posts" })).toHaveAttribute("href", "/work/workflows/wf_1?run=wfr_1");
+    expect(screen.getByText(/check in Work/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
   });
 
   it("starts with what happened after time away", async () => {
@@ -635,7 +654,7 @@ describe("outputs", () => {
       "/api/outputs/file?path=skill-runs%2F2026-10-05-one-pager%2Fone-pager.pdf",
     );
     await user.click(pdf);
-    expect(await within(row).findByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/skills/one-pager");
+    expect(await within(row).findByRole("link", { name: "/one-pager" })).toHaveAttribute("href", "/work/skills/one-pager");
     expect(within(row).getByText(/A one-pager for the webinar/)).toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "Voice" })).toHaveAttribute("href", "/brain/entries/voice");
   });
@@ -682,7 +701,7 @@ describe("see the difference", () => {
     expect(await screen.findByText("With your Brain", {}, { timeout: 6000 })).toBeInTheDocument();
     expect(screen.getByText("Exciting news!")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "LinkedIn posting rules" })).toHaveAttribute("href", "/brain/entries/linkedin-rules");
-    expect(screen.getByRole("link", { name: "/linkedin-post" })).toHaveAttribute("href", "/skills/linkedin-post");
+    expect(screen.getByRole("link", { name: "/linkedin-post" })).toHaveAttribute("href", "/work/skills/linkedin-post");
     expect(screen.getByText(/It got 640 tokens, about a tenth of your Brain\./)).toBeInTheDocument();
     expect(calls.find((c) => c.path === "/api/brain/difference")?.body).toEqual({ request: "Write a post" });
   }, 15_000);

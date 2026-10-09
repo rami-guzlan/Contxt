@@ -751,6 +751,7 @@ progress {
   gap: 0.25rem;
   border-bottom: 1px solid var(--border);
   margin: 0.75rem 0 1.25rem;
+  overflow-x: auto;
 }
 
 .brain-tabs .tab {
@@ -759,6 +760,7 @@ progress {
   align-items: center;
   color: var(--text);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .brain-tabs .tab.active {
@@ -3597,10 +3599,13 @@ button.record.live {
   align-items: baseline;
   cursor: pointer;
 }
+.picked-list,
 .picked-skills {
   list-style: none;
   padding: 0;
   margin: 0.3rem 0 0;
+}
+.picked-skills {
   counter-reset: picked;
 }
 .picked-skills > li::before {
@@ -4995,4 +5000,741 @@ button.big,
 .move-in-notes {
   margin: 0;
   padding-left: 1.1rem;
+}
+/* ------------------------------------------------------------------ Work */
+
+.work-tab {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.work-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.work-intro p {
+  max-width: 48rem;
+  margin: 0;
+}
+
+.work-ladder {
+  max-width: 48rem;
+  margin: 0;
+}
+
+.work-parts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem;
+}
+
+.work-part {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+}
+
+.work-part h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.work-part p {
+  margin: 0;
+}
+
+.work-part-question {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.row.space-between {
+  justify-content: space-between;
+}
+
+/* Filters drawn as chips: one kind at a time, or everything. */
+.work-filter .chip,
+.library-filter .chip {
+  font-size: 0.85rem;
+  padding: 0.15rem 0.65rem;
+  cursor: pointer;
+}
+
+.work-filter .chip.active,
+.library-filter .chip.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.library-item {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+}
+
+.library-item-main p {
+  margin: 0.15rem 0 0;
+}
+
+.library-item-title {
+  font-weight: 600;
+}
+
+/* What a Library item is for, in its own color: a guide to follow, a reference to read, an
+   influence to borrow from. */
+.kind-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  justify-self: start;
+}
+
+.kind-guide {
+  color: var(--review);
+}
+
+.kind-reference {
+  color: var(--accent);
+}
+
+.kind-influence {
+  color: var(--active);
+}
+
+@media (max-width: 640px) {
+  .library-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+}
+
+/* Agents: a roster of digital coworkers, each a face, a role and what it points to. */
+.agent-roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.75rem;
+}
+
+.agent-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+}
+
+.agent-card.archived {
+  opacity: 0.7;
+}
+
+.agent-card-main p {
+  margin: 0.2rem 0 0;
+}
+
+.agent-card-main .chips {
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-card-name {
+  font-weight: 600;
+  font-size: 1.02rem;
+}
+
+.agent-face {
+  display: inline-grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+
+.agent-face.large {
+  width: 3.2rem;
+  height: 3.2rem;
+  font-size: 1.15rem;
+}
+
+.agent-head {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.agent-head h1 {
+  margin: 0;
+}
+
+.agent-editor textarea.mono,
+.agent-editor .mono {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+label.check {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+li.missing {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* Workspace: his docs, links and anything linked to a project, as quiet rows. */
+.workspace-new {
+  gap: 0.5rem;
+}
+
+.workspace-show {
+  align-items: end;
+  gap: 1rem;
+}
+
+.workspace-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.workspace-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.85rem;
+}
+
+.workspace-row-main p {
+  margin: 0.15rem 0 0;
+}
+
+.workspace-row-title {
+  font-weight: 600;
+}
+
+.inline-icon {
+  width: 0.85em;
+  height: 0.85em;
+  vertical-align: -0.1em;
+}
+
+.small-head {
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+/* What AI made from a doc, beside it: newest first, each with what to do with it. */
+.doc-runs {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.doc-run {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.doc-run header {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.doc-run .document {
+  max-height: 18rem;
+  overflow: auto;
+}
+
+@media (max-width: 640px) {
+  .workspace-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+}
+
+/* Compose: the request and its picks beside the whole prompt the model gets. */
+.compose-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.compose-ask,
+.compose-prompt {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.compose-ask > *,
+.compose-prompt > * {
+  min-width: 0;
+}
+
+.compose-ask textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.compose-prompt {
+  position: sticky;
+  top: 1rem;
+}
+
+.compose-prompt h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.compose-prompt .copy-block pre {
+  max-height: 32rem;
+  overflow: auto;
+}
+
+.compose-pickers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.compose-pickers select {
+  width: 100%;
+}
+
+.compose-actions {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.compose-size {
+  margin: 0;
+}
+
+.compose-parts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.85rem;
+}
+
+.compose-improved {
+  display: grid;
+  gap: 0.6rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .compose-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compose-prompt {
+    position: static;
+  }
+}
+
+/* Workflows: each one drawn as boxes and arrows, colored by its last run. */
+.pill-waiting {
+  color: var(--review);
+}
+
+.pill-stopped {
+  color: var(--neutral);
+}
+
+.flow-list,
+.template-list,
+.workflow-runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.template-list {
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+.flow-card,
+.template-card,
+.workflow-run {
+  display: grid;
+  gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.8rem 1rem;
+}
+
+.template-card h3,
+.flow-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.template-card .button {
+  justify-self: start;
+}
+
+.flow-card-head {
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.flow-card-head h3 {
+  margin-right: auto;
+}
+
+.flow-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: stretch;
+}
+
+.flow-box {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 0.1rem;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem 0.4rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  min-width: 6rem;
+}
+
+.flow-trigger {
+  padding-left: 0.6rem;
+  font-weight: 600;
+}
+
+.flow-output {
+  font-style: italic;
+}
+
+.flow-arrow {
+  position: absolute;
+  left: 0.3rem;
+  top: 50%;
+  width: 0.9rem;
+  height: 0.9rem;
+  transform: translateY(-50%);
+  color: var(--muted);
+}
+
+.flow-kind {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.flow-done {
+  border-color: var(--done);
+}
+
+.flow-running,
+.flow-pending {
+  border-color: var(--active);
+}
+
+.flow-waiting {
+  border-color: var(--review);
+}
+
+.flow-failed {
+  border-color: var(--blocked);
+}
+
+.workflow-title {
+  margin: 0;
+}
+
+.workflow-actions {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.workflow-actions input {
+  min-width: 16rem;
+  flex: 1;
+}
+
+.workflow-editor fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.workflow-editor textarea,
+.workflow-editor select,
+.workflow-editor input:not([type="checkbox"]) {
+  width: 100%;
+  font: inherit;
+}
+
+.workflow-editor textarea.mono {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.workflow-schedule {
+  gap: 0.75rem;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.workflow-schedule .field {
+  min-width: 10rem;
+}
+
+.workflow-days {
+  gap: 0.6rem;
+}
+
+.workflow-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.workflow-step-box {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.6rem 0.8rem;
+}
+
+.workflow-step-head {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.workflow-step-tools {
+  margin-left: auto;
+  gap: 0.2rem;
+}
+
+.workflow-step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.icon-button {
+  padding: 0.25rem;
+  line-height: 0;
+}
+
+.workflow-add {
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.workflow-run header {
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.workflow-run-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.workflow-run-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  border-left: 3px solid var(--border);
+  padding-left: 0.6rem;
+}
+
+.workflow-run-steps li.flow-done {
+  border-left-color: var(--done);
+}
+
+.workflow-run-steps li.flow-running,
+.workflow-run-steps li.flow-pending {
+  border-left-color: var(--active);
+}
+
+.workflow-run-steps li.flow-waiting {
+  border-left-color: var(--review);
+}
+
+.workflow-run-steps li.flow-failed {
+  border-left-color: var(--blocked);
+}
+
+.workflow-check {
+  display: grid;
+  gap: 0.6rem;
+  border: 1px solid var(--review);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+  background: var(--bg);
+}
+
+.workflow-check h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.workflow-check textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.workflow-result {
+  white-space: pre-wrap;
+  max-height: 22rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+/* Work's overview: the team with its heartbeat beside what waits, then the flows. */
+.overview-top {
+  align-items: start;
+}
+
+.agent-roster.compact {
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+}
+
+.agent-new {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  border-style: dashed;
+  background: transparent;
+}
+
+.agent-beat {
+  margin: 0.25rem 0 0;
+}
+
+.beat {
+  font-weight: 600;
+}
+
+.beat::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  margin-right: 0.35rem;
+  background: var(--neutral);
+  vertical-align: 0.05rem;
+}
+
+.beat-working::before {
+  background: var(--active);
+}
+
+.beat-waiting::before {
+  background: var(--review);
+}
+
+.beat-idle::before {
+  background: var(--done);
+}
+
+.start-here {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.35rem;
 }

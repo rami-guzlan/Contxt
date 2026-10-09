@@ -173,7 +173,7 @@ function Assets({ filed, kept }: { filed: BrainFile[]; kept: KeptAssets[] }) {
       {kept.map(({ skill, files }) => (
         <section key={skill.name} className="asset-group">
           <h3>
-            Kept with <Link to={`/skills/${encodeURIComponent(skill.name)}`}>/{skill.name}</Link>
+            Kept with <Link to={`/work/skills/${encodeURIComponent(skill.name)}`}>/{skill.name}</Link>
           </h3>
           <AssetGrid files={files} />
         </section>
@@ -236,9 +236,9 @@ export function FileViewPage() {
       <nav className="breadcrumb" aria-label="Breadcrumb">
         {skill ? (
           <>
-            <Link to="/skills">Skills</Link>
+            <Link to="/work/skills">Skills</Link>
             <span aria-hidden="true">/</span>
-            <Link to={`/skills/${encodeURIComponent(skill.name)}`}>/{skill.name}</Link>
+            <Link to={`/work/skills/${encodeURIComponent(skill.name)}`}>/{skill.name}</Link>
           </>
         ) : (
           <>

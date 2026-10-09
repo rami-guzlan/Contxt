@@ -32,7 +32,7 @@ KEEP = 40  # jobs kept in memory
 @dataclass
 class AgentJob:
     id: str
-    kind: str  # action | chat
+    kind: str  # action | chat | agent-prompt | compose-improve (Work)
     model: str
     model_label: str
     started_at: str
@@ -118,6 +118,62 @@ class AgentWork:
             name="agent-chat",
         ).start()
         return job
+
+    def start_work(
+        self,
+        who: Principal,
+        kind: str,
+        build: Any,
+        read: Any,
+        *,
+        model: str | None = None,
+        json_only: bool = True,
+        message: str = "",
+    ) -> AgentJob:
+        """One model call for another part of Work (writing an agent's prompt, improving a
+        prompt in Compose), in the background through the model the owner chose: `build()`
+        makes the prompt, `read(answer)` turns the answer into the job's result."""
+        choice = self._model(model)
+        prompt = build()  # a refusal (a missing procedure, a bad form) is the caller's error
+        job = AgentJob(
+            id=new_id("ajob", self.ws.rt.clock.now()),
+            kind=kind,
+            model=choice.id,
+            model_label=choice.label,
+            message=message,
+            started_at=iso(self.ws.rt.clock.now()),
+        )
+        self._keep(job)
+        threading.Thread(
+            target=self._run_work,
+            args=(who, job, choice, prompt, read, json_only),
+            daemon=True,
+            name=f"work-{kind}",
+        ).start()
+        return job
+
+    def _run_work(
+        self,
+        who: Principal,
+        job: AgentJob,
+        choice: ModelChoice,
+        prompt: str,
+        read: Any,
+        json_only: bool,
+    ) -> None:
+        try:
+            with self._turn:
+                job.status = "running"
+                answer = self.models.ask(who, choice, prompt, json_only=json_only)
+            job.result = read(answer)
+            job.status = "done"
+        except WorkspaceError as exc:
+            job.status, job.error = "failed", str(exc)
+        except Exception as exc:  # a job never takes the server down
+            log.warning("a Work job failed", exc_info=True)
+            job.status, job.error = "failed", f"It stopped: {exc}"
+        finally:
+            job.finished_at = iso(self.ws.rt.clock.now())
 
     def get(self, who: Principal, job_id: str) -> AgentJob:
         who.require("brain.read")

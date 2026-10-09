@@ -219,7 +219,13 @@ def skill_versions(brain, name, *, limit=30, with_text=False) -> list[dict] | No
     skill = brain.state().index.skills.get(str(name or "").strip().lstrip("/"))
     if skill is None:
         return None
-    full = brain.vault.path(*skill.path.split("/"))
+    return file_versions(brain, skill.path, limit=limit, with_text=with_text)
+
+
+def file_versions(brain, relpath, *, limit=30, with_text=False) -> list[dict]:
+    """Every version of one vault file (a skill's SKILL.md, an agent's AGENT.md), newest first,
+    from git, with what is on disk now first when it is not committed yet."""
+    full = brain.vault.path(*relpath.split("/"))
     try:
         with open(full, "rb") as handle:
             on_disk = _text(handle.read())
@@ -231,7 +237,7 @@ def skill_versions(brain, name, *, limit=30, with_text=False) -> list[dict] | No
     located = gitops.locate_own(brain.vault.root, brain.repo_root)
     if located:
         top, prefix = located
-        commits = [c for c in gitops.file_log(top, prefix + skill.path, limit)
+        commits = [c for c in gitops.file_log(top, prefix + relpath, limit)
                    if c["status"] != "D"]
         blobs = gitops.read_objects(top, [f"{c['commit']}:{c['path']}" for c in commits])
         for commit in commits:

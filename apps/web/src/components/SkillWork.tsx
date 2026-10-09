@@ -1,7 +1,7 @@
 // Working with a skill: run it for what you need and see what it made (text to copy, save or
 // file in a project; files to download), ask your AI to improve it or write a new one (both
-// wait in Review), edit it yourself, and look back at its versions. From the Skills page, run
-// several skills at once (followed in order), or let the Brain pick the one that fits.
+// wait in Review), edit it yourself, and look back at its versions. Several skills at once
+// (followed in order, or the Brain picks) run from Work, Compose.
 
 import { useState } from "react";
 import { Link } from "react-router";
@@ -22,11 +22,10 @@ import {
   useNotes,
   useRecentRuns,
   useRunSkill,
-  useRunSkills,
   useSkillRuns,
   useSkillVersions,
 } from "../api/hooks";
-import type { BrainCheckpoint, SkillCard, SkillRun, SkillVersion, Task } from "../api/types";
+import type { BrainCheckpoint, SkillRun, SkillVersion, Task } from "../api/types";
 import { bytes, when } from "../lib/format";
 import { Compare } from "./Diff";
 import { Markdown } from "./Markdown";
@@ -100,128 +99,19 @@ export function RunSkill({ name, triggers, makesFiles }: { name: string; trigger
         <button type="button" className="primary" disabled={!ask.trim() || run.isPending} onClick={() => void go().catch(() => undefined)}>
           {run.isPending ? "Asking…" : "Run"}
         </button>
+        <Link className="small" to={`/work/compose?skill=${encodeURIComponent(name)}${ask.trim() ? `&ask=${encodeURIComponent(ask.trim())}` : ""}`}>
+          Open in Compose
+        </Link>
       </div>
       <ErrorNote error={run.error} />
       {task ? <Working key={task.id} task={task} waiting="It waits for a model: run it here, or paste the prompt into a connected AI." /> : null}
     </section>
-  );
-}
-
-/** The Skills page's own Run box: what you need, the skills to follow (in the order chosen; none
- * and the Brain picks the one that fits), and the same optional inputs as a skill's own box. */
-export function RunSkills({ skills }: { skills: SkillCard[] }) {
-  const run = useRunSkills();
-  const [ask, setAsk] = useState("");
-  const [names, setNames] = useState<string[]>([]);
-  const [capture, setCapture] = useState("");
-  const [project, setProject] = useState("");
-  const [files, setFiles] = useState<string[]>([]);
-  const [task, setTask] = useState<Task | null>(null);
-  const runnable = skills.filter((s) => s.use === "run");
-  const chosen = runnable.filter((s) => names.includes(s.name));
-  const makesFiles = chosen.some((s) => s.makes_files);
-  async function go() {
-    setTask(null);
-    const made = await run.mutateAsync({
-      names,
-      ask: ask.trim(),
-      capture_id: capture || undefined,
-      project: project || undefined,
-      files: files.length ? files : undefined,
-    });
-    setTask(made);
-    setAsk("");
-  }
-  return (
-    <section className="skill-panel" aria-label="Run skills" data-tour="skills-run">
-      <h2>Run skills</h2>
-      <Field label="What do you need?">
-        <textarea
-          rows={3}
-          value={ask}
-          placeholder="For example: three LinkedIn posts from this week's podcast, in our voice"
-          onChange={(event) => setAsk(event.target.value)}
-        />
-      </Field>
-      <SkillsPicker skills={runnable} value={names} onChange={setNames} />
-      <div className="skill-inputs">
-        <CapturePicker value={capture} onChange={setCapture} />
-        <ProjectPicker value={project} onChange={setProject} label="For a project (optional)" />
-        <FilePicker value={files} onChange={setFiles} />
-      </div>
-      {makesFiles ? (
-        <p className="muted small">
-          A skill you chose makes files, so the run works in a folder of its own under your outputs folder, with file and Python tools and no
-          web.
-        </p>
-      ) : null}
-      <div className="row">
-        <button type="button" className="primary" disabled={!ask.trim() || run.isPending} onClick={() => void go().catch(() => undefined)}>
-          {run.isPending ? "Asking…" : names.length > 1 ? `Run ${names.length} skills` : "Run"}
-        </button>
-      </div>
-      <ErrorNote error={run.error} />
-      {task ? <Working key={task.id} task={task} waiting="It waits for a model: run it here, or paste the prompt into a connected AI." /> : null}
-    </section>
-  );
-}
-
-/** Pick any of your skills; they are followed in the order picked. */
-function SkillsPicker({ skills, value, onChange }: { skills: SkillCard[]; value: string[]; onChange: (names: string[]) => void }) {
-  const [open, setOpen] = useState(false);
-  const [find, setFind] = useState("");
-  const wanted = find.trim().toLowerCase();
-  const shown = skills.filter((s) => !wanted || s.name.toLowerCase().includes(wanted) || s.description.toLowerCase().includes(wanted));
-  const toggle = (name: string) => onChange(value.includes(name) ? value.filter((n) => n !== name) : [...value, name].slice(0, 6));
-  return (
-    <div className="field">
-      <span className="field-label">Skills to use (optional)</span>
-      <div className="multi-pick">
-        <button type="button" className="multi-pick-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {value.length ? `${value.length} chosen` : "None: your Brain picks the one that fits"}
-        </button>
-        {open ? (
-          <div className="multi-pick-panel">
-            {skills.length > 8 ? (
-              <input type="search" aria-label="Find a skill" placeholder="Find a skill" value={find} onChange={(event) => setFind(event.target.value)} />
-            ) : null}
-            <ul className="multi-pick-list" aria-label="Your skills">
-              {shown.map((skill) => (
-                <li key={skill.name}>
-                  <label>
-                    <input type="checkbox" checked={value.includes(skill.name)} disabled={!value.includes(skill.name) && value.length >= 6} onChange={() => toggle(skill.name)} />
-                    <span>/{skill.name}</span>
-                    {skill.description ? <span className="muted small"> {skill.description.split(/(?<=[.!?])\s/)[0]}</span> : null}
-                  </label>
-                </li>
-              ))}
-              {!shown.length ? <li className="muted small">No skill matches.</li> : null}
-            </ul>
-          </div>
-        ) : null}
-      </div>
-      {value.length ? (
-        <ol className="chips picked-skills" aria-label="Chosen skills, in order">
-          {value.map((name) => (
-            <li key={name} className="chip">
-              /{name}{" "}
-              <button type="button" className="link" aria-label={`Leave out /${name}`} onClick={() => toggle(name)}>
-                ×
-              </button>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-      <span className="field-hint">
-        {value.length > 1 ? "Followed in this order, each building on the last." : "Choose up to six; with none, your Brain picks the one that fits."}
-      </span>
-    </div>
   );
 }
 
 /** The latest runs from here and from every skill, each with what came of it. */
-export function LatestRuns() {
-  const { data: runs } = useLatestSkillRuns(5);
+export function LatestRuns({ limit = 5 }: { limit?: number }) {
+  const { data: runs } = useLatestSkillRuns(limit);
   if (!runs?.length) return null;
   return (
     <section className="latest-runs" aria-label="Latest runs">
@@ -345,7 +235,7 @@ export function SkillRuns({ name, kind }: { name: string; kind: SkillRun["kind"]
   );
 }
 
-function RunCard({ run, showSkills = false }: { run: SkillRun; showSkills?: boolean }) {
+export function RunCard({ run, showSkills = false }: { run: SkillRun; showSkills?: boolean }) {
   // A run started on this computer a moment ago may not have claimed its task yet.
   const { data: live } = useRecentRuns();
   const starting = !!live?.some((r) => r.task_id === run.task_id && ["starting", "running"].includes(r.status));
@@ -358,13 +248,18 @@ function RunCard({ run, showSkills = false }: { run: SkillRun; showSkills?: bool
       <header className="skill-run-head">
         <Pill status={run.status} />
         <span className="muted small">{when(run.created_at)}</span>
-        {showSkills || followed.length > 1 ? (
+        {run.agent ? (
+          <Link className="small" to={`/work/agents/${encodeURIComponent(run.agent)}`}>
+            Asked {run.agent}
+          </Link>
+        ) : null}
+        {(showSkills || followed.length > 1) && !(run.agent && !followed.length) ? (
           <span className="small">
             {followed.length
               ? followed.map((name, i) => (
                   <span key={name}>
                     {i ? " then " : ""}
-                    <Link to={`/skills/${encodeURIComponent(name)}`}>/{name}</Link>
+                    <Link to={`/work/skills/${encodeURIComponent(name)}`}>/{name}</Link>
                   </span>
                 ))
               : "The skill that fit"}
@@ -398,7 +293,7 @@ function RunCard({ run, showSkills = false }: { run: SkillRun; showSkills?: bool
       ) : null}
       {run.kind === "improve" && run.proposal?.status === "approved" ? (
         <p className="small">
-          Its new version was approved and is in use. <Link to={`/skills/${encodeURIComponent(run.skill)}?tab=history`}>See its history</Link>.
+          Its new version was approved and is in use. <Link to={`/work/skills/${encodeURIComponent(run.skill)}?tab=history`}>See its history</Link>.
         </p>
       ) : null}
       {run.kind === "improve" && run.proposal?.status === "rejected" ? (
@@ -485,7 +380,7 @@ function Result({ result, project, skill }: { result: NonNullable<SkillRun["resu
           file={() => new File([result.text], `${slug(result.title) || "result"}.md`, { type: "text/markdown" })}
         />
         {skill ? (
-          <Link className="button" to={`/skills/${encodeURIComponent(skill)}?tab=improve&example=${encodeURIComponent(result.artifact_id)}`}>
+          <Link className="button" to={`/work/skills/${encodeURIComponent(skill)}?tab=improve&example=${encodeURIComponent(result.artifact_id)}`}>
             Teach the skill from this
           </Link>
         ) : null}
@@ -499,13 +394,13 @@ function SaveAsNote({ title, text }: { title: string; text: string }) {
   if (create.data)
     return (
       <span className="small">
-        Saved: <Link to={`/capture/${encodeURIComponent(create.data.id)}`}>open the note</Link>
+        Kept: <Link to={`/work/workspace/${encodeURIComponent(create.data.id)}`}>open the doc</Link>
       </span>
     );
   return (
     <>
-      <button type="button" disabled={create.isPending} onClick={() => create.mutate({ title, body: text })}>
-        Save as note
+      <button type="button" disabled={create.isPending} onClick={() => create.mutate({ title, body: text })} title="A doc in your Workspace, to keep working on">
+        Keep as a doc
       </button>
       <ErrorNote error={create.error} />
     </>
@@ -684,9 +579,18 @@ export function ImproveSkill({ name, example, onClearExample }: { name: string; 
 }
 
 /** Describe a skill (or teach one from something you brought in); your AI drafts it for Review. */
-export function NewSkill({ capture, onClose }: { capture?: { id: string; title: string } | null; onClose?: () => void }) {
+export function NewSkill({
+  capture,
+  initial = "",
+  onClose,
+}: {
+  capture?: { id: string; title: string } | null;
+  /** Words to start from: a prompt from Compose made into a skill, say. */
+  initial?: string;
+  onClose?: () => void;
+}) {
   const draft = useDraftSkill();
-  const [ask, setAsk] = useState("");
+  const [ask, setAsk] = useState(initial);
   const [task, setTask] = useState<Task | null>(null);
   return (
     <section className="skill-panel new-skill" aria-label="New skill">

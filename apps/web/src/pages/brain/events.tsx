@@ -91,7 +91,7 @@ export function EventList({ events, approver, about }: { events: BrainEvent[]; a
               ) : skill ? (
                 <>
                   {": "}
-                  <Link to={`/skills/${encodeURIComponent(skill)}`}>/{skill}</Link>
+                  <Link to={`/work/skills/${encodeURIComponent(skill)}`}>/{skill}</Link>
                 </>
               ) : null}
               {event.reason ? <span className="muted"> “{event.reason}”</span> : null}

@@ -19,6 +19,8 @@ TOOLS = {
     "save_digest",
     "save_skill_result",
     "propose_brain_skill",
+    "list_workflows",
+    "run_workflow",
 }
 
 

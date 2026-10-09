@@ -726,6 +726,10 @@ export interface SkillRun {
    * picked the one that fit. */
   skills?: string[];
   kind: "run" | "improve";
+  /** The agent asked, when an agent was. */
+  agent?: string | null;
+  /** A Workspace doc's own runs: a critic's questions (push-back), or more of it (continue). */
+  doc_action?: "push-back" | "continue" | null;
   ask: string;
   status: TaskStatus;
   assignee_id: string | null;
@@ -967,6 +971,10 @@ export interface Note {
   transcription?: Transcription | null;
   /** Its summary and key points, or how far asking for them is. */
   digest?: Digest | null;
+  /** The projects it is linked to (a link, never a copy; it stays private). */
+  projects?: string[];
+  /** Where a link points. */
+  url?: string | null;
 }
 
 /** How a key point fits what the Brain holds now. */
@@ -1011,7 +1019,7 @@ export interface RelatedInBrain {
   score: number;
 }
 
-export type CaptureKind = "note" | "talk" | "recording" | "transcript" | "document";
+export type CaptureKind = "note" | "talk" | "recording" | "transcript" | "document" | "link";
 
 export interface Transcription {
   state: "pending" | "working" | "ready" | "failed";
@@ -1341,7 +1349,11 @@ export interface CatchUpPlan {
     legacy: number;
     handled: number;
     snoozed: number;
+    /** Workflow runs waiting for you at a check (Work). */
+    checks?: number;
   };
+  /** Work's checks: workflow runs waiting for you. */
+  work?: { run_id: string; workflow_id: string; workflow: string; ask: string; started_at: string }[];
   health: BrainHealth;
   recap: Recap;
   handled: WentIn[];
@@ -1764,4 +1776,399 @@ export interface AgentSkill {
   text: string;
   /** The Brain holds its own skill of this name, used instead. */
   own: boolean;
+}
+
+// ------------------------------------------------------------------ Work: the Library
+
+export type LibraryKind = "guide" | "reference" | "influence";
+export type LibraryRefresh = "never" | "weekly" | "monthly";
+
+/** A document kept whole, by what it is for: a guide to follow, a reference to read whole, an
+ * influence whose taste to borrow; with where it was fetched from and what uses it. */
+export interface LibraryItem {
+  path: string;
+  title: string;
+  kind: LibraryKind;
+  summary: string;
+  entry_id: string | null;
+  source_url: string | null;
+  source_repo: string | null;
+  source_paths: string[];
+  fetched_at: string | null;
+  refresh: LibraryRefresh;
+  updated: string | null;
+  dated: string | null;
+  version: number | null;
+  size: number;
+  original: string | null;
+  project: string | null;
+  project_title: string | null;
+  used_by: { skills: string[]; agents?: string[]; workflows?: string[] };
+}
+
+export interface LibraryItemFull extends LibraryItem {
+  text: string;
+  checked_at: string | null;
+}
+
+/** What filing in the Library did: as the Brain files any document, or "unchanged" when the
+ * text was already there. */
+export interface LibraryFiled extends Omit<BrainFiled, "status"> {
+  status: BrainFiled["status"] | "unchanged";
+}
+
+export interface LibraryRefreshed {
+  status: "applied" | "pending" | "unchanged" | "refused";
+  message: string;
+  path: string;
+  proposal_id: string | null;
+}
+
+// ------------------------------------------------------------------ Work: agents
+
+export type AgentOutput = "outputs" | "workspace" | "proposals";
+
+/** A role written like a job description, kept in the Brain (agents/<name>/AGENT.md). */
+export interface WorkAgent {
+  name: string;
+  role: string;
+  responsibilities: string[];
+  goals: string[];
+  projects: string[];
+  skills: string[];
+  library: string[];
+  context: string[];
+  meetings_days: number;
+  boundaries: string[];
+  output: AgentOutput;
+  output_shape: string;
+  runner: string;
+  review: boolean;
+  scope: string;
+  status: "active" | "archived";
+  prompt: string;
+  path: string;
+  last_run?: { task_id: string; status: string; at: string } | null;
+}
+
+/** What each of an agent's pointers is now, and which no longer resolve. */
+export interface WorkAgentResolved {
+  skills: { name: string; missing: boolean; description: string }[];
+  library: { path: string; title: string; missing: boolean }[];
+  context: { key: string; missing: boolean }[];
+  projects: { id: string; title: string; missing: boolean; status?: string; current?: string; next?: string }[];
+  broken: string[];
+}
+
+export interface WorkAgentFull {
+  agent: WorkAgent;
+  resolved: WorkAgentResolved;
+  /** The role as a model gets it, before the brief of a task. */
+  prompt: string;
+  checkpoint?: BrainCheckpoint | null;
+}
+
+/** The form an agent is written with; the Brain checks what each field means. */
+export interface WorkAgentForm {
+  name: string;
+  role: string;
+  responsibilities: string[];
+  goals: string[];
+  projects: string[];
+  skills: string[];
+  library: string[];
+  context: string[];
+  meetings_days: number;
+  boundaries: string[];
+  output: AgentOutput;
+  output_shape: string;
+  runner: string;
+  review: boolean;
+  prompt: string;
+}
+
+/** A model's draft for Work: an agent's operating prompt, or an improved prompt in Compose. */
+export interface WorkDraft {
+  prompt: string;
+  questions: string[];
+  changes?: string[];
+  used?: string[];
+}
+
+/** A Work job in the background (the same queue as the knowledge agent's). */
+export interface WorkJob<R = WorkDraft> {
+  id: string;
+  kind: string;
+  model: string;
+  model_label: string;
+  message: string;
+  status: "waiting" | "running" | "done" | "failed";
+  result: Partial<R>;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+// ------------------------------------------------------------------ Work: the Workspace
+
+export type DocTemplate = "blank" | "outline" | "plan" | "decision" | "progress";
+
+/** One thing in the Workspace: a doc, a link, or anything linked to a project. */
+export interface WorkspaceItem {
+  id: string;
+  title: string;
+  kind: "doc" | "link" | CaptureKind;
+  url: string | null;
+  excerpt: string;
+  projects: { id: string; title: string; missing: boolean }[];
+  updated_at: string;
+  original: { filename: string; mime: string; size: number } | null;
+}
+
+export interface WorkspaceView {
+  items: WorkspaceItem[];
+  projects: { id: string; title: string; active: boolean }[];
+  /** For one project: the agents that work on it. */
+  agents?: { name: string; role: string; last_run?: { task_id: string; status: string; at: string } | null }[];
+  /** For one project: the workflows that name it. */
+  workflows?: { id: string; name: string; when: string; enabled: boolean; running: boolean; last_run: WorkflowRunSummary | null }[];
+}
+
+// ------------------------------------------------------------------ Work: Compose
+
+/** What goes with a request: skills in order, one agent, notes, documents, a project. */
+export interface ComposePicks {
+  skills: string[];
+  agent: string | null;
+  docs: string[];
+  library: string[];
+  project: string | null;
+}
+
+export interface ComposeSpec extends ComposePicks {
+  request: string;
+}
+
+/** The whole prompt a model gets, its size in tokens, and the short request for any AI. */
+export interface ComposeAssembly {
+  title: string;
+  prompt: string;
+  tokens: number;
+  /** Counted exactly (a tokenizer), or estimated from the characters. */
+  exact: boolean;
+  parts: { label: string; tokens: number }[];
+  brief: { available: boolean; entries: number; note: string | null };
+  short: string;
+  short_tokens: number;
+  skills: string[];
+  agent: string | null;
+  makes_files: boolean;
+}
+
+/** A prompt saved from Compose: its words with versions, its picks, and how often it ran. */
+export interface SavedPrompt {
+  id: string;
+  title: string;
+  body: string;
+  picks: ComposePicks;
+  revision: number;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  uses: number;
+  last_used: string | null;
+  versions: { revision: number; title: string; body: string; at: string }[];
+}
+
+// ------------------------------------------------------------------ Work: Workflows
+
+export type StepKind = "skill" | "agent" | "prompt" | "connector" | "upkeep" | "check";
+
+/** One box of a workflow: what it runs, and what it is given. */
+export interface WorkflowStep {
+  kind: StepKind;
+  title?: string;
+  ask?: string;
+  skill?: string;
+  agent?: string | null;
+  prompt_id?: string | null;
+  text?: string;
+  skills?: string[];
+  docs?: string[];
+  library?: string[];
+  meetings?: number;
+  tools?: string[];
+  writes?: boolean;
+  action?: string;
+}
+
+/** When a workflow runs by itself, in the workspace's time zone. */
+export interface WorkflowSchedule {
+  kind: "manual" | "once" | "daily" | "weekly" | "monthly";
+  at?: string;
+  time?: string;
+  days?: string[];
+  day?: number;
+}
+
+export type WorkflowOutput = { kind: "outputs" } | { kind: "workspace"; doc_id: string | null };
+
+export interface WorkflowRunSummary {
+  id: string;
+  status: WorkflowRunStatus;
+  trigger: string;
+  started_at: string;
+  finished_at: string | null;
+  note: string;
+  step: number;
+  steps: WorkflowStepStatus[];
+}
+
+export type WorkflowRunStatus = "running" | "waiting" | "done" | "failed" | "stopped";
+export type WorkflowStepStatus = "pending" | "running" | "waiting" | "done" | "failed";
+
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  project: string | null;
+  schedule: WorkflowSchedule;
+  /** The schedule in words. */
+  when: string;
+  /** Any connected AI may start it (run_workflow). */
+  ai: boolean;
+  steps: WorkflowStep[];
+  runner: "claude" | "any";
+  output: WorkflowOutput;
+  enabled: boolean;
+  timezone: string;
+  next_due_at: string | null;
+  revision: number;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  last_run: WorkflowRunSummary | null;
+  running: boolean;
+}
+
+export interface WorkflowStepResult {
+  artifact_id?: string;
+  version?: number;
+  title?: string;
+  excerpt?: string;
+  text?: string;
+  edited?: boolean;
+}
+
+export interface WorkflowRunStep {
+  index: number;
+  kind: StepKind;
+  title: string;
+  status: WorkflowStepStatus;
+  task_id?: string;
+  job_id?: string;
+  started_at?: string;
+  finished_at?: string;
+  result?: WorkflowStepResult | null;
+  read?: { ref: string; version: number }[];
+  note?: string;
+  ask?: string;
+  /** For a step under way: where its task is (draft and ready: waiting for a model). */
+  task_status?: string;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflow_id: string;
+  workflow: string;
+  status: WorkflowRunStatus;
+  trigger: "now" | "schedule" | "ai";
+  due_at: string | null;
+  started_at: string;
+  finished_at: string | null;
+  step: number;
+  steps: WorkflowRunStep[];
+  revision: number;
+  request: string;
+  note: string;
+  version: number;
+  /** A check waiting for the owner: what to look at, and what the step before made. */
+  waiting: { step: number; ask: string; result: WorkflowStepResult | null } | null;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  schedule: WorkflowSchedule;
+  steps: WorkflowStep[];
+  output: WorkflowOutput;
+}
+
+export interface WorkflowForm {
+  name: string;
+  description: string;
+  project: string | null;
+  schedule: WorkflowSchedule;
+  ai: boolean;
+  steps: WorkflowStep[];
+  runner: "claude" | "any";
+  output: WorkflowOutput;
+  enabled: boolean;
+}
+
+/** The MCP servers Claude Code here connects to, to name a connector step's tools from. */
+export interface Connectors {
+  available: boolean;
+  servers: { name: string; detail: string; connected: boolean; state: string }[];
+  note: string;
+}
+
+// ------------------------------------------------------------------ Work: Skills, upgraded
+
+/** What uses a skill, when it was edited and used, and its copies in Claude Code. */
+export interface SkillAbout {
+  used_by: { skills: string[]; agents: string[]; workflows: { id: string; name: string }[] };
+  freshness: {
+    last_edited: string | null;
+    last_used: string | null;
+    last_run_here: string | null;
+    last_asked: string | null;
+    /** What it loads that changed after its last edit. */
+    changed: { key: string; title: string; at: string }[];
+  };
+  pushed: SkillCopy[];
+}
+
+/** A copy of a skill in Claude Code, and how many versions behind the Brain's it is. */
+export interface SkillCopy {
+  place: string;
+  user: boolean;
+  pushed_at: string | null;
+  /** 0: current. null: older than the history kept. */
+  behind: number | null;
+}
+
+/** A skill worth writing down: asks repeated with no skill, or a prompt run often. */
+export interface SkillSuggestion {
+  kind: "asks" | "prompt";
+  key: string;
+  title: string;
+  count: number;
+  examples: string[];
+  apps: string[];
+  last: string | null;
+  prompt_id: string | null;
+  /** What New skill starts from when it is accepted. */
+  ask: string;
+}
+
+export interface SkillBroughtIn {
+  name: string;
+  replaced: boolean;
+  files: number;
+  /** What the Brain does not keep in a skill, with why. */
+  skipped: string[];
 }

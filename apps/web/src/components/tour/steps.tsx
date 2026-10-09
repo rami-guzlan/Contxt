@@ -64,13 +64,17 @@ export const STEPS: TourStep[] = [
     body: <p>What every AI you connect can know, in the words it receives. Each request gets only the few notes it needs.</p>,
   },
   {
-    id: "skills",
+    id: "work",
     chapter: "basics",
-    route: "/skills",
-    target: "skills-list",
-    missing: "Skills show here: how your AI makes things, step by step.",
-    title: "Skills: how it makes things",
-    body: <p>A procedure your AI follows to make a post, a proposal, a recap. Run one here, or ask for it in any AI you connect.</p>,
+    route: "/work",
+    target: "work-tabs",
+    title: "Work: putting your Brain to use",
+    body: (
+      <p>
+        Ask with your skills and references at hand, write and plan by project, and hand work to agents and workflows. Skills, the procedures
+        your AI follows to make things, live here too.
+      </p>
+    ),
   },
   {
     id: "activity",
