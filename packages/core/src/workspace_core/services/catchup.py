@@ -1062,7 +1062,7 @@ class CatchUp:
             if note_id and at >= since and event.get("action") == "auto-applied":
                 found.setdefault(note_id, (at, f"It went in on its own on {at[:10]}."))
         for point in points:
-            seconds = (point.get("source") or {}).get("seconds")
+            seconds = _source(point).get("seconds")
             at = str(point.get("at") or "")
             if at < since or point.get("undone_by") or not isinstance(seconds, (int, float)):
                 continue
@@ -1143,7 +1143,7 @@ class CatchUp:
         for point in self.rt.brain.checkpoints(200) if points is None else points:
             if str(point.get("at") or "") < since or point.get("undone_by"):
                 continue
-            key = str((point.get("source") or {}).get("catch_up") or "")
+            key = str(_source(point).get("catch_up") or "")
             kind = key.split(":")[0]
             if kind in ("recheck", "twin", "tidy", "musthold", "spot", "older", "belief"):
                 done[kind] = done.get(kind, 0) + 1
@@ -1306,3 +1306,10 @@ def _key(value: Any) -> str:
     if not KEY.match(key):
         raise ValidationFailed("Name the catch-up item.", field="key")
     return key
+
+
+def _source(point: dict[str, Any]) -> dict[str, Any]:
+    """What an undo point says about where it came from, when it says it as fields (Catch up's
+    own decisions do); older points and other apps name their source in a line of text."""
+    source = point.get("source")
+    return source if isinstance(source, dict) else {}

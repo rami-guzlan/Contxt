@@ -1,13 +1,15 @@
 // Activity: what your AI asked, what it got, and what changed. Requests: every request from
 // every connected app, with what it was handed and why, its tokens and share of the Brain, what
-// it opened after, and what it saved; flag a piece that should not have been there, or teach
-// what was missing. Changes: the Brain's history and its undo points.
+// it opened after, and what it saved; open the exact text it got, and the startup context when
+// that went with it; flag a piece that should not have been there, or teach what was missing.
+// Changes: the Brain's history and its undo points.
 
 import { useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { useAiRequests, useProposeEntry, useWeekly } from "../api/hooks";
+import { useAiRequest, useAiRequests, useProposeEntry, useWeekly } from "../api/hooks";
 import type { AiRequest, RequestPiece } from "../api/types";
+import { Markdown } from "../components/Markdown";
 import { Empty, ErrorNote, Loading, Tabs } from "../components/ui";
 import { plural, when } from "../lib/format";
 import { ActivityPage as ChangesView } from "./brain/Activity";
@@ -152,9 +154,11 @@ export function RequestRow({ request, brainTokens }: { request: AiRequest; brain
   return (
     <li className="request">
       <button type="button" className="request-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="request-app">{request.app}</span>
+        <span className="request-app" title={request.client ?? undefined}>
+          {request.app}
+        </span>
         <span className="request-text">{request.request}</span>
-        <span className="muted small">
+        <span className="request-meta muted small">
           {when(request.at)} · {request.nothing ? "nothing fit" : `${plural(got.length, "piece")}, ${request.tokens.toLocaleString()} tokens`}
           {share ? ` (${Math.max(1, Math.round(share * 100))}% of your Brain)` : ""}
         </span>
@@ -164,41 +168,27 @@ export function RequestRow({ request, brainTokens }: { request: AiRequest; brain
       ) : null}
       {open ? (
         <div className="request-body">
+          <p className="request-asked">{request.request}</p>
           {request.project ? (
             <p className="small">
               <span className="why-kind">Project</span> <Link to={`/projects/${encodeURIComponent(request.project.id)}`}>{request.project.title}</Link>
             </p>
           ) : null}
-          {request.kernel ? <p className="small muted">It also got the startup context, once for this chat.</p> : null}
           {got.length ? (
-            <ul className="preview-why">
-              {got.map((piece) => {
-                const url = pieceLink(piece);
-                return (
-                  <li key={`${piece.kind}:${piece.id}`}>
-                    <span className="why-kind">{PIECE_WORDS[piece.kind] ?? piece.kind}</span>
-                    <span>
-                      {url ? <Link to={url}>{piece.title ?? piece.id}</Link> : (piece.title ?? piece.id)}{" "}
-                      {piece.why ? <span className="muted">({piece.why})</span> : null}
-                      {piece.kind === "note" ? (
-                        <Link className="small" to={`${entryUrl(piece.id)}?mark=1`}>
-                          {" "}
-                          Shouldn't be here?
-                        </Link>
-                      ) : null}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+            <>
+              <h4 className="request-part">What it got</h4>
+              <Pieces pieces={got} />
+            </>
           ) : (
             <p className="muted small">Nothing in your Brain fit this request, so the AI answered from what it already knew.</p>
           )}
           {request.opened.length ? (
-            <p className="small">
-              Opened after: {request.opened.map((p) => p.title ?? p.id).join(", ")}
-            </p>
+            <>
+              <h4 className="request-part">What it opened after</h4>
+              <Pieces pieces={request.opened} />
+            </>
           ) : null}
+          <Sent request={request} />
           {request.saved.length ? (
             <p className="small">
               Saved: {request.saved.map((s) => `${s.title} (${s.status})`).join(", ")}
@@ -214,6 +204,79 @@ export function RequestRow({ request, brainTokens }: { request: AiRequest; brain
         </div>
       ) : null}
     </li>
+  );
+}
+
+/** Each piece a request got (or opened after), with why, and a way to say it did not belong. */
+function Pieces({ pieces }: { pieces: RequestPiece[] }) {
+  return (
+    <ul className="preview-why">
+      {pieces.map((piece) => {
+        const url = pieceLink(piece);
+        return (
+          <li key={`${piece.kind}:${piece.id}`}>
+            <span className="why-kind">{PIECE_WORDS[piece.kind] ?? piece.kind}</span>
+            <span>
+              {url ? <Link to={url}>{piece.title ?? piece.id}</Link> : (piece.title ?? piece.id)}{" "}
+              {piece.why ? <span className="muted">({piece.why})</span> : null}
+              {piece.kind === "note" ? (
+                <Link className="small" to={`${entryUrl(piece.id)}?mark=1`}>
+                  {" "}
+                  Shouldn't be here?
+                </Link>
+              ) : null}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The exact text the request got, and the startup context when that went with it: both as
+ * the AI read them, opened on demand. */
+function Sent({ request }: { request: AiRequest }) {
+  const { data: full, error, isLoading } = useAiRequest(request.id);
+  if (isLoading) return <p className="muted small">Loading what it got…</p>;
+  if (!full) return <ErrorNote error={error} />;
+  return (
+    <div className="request-sent">
+      {full.text === null ? (
+        <p className="muted small">It got notes you don't see, so its text isn't shown here.</p>
+      ) : (
+        <SentText summary={`The exact text it got (${plural(request.tokens, "token")})`} text={full.text} />
+      )}
+      {full.startup ? (
+        full.startup.text ? (
+          <SentText summary="The startup context it got, once for this chat" text={full.startup.text} />
+        ) : (
+          <p className="muted small">
+            It also got the startup context, once for this chat. That version was sent before Contxt kept a copy, and it has changed since.
+          </p>
+        )
+      ) : request.kernel ? (
+        <p className="muted small">It also got the startup context, once for this chat.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function SentText({ summary, text }: { summary: string; text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <details className="sent-text">
+      <summary>{summary}</summary>
+      <div className="document compact">
+        <Markdown text={text} />
+      </div>
+      <button
+        type="button"
+        className="link small"
+        onClick={() => void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => undefined)}
+      >
+        {copied ? "Copied" : "Copy it as sent"}
+      </button>
+    </details>
   );
 }
 
@@ -246,6 +309,10 @@ function Teach({ request, onClose }: { request: AiRequest; onClose: () => void }
         <span className="field-label">What should it have known?</span>
         <textarea rows={3} value={text} onChange={(event) => setText(event.target.value)} />
       </label>
+      <p className="muted small">
+        It becomes a suggested note, with this request as its evidence. Nothing changes until you keep it in Catch up; then every AI gets it
+        for requests like this one.
+      </p>
       <div className="row">
         <button type="submit" className="primary" disabled={!text.trim() || propose.isPending}>
           Teach it

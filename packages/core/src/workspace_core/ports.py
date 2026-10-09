@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from workspace_core.errors import Conflict
+from workspace_core.errors import Conflict, NotFound
 
 
 @dataclass(frozen=True)
@@ -466,6 +466,12 @@ class BrainPort(Protocol):
         what its conversation saved or suggested."""
         ...
 
+    def request(self, packet_id: str) -> dict[str, Any]:
+        """One request in full: what `requests` says of it, the exact text it was handed
+        (`text`), and the startup context when it went with it (`startup`: {"fingerprint",
+        "text"}, the text None when it was not kept). NotFound past the retention window."""
+        ...
+
     def goals(self) -> dict[str, Any]:
         """The questions about what the Brain is for, and the owner's answers: {"questions",
         "answers", "exists", "updated", "text"}."""
@@ -709,6 +715,9 @@ class NoBrain:
         self, *, limit: int = 50, before: str | None = None, client: str | None = None
     ) -> dict[str, Any]:
         return {"requests": [], "brain_tokens": 0, "apps": []}
+
+    def request(self, packet_id: str) -> dict[str, Any]:
+        raise NotFound("This workspace has no Brain.")
 
     def goals(self) -> dict[str, Any]:
         return {"questions": [], "answers": {}, "exists": False, "updated": None, "text": ""}

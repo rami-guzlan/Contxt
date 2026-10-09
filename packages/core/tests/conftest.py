@@ -657,6 +657,11 @@ class FakeBrain:
     def requests(self, *, limit=50, before=None, client=None):
         return {"requests": [], "brain_tokens": 100, "apps": []}
 
+    def request(self, packet_id):
+        from workspace_core.errors import NotFound
+
+        raise NotFound(f"No request {packet_id}.")
+
     def weekly(self, weeks=8):
         return [{"start": "2026-09-22", "end": "2026-09-28", "conversations": 3, "packets": 5}]
 

@@ -1494,6 +1494,14 @@ export interface AiRequest {
   old_engine: boolean;
 }
 
+/** One request in full: the exact text it was handed, and the startup context when that went
+ * with it (its text null when it was sent before the Brain kept it). Text null: it got notes
+ * you do not see. */
+export interface AiRequestFull extends AiRequest {
+  text: string | null;
+  startup: { fingerprint: string; text: string | null } | null;
+}
+
 export interface AiRequests {
   requests: AiRequest[];
   brain_tokens: number;

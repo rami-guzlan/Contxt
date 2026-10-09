@@ -571,20 +571,22 @@ textarea {
   flex-wrap: wrap;
 }
 
-.activity {
+/* The list of changes (components/Activity.tsx). Only the list: the Activity page's own wrapper
+   is also called "activity", and its request rows keep their own layout. */
+ol.activity {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-.activity li {
+ol.activity > li {
   display: grid;
   grid-template-columns: 6.5rem 1fr;
   gap: 0.5rem;
   padding: 0.25rem 0;
 }
 
-.activity time {
+ol.activity time {
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -4333,7 +4335,7 @@ button.big,
 
 .request-head {
   display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr) auto;
+  grid-template-columns: minmax(6rem, 10rem) minmax(0, 1fr) auto;
   gap: 0.75rem;
   align-items: baseline;
   width: 100%;
@@ -4345,6 +4347,8 @@ button.big,
 
 .request-app {
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .request-text {
@@ -4353,14 +4357,64 @@ button.big,
   white-space: nowrap;
 }
 
+.request-meta {
+  white-space: nowrap;
+}
+
 .request-body {
-  padding: 0 0.8rem 0.7rem;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.8rem 0.8rem;
+}
+
+.request-body > * {
+  margin: 0;
+}
+
+.request-asked {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.request-part {
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+}
+
+.request-sent {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.sent-text {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.7rem;
+}
+
+.sent-text > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.sent-text[open] > summary {
+  margin-bottom: 0.4rem;
+}
+
+.sent-text .document {
+  max-height: 32rem;
+  overflow: auto;
 }
 
 @media (max-width: 700px) {
   .request-head {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.1rem;
+  }
+
+  .request-meta {
+    white-space: normal;
   }
 }
 

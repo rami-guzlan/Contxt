@@ -346,6 +346,9 @@ class Brain:
                               engine=runtime_mod.STARTED_WITH)
             self.ledger.record(session, packet.id, str(request), route.mode, packet.text,
                                data, items)
+            if not kernel_held:
+                # The startup context as it was sent, once per version, for Activity to show.
+                self.ledger.record_kernel(kernel_fp, parts[0])
         return Result("\n\n".join(parts), data)
 
     def preview(self, request, *, principal=None, focus=None, partition=None,
@@ -1032,6 +1035,12 @@ class Brain:
         from . import activity
         return activity.requests(self, limit=limit, before=before, client=client,
                                  session=session)
+
+    def request(self, packet_id) -> Result:
+        """One request in full: what it got, and the exact text it was handed, with the
+        startup context when that went with it (activity.py)."""
+        from . import activity
+        return activity.request(self, packet_id)
 
     def record_output(self, path, *, title="", session_id=None) -> Result:
         """Note a file an AI saved for the person, with the conversation it was made in."""

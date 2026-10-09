@@ -17,6 +17,9 @@ from .sessions import Ledger
 CLIENTS = (
     ("claude-code", "Claude Code"),
     ("claude-ai", "Claude Desktop"),
+    # The Claude desktop app, for the servers set in its own settings: "local-agent-mode-"
+    # and the server's name.
+    ("local-agent-mode", "Claude app"),
     ("claude", "Claude"),
     ("cursor", "Cursor"),
     ("codex", "Codex"),
@@ -92,46 +95,99 @@ def requests(brain, *, limit=50, before=None, client=None, session=None):
                                      session=session)
     except Exception:  # an unreadable ledger is an empty page, not an error
         rows = []
-    # The whole brain: its live notes, skills and filed documents.
     from . import runtime
     current = runtime.code_hash()  # the engine on disk now
-    brain_tokens = (sum(n.tokens for n in st.index.notes.values())
-                    + sum(s.tokens for s in st.index.skills.values())
-                    + sum(r.tokens for r in st.index.references.values())) or 1
+    brain_tokens = _brain_tokens(st)
     saved = _saved(brain, st, {r["session_id"] for r in rows})
     out = []
     for row in rows:
-        app = client_label(row.get("client") or "")
-        if client and app != client:
+        shaped = _shape(st, row, brain_tokens, current, saved)
+        if client and shaped["app"] != client:
             continue
-        data = row.get("data") or {}
-        got = [_piece(st, *piece) for piece in row["items"]]
-        focus = data.get("focus_id")
-        out.append({
-            "id": row["id"], "session_id": row["session_id"], "at": row["at"],
-            "request": row["request"] or "", "mode": row["mode"], "app": app,
-            "client": row.get("client") or None, "tokens": int(row["tokens"] or 0),
-            "share": round(int(row["tokens"] or 0) / brain_tokens, 4),
-            "project": ({"id": focus, "title": st.index.focuses[focus].title}
-                        if focus and focus in st.index.focuses else None),
-            "skill": data.get("skill_id"),
-            "got": [p for p in got if p["kind"] != "kernel"],
-            "kernel": any(p["kind"] == "kernel" and p["tokens"] for p in got),
-            "opened": [_piece(st, *piece) for piece in row["opened"]],
-            "nothing": data.get("mode") == "lean" and not (
-                data.get("note_ids") or data.get("standing_ids") or data.get("held_ids")
-                or data.get("section_ids")),
-            "saved": saved.get(row["session_id"], []) if row.get("last_in_session") else [],
-            "engine": row.get("engine") or None,
-            # a conversation still on older engine code: its app needs a restart
-            "old_engine": bool(row.get("engine")) and row.get("engine") != current,
-        })
+        out.append(shaped)
         if len(out) >= limit:
             break
     apps = sorted({r["app"] for r in out})
     return _result(f"{len(out)} request(s).",
                    {"requests": out, "brain_tokens": brain_tokens, "apps": apps,
                     "engine": current})
+
+
+def _brain_tokens(st) -> int:
+    """The whole brain: its live notes, skills and filed documents."""
+    return (sum(n.tokens for n in st.index.notes.values())
+            + sum(s.tokens for s in st.index.skills.values())
+            + sum(r.tokens for r in st.index.references.values())) or 1
+
+
+def _shape(st, row, brain_tokens: int, current: str, saved: dict) -> dict:
+    """One ledger packet as a person reads it."""
+    data = row.get("data") or {}
+    got = [_piece(st, *piece) for piece in row["items"]]
+    focus = data.get("focus_id")
+    return {
+        "id": row["id"], "session_id": row["session_id"], "at": row["at"],
+        "request": row["request"] or "", "mode": row["mode"],
+        "app": client_label(row.get("client") or ""),
+        "client": row.get("client") or None, "tokens": int(row["tokens"] or 0),
+        "share": round(int(row["tokens"] or 0) / brain_tokens, 4),
+        "project": ({"id": focus, "title": st.index.focuses[focus].title}
+                    if focus and focus in st.index.focuses else None),
+        "skill": data.get("skill_id"),
+        "got": [p for p in got if p["kind"] != "kernel"],
+        "kernel": any(p["kind"] == "kernel" and p["tokens"] for p in got),
+        "opened": [_piece(st, *piece) for piece in row["opened"]],
+        "nothing": data.get("mode") == "lean" and not (
+            data.get("note_ids") or data.get("standing_ids") or data.get("held_ids")
+            or data.get("section_ids")),
+        "saved": saved.get(row["session_id"], []) if row.get("last_in_session") else [],
+        "engine": row.get("engine") or None,
+        # a conversation still on older engine code: its app needs a restart
+        "old_engine": bool(row.get("engine")) and row.get("engine") != current,
+    }
+
+
+def request(brain, packet_id):
+    """One request in full: everything `requests` says about it, the exact text it was
+    handed (`text`), and the startup context when it went with this request (`startup`:
+    its text as sent, or None when it was sent before the brain kept it)."""
+    st = brain.state()
+    try:
+        rows = brain.ledger.requests(limit=1, packet=str(packet_id or ""))
+    except Exception:  # an unreadable ledger has no requests
+        rows = []
+    if not rows:
+        return _result(f"No request {packet_id} (requests are kept for "
+                       f"{brain.ledger.retention_days} days).", {"status": "missing"},
+                       is_error=True)
+    row = rows[0]
+    from . import runtime
+    shaped = _shape(st, row, _brain_tokens(st), runtime.code_hash(),
+                    _saved(brain, st, {row["session_id"]}))
+    shaped["text"] = row.get("text") or ""
+    data = row.get("data") or {}
+    fingerprint = str(data.get("kernel_fingerprint") or "")
+    startup = None
+    if data.get("kernel_included") and fingerprint:
+        kept = brain.ledger.kernel_text(fingerprint)
+        startup = {"fingerprint": fingerprint,
+                   "text": kept or _kernel_now(brain, st, row, fingerprint)}
+    shaped["startup"] = startup
+    return _result(f"Request {row['id']}.", shaped)
+
+
+def _kernel_now(brain, st, row, fingerprint: str) -> str | None:
+    """The startup context as it reads now, when that is still the version the request got
+    (requests from before the brain kept what it sent)."""
+    from . import kernel as kernel_mod
+    principal = brain.ledger.session_principal(row["session_id"])
+    caller = brain.caller(principal or None, None, (row.get("data") or {}).get("partition"),
+                          st=st)
+    if not isinstance(caller, tuple):
+        return None
+    chain, partitions = caller
+    text, now = kernel_mod.render(st.config, st.index, st.scopes, chain, partitions)
+    return f"# Startup context (kernel {now})\n\n{text}" if now == fingerprint else None
 
 
 def normal_path(path: str) -> str:

@@ -294,6 +294,16 @@ def test_what_went_in_on_its_own_comes_back_once_as_a_spot_check(ws, owner, brai
     assert not [c for c in plan["upkeep"] if c["type"] == "spot"]  # this week's dose is used
 
 
+def test_an_undo_point_that_names_its_source_in_words_counts_for_nothing(ws, owner, brain, clock):
+    """Older undo points, and changes from other apps, name their source as a line of text: the
+    week's upkeep and the pace line read only Catch up's own fields, and never break on one."""
+    at = (clock.now() - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for source in ("workspace:act_owner", "", None, ["chat"]):
+        brain.points.insert(0, {"at": at, "source": source, "decisions": [], "undone_by": None})
+    plan = ws.catch_up.plan(owner)
+    assert plan["upkeep"] is not None and isinstance(plan["seconds"], int)
+
+
 def test_drift_is_the_share_of_approvals_taken_back_within_a_month():
     now = datetime(2026, 10, 8, tzinfo=UTC)
     points = [

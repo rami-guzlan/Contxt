@@ -1179,6 +1179,25 @@ class BrainKitAdapter:
                 row[key] = [p for p in row[key] if p["kind"] != "note" or p["id"] in seen]
         return data
 
+    def request(self, packet_id: str) -> dict[str, Any]:
+        result = self.brain.request(packet_id)
+        if result.is_error:
+            raise NotFound(result.text)
+        row: dict[str, Any] = dict(result.data)
+        seen = self._seen(self.brain.state())
+        hidden = any(
+            p["kind"] == "note" and p["id"] not in seen
+            for key in ("got", "opened")
+            for p in row.get(key) or []
+        )
+        for key in ("got", "opened"):
+            row[key] = [p for p in row.get(key) or [] if p["kind"] != "note" or p["id"] in seen]
+        if hidden:
+            # It was handed notes the owner does not see: its text would show them.
+            row["text"] = None
+            row["startup"] = None
+        return row
+
     def unsaved(self) -> list[str]:
         return list(self.brain.unsaved())
 

@@ -372,6 +372,13 @@ def requests(
     return ws.brain.requests(who, limit=limit, before=before, client=app)
 
 
+@router.get("/requests/{packet_id}")
+def request(packet_id: str, who: Who, ws: WS) -> dict[str, Any]:
+    """One request in full: what it got, the exact text it was handed, and the startup
+    context when that went with it."""
+    return ws.brain.request(who, packet_id)
+
+
 @router.get("/weekly")
 def weekly(who: Who, ws: WS, weeks: int = 8) -> list[dict[str, Any]]:
     """Conversations the Brain served in each of the last weeks, oldest first."""

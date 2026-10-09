@@ -8,6 +8,7 @@ import type {
   BackupMade,
   LocalModels,
   AiApp,
+  AiRequestFull,
   AiRequests,
   BuiltinSkills,
   CatchUpPlan,
@@ -789,6 +790,15 @@ export const useAiRequests = (params: { limit?: number; before?: string; app?: s
     queryFn: () => get<AiRequests>(`/api/brain/requests${query(params)}`),
     // While the first run waits for the handshake, look again every few seconds.
     refetchInterval: watch ? 3000 : false,
+  });
+
+/** One request in full, fetched when its row opens. */
+export const useAiRequest = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: [...keys.brain, "request", id],
+    queryFn: () => get<AiRequestFull>(`/api/brain/requests/${encodeURIComponent(id)}`),
+    enabled,
+    staleTime: 60_000,
   });
 
 export const useWeekly = (weeks = 8) =>

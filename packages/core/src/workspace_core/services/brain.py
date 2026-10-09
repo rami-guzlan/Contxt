@@ -570,6 +570,15 @@ class Brain:
             client=str(client or "").strip() or None,
         )
 
+    def request(self, who: Principal, packet_id: str) -> dict[str, Any]:
+        """One request in full, with the exact text it was handed and the startup context
+        when that went with it."""
+        who.require("brain.read")
+        packet_id = str(packet_id or "").strip()
+        if not packet_id:
+            raise ValidationFailed("Name the request.", field="packet_id")
+        return self.rt.brain.request(packet_id)
+
     def weekly(self, who: Principal, *, weeks: int = 8) -> list[dict[str, Any]]:
         """Conversations the Brain served in each of the last weeks, oldest first."""
         who.require("brain.read")
