@@ -728,6 +728,8 @@ export interface SkillRun {
   kind: "run" | "improve";
   /** The agent asked, when an agent was. */
   agent?: string | null;
+  /** A Workspace doc's own runs: a critic's questions (push-back), or more of it (continue). */
+  doc_action?: "push-back" | "continue" | null;
   ask: string;
   status: TaskStatus;
   assignee_id: string | null;
@@ -969,6 +971,10 @@ export interface Note {
   transcription?: Transcription | null;
   /** Its summary and key points, or how far asking for them is. */
   digest?: Digest | null;
+  /** The projects it is linked to (a link, never a copy; it stays private). */
+  projects?: string[];
+  /** Where a link points. */
+  url?: string | null;
 }
 
 /** How a key point fits what the Brain holds now. */
@@ -1013,7 +1019,7 @@ export interface RelatedInBrain {
   score: number;
 }
 
-export type CaptureKind = "note" | "talk" | "recording" | "transcript" | "document";
+export type CaptureKind = "note" | "talk" | "recording" | "transcript" | "document" | "link";
 
 export interface Transcription {
   state: "pending" | "working" | "ready" | "failed";
@@ -1897,4 +1903,27 @@ export interface WorkJob<R = WorkDraft> {
   error: string | null;
   started_at: string;
   finished_at: string | null;
+}
+
+// ------------------------------------------------------------------ Work: the Workspace
+
+export type DocTemplate = "blank" | "outline" | "plan" | "decision" | "progress";
+
+/** One thing in the Workspace: a doc, a link, or anything linked to a project. */
+export interface WorkspaceItem {
+  id: string;
+  title: string;
+  kind: "doc" | "link" | CaptureKind;
+  url: string | null;
+  excerpt: string;
+  projects: { id: string; title: string; missing: boolean }[];
+  updated_at: string;
+  original: { filename: string; mime: string; size: number } | null;
+}
+
+export interface WorkspaceView {
+  items: WorkspaceItem[];
+  projects: { id: string; title: string; active: boolean }[];
+  /** For one project: the agents that work on it. */
+  agents?: { name: string; role: string; last_run?: { task_id: string; status: string; at: string } | null }[];
 }

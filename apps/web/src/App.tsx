@@ -44,6 +44,8 @@ const WorkAgentPage = page(() => import("./pages/work/Agents"), "WorkAgentPage")
 const NewWorkAgentPage = page(() => import("./pages/work/Agents"), "NewWorkAgentPage");
 const SkillPage = page(() => import("./pages/work/Skills"), "SkillPage");
 const SkillsPage = page(() => import("./pages/work/Skills"), "SkillsPage");
+const WorkspacePage = page(() => import("./pages/work/Workspace"), "WorkspacePage");
+const WorkspaceDocPage = page(() => import("./pages/work/Workspace"), "WorkspaceDocPage");
 
 /** An old address that moved: same path below the moved part, same query. */
 function Moved({ from, to }: { from: string; to: string }) {
@@ -112,6 +114,8 @@ export function App() {
           </Route>
           <Route path="/work" element={<WorkLayout />}>
             <Route index element={<WorkOverviewPage />} />
+            <Route path="workspace" element={<WorkspacePage />} />
+            <Route path="workspace/:docId" element={<WorkspaceDocPage />} />
             <Route path="skills" element={<SkillsPage />} />
             <Route path="skills/:name" element={<SkillPage />} />
             <Route path="agents" element={<WorkAgentsPage />} />

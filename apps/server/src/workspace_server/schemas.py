@@ -459,3 +459,37 @@ class AgentPromptIn(AgentForm):
 class AgentAskIn(Body):
     ask: str = Field(min_length=1, max_length=4000)
     project: str | None = Field(default=None, max_length=200)
+
+
+# ------------------------------------------------------------------------- the Workspace
+
+
+class WorkspaceDocIn(Body):
+    template: str = Field(default="blank", pattern="^(blank|outline|plan|decision|progress)$")
+    title: str = Field(default="", max_length=300)
+    projects: list[str] = Field(default_factory=list, max_length=10)
+
+
+class WorkspaceLinkIn(Body):
+    url: str = Field(min_length=8, max_length=2000)
+    title: str = Field(default="", max_length=300)
+    projects: list[str] = Field(default_factory=list, max_length=10)
+
+
+class WorkspaceProjectsIn(Body):
+    projects: list[str] = Field(default_factory=list, max_length=10)
+
+
+class WorkspaceDraftIn(Body):
+    skill: str | None = Field(default=None, max_length=80)
+    agent: str | None = Field(default=None, max_length=64)
+    ask: str = Field(default="", max_length=2000)
+
+
+class WorkspaceContinueIn(Body):
+    where: str = Field(default="", max_length=300)
+
+
+class WorkspaceUseIn(Body):
+    task_id: str = Field(min_length=1, max_length=80)
+    how: str = Field(pattern="^(version|append|new)$")

@@ -274,14 +274,14 @@ describe("one skill", () => {
     // What an earlier run made, with what to do with it.
     expect(await screen.findByText("Reviews happen on Fridays.", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("Three posts on async reviews.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Save as note" }));
+    await user.click(screen.getByRole("button", { name: "Keep as a doc" }));
     await waitFor(() =>
       expect(calls.find((c) => c.method === "POST" && c.path === "/api/notes")?.body).toEqual({
         title: "Async posts",
         body: "**Monday:** Reviews happen on Fridays.",
       }),
     );
-    expect(await screen.findByRole("link", { name: "open the note" })).toHaveAttribute("href", "/capture/ctx_saved");
+    expect(await screen.findByRole("link", { name: "open the doc" })).toHaveAttribute("href", "/work/workspace/ctx_saved");
     await user.click(screen.getByRole("button", { name: "File in a project" }));
     expect(screen.getByLabelText("Project to file it in")).toHaveValue("q4"); // the project it ran for
     await user.click(screen.getByRole("button", { name: "File it" }));

@@ -1,6 +1,6 @@
 // Work: the frame and its tabs, the overview of its parts, and each part as it lands.
 
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,8 +9,16 @@ import { NewWorkAgentPage, WorkAgentPage, WorkAgentsPage } from "./Agents";
 import { LibraryItemPage, LibraryPage } from "./Library";
 import { WorkOverviewPage } from "./Overview";
 import { WorkLayout } from "./WorkLayout";
+import { WorkspaceDocPage, WorkspacePage } from "./Workspace";
 
 afterEach(() => vi.restoreAllMocks());
+
+// jsdom cannot run ProseMirror: the doc's editor is a plain text box here.
+vi.mock("../../components/RichEditor", () => ({
+  default: ({ markdown, label, onChange }: { markdown: string; label: string; onChange: (text: string) => void }) => (
+    <textarea aria-label={label} defaultValue={markdown} onChange={(event) => onChange(event.target.value)} />
+  ),
+}));
 
 const skills = {
   skills: [
@@ -35,7 +43,14 @@ describe("Work", () => {
     mockApi({ "GET /api/brain/status": { available: true }, "GET /api/skills": skills, "GET /api/library": [], "GET /api/agents": [] });
     renderAt(<WorkLayout />, { path: "/work", route: "/work" });
     const tabs = await screen.findByRole("navigation", { name: "Work sections" });
-    expect(within(tabs).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["/work", "/work/skills", "/work/agents", "/work/library", "/work/outputs"]);
+    expect(within(tabs).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual([
+      "/work",
+      "/work/workspace",
+      "/work/skills",
+      "/work/agents",
+      "/work/library",
+      "/work/outputs",
+    ]);
     expect(within(tabs).getByRole("link", { name: /Skills/ })).toHaveTextContent("1");
     expect(screen.getByRole("heading", { level: 1, name: "Work" })).toBeInTheDocument();
   });
@@ -47,6 +62,7 @@ describe("Work", () => {
       "GET /api/skills/runs": [],
       "GET /api/library": [],
       "GET /api/agents": [],
+      "GET /api/workspace/items": { items: [], projects: [] },
     });
     renderAt(<WorkOverviewPage />, { path: "/work", route: "/work" });
     const parts = await screen.findByRole("list", { name: "The parts of Work" });
@@ -60,6 +76,7 @@ describe("Work", () => {
       "Outputs",
     ]);
     expect(within(parts).getByRole("link", { name: "Skills" })).toHaveAttribute("href", "/work/skills");
+    expect(within(parts).getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/work/workspace");
     expect(await within(parts).findByText("1 skill")).toBeInTheDocument();
     expect(screen.getByText(/waiting in/)).toHaveTextContent("/one-pager");
   });
@@ -244,5 +261,160 @@ describe("Agents", () => {
     await user.click(screen.getByRole("tab", { name: "What it gets" }));
     expect(await screen.findByText(/# You are working as case-writer/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "How we write release notes" })).toHaveAttribute("href", "/work/library/view?path=references%2Frelease-notes.md");
+  });
+});
+
+// ---------------------------------------------------------------- Workspace
+
+const at = "2026-10-09T10:00:00Z";
+const q4 = { id: "q4-campaigns", title: "Q4 campaigns", missing: false };
+const workspaceView = {
+  items: [
+    { id: "ctx_doc", title: "Q4 outline", kind: "doc", url: null, excerpt: "The points, in order", projects: [q4], updated_at: at, original: null },
+    {
+      id: "ctx_link",
+      title: "Launch calendar",
+      kind: "link",
+      url: "https://calendar.example.com/launch",
+      excerpt: "",
+      projects: [q4],
+      updated_at: at,
+      original: null,
+    },
+    { id: "ctx_loose", title: "Ideas", kind: "doc", url: null, excerpt: "", projects: [], updated_at: at, original: null },
+  ],
+  projects: [{ id: "q4-campaigns", title: "Q4 campaigns", active: true }],
+};
+const doc = {
+  id: "ctx_doc",
+  title: "Q4 outline",
+  body: "## The points\n\n1. Polls run on Tuesdays.",
+  revision: 2,
+  version: 3,
+  created_by: "act_owner",
+  created_at: at,
+  updated_at: at,
+  edited_by: "Owner",
+  archived_at: null,
+  capture: "note",
+  projects: ["q4-campaigns"],
+  url: null,
+};
+const brainProject = {
+  id: "q4-campaigns",
+  title: "Q4 campaigns",
+  summary: "The fourth quarter",
+  status: "active",
+  active: true,
+  current: "",
+  next: "",
+  blockers: "",
+  updated: null,
+  aliases: [],
+  files: 0,
+  updates: 0,
+  topic: "projects/q4-campaigns",
+};
+const draftRun = {
+  task_id: "task_1",
+  skill: "weekly-posts",
+  skills: ["weekly-posts"],
+  kind: "run",
+  agent: null,
+  doc_action: null,
+  ask: "A LinkedIn post from this outline.",
+  status: "done",
+  assignee_id: null,
+  created_at: at,
+  updated_at: at,
+  makes_files: false,
+  folder: null,
+  files: [],
+  capture: { id: "ctx_doc", title: "Q4 outline", revision: 2 },
+  project: null,
+  attached: [],
+  result: { artifact_id: "art_1", title: "LinkedIn post", text: "Polls are back on Tuesdays.", version: 1, at },
+  proposal: null,
+};
+
+describe("Workspace", () => {
+  it("lists docs and links by project, and starts a doc from a template", async () => {
+    const calls = mockApi({
+      "GET /api/workspace/items": workspaceView,
+      "POST /api/workspace/docs": { ...doc, id: "ctx_new", title: "Outline" },
+    });
+    const user = userEvent.setup();
+    renderAt(<WorkspacePage />, { path: "/work/workspace", route: "/work/workspace" });
+    const mine = await screen.findByRole("list", { name: "Q4 campaigns" });
+    expect(within(mine).getByRole("link", { name: "Q4 outline" })).toHaveAttribute("href", "/work/workspace/ctx_doc");
+    const calendar = within(mine).getByRole("link", { name: "Launch calendar" });
+    expect(calendar).toHaveAttribute("href", "https://calendar.example.com/launch");
+    expect(calendar).toHaveAttribute("target", "_blank");
+    expect(within(screen.getByRole("list", { name: "No project" })).getByRole("link", { name: "Ideas" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Outline" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ template: "outline", projects: [] }));
+    expect(await screen.findByText("navigated away")).toBeInTheDocument();
+  });
+
+  it("shows one project's items and links what it adds to that project", async () => {
+    const calls = mockApi({
+      "GET /api/workspace/items": { ...workspaceView, items: workspaceView.items.slice(0, 2) },
+      "POST /api/workspace/links": { ...doc, id: "ctx_sheet", title: "Budget", capture: "link", url: "https://sheet.example.com/budget" },
+    });
+    const user = userEvent.setup();
+    renderAt(<WorkspacePage />, { path: "/work/workspace", route: "/work/workspace?project=q4-campaigns" });
+    expect(await screen.findByRole("list", { name: "Workspace" })).toBeInTheDocument();
+    expect(calls[0]?.path).toBe("/api/workspace/items?project=q4-campaigns");
+    await user.click(screen.getByRole("button", { name: "Add a link" }));
+    await user.type(screen.getByLabelText("The link"), "https://sheet.example.com/budget");
+    await user.type(screen.getByLabelText("What it is (optional)"), "Budget");
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+        url: "https://sheet.example.com/budget",
+        title: "Budget",
+        projects: ["q4-campaigns"],
+      }),
+    );
+  });
+
+  it("opens a doc with its projects and AI only when asked, and takes what a run made", async () => {
+    const calls = mockApi({
+      "GET /api/notes/ctx_doc": doc,
+      "GET /api/brain/projects": [brainProject],
+      "GET /api/skills": skills,
+      "GET /api/agents": [writer],
+      "GET /api/workspace/ctx_doc/runs": [draftRun],
+      "GET /api/runners": [],
+      "POST /api/workspace/ctx_doc/push-back": { id: "task_2", title: "Push back on Q4 outline", status: "ready", template: "skill", project_id: null },
+      "POST /api/workspace/ctx_doc/use": { ...doc, body: "Polls are back on Tuesdays.", revision: 3 },
+    });
+    const user = userEvent.setup();
+    renderAt(<WorkspaceDocPage />, { path: "/work/workspace/:docId", route: "/work/workspace/ctx_doc" });
+    expect(await screen.findByRole("heading", { name: "With AI, when you ask" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/work/workspace");
+    expect(screen.getByRole("link", { name: "Word" })).toHaveAttribute("href", "/api/workspace/ctx_doc/export?format=docx");
+    await user.click(screen.getByRole("button", { name: "Push back" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/workspace/ctx_doc/push-back")).toBe(true));
+    const runs = await screen.findByRole("list", { name: "What AI made from it" });
+    expect(within(runs).getByText("/weekly-posts")).toBeInTheDocument();
+    await user.click(within(runs).getByRole("button", { name: "Use as the next version" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/workspace/ctx_doc/use")?.body).toEqual({ task_id: "task_1", how: "version" }));
+    expect(await within(runs).findByText(/Every earlier version is kept/)).toBeInTheDocument();
+  });
+
+  it("offers only questions from a critic, never a version to take", async () => {
+    mockApi({
+      "GET /api/notes/ctx_doc": doc,
+      "GET /api/brain/projects": [brainProject],
+      "GET /api/skills": skills,
+      "GET /api/agents": [],
+      "GET /api/workspace/ctx_doc/runs": [{ ...draftRun, skill: "", skills: [], doc_action: "push-back", ask: "Push back on Q4 outline" }],
+    });
+    renderAt(<WorkspaceDocPage />, { path: "/work/workspace/:docId", route: "/work/workspace/ctx_doc" });
+    const runs = await screen.findByRole("list", { name: "What AI made from it" });
+    expect(within(runs).getByRole("button", { name: /Read/ })).toBeInTheDocument();
+    expect(within(runs).queryByRole("button", { name: "Use as the next version" })).not.toBeInTheDocument();
+    expect(within(runs).queryByRole("button", { name: "Keep as a new doc" })).not.toBeInTheDocument();
   });
 });

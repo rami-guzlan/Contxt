@@ -31,6 +31,7 @@ import { DigestPanel } from "../components/Digest";
 import { KnowledgeCheck } from "../components/Pull";
 import { RunButtons, RunConsole, RunnerNote, canRun } from "../components/RunNow";
 import { CaptureSource, TranscriptionState } from "../components/CaptureParts";
+import { DocProjects, DocWithAi } from "../components/work/DocWork";
 import { ErrorNote, Field, Loading, Tabs } from "../components/ui";
 import { label, when } from "../lib/format";
 
@@ -57,6 +58,10 @@ export function NotePage() {
     </div>
   );
 }
+
+/** Where a note is open: Capture (what came in) or the Workspace (what you write), which adds
+ * its projects and AI, when asked, beside it. */
+export type NotePlace = "capture" | "workspace";
 
 type SaveState = "saved" | "unsaved" | "saving" | "conflict" | "failed";
 
@@ -160,7 +165,7 @@ function useAutosave(note: Note) {
 }
 type Saver = ReturnType<typeof useAutosave>;
 
-function NoteEditor({ note }: { note: Note }) {
+export function NoteEditor({ note, place = "capture" }: { note: Note; place?: NotePlace }) {
   const saver = useAutosave(note);
   const navigate = useNavigate();
   const action = useNoteAction();
@@ -184,7 +189,11 @@ function NoteEditor({ note }: { note: Note }) {
             <button
               type="button"
               onClick={() =>
-                void saver.flush().then(() => action.mutate({ id: note.id, action: "archive" }, { onSuccess: () => navigate("/capture") }))
+                void saver
+                  .flush()
+                  .then(() =>
+                    action.mutate({ id: note.id, action: "archive" }, { onSuccess: () => navigate(place === "workspace" ? "/work/workspace" : "/capture") }),
+                  )
               }
             >
               Set aside
@@ -226,7 +235,7 @@ function NoteEditor({ note }: { note: Note }) {
           </Suspense>
           )}
         </div>
-        <Side note={note} saver={saver} selection={selection} />
+        <Side note={note} saver={saver} selection={selection} place={place} />
       </div>
     </div>
   );
@@ -252,16 +261,22 @@ const SIDE = [
   { id: "brain", label: "Into the Brain" },
   { id: "versions", label: "Versions" },
 ] as const;
-type SideTab = (typeof SIDE)[number]["id"];
+const WORK_SIDE = [{ id: "work", label: "Work" }, ...SIDE] as const;
+type SideTab = (typeof WORK_SIDE)[number]["id"];
 
 /** Beside the note: what it says, the ways it reaches the Brain, and every version. What was
  * brought in opens on its summary; a note typed here on the ways into the Brain. */
-function Side({ note, saver, selection }: { note: Note; saver: Saver; selection: string }) {
-  const [side, setSide] = useState<SideTab>(note.capture && note.capture !== "note" ? "summary" : "brain");
+function Side({ note, saver, selection, place }: { note: Note; saver: Saver; selection: string; place: NotePlace }) {
+  const [side, setSide] = useState<SideTab>(place === "workspace" ? "work" : note.capture && note.capture !== "note" ? "summary" : "brain");
   return (
     <aside className="doc-side" aria-label="Beside the note" data-tour="notes-panel">
-      <Tabs tabs={SIDE} active={side} onChange={setSide} />
-      {side === "summary" ? (
+      <Tabs tabs={place === "workspace" ? WORK_SIDE : SIDE} active={side} onChange={setSide} />
+      {side === "work" ? (
+        <div className="stack">
+          <DocProjects note={note} />
+          <DocWithAi note={note} beforeAsk={() => saver.flush()} />
+        </div>
+      ) : side === "summary" ? (
         <DigestPanel note={note} hasText={!!saver.body.trim()} />
       ) : side === "brain" ? (
         <div className="stack">

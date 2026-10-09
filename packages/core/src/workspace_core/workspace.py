@@ -35,6 +35,7 @@ from .services.captures import Captures
 from .services.catchup import CatchUp
 from .services.context import Context
 from .services.distill import Distillation
+from .services.docs import Docs
 from .services.events import Events
 from .services.legacy import Legacy
 from .services.movein import MovingIn
@@ -78,6 +79,7 @@ class Workspace:
         self.move_in = MovingIn(rt)
         self.agent = KnowledgeAgent(rt, self.brain)
         self.agents = Agents(rt, self.brain, self.skills, self.notes)
+        self.docs = Docs(rt, self.notes, self.brain, self.skills, self.agents)
 
     # ---------------------------------------------------------------- lifecycle
 

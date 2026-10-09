@@ -441,6 +441,8 @@ class Skills:
                     "skills": skills,
                     "kind": "run" if task.template == RUN else "improve",
                     "agent": about.get("agent") or None,
+                    # a Workspace doc's own runs: push back on it, or continue it
+                    "doc_action": about.get("doc_action") or None,
                     "ask": about.get("ask") or "",
                     "status": task.status,
                     "assignee_id": task.assignee_id,

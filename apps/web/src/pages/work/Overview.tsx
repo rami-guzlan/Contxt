@@ -4,7 +4,7 @@
 
 import { Link } from "react-router";
 
-import { useLibrary, useOutputs, useSkills, useWorkAgents } from "../../api/hooks";
+import { useLibrary, useOutputs, useSkills, useWorkAgents, useWorkspace } from "../../api/hooks";
 import { LatestRuns } from "../../components/SkillWork";
 import { Section } from "../../components/ui";
 import { plural } from "../../lib/format";
@@ -23,6 +23,7 @@ export function WorkOverviewPage() {
   const { data: outputs } = useOutputs();
   const { data: library } = useLibrary();
   const { data: agents } = useWorkAgents();
+  const { data: workspace } = useWorkspace();
   const parts: Part[] = [
     {
       title: "Compose",
@@ -33,6 +34,8 @@ export function WorkOverviewPage() {
       title: "Workspace",
       question: "Where you think",
       text: "Your own docs, plans and links, by project. Private until you share them; your AI drafts from them when you ask.",
+      to: "/work/workspace",
+      count: workspace ? plural(workspace.items.length, "item") : undefined,
     },
     {
       title: "Skills",

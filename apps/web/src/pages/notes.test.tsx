@@ -81,16 +81,25 @@ const base = {
 const at = { path: "/capture/:noteId", route: "/capture/ctx_1" };
 
 describe("notes", () => {
-  it("lists what you brought in and makes a new note", async () => {
+  it("lists what you brought in, leaves docs to the Workspace, and writes there", async () => {
     const calls = mockApi({
-      "GET /api/notes": [{ ...note, body: null }],
-      "POST /api/notes": { ...note, id: "ctx_2", title: "Untitled note" },
+      "GET /api/notes": [
+        { ...note, body: null, capture: "transcript" },
+        { ...note, id: "ctx_doc", title: "My outline", body: null, capture: "note" },
+        { ...note, id: "ctx_link", title: "Launch calendar", body: null, capture: "link" },
+      ],
+      "POST /api/workspace/docs": { ...note, id: "ctx_2", title: "Untitled note" },
     });
     const user = userEvent.setup();
     renderAt(<CapturePage />);
     expect(await screen.findByRole("link", { name: "Campaign ideas" })).toHaveAttribute("href", "/capture/ctx_1");
-    await user.click(screen.getByRole("button", { name: "New note" }));
-    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.path).toBe("/api/notes"));
+    expect(screen.queryByRole("link", { name: "My outline" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Launch calendar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Notes/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/work/workspace");
+    await user.click(screen.getByRole("button", { name: "Write" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.path).toBe("/api/workspace/docs"));
+    expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ template: "blank" });
     expect(await screen.findByText("navigated away")).toBeInTheDocument();
   });
 

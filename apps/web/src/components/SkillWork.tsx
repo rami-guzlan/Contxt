@@ -504,13 +504,13 @@ function SaveAsNote({ title, text }: { title: string; text: string }) {
   if (create.data)
     return (
       <span className="small">
-        Saved: <Link to={`/capture/${encodeURIComponent(create.data.id)}`}>open the note</Link>
+        Kept: <Link to={`/work/workspace/${encodeURIComponent(create.data.id)}`}>open the doc</Link>
       </span>
     );
   return (
     <>
-      <button type="button" disabled={create.isPending} onClick={() => create.mutate({ title, body: text })}>
-        Save as note
+      <button type="button" disabled={create.isPending} onClick={() => create.mutate({ title, body: text })} title="A doc in your Workspace, to keep working on">
+        Keep as a doc
       </button>
       <ErrorNote error={create.error} />
     </>

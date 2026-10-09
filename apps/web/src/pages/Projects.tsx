@@ -1,6 +1,7 @@
 // Projects: the work the Brain follows across every conversation. Each has what it is for, where
-// it stands, its progress as a timeline, its files with which copy each is, the notes filed with
-// it, and the names your AI knows it by; and you can see exactly what your AI gets for it.
+// it stands, your own Workspace for it (docs, links and agents, private to you), its progress as
+// a timeline, its files with which copy each is, the notes filed with it, and the names your AI
+// knows it by; and you can see exactly what your AI gets for it.
 
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -19,7 +20,9 @@ import type { BrainProject, BrainProjectDetail } from "../api/types";
 import { ContextPreview } from "../components/ContextPreview";
 import { Markdown } from "../components/Markdown";
 import { Empty, ErrorNote, Field, Loading, Section } from "../components/ui";
+import { ProjectWorkspace } from "../components/work/WorkspaceParts";
 import { label, plural, when } from "../lib/format";
+import { workspaceFor } from "../lib/links";
 import { AddFileDialog } from "./brain/AddFile";
 import { day, entryUrl, fileViewUrl } from "./brain/shared";
 
@@ -220,9 +223,16 @@ export function ProjectPage() {
           <Standing project={project} />
           <RecordProgress project={project} />
         </Section>
-        <Section title="What your AI gets" tour="project-preview">
-          <p className="muted small">Ask something about this project the way you would ask your AI, and see what it gets, and why.</p>
-          <ContextPreview project={project.id} example={`Where do we stand on ${project.title}?`} />
+        <Section
+          title="Workspace"
+          tour="project-workspace"
+          actions={
+            <Link className="small" to={workspaceFor(project.id)}>
+              Open in Work
+            </Link>
+          }
+        >
+          <ProjectWorkspace project={project} />
         </Section>
       </div>
       <Section
@@ -234,15 +244,22 @@ export function ProjectPage() {
           </button>
         }
       >
+        <p className="muted small">What the Brain holds for it. Every AI you connect can read these.</p>
         <Files project={project} />
       </Section>
       {adding ? <AddFileDialog project={project.id} onClose={() => setAdding(false)} /> : null}
       <Section title="Progress">
         <Timeline project={project} />
       </Section>
-      <Section title="Your AI on this project">
-        <AiOnProject id={project.id} />
-      </Section>
+      <div className="grid-2">
+        <Section title="Your AI on this project">
+          <AiOnProject id={project.id} />
+        </Section>
+        <Section title="What your AI gets" tour="project-preview">
+          <p className="muted small">Ask something about this project the way you would ask your AI, and see what it gets, and why.</p>
+          <ContextPreview project={project.id} example={`Where do we stand on ${project.title}?`} />
+        </Section>
+      </div>
       <Section title="Kept with it">
         <Waiting project={project} />
         {project.notes.length ? (

@@ -84,6 +84,8 @@ import type {
   WorkAgentFull,
   WorkDraft,
   WorkJob,
+  DocTemplate,
+  WorkspaceView,
 } from "./types";
 
 export const keys = {
@@ -1207,3 +1209,71 @@ export const useAddAgentToClaudeCode = () =>
   useMutation({
     mutationFn: (name: string) => post<{ path: string; replaced: boolean }>(`/api/agents/${encodeURIComponent(name)}/claude-code`),
   });
+
+// ------------------------------------------------------------------ Work: the Workspace
+
+const workspaceKey = ["workspace"] as const;
+
+/** The Workspace by project (or what was set aside); for one project, also the agents that work on it. */
+export const useWorkspace = (project = "", archived = false) =>
+  useQuery({
+    queryKey: [...workspaceKey, project, archived],
+    queryFn: () => get<WorkspaceView>(`/api/workspace/items${query({ project: project || undefined, archived: archived ? "true" : undefined })}`),
+  });
+
+function useWorkspaceMutation<I, O>(send: (input: I) => Promise<O>) {
+  const invalidate = useInvalidate();
+  return useMutation({ mutationFn: send, onSuccess: () => invalidate(workspaceKey, keys.notes) });
+}
+
+export const useNewDoc = () =>
+  useWorkspaceMutation((input: { template: DocTemplate; title?: string; projects?: string[] }) => post<Note>("/api/workspace/docs", input));
+
+export const useNewLink = () =>
+  useWorkspaceMutation((input: { url: string; title?: string; projects?: string[] }) => post<Note>("/api/workspace/links", input));
+
+export const useImportDoc = () =>
+  useWorkspaceMutation((input: { file: File; projects?: string[] }) => {
+    const form = new FormData();
+    form.set("file", input.file);
+    if (input.projects?.length) form.set("projects", input.projects.join(","));
+    return api<Note>("/api/workspace/import", { method: "POST", form });
+  });
+
+export const useLinkDocProjects = () =>
+  useWorkspaceMutation(({ id, projects }: { id: string; projects: string[] }) =>
+    put<Note>(`/api/workspace/${encodeURIComponent(id)}/projects`, { projects }),
+  );
+
+/** Ask AI about a doc: draft from it (a skill or an agent), push back on it, or continue it. */
+export function useDocAction() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, action, skill, agent, ask, where }: { id: string; action: "draft" | "push-back" | "continue"; skill?: string; agent?: string; ask?: string; where?: string }) =>
+      post<Task>(
+        `/api/workspace/${encodeURIComponent(id)}/${action}`,
+        action === "draft" ? { skill: skill || undefined, agent: agent || undefined, ask: ask ?? "" } : action === "continue" ? { where: where ?? "" } : {},
+      ),
+    onSuccess: (_task, input) => invalidate([...workspaceKey, "runs", input.id], keys.tasks, keys.skills),
+  });
+}
+
+export const useDocRuns = (id: string) =>
+  useQuery({
+    queryKey: [...workspaceKey, "runs", id],
+    queryFn: () => get<SkillRun[]>(`/api/workspace/${encodeURIComponent(id)}/runs`),
+    enabled: !!id,
+    refetchInterval: (q) => ((q.state.data ?? []).some((r) => ["ready", "claimed", "in_progress"].includes(r.status)) ? 4000 : false),
+  });
+
+/** Take what a run made: as the doc's next version, at its end, or as a new doc. */
+export function useUseDocResult() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, taskId, how }: { id: string; taskId: string; how: "version" | "append" | "new" }) =>
+      post<Note>(`/api/workspace/${encodeURIComponent(id)}/use`, { task_id: taskId, how }),
+    onSuccess: () => invalidate(workspaceKey, keys.notes),
+  });
+}
+
+export const docExportUrl = (id: string, format: "md" | "docx") => `/api/workspace/${encodeURIComponent(id)}/export?format=${format}`;

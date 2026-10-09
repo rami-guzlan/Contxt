@@ -16,7 +16,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 
-import { useBringIn, useCatchUp, useCreateNote, useGoals, useHome } from "../api/hooks";
+import { useBringIn, useCatchUp, useGoals, useHome, useNewDoc } from "../api/hooks";
 import { minutes } from "../lib/catchup";
 import { AgentProvider } from "./agent/AgentContext";
 import { AgentDock, AgentPanel } from "./agent/AgentPanel";
@@ -130,10 +130,11 @@ function SearchBox() {
   );
 }
 
-/** + Add: talk, record, upload or write. Everything lands in Capture first, private to you. */
+/** + Add: talk, record or upload (each lands in Capture first), or write (a doc in Work,
+ * Workspace). All of it stays private to you. */
 function AddMenu() {
   const [open, setOpen] = useState(false);
-  const create = useCreateNote();
+  const create = useNewDoc();
   const bring = useBringIn();
   const talk = useTalk();
   const navigate = useNavigate();
@@ -205,11 +206,11 @@ function AddMenu() {
             disabled={create.isPending}
             onClick={() =>
               create.mutate(
-                {},
+                { template: "blank" },
                 {
-                  onSuccess: (note) => {
+                  onSuccess: (doc) => {
                     setOpen(false);
-                    navigate(`/capture/${note.id}`);
+                    navigate(`/work/workspace/${encodeURIComponent(doc.id)}`);
                   },
                 },
               )

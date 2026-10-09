@@ -13,6 +13,7 @@ import {
 import type { LegacyReport, LegacySummary } from "../api/types";
 import { Empty, ErrorNote, Field, Loading, Section } from "../components/ui";
 import { plural, when } from "../lib/format";
+import { noteUrl } from "../lib/links";
 import { entryUrl } from "./brain/shared";
 
 export function SearchPage() {
@@ -54,7 +55,7 @@ export function SearchPage() {
           <ul className="list">
             {data.notes.map((note) => (
               <li key={note.id}>
-                <Link to={`/capture/${note.id}`}>{note.title}</Link>
+                <Link to={noteUrl(note)}>{note.title}</Link>
                 <span className="muted small"> · changed {when(note.updated_at)}</span>
               </li>
             ))}

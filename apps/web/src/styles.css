@@ -5220,3 +5220,85 @@ li.missing {
   color: var(--muted);
   text-decoration: line-through;
 }
+
+/* Workspace: his docs, links and anything linked to a project, as quiet rows. */
+.workspace-new {
+  gap: 0.5rem;
+}
+
+.workspace-show {
+  align-items: end;
+  gap: 1rem;
+}
+
+.workspace-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.workspace-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.85rem;
+}
+
+.workspace-row-main p {
+  margin: 0.15rem 0 0;
+}
+
+.workspace-row-title {
+  font-weight: 600;
+}
+
+.inline-icon {
+  width: 0.85em;
+  height: 0.85em;
+  vertical-align: -0.1em;
+}
+
+.small-head {
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+/* What AI made from a doc, beside it: newest first, each with what to do with it. */
+.doc-runs {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.doc-run {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.doc-run header {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.doc-run .document {
+  max-height: 18rem;
+  overflow: auto;
+}
+
+@media (max-width: 640px) {
+  .workspace-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+}

@@ -30,10 +30,8 @@ import { Working } from "../../components/RunNow";
 import { CopyBlock, Empty, ErrorNote, Field, Loading, Pill, Section, Tabs } from "../../components/ui";
 import { linesOf, PickMany, textOf } from "../../components/work/PickMany";
 import { plural, when } from "../../lib/format";
-import { skillUrl } from "../../lib/links";
+import { agentUrl, skillUrl } from "../../lib/links";
 import { libraryItemUrl } from "./Library";
-
-export const agentUrl = (name: string, tab?: string) => `/work/agents/${encodeURIComponent(name)}${tab ? `?tab=${tab}` : ""}`;
 
 /** "content-strategist" as CS: the face of an agent on its card. */
 export function initials(name: string): string {

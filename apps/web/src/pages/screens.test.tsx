@@ -16,6 +16,15 @@ import { Week } from "./brain/Week";
 import { ProjectPage, ProjectsPage } from "./Projects";
 
 const home = { workspace, counts: { brain_proposals: 3, ai_work: { ready: 1 } } };
+const linked = [{ id: "q4-campaigns", title: "Q4 campaigns", missing: false }];
+const workspaceItems = {
+  items: [
+    { id: "ctx_doc", title: "Q4 outline", kind: "doc", url: null, excerpt: "", projects: linked, updated_at: "2026-10-05T13:00:00Z", original: null },
+    { id: "ctx_loose", title: "Ideas", kind: "doc", url: null, excerpt: "", projects: [], updated_at: "2026-10-05T13:00:00Z", original: null },
+  ],
+  projects: [{ id: "q4-campaigns", title: "Q4 campaigns", active: true }],
+  agents: [{ name: "content-strategist", role: "Writes the posts", last_run: null }],
+};
 const stamp = "2026-10-05T13:00:00.000000Z";
 const project = {
   id: "q4-campaigns",
@@ -262,6 +271,7 @@ describe("projects", () => {
       ],
       "POST /api/brain/projects/q4-campaigns/updates": { id: "q4-campaigns", seq: 5 },
       "POST /api/brain/decisions": { results: [{ id: "q4-campaigns", ok: true, message: "Updated." }], checkpoint: null },
+      "GET /api/workspace/items": workspaceItems,
     });
     const user = userEvent.setup();
     renderAt(<ProjectPage />, { path: "/projects/:projectId", route: "/projects/q4-campaigns" });
@@ -299,6 +309,34 @@ describe("projects", () => {
   });
 });
 
+describe("a project's own Workspace", () => {
+  it("lists what is linked to it and the agents on it, opens in Work, and links more", async () => {
+    const calls = mockApi({
+      "GET /api/brain/projects/q4-campaigns": detail,
+      "GET /api/brain/projects": [project],
+      "GET /api/brain/proposals": [],
+      "GET /api/workspace/items": workspaceItems,
+      "PUT /api/workspace/ctx_loose/projects": { id: "ctx_loose" },
+    });
+    const user = userEvent.setup();
+    renderAt(<ProjectPage />, { path: "/projects/:projectId", route: "/projects/q4-campaigns" });
+    const mine = await screen.findByRole("list", { name: "Workspace for Q4 campaigns" });
+    expect(calls.some((c) => c.path === "/api/workspace/items?project=q4-campaigns")).toBe(true);
+    expect(within(mine).getByRole("link", { name: "Q4 outline" })).toHaveAttribute("href", "/work/workspace/ctx_doc");
+    expect(screen.getByRole("link", { name: "Open in Work" })).toHaveAttribute("href", "/work/workspace?project=q4-campaigns");
+    expect(screen.getByRole("link", { name: "content-strategist" })).toHaveAttribute("href", "/work/agents/content-strategist");
+    expect(screen.getByText(/Yours alone/)).toBeInTheDocument();
+    expect(screen.getByText(/Every AI you connect can read these/)).toBeInTheDocument();
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings.indexOf("Workspace")).toBeLessThan(headings.indexOf("Files"));
+    expect(headings.indexOf("What your AI gets")).toBe(headings.indexOf("Your AI on this project") + 1);
+    await user.click(screen.getByRole("button", { name: "Link something already in your Workspace" }));
+    await user.selectOptions(await screen.findByLabelText("From your Workspace"), "Ideas");
+    await user.click(screen.getByRole("button", { name: "Link it" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ projects: ["q4-campaigns"] }));
+  });
+});
+
 describe("search", () => {
   it("finds the Brain's entries, its projects and your notes", async () => {
     mockApi({
@@ -312,7 +350,7 @@ describe("search", () => {
     renderAt(<SearchPage />, { path: "/search", route: "/search?q=video" });
     expect(await screen.findByRole("link", { name: "Video stays" })).toHaveAttribute("href", "/brain/entries/decision-video");
     expect(screen.getByRole("link", { name: "Q4 campaigns" })).toHaveAttribute("href", "/projects/q4-campaigns");
-    expect(screen.getByRole("link", { name: "Video ideas" })).toHaveAttribute("href", "/capture/ctx_1");
+    expect(screen.getByRole("link", { name: "Video ideas" })).toHaveAttribute("href", "/work/workspace/ctx_1");
   });
 });
 

@@ -17,6 +17,7 @@ export function WorkLayout() {
       className="work"
       tabs={[
         { to: "/work", label: "Overview", end: true },
+        { to: "/work/workspace", label: "Workspace" },
         { to: "/work/skills", label: "Skills", badge: skills?.waiting.length ?? 0 },
         { to: "/work/agents", label: "Agents" },
         { to: "/work/library", label: "Library" },

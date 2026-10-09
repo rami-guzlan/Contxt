@@ -258,8 +258,18 @@ class Agents:
 
     # ---------------------------------------------------------------- asking it for something
 
-    def run(self, who: Principal, name: str, *, ask: str, project: str | None = None) -> Task:
-        """Ask the agent for something: a run like a skill run, opening with its role."""
+    def run(
+        self,
+        who: Principal,
+        name: str,
+        *,
+        ask: str,
+        project: str | None = None,
+        capture_id: str | None = None,
+    ) -> Task:
+        """Ask the agent for something: a run like a skill run, opening with its role. With
+        `capture_id`, a note it works from (a Workspace doc: "I outline, you write"), pinned at
+        the version it is now."""
         who.require("tasks.write")
         found = self.get(who, name)
         agent, resolved = found["agent"], found["resolved"]
@@ -290,6 +300,12 @@ class Agents:
                 + ", ".join(library)
                 + "."
             )
+        doc = self.notes.get(who, capture_id) if capture_id else None
+        if doc is not None:
+            extra += (
+                f"\n\nWork from the pinned note “{doc.title}” ({doc.id}): read it in full with "
+                "get_context_item first."
+            )
         meetings = self._meetings(who, agent)
         if meetings:
             extra += (
@@ -314,6 +330,10 @@ class Agents:
             about["project"] = {"id": focus.id, "title": focus.title}
         if library:
             about["attached"] = library
+        pins = [("context_item", m.id, m.revision) for m in meetings]
+        if doc is not None:
+            about["capture"] = {"id": doc.id, "title": doc.title, "revision": doc.revision}
+            pins.insert(0, ("context_item", doc.id, doc.revision))
         return self.skills.queue(
             who,
             title=f"Ask {agent['name']}",
@@ -321,7 +341,7 @@ class Agents:
             instructions=instructions,
             request=request,
             about=about,
-            pins=[("context_item", m.id, m.revision) for m in meetings],
+            pins=pins,
         )
 
     def _meetings(self, who: Principal, agent: dict[str, Any]) -> builtins.list[Any]:

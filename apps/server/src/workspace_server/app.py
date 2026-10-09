@@ -44,6 +44,7 @@ from .routes import (
     runners,
     skills,
     system,
+    workspace,
 )
 from .runners import Runners
 from .settings import Settings
@@ -177,6 +178,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         legacy,
         library,
         backups,
+        workspace,
         mcp,
     )
     for module in routers:
