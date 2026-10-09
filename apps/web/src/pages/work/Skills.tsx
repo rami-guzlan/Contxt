@@ -21,6 +21,7 @@ import {
   makesLine,
 } from "../../components/SkillWork";
 import { FirstVisitTip } from "../../components/Tips";
+import { BringInSkill, SkillAboutLine, SkillCopies, SuggestedSkills } from "../../components/work/SkillExtras";
 import { Empty, ErrorNote, Loading, Pill, Section, Tabs } from "../../components/ui";
 import { bytes, label, plural, when } from "../../lib/format";
 import { SKILLS, skillUrl } from "../../lib/links";
@@ -45,6 +46,7 @@ export function SkillsPage() {
   const teaching = params.get("capture");
   const { data: capture } = useNote(teaching ?? "");
   const writing = params.get("new") === "1" || !!teaching;
+  const [bringing, setBringing] = useState(false);
   if (isLoading) return <Loading />;
   if (!data) return <ErrorNote error={error} />;
   const byCategory = new Map<string, SkillCard[]>();
@@ -61,11 +63,17 @@ export function SkillsPage() {
           here and see what it makes, or ask for it in any AI you connect.
         </p>
         {!writing ? (
-          <button type="button" className="primary" onClick={startNew}>
-            New skill
-          </button>
+          <div className="row">
+            <button type="button" className="primary" onClick={startNew}>
+              New skill
+            </button>
+            <button type="button" aria-expanded={bringing} onClick={() => setBringing(!bringing)}>
+              Bring one in
+            </button>
+          </div>
         ) : null}
       </div>
+      {bringing ? <BringInSkill onClose={() => setBringing(false)} /> : null}
       <FirstVisitTip id="skills">
         A skill is how your AI makes something, step by step. Run one here, or just ask for it in any AI you connect: it finds the skill.
       </FirstVisitTip>
@@ -88,6 +96,7 @@ export function SkillsPage() {
           </Link>
         </section>
       ) : null}
+      <SuggestedSkills onWrite={(ask) => setParams({ new: "1", ask })} />
       <LatestRuns />
       <BuiltIns />
       {data.waiting.length ? (
@@ -232,6 +241,7 @@ export function SkillPage() {
             ) : null}
           </p>
         ) : null}
+        <SkillAboutLine name={skill.name} />
       </header>
       <Tabs tabs={tabs} active={tab} onChange={show} />
       {tab === "run" ? (
@@ -345,6 +355,7 @@ export function SkillPage() {
               </li>
             ))}
           </ul>
+          <SkillCopies name={skill.name} />
         </Section>
       ) : null}
     </div>

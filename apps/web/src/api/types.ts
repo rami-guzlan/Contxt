@@ -1349,7 +1349,11 @@ export interface CatchUpPlan {
     legacy: number;
     handled: number;
     snoozed: number;
+    /** Workflow runs waiting for you at a check (Work). */
+    checks?: number;
   };
+  /** Work's checks: workflow runs waiting for you. */
+  work?: { run_id: string; workflow_id: string; workflow: string; ask: string; started_at: string }[];
   health: BrainHealth;
   recap: Recap;
   handled: WentIn[];
@@ -2120,4 +2124,51 @@ export interface Connectors {
   available: boolean;
   servers: { name: string; detail: string; connected: boolean; state: string }[];
   note: string;
+}
+
+// ------------------------------------------------------------------ Work: Skills, upgraded
+
+/** What uses a skill, when it was edited and used, and its copies in Claude Code. */
+export interface SkillAbout {
+  used_by: { skills: string[]; agents: string[]; workflows: { id: string; name: string }[] };
+  freshness: {
+    last_edited: string | null;
+    last_used: string | null;
+    last_run_here: string | null;
+    last_asked: string | null;
+    /** What it loads that changed after its last edit. */
+    changed: { key: string; title: string; at: string }[];
+  };
+  pushed: SkillCopy[];
+}
+
+/** A copy of a skill in Claude Code, and how many versions behind the Brain's it is. */
+export interface SkillCopy {
+  place: string;
+  user: boolean;
+  pushed_at: string | null;
+  /** 0: current. null: older than the history kept. */
+  behind: number | null;
+}
+
+/** A skill worth writing down: asks repeated with no skill, or a prompt run often. */
+export interface SkillSuggestion {
+  kind: "asks" | "prompt";
+  key: string;
+  title: string;
+  count: number;
+  examples: string[];
+  apps: string[];
+  last: string | null;
+  prompt_id: string | null;
+  /** What New skill starts from when it is accepted. */
+  ask: string;
+}
+
+export interface SkillBroughtIn {
+  name: string;
+  replaced: boolean;
+  files: number;
+  /** What the Brain does not keep in a skill, with why. */
+  skipped: string[];
 }

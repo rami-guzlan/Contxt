@@ -303,6 +303,25 @@ describe("catch up", () => {
     });
   });
 
+  it("lists Work's checks, and starts no queue when only they are left", async () => {
+    mockApi({
+      "GET /api/brain/catch-up": plan({
+        judgment: [],
+        quick: [],
+        upkeep: [],
+        offers: [],
+        nudges: [],
+        counts: { judgment: 0, quick: 0, quick_items: 0, upkeep: 0, offers: 0, legacy: 0, handled: 0, snoozed: 0, checks: 1 },
+        work: [{ run_id: "wfr_1", workflow_id: "wf_1", workflow: "Weekly posts", ask: "Read the posts first.", started_at: stamp }],
+      }),
+    });
+    renderAt(<CatchUpPage />, { path: "/catch-up", route: "/catch-up" });
+    const waiting = await screen.findByRole("region", { name: "Waiting in Work" });
+    expect(within(waiting).getByRole("link", { name: "Weekly posts" })).toHaveAttribute("href", "/work/workflows/wf_1?run=wfr_1");
+    expect(screen.getByText(/check in Work/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
+  });
+
   it("starts with what happened after time away", async () => {
     mockApi({ "GET /api/brain/catch-up": plan({ recap_first: true }) });
     const user = userEvent.setup();

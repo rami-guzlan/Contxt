@@ -280,3 +280,22 @@ def test_the_server_is_told_which_step_tasks_to_start_here(ws, owner):
     assert [w.name for w in ws.workflows.list(owner)] == ["Here"]
     with pytest.raises(Conflict, match="archived"):
         ws.workflows.run(owner, anywhere.id)
+
+
+def test_a_check_waiting_for_the_owner_counts_in_catch_up(ws, owner, connect):
+    claude = connect()
+    flow = ws.workflows.save(
+        owner, name="Checked posts", steps=[POSTS, {"kind": "check", "ask": "Read them."}]
+    )
+    run = ws.workflows.run(owner, flow.id)
+    assert ws.catch_up.plan(owner)["counts"]["checks"] == 0
+    finish(ws, claude, run.steps[0]["task_id"])
+    ws.workflows.advance(owner)
+    plan = ws.catch_up.plan(owner)
+    (check,) = plan["work"]
+    assert (check["run_id"], check["workflow"], check["ask"]) == (
+        run.id,
+        "Checked posts",
+        "Read them.",
+    )
+    assert plan["counts"]["checks"] == 1 and plan["caught_up"] is False and plan["seconds"] >= 60

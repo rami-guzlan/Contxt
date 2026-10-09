@@ -109,6 +109,7 @@ KEEP_UNUSED_DAYS = 90  # "keep them": the unused notes are not offered again for
 OFFER_RUN = 5  # this many of the same yes in a row earns an offer to decide once
 OFFER_DAYS = 60
 SECONDS = {
+    "check": 60,  # a workflow's check: read what a step made, then go on, edit or stop
     "judgment": 40,
     "baseline": 60,
     "went_in": 30,
@@ -328,6 +329,8 @@ class CatchUp:
         self.brain = brain
         self.legacy = legacy
         self._project_titles: dict[str, str] = {}
+        # Work's checks: workflow runs waiting for the owner (set once Workflows exists).
+        self.checks: Any = None
 
     # ---------------------------------------------------------------- the plan
 
@@ -374,8 +377,19 @@ class CatchUp:
         legacy = self.legacy.offer(who) if self.legacy is not None else None
         if legacy is not None and legacy["key"] in hidden:
             legacy = None
+        work = [
+            {
+                "run_id": run.id,
+                "workflow_id": run.workflow_id,
+                "workflow": run.workflow,
+                "ask": run.waiting["ask"] if run.waiting else "A step waits for a person.",
+                "started_at": run.started_at,
+            }
+            for run in (self.checks(who) if self.checks is not None else [])
+        ]
         seconds = (
-            sum(SECONDS.get(card["type"], SECONDS["judgment"]) for card in judgment)
+            SECONDS["check"] * len(work)
+            + sum(SECONDS.get(card["type"], SECONDS["judgment"]) for card in judgment)
             + SECONDS["quick"] * len(quick)
             + sum(SECONDS.get(card["type"], 20) for card in upkeep)
             + SECONDS["offer"] * len(offered)
@@ -388,7 +402,7 @@ class CatchUp:
             "recap_first": away is not None and away >= AWAY_DAYS,
             "seconds": seconds,
             "minutes": math.ceil(seconds / 60) if seconds else 0,
-            "caught_up": not (judgment or quick or upkeep or offered or legacy),
+            "caught_up": not (judgment or quick or upkeep or offered or legacy or work),
             "counts": {
                 "judgment": len(judgment),
                 "quick": len(quick),
@@ -398,7 +412,9 @@ class CatchUp:
                 "legacy": 1 if legacy else 0,
                 "handled": recap.get("went_in_total", len(handled)),
                 "snoozed": sum(1 for key in hidden if key in state.get("snoozed", {})),
+                "checks": len(work),
             },
+            "work": work,
             "health": dict(
                 health(inventory, attention, now),
                 unsaved=port.unsaved(),

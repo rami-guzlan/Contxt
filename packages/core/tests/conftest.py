@@ -62,7 +62,7 @@ class FakeBrain:
         self.started: list[BrainProject] = []
         self.updates: list[dict] = []  # progress recorded on projects
         self.previewed: list[tuple] = []
-        self.requests: list[str] = []
+        self.briefed: list[str] = []  # what context() was asked for
         self.analysis: dict[str, dict] = {}  # extra review analysis, by proposal id
         self.batches: list[dict] = []
         self.points: list[dict] = []
@@ -103,7 +103,7 @@ class FakeBrain:
         return {"available": True, "name": "Fake brain", "principal": "person:owner"}
 
     def context(self, request, *, session_id=None):
-        self.requests.append(request)
+        self.briefed.append(request)
         return BrainContext(
             available=True,
             text="# Brain context\nWrite plainly. No hype.",
@@ -320,6 +320,8 @@ class FakeBrain:
         loads=None,
         reason="",
         evidence="",
+        files=None,
+        depends_on=None,
     ):
         known = {"weekly-posts", *(s.name for s in self.extra_skills)}
         if target and target not in known:
@@ -350,6 +352,8 @@ class FakeBrain:
                     "triggers": triggers,
                     "artifacts": artifacts,
                     "loads": loads,
+                    "depends_on": depends_on,
+                    "files": files,
                 },
                 "title": f"/{target or name}",
                 "statement": body,
@@ -384,6 +388,18 @@ class FakeBrain:
 
     def skill_folder(self, name):
         return self.skill_dir if name == "weekly-posts" else None
+
+    def skill_freshness(self, name):
+        if name != "weekly-posts":
+            return None
+        return {
+            "last_edited": "2026-09-01T10:00:00Z",
+            "changed": list(getattr(self, "changed_loads", [])),
+        }
+
+    def embed(self, texts):
+        vectors = getattr(self, "vectors", None)
+        return vectors(texts) if vectors else None
 
     def skill_source(self, name):
         return "1. Read the calendar.\n2. Draft." if name == "weekly-posts" else None
@@ -753,7 +769,8 @@ class FakeBrain:
         }.get(name)
 
     def requests(self, *, limit=50, before=None, client=None):
-        return {"requests": [], "brain_tokens": 100, "apps": []}
+        rows = list(getattr(self, "request_rows", []))
+        return {"requests": rows[:limit], "brain_tokens": 100, "apps": []}
 
     def request(self, packet_id):
         from workspace_core.errors import NotFound

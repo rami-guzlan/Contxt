@@ -298,14 +298,28 @@ class BrainPort(Protocol):
         loads: list[str] | None = None,
         reason: str = "",
         evidence: str = "",
+        files: list[dict[str, Any]] | None = None,
+        depends_on: list[str] | None = None,
     ) -> BrainProposal:
         """A new skill, or a new version of one: it waits for review (`pending`), or is
-        `duplicate` when a proposal for that skill already waits, or `refused`."""
+        `duplicate` when a proposal for that skill already waits, or `refused`. `files` are
+        the skill's own files ({"path", "content_base64"}), beside its SKILL.md."""
         ...
 
     def skill_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
         """Every version of a skill's procedure, newest first; None when there is no such
         skill."""
+        ...
+
+    def skill_freshness(self, name: str) -> dict[str, Any] | None:
+        """When the skill was last edited, and what it loads (notes, documents) that changed
+        since: {"last_edited", "changed": [{"key", "title", "at"}]}; None when there is no
+        such skill."""
+        ...
+
+    def embed(self, texts: list[str]) -> list[list[float]] | None:
+        """Vectors for `texts` from the Brain's local model, to compare by meaning; None
+        when no model is here (callers then compare by words)."""
         ...
 
     def skill_folder(self, name: str) -> str | None:
@@ -662,6 +676,12 @@ class NoBrain:
         raise Conflict("This workspace has no Brain to keep skills in.")
 
     def skill_versions(self, name: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
+        return None
+
+    def skill_freshness(self, name: str) -> dict[str, Any] | None:
+        return None
+
+    def embed(self, texts: list[str]) -> list[list[float]] | None:
         return None
 
     def skill_folder(self, name: str) -> str | None:

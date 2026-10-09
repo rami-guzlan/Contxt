@@ -46,6 +46,7 @@ from .services.projects import Projects
 from .services.prompts import Prompts
 from .services.runtime import Runtime
 from .services.skills import Skills
+from .services.suggest import SkillSuggestions
 from .services.tasks import Tasks
 from .services.workflows import Workflows
 
@@ -85,9 +86,11 @@ class Workspace:
         self.docs = Docs(rt, self.notes, self.brain, self.skills, self.agents)
         self.prompts = Prompts(rt, self.skills)
         self.compose = Compose(rt, self.brain, self.skills, self.agents, self.notes, self.prompts)
+        self.suggestions = SkillSuggestions(rt, self.prompts)
         self.workflows = Workflows(
             rt, self.brain, self.skills, self.compose, self.notes, self.prompts, self.artifacts
         )
+        self.catch_up.checks = self.workflows.waiting
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -186,6 +189,26 @@ class Workspace:
         if who.can("context.read"):
             results.notes = self.notes.search(who, query, limit=limit)
         return results
+
+    def skill_users(self, who: Principal, name: str) -> dict[str, Any]:
+        """What uses a skill: the skills that build on it, the agents that point to it and the
+        workflows with a step that follows it."""
+        skill = self.skills.find(who, name)
+
+        def follows(step: dict[str, Any]) -> bool:
+            return step.get("skill") == skill.name or skill.name in (step.get("skills") or [])
+
+        return {
+            "skills": [s.name for s in self.brain.files(who).skills if skill.name in s.depends_on],
+            "agents": [
+                a["name"] for a in self.agents.list(who) if skill.name in (a.get("skills") or [])
+            ],
+            "workflows": [
+                {"id": w.id, "name": w.name}
+                for w in self.workflows.list(who)
+                if any(follows(s) for s in w.steps)
+            ],
+        }
 
     def counts(self, who: Principal) -> dict[str, Any]:
         """The numbers the navigation and the status show: what waits for the person in

@@ -228,7 +228,7 @@ def _find_skill(st, name):
 
 def propose_skill(brain, *, name=None, description=None, body=None, category=None,
                   when_to_use=None, triggers=None, aliases=None, cue_terms=None, artifacts=None,
-                  loads=None, invocation=None, files=None, scope=None, target=None,
+                  loads=None, depends_on=None, invocation=None, files=None, scope=None, target=None,
                   principal=None, evidence="", source="", reason="", session_id=None,
                   force_pending=False, **_ignored):
     """Propose a new skill, or a change to one (`target`), with its files. Waits for review
@@ -308,7 +308,7 @@ def propose_skill(brain, *, name=None, description=None, body=None, category=Non
         if value not in (None, ""):
             meta[key] = str(value).strip()
     for key, value in (("triggers", triggers), ("aliases", aliases), ("cue_terms", cue_terms),
-                       ("artifacts", artifacts), ("loads", loads)):
+                       ("artifacts", artifacts), ("loads", loads), ("depends_on", depends_on)):
         if value is not None:
             meta[key] = [str(v).strip() for v in (value if isinstance(value, list) else [value])
                          if str(v).strip()]

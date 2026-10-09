@@ -4,6 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, del, get, post, put, query } from "./client";
 import type {
+  SkillAbout,
+  SkillBroughtIn,
+  SkillCopy,
+  SkillSuggestion,
   Connectors,
   Workflow,
   WorkflowForm,
@@ -1417,3 +1421,65 @@ export const useImportWorkflow = () =>
   useWorkflowMutation((file: File) => file.text().then((text) => post<Workflow>("/api/workflows/import", JSON.parse(text))));
 
 export const workflowExportUrl = (id: string) => `/api/workflows/${encodeURIComponent(id)}/export`;
+
+// ------------------------------------------------------------------ Work: Skills, upgraded
+
+export const useSkillAbout = (name: string) =>
+  useQuery({
+    queryKey: [...keys.skills, "about", name],
+    queryFn: () => get<SkillAbout>(`/api/skills/${encodeURIComponent(name)}/about`),
+    enabled: !!name,
+  });
+
+export const useSkillSuggestions = () =>
+  useQuery({
+    queryKey: [...keys.skills, "suggestions"],
+    queryFn: () => get<{ suggestions: SkillSuggestion[]; matched_by: "meaning" | "words" }>("/api/skills/suggestions"),
+    staleTime: 60_000,
+  });
+
+export function useDismissSuggestion() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (key: string) => post<null>("/api/skills/suggestions/dismiss", { key }),
+    onSuccess: () => invalidate([...keys.skills, "suggestions"]),
+  });
+}
+
+/** A skill from a zip, or from a folder picked in the browser (each file with its path). */
+export function useBringInSkill() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (input: { zip: File } | { files: File[] }) => {
+      const form = new FormData();
+      if ("zip" in input) form.set("file", input.zip);
+      else
+        for (const file of input.files) {
+          form.append("files", file);
+          form.append("paths", (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name);
+        }
+      return api<SkillBroughtIn>("/api/skills/import", { method: "POST", form });
+    },
+    onSuccess: () => invalidate(keys.skills, keys.brain),
+  });
+}
+
+export function useBringInSkillFromGit() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (input: { url: string; path?: string }) => post<SkillBroughtIn>("/api/skills/import/git", input),
+    onSuccess: () => invalidate(keys.skills, keys.brain),
+  });
+}
+
+/** Copy the skill into Claude Code, with a stamp of the version that went. */
+export function usePushSkill() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ name, projectDir }: { name: string; projectDir?: string }) =>
+      post<SkillCopy & { place: string }>(`/api/skills/${encodeURIComponent(name)}/push`, { project_dir: projectDir || undefined }),
+    onSuccess: (_made, input) => invalidate([...keys.skills, "about", input.name]),
+  });
+}
+
+export const skillExportUrl = (name: string) => `/api/skills/${encodeURIComponent(name)}/export`;

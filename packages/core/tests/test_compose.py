@@ -46,7 +46,7 @@ def test_picked_skills_docs_and_documents_make_the_run_a_model_gets(
     assert (pinned["title"], pinned["version"]) == ("Q4 outline", outline.revision)
     assert "Polls run on Tuesdays." in pinned["text"]
     assert packet["brain"]["text"].startswith("# Brain context")
-    assert brain.requests[-1].startswith(
+    assert brain.briefed[-1].startswith(
         "Three LinkedIn posts from my outline.\n\nUsing the skills weekly-posts"
     )
     task = ws.compose.run(owner, **spec)

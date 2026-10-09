@@ -105,6 +105,8 @@ export function CatchUpPage() {
 
 function StartScreen({ plan, onStart, onRecap, onSeen }: { plan: CatchUpPlan; onStart: () => void; onRecap: () => void; onSeen: () => void }) {
   const checkIns = plan.counts.upkeep + plan.counts.offers + plan.counts.legacy + plan.nudges.length;
+  const checks = plan.work ?? [];
+  const cards = queueOf(plan).length;
   return (
     <div className="page catch-up">
       <p className="eyebrow">Catch up</p>
@@ -142,11 +144,19 @@ function StartScreen({ plan, onStart, onRecap, onSeen }: { plan: CatchUpPlan; on
                 <strong>{checkIns}</strong> {checkIns === 1 ? "check-in" : "check-ins"}
               </li>
             ) : null}
+            {checks.length ? (
+              <li>
+                <strong>{checks.length}</strong> {checks.length === 1 ? "check" : "checks"} in Work
+              </li>
+            ) : null}
           </ul>
+          <WorkChecks items={checks} />
           <div className="row">
-            <button type="button" className="primary big" onClick={onStart} autoFocus>
-              Start
-            </button>
+            {cards ? (
+              <button type="button" className="primary big" onClick={onStart} autoFocus>
+                Start
+              </button>
+            ) : null}
             <button type="button" className="link" onClick={onRecap}>
               What happened since {onDay(plan.since)}
             </button>
@@ -166,6 +176,27 @@ function StartScreen({ plan, onStart, onRecap, onSeen }: { plan: CatchUpPlan; on
         </button>
       </p>
     </div>
+  );
+}
+
+/** Workflow runs waiting at a check: each opens where you go on, edit what came before, or stop. */
+function WorkChecks({ items }: { items: NonNullable<CatchUpPlan["work"]> }) {
+  if (!items.length) return null;
+  return (
+    <section className="stack-tight" aria-label="Waiting in Work">
+      <h2 className="small-head">Waiting in Work</h2>
+      <ul className="list compact-list">
+        {items.map((item) => (
+          <li key={item.run_id}>
+            <Link to={`/work/workflows/${encodeURIComponent(item.workflow_id)}?run=${encodeURIComponent(item.run_id)}`}>{item.workflow}</Link>
+            <span className="muted small">
+              {" · "}
+              {item.ask} · started {when(item.started_at)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

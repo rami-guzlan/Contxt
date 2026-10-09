@@ -583,3 +583,23 @@ class WorkflowDecideIn(Body):
     go: bool
     edit: str | None = Field(default=None, max_length=400000)
     note: str = Field(default="", max_length=500)
+
+
+# ------------------------------------------------------------------------- Skills, upgraded
+
+
+class SkillGitIn(Body):
+    """A skill in a GitHub repository: its address (a repository, or a folder in one)."""
+
+    url: str = Field(min_length=19, max_length=500)
+    path: str = Field(default="", max_length=300)
+
+
+class SkillPushIn(Body):
+    """Where in Claude Code the copy goes: the person's own skills, or a project's."""
+
+    project_dir: str | None = Field(default=None, max_length=1000)
+
+
+class SuggestionDismissIn(Body):
+    key: str = Field(min_length=1, max_length=80)
