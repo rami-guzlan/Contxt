@@ -7,7 +7,7 @@
 
 import { BookOpen, RefreshCw } from "lucide-react";
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, Navigate, useSearchParams } from "react-router";
 
 import {
   brainFileUrl,
@@ -33,6 +33,7 @@ export const KIND_WORDS: Record<LibraryKind, { one: string; many: string; what: 
   guide: { one: "Guide", many: "Guides", what: "to follow: rules and conventions, read whole" },
   reference: { one: "Reference", many: "References", what: "to read whole: specs, contracts, product sheets" },
   influence: { one: "Influence", many: "Influences", what: "whose taste to borrow: a repository, a site, a writer" },
+  prompt: { one: "Prompt", many: "Prompts", what: "your own words, kept for later" },
   asset: { one: "Asset", many: "Assets", what: "kept byte for byte: images, fonts, sheets, recordings" },
 };
 const KINDS: LibraryKind[] = ["guide", "reference", "influence", "asset"];
@@ -73,12 +74,13 @@ function usedLine(item: LibraryItem): string {
 }
 
 export function LibraryPage() {
-  const { data: items, isLoading, error } = useLibrary();
+  const { data: kept, isLoading, error } = useLibrary();
   const [params, setParams] = useSearchParams();
   const shown = (params.get("kind") as LibraryKind | null) ?? null;
   const [adding, setAdding] = useState(params.get("add") === "1");
   if (isLoading) return <Loading />;
-  if (!items) return <ErrorNote error={error} />;
+  if (!kept) return <ErrorNote error={error} />;
+  const items = kept.filter((i) => i.kind !== "prompt"); // prompts have their own tab
   const list = shown ? items.filter((i) => i.kind === shown) : items;
   const count = (kind: LibraryKind) => items.filter((i) => i.kind === kind).length;
   return (
@@ -86,7 +88,8 @@ export function LibraryPage() {
       <div className="work-intro">
         <p>
           Everything your Brain keeps whole: guides to follow, references to read whole, influences whose taste to borrow, and assets.
-          Skills, agents and workflows point to them, so they always read the current version.
+          Skills, agents and workflows point to them, so they always read the current version. Your own prompts are in{" "}
+          <Link to="/work/prompts">Prompts</Link>.
         </p>
         {!adding ? (
           <button type="button" className="primary" onClick={() => setAdding(true)}>
@@ -389,6 +392,7 @@ export function LibraryItemPage() {
   const refresh = useRefreshLibraryItem();
   if (isLoading) return <Loading />;
   if (!item) return <ErrorNote error={error} />;
+  if (item.kind === "prompt" && item.entry_id) return <Navigate to={`/work/prompts/${encodeURIComponent(item.entry_id)}`} replace />;
   const fetched = !!(item.source_url || item.source_repo);
   const asset = item.file_kind === "asset";
   return (

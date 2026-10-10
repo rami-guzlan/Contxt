@@ -85,7 +85,7 @@ class Workspace:
         self.agent = KnowledgeAgent(rt, self.brain)
         self.agents = Agents(rt, self.brain, self.skills, self.notes)
         self.docs = Docs(rt, self.notes, self.brain, self.skills, self.agents)
-        self.prompts = Prompts(rt, self.skills)
+        self.prompts = Prompts(rt, self.skills, self.brain)
         self.compose = Compose(rt, self.brain, self.skills, self.agents, self.notes, self.prompts)
         self.suggestions = SkillSuggestions(rt, self.prompts)
         self.workflows = Workflows(

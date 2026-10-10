@@ -1872,7 +1872,8 @@ export interface AgentSkill {
 
 // ------------------------------------------------------------------ Work: the Library
 
-export type LibraryKind = "guide" | "reference" | "influence" | "asset";
+/** What an item is for; a prompt has its own tab (Prompts) and never routes on its own. */
+export type LibraryKind = "guide" | "reference" | "influence" | "prompt" | "asset";
 export type LibraryRefresh = "never" | "weekly" | "monthly";
 
 /** An item kept whole, by what it is for: a guide to follow, a reference to read whole, an
@@ -2065,20 +2066,33 @@ export interface ComposeAssembly {
   makes_files: boolean;
 }
 
-/** A prompt saved from Compose: its words with versions, its picks, and how often it ran. */
+/** A prompt kept word for word in the Brain's Library, in your own scope: its words with every
+ * version, its tags and project, what it is used with, the files that came with it, and how
+ * often it ran. Any AI connected to the Brain finds it by name; none gets it unasked. */
 export interface SavedPrompt {
+  /** Its card in the Brain. */
   id: string;
+  /** Its file, under references/prompts/. */
+  path: string;
   title: string;
   body: string;
   picks: ComposePicks;
+  tags: string[];
+  project: string | null;
+  project_title: string | null;
+  /** Where it came from: chat (saved by an AI in a conversation), upload (saved here). */
+  origin: string | null;
+  scope: string | null;
   revision: number;
   version: number;
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
   archived_at: string | null;
   uses: number;
   last_used: string | null;
-  versions: { revision: number; title: string; body: string; at: string }[];
+  /** Newest first; only on one prompt's page. */
+  versions: { revision: number; title: string; body: string; at: string | null }[];
+  attachments: { path: string; title: string; kind: "asset" | "reference" }[];
 }
 
 // ------------------------------------------------------------------ Work: Workflows

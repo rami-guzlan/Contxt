@@ -527,7 +527,7 @@ class ComposePicks(Body):
 
 
 class ComposeIn(ComposePicks):
-    request: str = Field(min_length=1, max_length=8000)
+    request: str = Field(min_length=1, max_length=20000)
 
     def spec(self) -> dict[str, Any]:
         return {
@@ -550,14 +550,16 @@ class ComposeImproveIn(ComposeIn):
 
 class PromptIn(Body):
     title: str = Field(min_length=1, max_length=200)
-    body: str = Field(min_length=1, max_length=8000)
+    body: str = Field(min_length=1, max_length=20000)
     picks: ComposePicks = Field(default_factory=ComposePicks)
+    tags: list[str] = Field(default_factory=list, max_length=12)
 
 
 class PromptPatch(Body):
     title: str | None = Field(default=None, min_length=1, max_length=200)
-    body: str | None = Field(default=None, min_length=1, max_length=8000)
+    body: str | None = Field(default=None, min_length=1, max_length=20000)
     picks: ComposePicks | None = None
+    tags: list[str] | None = Field(default=None, max_length=12)
     expected_version: int | None = None
 
 

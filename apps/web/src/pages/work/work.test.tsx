@@ -66,7 +66,7 @@ describe("Knowledge Work", () => {
       "/work",
       "/work/workspace",
       "/work/library",
-      "/work/compose",
+      "/work/prompts",
       "/work/skills",
       "/work/agents",
       "/work/workflows",
@@ -117,7 +117,7 @@ describe("Knowledge Work", () => {
     expect(within(parts).getAllByRole("heading").map((h) => h.textContent)).toEqual([
       "Workspace",
       "Library",
-      "Compose",
+      "Prompts",
       "Skills",
       "Agents",
       "Workflows",

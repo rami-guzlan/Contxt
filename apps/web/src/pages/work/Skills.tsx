@@ -89,11 +89,11 @@ export function SkillsPage() {
         <section className="skill-panel" aria-label="Run skills">
           <h2>Run skills</h2>
           <p className="muted small">
-            Run one or several in Compose, in the order you pick, with your notes and documents, and see the whole prompt your AI gets
+            Run one or several with a prompt, in the order you pick, with your notes and documents, and see the whole prompt your AI gets
             before it runs.
           </p>
-          <Link className="button primary" to="/work/compose">
-            Open Compose
+          <Link className="button primary" to="/work/prompts/new?run=1">
+            Run skills with a prompt
           </Link>
         </section>
       ) : null}

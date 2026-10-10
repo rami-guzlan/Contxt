@@ -924,6 +924,89 @@ class BrainKitAdapter:
         data: dict[str, Any] = self.brain.entry(found).data
         return data
 
+    # ---------------------------------------------------------------- prompts
+
+    def prompts(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        """The owner's prompts kept in the Library, newest first: each prompt's card (its
+        words exactly, its tags, what it was used with, its project) and the files that came
+        with it."""
+        st = self.brain.state()
+        chain, partitions = self._view(st)
+        pool = st.index.archived if archived else st.index.notes
+        cards = [
+            n
+            for n in pool.values()
+            if str(n.meta.get("library") or "") == "prompt"
+            and Scopes.admits(n.scope, n.partition, chain, partitions)
+        ]
+        rows = [self._prompt_row(st, card) for card in cards]
+        rows.sort(key=lambda r: (str(r["updated"] or ""), r["title"]), reverse=True)
+        return rows
+
+    def prompt(self, prompt_id: str) -> dict[str, Any] | None:
+        """One prompt, live or set aside, with every version of its words."""
+        st = self.brain.state()
+        card = st.index.note(prompt_id, include_archived=True)
+        if (
+            card is None
+            or str(card.meta.get("library") or "") != "prompt"
+            or card.id not in self._seen(st)
+        ):
+            return None
+        row = self._prompt_row(st, card)
+        found = self.brain.versions(card.id, with_text=True).data.get("versions") or []
+        kept: list[dict[str, Any]] = []
+        for v in found:  # newest first; a version whose words did not change is not one
+            words = prompt_words(str(v.get("body") or ""))
+            if kept and kept[-1]["body"] == words:
+                kept[-1].update(ref=v.get("ref"), at=v.get("at"))
+                continue
+            kept.append(
+                {"ref": v.get("ref"), "at": v.get("at"), "by": v.get("author"), "body": words}
+            )
+        row["versions"] = kept
+        return row
+
+    def _prompt_row(self, st: Any, card: Any) -> dict[str, Any]:
+        meta = card.meta
+        path = str(meta.get("file") or "")
+        home = st.index.focuses.get(str(meta.get("project_id") or "")) or (
+            st.index.file_project(path) if path else None
+        )
+        attached = [
+            {
+                "path": p,
+                "title": c.title,
+                "kind": "asset" if p.startswith("assets/") else "reference",
+            }
+            for p, c in [*st.index.cards.items(), *st.index.asset_cards.items()]
+            if str(c.meta.get("attached_to") or "") == path and path
+        ]
+        full = self.brain.vault.path(*path.split("/")) if path else ""
+        return {
+            "id": card.id,
+            "path": path,
+            "title": card.title,
+            "body": prompt_words(card.body),
+            "tags": [str(t) for t in meta.get("tags") or []],
+            "picks": {
+                "skills": [str(s) for s in meta.get("prompt_skills") or []],
+                "agent": str(meta.get("prompt_agent") or "") or None,
+                "docs": [str(d) for d in meta.get("prompt_docs") or []],
+                "library": [str(r) for r in meta.get("prompt_reads") or []],
+                "project": home.id if home is not None else None,
+            },
+            "project": home.id if home is not None else None,
+            "project_title": home.title if home is not None else None,
+            "version": _number(meta.get("version")) or 1,
+            "added": str(meta.get("added") or "") or None,
+            "updated": modified(full) if full else None,
+            "origin": str(meta.get("origin") or "") or None,
+            "scope": card.scope,
+            "archived": not card.live,
+            "attachments": attached,
+        }
+
     def versions(self, entry_id: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
         found = self._visible_id(entry_id)
         if found is None:
@@ -1603,6 +1686,15 @@ def _revision(meta: dict[str, Any]) -> str | None:
         if meta.get(key):
             return str(meta[key])
     return None
+
+
+def prompt_words(card_body: str) -> str:
+    """A prompt's words as its card keeps them: everything after the card's first line."""
+    text = str(card_body or "").replace("\r\n", "\n")
+    if text.startswith("Prompt kept word for word"):
+        _first, _sep, rest = text.partition("\n\n")
+        return rest.strip()
+    return text.strip()
 
 
 def _origin(meta: dict[str, Any], *, project: bool) -> dict[str, Any]:

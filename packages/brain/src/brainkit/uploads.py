@@ -64,13 +64,25 @@ SKILL_LIST_FIELDS = ("triggers", "aliases", "cue_terms", "artifacts", "loads", "
                      "quality_gates")
 UPLOAD_KINDS = ("skill.create", "skill.update", "file.add")
 # The Library: an item kept whole can say what kind of item it is (a guide to follow, a
-# reference to read whole, an influence whose taste to borrow, or an asset: an image, a font, a
-# sheet, kept byte for byte), where it was fetched from, when, and how often to fetch it again.
-# These live on the item's card. Only an asset is an asset; a document is any of the others.
-LIBRARY_KINDS = ("guide", "reference", "influence", "asset")
-DOCUMENT_KINDS = ("guide", "reference", "influence")
+# reference to read whole, an influence whose taste to borrow, a prompt the person keeps word
+# for word, or an asset: an image, a font, a sheet, kept byte for byte), where it was fetched
+# from, when, and how often to fetch it again. These live on the item's card. Only an asset is
+# an asset; a document is any of the others.
+#
+# A PROMPT is the person's own words for later: filed under references/prompts/, its card
+# carries the text word for word, so search_notes finds it and get_note returns it, and it is
+# loaded `manual`: never routed into a brief or quoted as a file's section unless a request
+# names it. Its tags, the skills, agent, docs and Library items it was used with, and the files
+# that came with it (each filed with `attached_to` naming it) live on cards too.
+LIBRARY_KINDS = ("guide", "reference", "influence", "prompt", "asset")
+DOCUMENT_KINDS = ("guide", "reference", "influence", "prompt")
 LIBRARY_REFRESH = ("never", "weekly", "monthly")
-LIBRARY_KEYS = ("library", "source_url", "source_repo", "source_paths", "fetched_at", "refresh")
+LIBRARY_LISTS = ("source_paths", "tags", "prompt_skills", "prompt_docs", "prompt_reads")
+LIBRARY_KEYS = ("library", "source_url", "source_repo", "source_paths", "fetched_at", "refresh",
+                "tags", "prompt_skills", "prompt_agent", "prompt_docs", "prompt_reads",
+                "attached_to")
+PROMPT_FOLDER = "references/prompts/"
+MAX_PROMPT = 20000  # characters in one prompt
 # Where a filed item came from, on its card as `origin`, `<kind>` or `<kind>:<which one>` like a
 # note's: a capture (capture:recording, capture:transcript, capture:upload, capture:export),
 # the Library, a project, a skill, a run's output (run:<id>), Moving in, a person in the app, an
@@ -110,14 +122,19 @@ def library_meta(fields) -> dict:
             raise Refused(f"{key} is not a Library field")
         if value in (None, "", [], ()):
             continue
-        if key == "source_paths":
-            paths = [str(p).strip() for p in value if str(p).strip()]
-            if paths:
-                out[key] = paths[:20]
+        if key in LIBRARY_LISTS:
+            items = value.split(",") if isinstance(value, str) else value
+            kept = list(dict.fromkeys(" ".join(str(p).split())[:300] for p in items
+                                      if str(p).strip()))
+            if kept:
+                out[key] = kept[:20]
             continue
         text = str(value).strip()
         if key == "library" and text not in LIBRARY_KINDS:
-            raise Refused("a Library item is a guide, a reference, an influence or an asset")
+            raise Refused("a Library item is a guide, a reference, an influence, a prompt or "
+                          "an asset")
+        if key == "attached_to":
+            text = clean_relpath(text)
         if key == "refresh" and text not in LIBRARY_REFRESH:
             raise Refused("refresh is never, weekly or monthly")
         if key in ("source_url", "source_repo") and not text.lower().startswith("https://"):
@@ -498,6 +515,13 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
         if purpose == "reference" and kind == "asset":
             raise Refused(f"{filename}: a document kept whole is a guide, a reference or an "
                           "influence, not an asset")
+        if kind == "prompt" and ext not in (".md", ".txt"):
+            raise Refused(f"{filename}: a prompt is kept as text (.md or .txt)")
+        if kind == "prompt" and len(data) > MAX_PROMPT * 4:
+            raise Refused(f"keep a prompt under {MAX_PROMPT:,} characters")
+        attached = extra.get("attached_to")
+        if attached and attached not in st.index.cards:
+            raise Refused(f"attach_to: {attached} is not a document the brain holds")
         came = origin_meta(came_from, channel=origin, library=bool(extra), project=project)
         if not replaces and home is not None and purpose == "reference":
             replaces = _same_document(st, home, filename)
@@ -556,8 +580,14 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
     else:
         area, topic_name = governance.guess_placement(
             brain, f"{title} {description} {text[:2000]}", chain, partitions)
+    prompt = extra.get("library") == "prompt" or (card_kind(st, replacing) == "prompt")
+    # A prompt is kept as the person wrote it, not as the reader converted it.
+    verbatim = (data.decode("utf-8", errors="replace").replace("\r\n", "\n").strip()
+                if prompt else text)
     if replacing:
         target_path = replacing
+    elif prompt:
+        target_path = _free_path(brain, f"{PROMPT_FOLDER}{slug}", ".md")
     elif purpose == "reference":
         folder = f"references/projects/{topic_name}/" if home is not None else "references/"
         target_path = _free_path(brain, f"{folder}{slug}", ".md")
@@ -595,7 +625,8 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
         for key, value in came.items():  # a new version keeps where the item came from
             meta.setdefault(key, value)
         card_update = {"id": card.id, "meta": meta,
-                       "body": (_card_body(card.title, replacing, about, outline)
+                       "body": (prompt_body(card.title, replacing, verbatim) if prompt
+                                else _card_body(card.title, replacing, about, outline)
                                 if purpose == "reference" else card.body)}
     if replacing:
         pointer = (f"New version of {replacing} ({size_label}). It covers: "
@@ -603,12 +634,15 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
                    + (f" Its card {keep_pointer} says which version it is." if card_update
                       else f" Pointer note {keep_pointer} stays as it is." if keep_pointer
                       else ""))
+    elif prompt:
+        pointer = prompt_body(title, target_path, verbatim)
     elif purpose == "reference":
         pointer = _card_body(title, target_path, about, outline)
     else:
         pointer = f"Asset: {title} ({filename}, {size_label}) is at {target_path}." + (
             f" {about}" if about and about != title else "")
-    default_scope = home.note.scope if home is not None else (
+    # A prompt is the person's own: kept in their own scope, and opened only when named.
+    default_scope = chain[-1] if prompt else home.note.scope if home is not None else (
         chain[-2] if len(chain) > 1 else chain[0])
     scope = str(scope or default_scope).strip()
     if not st.scopes.exists(scope):
@@ -618,7 +652,8 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
     note_meta = {
         "id": governance.unique_id(st, governance.slug_from(title)), "title": title,
         "summary": util.excerpt(about, 140), area_key: area, "topic": topic_name,
-        "kind": "fact", "type": "file", "scope": scope, "load": "on-demand",
+        "kind": "fact", "type": "file", "scope": scope,
+        "load": "manual" if prompt else "on-demand",
         "added": util.today(), "file": target_path, "filename": filename, "dated": dated,
         "source": source or f"{purpose} {filename} added by {who}",
         "evidence": evidence or f"sha256 {digest}", "classification": "internal",
@@ -632,7 +667,8 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
     if status:
         note_meta["file_status"] = status
     if not st.config.uses_areas:
-        note_meta.pop("title")
+        if not prompt:  # a prompt is found by its name, in any layout
+            note_meta.pop("title")
         note_meta.pop("summary")
         note_meta.pop("kind")
     proposal_id = f"file-{slug[:40]}-{digest[:6]}"
@@ -726,6 +762,22 @@ def _file_now(brain, proposal_id, header, note_meta, pointer, *, who, label, tit
         "file_status": card.meta.get("file_status") if card is not None else None,
         "replaced": replaced, "sections": parts, "project": home.id if home else None,
         "checkpoint": batch.checkpoint, "commit": (deferred.outcome or {}).get("commit")})
+
+
+def card_kind(st, path) -> str | None:
+    """The Library kind a filed document's card gives it, when it has a card."""
+    card = st.index.cards.get(path) if path else None
+    return str(card.meta.get("library") or "") or None if card is not None else None
+
+
+def prompt_body(title: str, path: str, text: str) -> str:
+    """A prompt's card: its words exactly as kept, so finding the card finds the prompt."""
+    words = str(text or "").strip()
+    first = words.splitlines()[0].strip() if words else ""
+    if first.lstrip("# ").strip() == str(title).strip():
+        words = "\n".join(words.splitlines()[1:]).strip()
+    return (f"Prompt kept word for word (`{path}`); use it only when the person asks for it "
+            f"by name.\n\n{words}")
 
 
 def _replaceable(brain, replaces, purpose) -> str:
@@ -881,6 +933,8 @@ def _apply_file(brain, proposal, *, actor, edits, body, auto=False):
         kept = kept if kept and st.index.note(kept) is not None else None
         update = info.get("card") or {}
         card = st.index.note(update.get("id")) if update.get("id") else None
+        record = {"note": kept, "path": target_path, "purpose": info["purpose"],
+                  "sha256": info["sha256"], "replaced": target_path}
         if card is not None:
             # The card says which copy is current now, and what it covers.
             meta = dict(card.meta)
@@ -890,11 +944,14 @@ def _apply_file(brain, proposal, *, actor, edits, body, auto=False):
                 if key not in (update.get("meta") or {}):
                     meta.pop(key, None)
             meta["revised"] = util.now_iso()
-            brain.vault.write_note(card.path, meta, str(update.get("body") or card.body))
+            body = str(update.get("body") or card.body)
+            if body != card.body:
+                # What the card said before (a prompt's earlier words): its history without git.
+                record["previous"] = card.body
+            brain.vault.write_note(card.path, meta, body)
             touched.append(brain.vault.path(card.path))
         return _finish(brain, proposal, actor=actor, auto=auto, touched=touched,
-                       record={"note": kept, "path": target_path, "purpose": info["purpose"],
-                               "sha256": info["sha256"], "replaced": target_path},
+                       record=record,
                        message=f"{verb} the new version of {target_path}"
                                + (f"; card {kept} updated." if card is not None
                                   else f"; pointer note {kept} kept." if kept else "."),

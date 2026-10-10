@@ -413,6 +413,17 @@ class BrainPort(Protocol):
 
     def version(self, entry_id: str, ref: str) -> dict[str, Any] | None: ...
 
+    def prompts(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        """The prompts kept in the Library that the owner may see, newest first: {"id",
+        "path", "title", "body" (the words exactly), "tags", "picks", "project",
+        "project_title", "version", "added", "updated", "origin", "scope", "archived",
+        "attachments"}."""
+        ...
+
+    def prompt(self, prompt_id: str) -> dict[str, Any] | None:
+        """One prompt, live or set aside, with "versions" of its words, newest first."""
+        ...
+
     def activity(
         self,
         *,
@@ -783,6 +794,12 @@ class NoBrain:
         return None
 
     def version(self, entry_id: str, ref: str) -> dict[str, Any] | None:
+        return None
+
+    def prompts(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        return []
+
+    def prompt(self, prompt_id: str) -> dict[str, Any] | None:
         return None
 
     def activity(self, **_: Any) -> list[dict[str, Any]]:

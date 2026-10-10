@@ -1,7 +1,7 @@
 // Working with a skill: run it for what you need and see what it made (text to copy, save or
 // file in a project; files to download), ask your AI to improve it or write a new one (both
 // wait in Review), edit it yourself, and look back at its versions. Several skills at once
-// (followed in order, or the Brain picks) run from Work, Compose.
+// (followed in order, or the Brain picks) run from a prompt in Knowledge Work.
 
 import { useState } from "react";
 import { Link } from "react-router";
@@ -99,8 +99,8 @@ export function RunSkill({ name, triggers, makesFiles }: { name: string; trigger
         <button type="button" className="primary" disabled={!ask.trim() || run.isPending} onClick={() => void go().catch(() => undefined)}>
           {run.isPending ? "Asking…" : "Run"}
         </button>
-        <Link className="small" to={`/work/compose?skill=${encodeURIComponent(name)}${ask.trim() ? `&ask=${encodeURIComponent(ask.trim())}` : ""}`}>
-          Open in Compose
+        <Link className="small" to={`/work/prompts/new?skill=${encodeURIComponent(name)}${ask.trim() ? `&ask=${encodeURIComponent(ask.trim())}` : ""}`}>
+          More picks, and the whole prompt
         </Link>
       </div>
       <ErrorNote error={run.error} />
@@ -585,7 +585,7 @@ export function NewSkill({
   onClose,
 }: {
   capture?: { id: string; title: string } | null;
-  /** Words to start from: a prompt from Compose made into a skill, say. */
+  /** Words to start from: a saved prompt made into a skill, say. */
   initial?: string;
   onClose?: () => void;
 }) {

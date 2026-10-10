@@ -5132,6 +5132,46 @@ button.big,
   color: var(--active);
 }
 
+.kind-prompt {
+  color: var(--muted);
+}
+
+/* Prompts: your own words, with their tags. */
+.tag-chip {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--border);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+.prompts-filter {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.prompts-filter input[type="search"] {
+  flex: 1 1 16rem;
+}
+
+.prompt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem;
+}
+
+.prompt-head h2 {
+  margin: 0 0.3rem 0 0;
+}
+
+.prompt-form {
+  max-width: 48rem;
+}
+
 @media (max-width: 640px) {
   .library-item {
     grid-template-columns: minmax(0, 1fr);

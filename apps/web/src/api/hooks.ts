@@ -1125,16 +1125,23 @@ export const useWriteToLibrary = () =>
     post<LibraryFiled>("/api/library/write", input),
   );
 
-/** Keep a document whole: PDF, Word, PowerPoint, HTML, Markdown or text. */
-export const useUploadToLibrary = () =>
-  useLibraryMutation((input: { file: File; kind: LibraryKind; title?: string; project?: string }) => {
-    const form = new FormData();
-    form.set("file", input.file);
-    form.set("kind", input.kind);
-    if (input.title) form.set("title", input.title);
-    if (input.project) form.set("project", input.project);
-    return api<LibraryFiled>("/api/library/upload", { method: "POST", form });
+/** Keep a document whole (PDF, Word, PowerPoint, HTML, Markdown or text) or an asset;
+ * `attach_to` names the prompt (or document) it came with. */
+export function useUploadToLibrary() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (input: { file: File; kind: LibraryKind; title?: string; project?: string; attach_to?: string }) => {
+      const form = new FormData();
+      form.set("file", input.file);
+      form.set("kind", input.kind);
+      if (input.title) form.set("title", input.title);
+      if (input.project) form.set("project", input.project);
+      if (input.attach_to) form.set("attach_to", input.attach_to);
+      return api<LibraryFiled>("/api/library/upload", { method: "POST", form });
+    },
+    onSuccess: () => invalidate(keys.library, keys.brain, keys.home, keys.events, ["prompts"]),
   });
+}
 
 /** Fetch a web page and keep it. */
 export const useFetchToLibrary = () =>
@@ -1303,7 +1310,7 @@ export function useUseDocResult() {
 
 export const docExportUrl = (id: string, format: "md" | "docx") => `/api/workspace/${encodeURIComponent(id)}/export?format=${format}`;
 
-// ------------------------------------------------------------------ Work: Compose
+// ------------------------------------------------------------------ Work: Prompts (and running one)
 
 const promptsKey = ["prompts"] as const;
 
@@ -1331,30 +1338,48 @@ export function useComposeRun() {
   });
 }
 
-/** Saved prompts, the most used first; `q` finds them by their words. */
+/** Your prompts, the most used first; `q` finds them by their words or tags. */
 export const useSavedPrompts = (q = "", archived = false) =>
   useQuery({
     queryKey: [...promptsKey, q, archived],
     queryFn: () => get<SavedPrompt[]>(`/api/prompts${query({ q: q || undefined, archived: archived ? "true" : undefined })}`),
   });
 
-/** Save a prompt, or (with `id`) change one: new words are a new version. */
+/** One prompt, with every version of its words and the files that came with it. */
+export const useSavedPrompt = (id: string | undefined) =>
+  useQuery({
+    queryKey: [...promptsKey, "one", id],
+    queryFn: () => get<SavedPrompt>(`/api/prompts/${encodeURIComponent(id ?? "")}`),
+    enabled: !!id,
+  });
+
+/** Keep a prompt in the Brain, or (with `id`) change one: new words are a new version; a new
+ * name, tags or picks change its card. Each is an undo point. */
 export function useSavePrompt() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: ({ id, ...input }: { id?: string; title: string; body: string; picks: ComposePicks; expected_version?: number }) =>
-      id ? put<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}`, input) : post<SavedPrompt>("/api/prompts", input),
-    onSuccess: () => invalidate(promptsKey),
+    mutationFn: ({
+      id,
+      ...input
+    }: {
+      id?: string;
+      title?: string;
+      body?: string;
+      picks?: ComposePicks;
+      tags?: string[];
+      expected_version?: number;
+    }) => (id ? put<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}`, input) : post<SavedPrompt>("/api/prompts", input)),
+    onSuccess: () => invalidate(promptsKey, keys.library, keys.brain),
   });
 }
 
-/** Set a saved prompt aside, or bring it back. */
+/** Set a prompt aside, or bring it back; nothing is deleted. */
 export function useArchivePrompt() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: ({ id, back = false }: { id: string; back?: boolean }) =>
       back ? post<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}/restore`) : del<SavedPrompt>(`/api/prompts/${encodeURIComponent(id)}`),
-    onSuccess: () => invalidate(promptsKey),
+    onSuccess: () => invalidate(promptsKey, keys.library, keys.brain),
   });
 }
 

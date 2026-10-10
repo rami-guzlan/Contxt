@@ -526,9 +526,9 @@ function AskIt({ agent }: { agent: WorkAgent }) {
           </button>
           <Link
             className="small"
-            to={`/work/compose?agent=${encodeURIComponent(agent.name)}${project ? `&project=${encodeURIComponent(project)}` : ""}${text.trim() ? `&ask=${encodeURIComponent(text.trim())}` : ""}`}
+            to={`/work/prompts/new?agent=${encodeURIComponent(agent.name)}${project ? `&project=${encodeURIComponent(project)}` : ""}${text.trim() ? `&ask=${encodeURIComponent(text.trim())}` : ""}`}
           >
-            Open in Compose
+            More picks, and the whole prompt
           </Link>
           <Link
             className="small"

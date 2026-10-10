@@ -167,7 +167,9 @@ function FileRows({ files, titles }: { files: BrainFile[]; titles: Map<string, s
               {file.path} · {bytes(file.size)}
               {file.updated ? ` · updated ${when(file.updated)}` : ""}
               {file.original ? ` · from ${file.original}` : ""}
-              {file.entry_id ? (
+              {file.library === "prompt" ? (
+                " · a prompt: your AIs use it only when you name it"
+              ) : file.entry_id ? (
                 <>
                   {" · models find it through "}
                   <Link to={entryUrl(file.entry_id)}>{titles.get(file.entry_id) ?? "its note"}</Link>

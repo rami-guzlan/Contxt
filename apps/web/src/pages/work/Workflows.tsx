@@ -331,7 +331,7 @@ function CheckPanel({ run }: { run: WorkflowRun }) {
 
 // ---------------------------------------------------------------- a new one
 
-/** What a new workflow starts with: a template, an agent to schedule, or a step from Compose. */
+/** What a new workflow starts with: a template, an agent to schedule, or a step from a prompt. */
 function startingPoint(params: URLSearchParams, templates: WorkflowTemplate[] | undefined, step: WorkflowStep | null): Partial<WorkflowForm> | null {
   const template = params.get("template");
   if (template) {

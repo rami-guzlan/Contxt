@@ -106,11 +106,11 @@ export function WorkOverviewPage() {
       count: library ? plural(library.length, "item") : undefined,
     },
     {
-      title: "Compose",
+      title: "Prompts",
       question: "Your own words, for later",
-      text: "Prompts kept word for word, to find and reuse. See the whole prompt a model would get.",
-      to: "/work/compose",
-      count: prompts ? plural(prompts.length, "saved prompt") : undefined,
+      text: "Your prompts kept word for word with their files, to find and reuse; any AI connected to your Brain finds one by its name.",
+      to: "/work/prompts",
+      count: prompts ? plural(prompts.length, "prompt") : undefined,
     },
     {
       title: "Skills",

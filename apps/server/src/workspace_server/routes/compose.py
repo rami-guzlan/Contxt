@@ -1,7 +1,8 @@
 """Compose over REST: a request and what goes with it (skills in order, an agent, notes,
 documents, a project), assembled exactly as a model would get it, with its size in tokens;
 improved by the chosen model (in the background; poll /api/brain/agent/jobs/{id}); run here as a
-task like any skill run; and saved as a prompt with versions (/api/prompts), private to the app."""
+task like any skill run; and saved as a prompt (/api/prompts): kept word for word in the Brain's
+Library, in the owner's own scope, versioned, and used only when named."""
 
 from __future__ import annotations
 
@@ -86,30 +87,35 @@ def run(body: ComposeRunIn, who: Who, ws: WS) -> Task:
 
 @router.get("/api/prompts")
 def prompts(who: Who, ws: WS, q: str = "", archived: bool = False) -> list[SavedPrompt]:
-    """Saved prompts, the most used first; `q` finds them by their words."""
+    """Saved prompts, the most used first; `q` finds them by their words or tags."""
     return ws.prompts.list(who, archived=archived, query=q)
 
 
 @router.post("/api/prompts", status_code=201)
 def save(body: PromptIn, who: Who, ws: WS) -> SavedPrompt:
-    return ws.prompts.create(who, title=body.title, body=body.body, picks=body.picks.model_dump())
+    return ws.prompts.create(
+        who, title=body.title, body=body.body, picks=body.picks.model_dump(), tags=body.tags
+    )
 
 
 @router.get("/api/prompts/{prompt_id}")
 def prompt(prompt_id: str, who: Who, ws: WS) -> SavedPrompt:
-    """One saved prompt, with its versions and how often it ran."""
+    """One saved prompt, with its versions, the files that came with it and how often it ran
+    (an id from before prompts moved into the Brain still finds it)."""
     return ws.prompts.get(who, prompt_id)
 
 
 @router.put("/api/prompts/{prompt_id}")
 def change(prompt_id: str, body: PromptPatch, who: Who, ws: WS) -> SavedPrompt:
-    """New words are a new version; new picks replace the old."""
+    """New words are a new version; a new title, tags or picks change its card. Each is an
+    undo point."""
     return ws.prompts.update(
         who,
         prompt_id,
         title=body.title,
         body=body.body,
         picks=body.picks.model_dump() if body.picks is not None else None,
+        tags=body.tags,
         expected_version=body.expected_version,
     )
 

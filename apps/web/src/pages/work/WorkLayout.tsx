@@ -3,8 +3,8 @@ import { SectionFrame, Stat } from "../../components/SectionFrame";
 
 // Knowledge Work: where you shape what your Brain knows and keep it current. Each tab answers
 // one question: what changed and what needs you (Overview), where you think and what your AIs
-// keep current (Workspace), what is kept whole (Library), your own words for later (Prompts, for
-// now Compose), the procedures the Brain routes (Skills), the roles and the context they point to
+// keep current (Workspace), what is kept whole (Library), your own words for later (Prompts), the
+// procedures the Brain routes (Skills), the roles and the context they point to
 // (Agents), the context work on a schedule (Workflows) and what was made (Outputs). Running
 // things is an action on these screens, never their subject. The addresses stay /work/...
 export function WorkLayout() {
@@ -23,7 +23,7 @@ export function WorkLayout() {
         { to: "/work", label: "Overview", end: true },
         { to: "/work/workspace", label: "Workspace" },
         { to: "/work/library", label: "Library" },
-        { to: "/work/compose", label: "Compose" },
+        { to: "/work/prompts", label: "Prompts" },
         { to: "/work/skills", label: "Skills", badge: skills?.waiting.length ?? 0 },
         { to: "/work/agents", label: "Agents" },
         { to: "/work/workflows", label: "Workflows", badge: waiting?.length ?? 0 },

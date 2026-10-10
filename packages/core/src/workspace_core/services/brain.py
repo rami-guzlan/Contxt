@@ -71,10 +71,25 @@ ENTRY_FIELDS = (
     "library",  # an item's kind in the Library: guide, reference, influence or asset
     "refresh",  # how often the Library fetches it again: never, weekly or monthly
     "origin",  # where a filed item came from: capture:recording, library, run:<id>, ...
+    "title",  # a filed item's title, on its card
+    "project_id",  # the project a filed item is for
+    # A prompt's tags and what it is used with (all but the agent comma separated).
+    "tags",
+    "prompt_skills",
+    "prompt_agent",
+    "prompt_docs",
+    "prompt_reads",
 )
 LIBRARY_KINDS = ("guide", "reference", "influence", "asset")
 LIBRARY_REFRESH = ("never", "weekly", "monthly")
-FIELD_LIMITS = {"triggers": 1200, "applies_to": 600}  # characters; other fields take 200
+FIELD_LIMITS = {  # characters; other fields take 200
+    "triggers": 1200,
+    "applies_to": 600,
+    "tags": 600,
+    "prompt_skills": 2000,
+    "prompt_docs": 2000,
+    "prompt_reads": 2000,
+}
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,80}$")  # a version: a commit, or "current"
 MAX_TEXT = 60_000  # characters in one entry a person writes or edits
 SUMMARY_LIMIT = 200  # characters in the one line a list shows for an entry

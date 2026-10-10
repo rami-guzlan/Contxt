@@ -90,9 +90,11 @@ async def upload(
     kind: Annotated[str, Form()] = "reference",
     title: Annotated[str, Form()] = "",
     project: Annotated[str, Form()] = "",
+    attach_to: Annotated[str, Form()] = "",
 ) -> dict[str, Any]:
     """Keep an item whole in the Library: a document (PDF, Word, PowerPoint, HTML, Markdown
-    or text) or an asset (an image, a font, a sheet), kept byte for byte."""
+    or text) or an asset (an image, a font, a sheet), kept byte for byte; `attach_to` names
+    the prompt (or document) it came with."""
     if kind not in KINDS:
         raise ValidationFailed(
             "A Library item is a guide, a reference, an influence or an asset.", field="kind"
@@ -104,7 +106,7 @@ async def upload(
         data=data,
         title=title,
         project=project or None,
-        library={"library": kind},
+        library={"library": kind, "attached_to": attach_to.strip() or None},
     )
     return _filed(result)
 

@@ -96,7 +96,7 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
 - Home's flashcards: what to keep an eye on, one card at a time (stale context, repeats,
   drift, gaps, quiet projects, the agent's questions and what it did), and what is coming.
 - Knowledge Work (first called Work), where you shape what your Brain knows and keep it
-  current: Overview, Workspace, Library, Compose, Skills, Agents, Workflows and Outputs, in one
+  current: Overview, Workspace, Library, Prompts, Skills, Agents, Workflows and Outputs, in one
   tab (the addresses stay `/work/...`). Everything in it reads from the Brain, and what it makes
   waits for your yes: drafts, outputs and suggestions, never anything sent or published. Every
   item says whose it is ("Yours" in this app; scopes for teams come later).
@@ -105,11 +105,15 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
     how healthy the context is (notes to recheck or flagged, possible duplicates, clashes, skills
     that may be out of date, agents whose pointers broke); then each workflow as a strip of boxes
     and arrows and your agents with their heartbeats; and last, small, the recent runs.
-  - Compose: a request and what goes with it (skills in order, one agent, your notes and docs,
-    documents to read whole, a project), with the whole prompt a model gets beside it and its
-    size in tokens, or a short version for any AI connected to the Brain. Improve has your AI
-    rewrite the request and say what changed; Run here, Save (with versions and how often each
-    ran), Make it a skill and Schedule it. Saved prompts stay private to the app.
+  - Prompts: your own prompts, kept word for word in the Brain's Library with the files that
+    came with them, in your own scope, with every version, tags, a project and how often each
+    ran. Keep one here, or from any chat ("save this prompt to my Brain": `add_file` with kind
+    `prompt`); any AI connected to the Brain finds one by its name, and no brief carries one
+    unasked. A prompt's page copies its words, shows its earlier versions and its files, makes
+    it a skill, and, secondary, runs it: pick skills in order, an agent, notes and documents,
+    see the whole prompt a model gets with its size (or a short version for any AI), improve
+    it, run it here or schedule it. Prompts saved before move in once, with their versions;
+    the old Compose links open a new prompt with what they picked.
   - Workspace: where you think first. Docs from a template (outline, plan, decision, progress
     update) or blank, links to the calendar or sheet you work from, and files brought in as
     docs, each linked to any number of projects without copying. Your AI drafts from a doc with a
