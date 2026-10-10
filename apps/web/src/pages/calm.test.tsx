@@ -911,6 +911,32 @@ describe("settings", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "Facts from your ai's chats" }), "apply");
     await waitFor(() => expect(calls.filter((c) => c.method === "PUT")).toHaveLength(2));
     expect(calls.filter((c) => c.method === "PUT")[1]?.body).toEqual({ capture: { fact: { chat: "apply" } } });
+    // Private details are hidden from cloud AI under careful; the person can turn it off.
+    const hide = screen.getByRole("checkbox", { name: /Hide private details from cloud AI/ });
+    expect(hide).toBeChecked();
+    await user.click(hide);
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && JSON.stringify(c.body) === '{"redact_cloud":false}')).toBe(true));
+  });
+
+  it("lets a cheaper model triage what is brought in, off until chosen", async () => {
+    const calls = mockApi({
+      "GET /api/brain/models": { matching: { enabled: false, present: false, downloading: false } },
+      "GET /api/brain/distill/settings": { assignee_id: null, triage: null },
+      "PUT /api/brain/distill/settings": { assignee_id: null, triage: "claude" },
+      "GET /api/actors": [],
+      "GET /api/runners": [],
+    });
+    const user = userEvent.setup();
+    renderAt(<SettingsPage />, { path: "/settings", route: "/settings?tab=computer" });
+    const triage = await screen.findByRole("combobox", { name: "Triage first" });
+    expect(triage).toHaveValue("");
+    await user.selectOptions(triage, "claude");
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "PUT" && c.path === "/api/brain/distill/settings")?.body).toEqual({
+        assignee_id: null,
+        triage: "claude",
+      }),
+    );
   });
 
   it("backs up now and downloads the matching model only when asked", async () => {

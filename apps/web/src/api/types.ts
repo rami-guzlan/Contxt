@@ -547,6 +547,8 @@ export interface BrainPolicies {
   cross_check?: boolean;
   /** The external challenger argues against a few beliefs each week; off until you turn it on. */
   challenger?: boolean;
+  /** Private details hidden from a cloud model that reads what you bring in (decision 13). */
+  redact_cloud?: boolean;
 }
 
 export interface DecisionOutcome {
@@ -852,6 +854,8 @@ export interface DistillRequest {
 /** Which model does the AI work the app starts (none: the only one connected). */
 export interface DistillSettings {
   assignee_id: string | null;
+  /** The model that triages first: claude, local:<model>, ollama:<model>, or off. */
+  triage?: string | null;
 }
 
 // A CLI on the machine the workspace runs on (apps/server runners.py).

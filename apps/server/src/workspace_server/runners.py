@@ -800,7 +800,11 @@ class Runners:
             return {"text": "", "available": False}
         from .mcp import render
 
-        return {"text": mask(render.packet(found)), "available": True}
+        try:  # what the run's model was handed: redacted when the preset says so
+            hidden = bool(self.ws.rt.brain.policies().get("redact_cloud", True))
+        except (OSError, ValueError, RuntimeError, KeyError):
+            hidden = True
+        return {"text": mask(render.packet(found, redacting=hidden)), "available": True}
 
     # ---------------------------------------------------------------- the streams on disk
 

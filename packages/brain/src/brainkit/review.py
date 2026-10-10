@@ -246,6 +246,18 @@ def analyze(brain, **_ignored):
         for note_id in _ids(proposal.meta.get("conflicts")):
             note = index.note(note_id, include_archived=True)
             row["conflicts"].append(_entry(note) if note else _missing(note_id))
+        found_in = str(proposal.target.get("instruction_from") or "").strip()
+        if found_in:
+            # Brain-logic plan 7.1: an instruction found inside content is reported, never
+            # kept as a rule; the card says where it came from.
+            row["problems"].append(
+                f"An instruction found in {found_in}: kept as what it says, not as your rule. "
+                "Make it a rule only if it is yours.")
+        unheard = str(proposal.target.get("unheard_quote") or "").strip()
+        if unheard:
+            row["problems"].append(
+                f"The quote “{unheard}” is not in what you said in that conversation: it is "
+                "kept as the AI's inference, not your words.")
         if kind in ("note.update", "note.archive") and row["replaces"]:
             current = index.note(named[0])
             base = proposal.meta.get("base_hash")

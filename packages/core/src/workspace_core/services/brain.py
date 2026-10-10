@@ -1326,6 +1326,7 @@ class Brain:
         must_hold: dict[str, Any] | None = None,
         as_of: str | None = None,
         valid_until: str | None = None,
+        said_by: str | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
 
@@ -1434,6 +1435,15 @@ class Brain:
             if not DAY.match(text):
                 raise ValidationFailed(f"{name} is a date, YYYY-MM-DD.", field=name)
             extra[name] = text
+        said = str(said_by or "").strip().lower()
+        if said:
+            # Who said it, from the proposer (brain-logic plan 7.1); else the Brain reads it
+            # from where the statement came from.
+            if said not in statements.SAID_BY:
+                raise ValidationFailed(
+                    f"said_by is one of {', '.join(statements.SAID_BY)}.", field="said_by"
+                )
+            extra["said_by"] = said
         request = {
             "title": title,
             "statement": statement,

@@ -14,6 +14,7 @@ import { TalkButton, canRecord, useRecorder } from "../components/Talk";
 import { FirstVisitTip } from "../components/Tips";
 import { Empty, ErrorNote, Loading, Section } from "../components/ui";
 import { when } from "../lib/format";
+import { LeftOutSearch } from "../components/LeftOutSearch";
 
 const KINDS: { id: CaptureKind | "all"; label: string }[] = [
   { id: "all", label: "Everything" },
@@ -137,6 +138,7 @@ export function CapturePage() {
           />
         )}
       </Section>
+      <LeftOutSearch />
     </div>
   );
 }

@@ -37,6 +37,7 @@ import { ConnectionsPage } from "./Connections";
 import { PRESETS } from "./FirstRun";
 import { AiWork, EarlierWorkspace } from "./Misc";
 import { LocalModels } from "./settings/LocalModels";
+import { RedactCloud } from "./settings/Privacy";
 
 const TABS = [
   { id: "apps", label: "Your AI apps" },
@@ -283,6 +284,7 @@ function Approval() {
             of your quota and changes nothing: it raises challenges for you to settle.
           </span>
         </label>
+        <RedactCloud />
       </fieldset>
       {set.isSuccess ? (
         <p className="small" role="status">

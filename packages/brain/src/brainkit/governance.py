@@ -45,6 +45,7 @@ from . import frontmatter as fm
 from . import statements, uploads, util
 from .model import CONFIDENCE, LEGACY_KINDS, LOADS, MAX_CRITICAL, MUST_HOLD, listish
 from .scopes import Scopes
+from .sessions import Ledger
 
 KINDS = ("note.create", "note.update", "note.archive", "focus.create")
 RESERVED = {"status", "proposal", "approved_by", "approved_at", "revised"}
@@ -152,6 +153,16 @@ def preset_of(config) -> str:
 RETENTION_DAYS = {"regulated": 730}  # else 90 (brain-logic plan 6, decision 9)
 
 
+def redact_cloud(config) -> bool:
+    """Are sensitive spans (emails, phone numbers, account and ID numbers) redacted in what a
+    cloud model reads of something brought in? brain.json `governance.redact_cloud`, else on
+    under careful and regulated and off under personal (decision 13)."""
+    own = config.governance.get("redact_cloud")
+    if isinstance(own, bool):
+        return own
+    return preset_of(config) != "personal"
+
+
 def retention_days(config) -> int:
     """How long brief text stays in the ledger: brain.json `sessions.retention_days`, else 90
     days under the personal and careful presets and 730 under regulated."""
@@ -173,6 +184,32 @@ def capture_policy(config) -> dict:
                 if origin in CAPTURE_ORIGINS and value in ("apply", "wait"):
                     out[kind][origin] = value
     return out
+
+
+OUTPUT_REF = re.compile(r"\boutput:([^\s,;]+)")
+
+
+def circular(brain, st, text, origin=None, source="") -> str | None:
+    """The note a statement only repeats from the brief its source output was made from, or
+    None (brain-logic plan 7.2, decision 11). The links come from `record_output` (the
+    conversation that made the file) and the ledger (what that conversation was handed)."""
+    from . import review
+    from .activity import normal_path
+    paths = [m.group(1) for m in OUTPUT_REF.finditer(str(source or ""))]
+    if str(origin or "").startswith("output:"):
+        paths.insert(0, str(origin)[len("output:"):].strip())  # a path may hold spaces
+    for path in dict.fromkeys(p for p in paths if p):
+        try:
+            made = brain.ledger.output(normal_path(path))
+            given = [item for kind_, item, *_rest in brain.ledger.session_items(
+                made["session_id"])] if made else []
+        except Exception:  # an unreadable ledger links nothing
+            given = []
+        for note_id in dict.fromkeys(given):
+            note = st.index.note(str(note_id))
+            if note is not None and review.similarity(text, note.body, {}) >= review.CLOSE:
+                return note.id
+    return None
 
 
 def capture_type(kind: str, target: dict) -> str:
@@ -346,6 +383,45 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     text = str(text or "").strip()
     note_kind = str(note_kind or "").strip().lower() or None
     problems = []
+    own_word = str((extra or {}).get("said_by") or "").strip().lower()
+    if own_word and own_word not in statements.SAID_BY:
+        problems.append(f"said_by is one of {', '.join(statements.SAID_BY)}")
+    said = statements.said_at_door(origin, capture_origin, session_id, own_word)
+    if kind == "note.create" and said:
+        # Who said it, recorded at the door (brain-logic plan 7.1).
+        extra = dict(extra or {}, said_by=said)
+        if said in statements.CONTENT_SPEAKERS and (
+                note_kind in ("rule", "procedure")
+                or (not note_kind and RULE_START.match(text))
+                or (not note_kind and LEGACY_KINDS.get(area) == "rule")):
+            # An instruction found inside content is reported, never kept as a rule: the
+            # injected-memory gap (7.1). The owner can still make it a rule when approving.
+            text = statements.reported(text, said)
+            note_kind = "fact"
+            if LEGACY_KINDS.get(area) == "rule":
+                area = next((a for a in config.area_order() if LEGACY_KINDS.get(a) == "fact"),
+                            area)
+            extra["instruction_from"] = str(origin or said)
+    if kind == "note.create" and text:
+        echoed = circular(brain, st, text, origin, source)
+        if echoed:
+            problems.append(
+                f"it repeats `{echoed}`, which the brief behind that output gave: an AI output "
+                "built from a brief cannot count as evidence for the notes in that brief (the "
+                "circular-evidence rule)")
+    if kind == "note.create" and session_id and Ledger.valid(session_id) \
+            and statements.quotes(evidence):
+        # Evidence must be real: a quote of the person is checked against what they said in
+        # that conversation; one that is not there makes the statement inferred, and it waits.
+        try:
+            heard = [str(r.get("request") or "")
+                     for r in brain.ledger.requests(session=session_id, limit=200)]
+        except Exception:  # an unreadable ledger cannot vouch for a quote
+            heard = []
+        missing = statements.unheard(evidence, heard)
+        if missing:
+            extra = dict(extra or {}, confidence="inferred", unheard_quote=missing[0][:300])
+            force_pending = True
     if area not in config.areas:
         problems.append(f"area must be one of {', '.join(config.area_order())}")
     if note_kind and note_kind not in NOTE_KINDS and kind != "focus.create":
@@ -1447,6 +1523,8 @@ POLICY = {
     "cross_check": ("governance", "cross_check", "bool"),
     # The external challenger argues against a few beliefs each week; off until turned on.
     "challenger": ("governance", "challenger", "bool"),
+    # Sensitive spans redacted in what a cloud model reads (decision 13).
+    "redact_cloud": ("governance", "redact_cloud", "bool"),
 }
 
 
@@ -1474,6 +1552,7 @@ def policies(brain) -> dict:
         "model_checks": bool(data["governance"].get("model_checks", True)),
         "cross_check": bool(data["governance"].get("cross_check", True)),
         "challenger": bool(data["governance"].get("challenger", False)),
+        "redact_cloud": redact_cloud(config),
         "capture_types": list(CAPTURE_TYPES),
         "capture_origins": list(CAPTURE_ORIGINS),
     }

@@ -601,6 +601,11 @@ class BrainPort(Protocol):
         changed since, for the Skills page: {name: {"hashes", "last_edited", "changed"}}."""
         ...
 
+    def holds_text(self, fingerprints: list[str]) -> set[str]:
+        """Which of these text fingerprints (statements.fingerprint) a live note already
+        says word for word: hash dedupe before any model reads them."""
+        ...
+
     def local_models(self) -> dict[str, Any]:
         """This computer's local models (brain-logic plan 5.11.16): the machine and its setup,
         each role's model and pinned options, and whether the engine runs in full."""
@@ -943,6 +948,9 @@ class NoBrain:
 
     def skills_history(self, names: list[str]) -> dict[str, dict[str, Any]]:
         return {}
+
+    def holds_text(self, fingerprints: list[str]) -> set[str]:
+        return set()
 
     def local_models(self) -> dict[str, Any]:
         return {"enabled": False}

@@ -56,7 +56,7 @@ def test_with_several_models_you_choose_or_configure_one(ws, owner, notes, conne
     with pytest.raises(ValidationFailed):
         ws.distill.request(owner, item_ids=[notes[0].id])
     ws.distill.configure(owner, assignee_id=codex.actor_id)
-    assert ws.distill.settings(owner) == {"assignee_id": codex.actor_id}
+    assert ws.distill.settings(owner) == {"assignee_id": codex.actor_id, "triage": None}
     assert ws.distill.request(owner, item_ids=[notes[0].id]).assignee_id == codex.actor_id
     with pytest.raises(ValidationFailed):
         ws.distill.configure(owner, assignee_id=owner.actor_id)
@@ -176,3 +176,102 @@ def test_a_proposal_can_suggest_a_must_hold_and_waits_like_any_other(ws, owner, 
             evidence="x",
             must_hold={"must_text": "x" * 500},
         )
+
+
+def test_text_read_before_or_held_word_for_word_makes_no_model_call(
+    ws, owner, notes, connect, brain
+):
+    """Hash dedupe before any model call (brain-logic plan 7.1)."""
+    from workspace_core.domain import statements
+    from workspace_core.errors import Conflict
+
+    claude = connect()
+    ws.distill.request(owner, item_ids=[notes[0].id], assignee_id=claude.actor_id)
+    again = ws.notes.create(owner, title="Posting days, pasted twice", body="We post  Tue and THU.")
+    with pytest.raises(Conflict) as caught:
+        ws.distill.request(owner, item_ids=[again.id], assignee_id=claude.actor_id)
+    assert "the same text was read before (Posting days)" in str(caught.value)
+    # Asking again about the same capture still reads it.
+    assert ws.distill.request(owner, item_ids=[notes[0].id], assignee_id=claude.actor_id)
+    # What the Brain holds word for word is not read; the rest of the request goes on.
+    brain.held_texts = {statements.fingerprint("Plain words, no hype.")}
+    task = ws.distill.request(
+        owner, item_ids=[notes[1].id, again.id, notes[0].id], assignee_id=claude.actor_id
+    )
+    about = task.provenance["distill"]
+    assert about["items"] == [notes[0].id]
+    assert {s["id"] for s in about["skipped"]} == {notes[1].id, again.id}
+    assert "word for word" in next(s["why"] for s in about["skipped"] if s["id"] == notes[1].id)
+
+
+def test_what_was_left_out_is_found_by_its_words_and_scored_against_the_goals_now(
+    ws, owner, notes, connect, brain
+):
+    """The left-out list as a searchable record, re-scored when the goals change (7.2)."""
+    claude = connect()
+    task = ws.distill.request(owner, item_ids=[notes[0].id], assignee_id=claude.actor_id)
+    run = ws.bus.claim(claude, task.id).run
+    ws.bus.complete(
+        claude,
+        run.id,
+        summary="0 proposals",
+        left_out=[
+            {
+                "statement": "The webinar sign-ups doubled after the newsletter mention.",
+                "why": "serves no goal or project",
+            },
+            {"statement": "The coffee was cold.", "why": "small talk"},
+        ],
+    )
+    everything = ws.distill.left_out(owner)
+    assert [r["statement"] for r in everything] == [
+        "The webinar sign-ups doubled after the newsletter mention.",
+        "The coffee was cold.",
+    ]
+    assert everything[0]["source"] == task.title and everything[0]["fits"] == []
+    assert [r["statement"] for r in ws.distill.left_out(owner, q="coffee")] == [
+        "The coffee was cold."
+    ]
+    # The goals change: what was left out for serving none is scored again, and now fits.
+    brain.goal_answers = {"purpose": "Grow webinar sign-ups through the newsletter."}
+    now = ws.distill.left_out(owner)[0]
+    assert now["for_goals"] and set(now["fits"]) >= {"webinar", "newsletter"}
+
+
+TRANSCRIPT = """Jordan: Morning all, how was the weekend?
+Maya: Good, thanks. Coffee first.
+Jordan: We decided the webinar moves to Tuesdays at noon from November.
+Maya: Agreed, and sign-ups close two days before.
+Jordan: Great, talk soon."""
+
+
+def test_triage_is_off_until_chosen_and_then_only_kept_parts_reach_the_model(ws, owner, connect):
+    """Triage (7.2, step 2) behind a switch: a cheaper model names the parts worth distilling."""
+    from workspace_core.errors import Conflict
+
+    claude = connect()
+    asked = []
+
+    def triager(model, text):
+        asked.append(model)
+        return [2, 3] if "webinar" in text else []
+
+    ws.distill.triager = triager
+    call = ws.notes.create(owner, title="Monday call", body=TRANSCRIPT)
+    ws.distill.request(owner, item_ids=[call.id], assignee_id=claude.actor_id)
+    assert asked == []  # off by default
+    ws.distill.configure(owner, triage="claude")
+    again = ws.notes.create(owner, title="Monday call, again", body=TRANSCRIPT + "\nMaya: Bye.")
+    task = ws.distill.request(owner, item_ids=[again.id], assignee_id=claude.actor_id)
+    assert asked == ["claude"]
+    assert task.provenance["distill"]["triage"][again.id]["kept"] == [2, 3]
+    packet = ws.bus.packet(owner, task_id=task.id)
+    (item,) = [i for i in packet["inputs"] if i["ref"] == f"context_item:{again.id}"]
+    assert "Tuesdays at noon" in item["text"] and "Coffee first" not in item["text"]
+    assert "Triage kept 2 of" in item["note"]
+    chatter = ws.notes.create(owner, title="Hallway", body="A: Hi.\nB: Hello.\nA: Bye now.")
+    with pytest.raises(Conflict) as caught:
+        ws.distill.request(owner, item_ids=[chatter.id], assignee_id=claude.actor_id)
+    assert "triage found nothing durable" in str(caught.value)
+    with pytest.raises(ValidationFailed):
+        ws.distill.configure(owner, triage="gpt-anything")

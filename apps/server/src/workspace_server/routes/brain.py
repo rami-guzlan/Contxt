@@ -351,6 +351,13 @@ def download_models(who: Who, ws: WS) -> dict[str, Any]:
     return ws.brain.download_models(who)
 
 
+@router.get("/distill/left-out")
+def left_out(who: Who, ws: WS, q: str = "", limit: int = 100) -> list[dict[str, Any]]:
+    """Everything readings left out, found by its words, each scored again against the goals
+    and active projects as they stand now."""
+    return ws.distill.left_out(who, q=q, limit=max(1, min(int(limit), 300)))
+
+
 @router.get("/local-models")
 def local_models(who: Who, ws: WS) -> dict[str, Any]:
     """This computer's local models: the machine and its setup, each role's model and the

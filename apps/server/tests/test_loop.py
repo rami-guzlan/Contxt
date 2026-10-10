@@ -344,3 +344,31 @@ def test_the_owner_verifies_and_marks_brain_entries(owner, model, runtime):
         "/api/brain/entries/facts-services-002/mark", json={"state": "forgotten", "reason": "x"}
     )
     assert bad.status_code == 422
+
+
+def test_a_cloud_model_reads_what_was_brought_in_redacted_by_preset(owner, model):
+    """Decision 13: sensitive spans are redacted in what a cloud model reads, on under careful
+    (and regulated), off under personal unless turned on; boilerplate never reaches it."""
+    note = owner.ok(
+        owner.post(
+            "/api/notes",
+            json={
+                "title": "Call with Maya",
+                "body": "This call is being recorded.\nMaya: write to maya@example.com or "
+                "call 555-201-8890 about the renewal.",
+            },
+        ),
+        201,
+    )
+    _remember(owner, model, note)
+    careful = model.tool("get_context_item", item_id=note["id"])["content"][0]["text"]
+    assert "[email]" in careful and "[phone]" in careful and "maya@example.com" not in careful
+    assert "being recorded" not in careful
+    owner.ok(owner.put("/api/brain/policies", json={"preset": "personal"}))
+    personal = model.tool("get_context_item", item_id=note["id"])["content"][0]["text"]
+    assert "maya@example.com" in personal and "being recorded" not in personal
+    owner.ok(owner.put("/api/brain/policies", json={"redact_cloud": True}))
+    chosen = model.tool("get_context_item", item_id=note["id"])["content"][0]["text"]
+    assert "maya@example.com" not in chosen
+    # The person always sees it as it was written.
+    assert "maya@example.com" in owner.ok(owner.get(f"/api/notes/{note['id']}"))["body"]

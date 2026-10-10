@@ -204,6 +204,14 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
 - Goals and objectives: a `goal` kind (purpose, yours or an agent's; never routed into a
   request), and a project `objective` that opens every brief in the project (a change needs a
   reason). What models read says "run" for the app's runs, so "task" means one thing.
+- Ingestion and distillation: who said each statement is recorded at the door; an instruction
+  found inside a document or said by someone else is kept as what it says, never as your rule;
+  a quote an AI says you said is checked against the conversation; an output cannot be evidence
+  for the notes in its own brief. Before any model reads, text read before or already held is
+  skipped, boilerplate goes, dates, figures and names are found by code, and private details
+  are hidden from cloud models under the careful and regulated presets. Triage by a cheaper
+  model is ready behind a switch. Distillation keeps contradictions whatever the goals, and
+  what it left out is searchable and scored again against the goals.
 - Brief text is kept 730 days under the regulated preset (90 under the others), unless set.
 - Skills: a run bar at the top (what you need, several skills in order, where it runs, the
   project), each run reviewed as it happens and replayed when done with the brief it was
