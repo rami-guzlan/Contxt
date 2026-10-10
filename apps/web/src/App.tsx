@@ -54,6 +54,7 @@ const WorkflowPage = page(() => import("./pages/work/Workflows"), "WorkflowPage"
 const NewWorkflowPage = page(() => import("./pages/work/Workflows"), "NewWorkflowPage");
 const WorkspacePage = page(() => import("./pages/work/Workspace"), "WorkspacePage");
 const WorkspaceDocPage = page(() => import("./pages/work/Workspace"), "WorkspaceDocPage");
+const SheetPage = page(() => import("./pages/work/Live"), "SheetPage");
 
 /** An old address that moved: same path below the moved part, same query. */
 function Moved({ from, to }: { from: string; to: string }) {
@@ -129,6 +130,7 @@ export function App() {
             <Route path="compose" element={<ComposeMoved />} />
             <Route path="workspace" element={<WorkspacePage />} />
             <Route path="workspace/:docId" element={<WorkspaceDocPage />} />
+            <Route path="live/:sheetId" element={<SheetPage />} />
             <Route path="skills" element={<SkillsPage />} />
             <Route path="skills/:name" element={<SkillPage />} />
             <Route path="agents" element={<WorkAgentsPage />} />

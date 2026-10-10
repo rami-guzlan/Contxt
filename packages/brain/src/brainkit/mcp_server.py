@@ -37,7 +37,10 @@ INSTRUCTIONS = ("Call get_task_context first for every request, and again for ev
                 "go, without being asked: a durable rule, correction, preference, decision or "
                 "changed fact the person states goes to propose_note (quote them in evidence); "
                 "a procedure you work out together to propose_skill; a document they share or "
-                "work on (a proposal, a brief, a deck) to add_file, with its project.")
+                "work on (a proposal, a brief, a deck) to add_file, with its project. Keep "
+                "fast-changing values (an account's health, a repo's owner) with update_state, "
+                "and a task's progress with hand_off: when you take it, after real work, when "
+                "blocked, before you stop, and when done.")
 
 _STR = {"type": "string"}
 AGENT_TOOLS = [
@@ -59,7 +62,11 @@ AGENT_TOOLS = [
          "focus": {"type": "string", "description": "Exact Focus name or id, when known."},
          "task_type": {"type": "string", "enum": ["knowledge", "workflow", "combined"]},
          "partition": {"type": "string",
-                       "description": "Active client or project partition; omit for none."}},
+                       "description": "Active client or project partition; omit for none."},
+         "context": {"type": "string",
+                     "description": "The working context: a task (T-41), a goal, a project, "
+                                    "a State row (sheet/row), or general. Kept for the "
+                                    "conversation."}},
          "required": ["request"]}},
     {"name": "get_skill",
      "description": "Open one procedure the packet pointed at, when you are about to follow it.",
@@ -248,8 +255,48 @@ AGENT_TOOLS = [
      "inputSchema": {"type": "object", "properties": {
          "path": {"type": "string", "description": "The saved file's full path."},
          "title": {"type": "string", "description": "What it is, in a few words."},
+         "project": {"type": "string", "description": "The project it is for."},
+         "for": {"type": "string", "description": "The State row it is for (an account, a "
+                                                  "repo), as sheet/row or its name."},
+         "maker": {"type": "string", "description": "Who made it: you, or an agent's name."},
          "session_id": _STR},
          "required": ["path"]}},
+    {"name": "get_state",
+     "description": "Read State: fast-changing values per entity (accounts, repos, standards, "
+                    "tasks). No sheet lists the sheets; a sheet lists its rows (filter with "
+                    "query); a row gives its values with dates and recent changes.",
+     "inputSchema": {"type": "object", "properties": {
+         "sheet": _STR, "row": _STR, "query": _STR, "session_id": _STR}}},
+    {"name": "update_state",
+     "description": "Write State values you learned, with evidence: a list of {sheet, row, "
+                    "column, value, as_of}. Some columns apply at once (marked as yours until "
+                    "the person touches them), some wait for the person, some are theirs "
+                    "alone. Tasks move only with hand_off.",
+     "inputSchema": {"type": "object", "properties": {
+         "updates": {"type": "array", "items": {"type": "object"}},
+         "evidence": {"type": "string", "description": "Where the values came from."},
+         "session_id": _STR},
+         "required": ["updates"]}},
+    {"name": "hand_off",
+     "description": "Move a task: claim it, save progress (no `to`), pass it on (`to`, with "
+                    "done_when and next_step), or finish (status done, with evidence). "
+                    "new_task opens one; goal with goal_note adds a progress line to a goal. "
+                    "Call it when you take a task, after real work, when blocked, before you "
+                    "stop, and when done.",
+     "inputSchema": {"type": "object", "properties": {
+         "task": {"type": "string", "description": "The task id, like T-41."},
+         "new_task": {"type": "object", "description": "{title, goal, project, for, due}"},
+         "goal": _STR, "goal_note": _STR,
+         "to": {"type": "string", "description": "you, an agent, or a tool such as Claude "
+                                                 "Code."},
+         "claim": {"type": "boolean"},
+         "status": {"type": "string", "enum": ["working", "blocked", "waiting_for_you",
+                                               "done", "dropped"]},
+         "done_so_far": _STR, "next_step": _STR, "done_when": _STR, "decisions": _STR,
+         "open_questions": _STR, "load": _STR,
+         "evidence": {"type": "array", "items": _STR,
+                      "description": "Recorded output paths or decided proposal ids."},
+         "reason": _STR, "session_id": _STR}}},
     {"name": "brain_health",
      "description": "Run the read-only brain health report.",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -287,7 +334,18 @@ def _get_task_context(brain, a):
         a.get("request"), session_id=a.get("session_id"), fresh=fresh,
         focus=a.get("focus") or a.get("focus_override") or a.get("project_override"),
         task_type=a.get("task_type") or a.get("task_type_override"),
-        partition=a.get("partition"), startup_fingerprint=a.get("startup_fingerprint"))
+        partition=a.get("partition"), startup_fingerprint=a.get("startup_fingerprint"),
+        context=a.get("context"))
+
+
+def _hand_off(brain, a):
+    keys = ("task", "new_task", "goal", "to", "claim", "status", "done_so_far", "next_step",
+            "done_when", "decisions", "open_questions", "load", "evidence", "goal_note",
+            "reason")
+    tool = {"claude-code": "Claude Code", "codex": "Codex", "cursor": "Cursor",
+            "claude-desktop": "Claude app"}.get(str(brain.client or ""), "")
+    return brain.hand_off(session_id=a.get("session_id"), tool=tool,
+                          **{k: a[k] for k in keys if a.get(k) not in (None, "")})
 
 
 HANDLERS = {
@@ -336,7 +394,16 @@ HANDLERS = {
     "list_agents": lambda b, a: b.agents(),
     "get_agent": lambda b, a: b.agent_prompt(a.get("name"), session_id=a.get("session_id")),
     "record_output": lambda b, a: b.record_output(
-        a.get("path"), title=a.get("title") or "", session_id=a.get("session_id")),
+        a.get("path"), title=a.get("title") or "", session_id=a.get("session_id"),
+        project=a.get("project") or "", for_row=a.get("for") or "",
+        maker=a.get("maker") or ""),
+    "get_state": lambda b, a: b.get_state(sheet=a.get("sheet") or "", row=a.get("row") or "",
+                                          query=a.get("query") or "",
+                                          session_id=a.get("session_id")),
+    "update_state": lambda b, a: b.update_state(a.get("updates"),
+                                                evidence=a.get("evidence") or "",
+                                                session_id=a.get("session_id")),
+    "hand_off": _hand_off,
     "search_notes": lambda b, a: b.search(a.get("query"), limit=a.get("limit") or 8,
                                           include_archived=bool(a.get("include_archived")),
                                           session_id=a.get("session_id")),

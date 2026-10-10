@@ -44,6 +44,7 @@ import type {
 import { type Item, minutes, queueOf } from "../lib/catchup";
 import { Compare } from "../components/Diff";
 import { GoalSteps, SlippedGoals } from "../components/goals/GoalsCatchUp";
+import { TasksCatchUp } from "../components/tasks/TasksCatchUp";
 import { ErrorNote, Loading } from "../components/ui";
 import { onDay, plural, when } from "../lib/format";
 import { day, entryUrl } from "./brain/shared";
@@ -157,6 +158,7 @@ function StartScreen({ plan, onStart, onRecap, onSeen }: { plan: CatchUpPlan; on
             ) : null}
           </ul>
           <WorkChecks items={checks} />
+          <TasksCatchUp plan={plan} />
           <SlippedGoals items={plan.goals ?? []} />
           <GoalSteps groups={plan.goal_steps ?? []} />
           <div className="row">

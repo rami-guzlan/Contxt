@@ -939,6 +939,39 @@ class FakeBrain:
 
         raise Conflict("The test Brain keeps no goals.")
 
+    # State and tasks: none, like a Brain that has none yet.
+    def state_act(self, action, fields=None):
+        from workspace_core.ports import NoBrain
+
+        return NoBrain().state_act(action, fields)
+
+    def tasks(self, **filters):
+        return []
+
+    def task(self, task_id):
+        from workspace_core.errors import NotFound
+
+        raise NotFound(f"No task {task_id!r}.")
+
+    def hand_off(self, **fields):
+        from workspace_core.errors import Conflict
+
+        raise Conflict("The test Brain keeps no tasks.")
+
+    def get_state(self, *, sheet="", row="", query=""):
+        return {"text": "No State sheets yet.", "sheets": []}
+
+    def update_state(self, updates, *, evidence="", session_id=""):
+        from workspace_core.errors import Conflict
+
+        raise Conflict("The test Brain keeps no State.")
+
+    def outputs_for(self, paths):
+        return {}
+
+    def link_output(self, path, *, project=None, row=None):
+        return None
+
     def set_goals(self, answers):
         if not answers.get("purpose"):
             from workspace_core.errors import ValidationFailed

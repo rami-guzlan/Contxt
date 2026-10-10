@@ -1422,6 +1422,11 @@ export interface CatchUpPlan {
   preset: Preset | null;
   /** Agent goals that slipped (one card per slip). */
   goals?: GoalCard[];
+  /** Tasks handed to you, and handoffs nobody claimed for a day. */
+  handed?: TaskItem[];
+  unclaimed?: TaskItem[];
+  /** AI values in State that wait for your tap. */
+  state_waiting?: StateWaiting[];
   /** Suggested next steps for your goals, a quick yes grouped by goal. */
   goal_steps?: { goal: string; title: string; steps: GoalSuggestion[] }[];
 }
@@ -1768,9 +1773,14 @@ export interface OutputFile {
   size: number;
   modified: string;
   kind: OutputKind | string;
-  from: "skill" | null;
+  from: "skill" | "chat" | null;
   /** A skill run is still working in its folder. */
   working: boolean;
+  /** What it is for (BL 16.5): the project, the State row (sheet/row), who made it. */
+  project?: string | null;
+  for?: string | null;
+  maker?: string | null;
+  title?: string | null;
 }
 
 export interface Outputs {
@@ -2498,7 +2508,7 @@ export interface Ladder {
 
 export interface GoalBlock {
   id: string;
-  type: "note" | "checklist" | "doc" | "projects" | "links" | "decisions";
+  type: "note" | "checklist" | "doc" | "projects" | "links" | "decisions" | "sheet";
   title: string;
   shared: boolean;
   collapsed: boolean;
@@ -2508,6 +2518,9 @@ export interface GoalBlock {
   doc_id?: string;
   doc_title?: string;
   links?: { title: string; url: string }[];
+  sheet_id?: string;
+  drives?: string;
+  agg?: "latest" | "sum" | "average" | "count";
 }
 
 export interface GoalBoard {
@@ -2539,6 +2552,8 @@ export interface GoalJournalEntry {
 export type GoalBase = Omit<GoalView, "suggestions">;
 
 export interface GoalPage extends GoalBase {
+  /** The goal's tasks: what AI is doing for it. */
+  tasks?: TaskItem[];
   journal: GoalJournalEntry[];
   checks: { at: string; value: number | null; status: string; source: "you" | "code"; note: string }[];
   plan: string;
@@ -2584,4 +2599,159 @@ export interface GoalCard {
   goal: GoalView;
   why: string;
   at: string;
+}
+
+// ---------------------------------------------------------------- State and tasks (step 6)
+
+export type ColumnType = "text" | "number" | "money" | "date" | "date_range" | "status" | "person" | "link" | "reference";
+export type Friction = "free" | "confirm" | "locked";
+
+export interface StateColumn {
+  name: string;
+  type: ColumnType;
+  friction: Friction;
+  age_days: number | null;
+  source: string;
+  sensitivity: string;
+  options: string[];
+  ref: string;
+  formula: string;
+  formula_words?: string;
+}
+
+export interface StateSheet {
+  id: string;
+  title: string;
+  key: string;
+  columns: StateColumn[];
+  partition_by: string;
+  scope: string;
+  template: string;
+  builtin: boolean;
+  description: string;
+}
+
+export interface StateCell {
+  value: string | number | null;
+  at: string;
+  by: string;
+  said_by: string;
+  as_of: string;
+  source: string;
+  ai: boolean;
+  stale: boolean;
+}
+
+export interface StateEvent {
+  kind: string;
+  id?: string;
+  at: string;
+  column?: string;
+  value?: string | number | null;
+  by?: string;
+  said_by?: string;
+  source?: string;
+  ai?: boolean;
+  pending?: boolean;
+  event?: string;
+  key?: string;
+}
+
+export interface StateRow {
+  id: string;
+  key: string;
+  aliases: string[];
+  partition: string;
+  created: string;
+  updated: string;
+  cells: Record<string, StateCell>;
+  computed: Record<string, string | number | boolean | null>;
+  pending: StateEvent[];
+}
+
+export interface StateSummary {
+  rows: number;
+  columns: Record<string, { filled: number; by_status?: Record<string, number>; sum?: number; average?: number | null }>;
+}
+
+export interface SheetView {
+  sheet: StateSheet;
+  rows: StateRow[];
+  summary: StateSummary;
+}
+
+export interface StateWaiting {
+  sheet: string;
+  sheet_title: string;
+  row: string;
+  column: string;
+  value: string | number | null;
+  event: string;
+  at: string;
+  source: string;
+}
+
+export interface LiveOverview {
+  sheets: StateSheet[];
+  templates: { id: string; title: string; builtin: boolean; columns: string[] }[];
+  waiting: StateWaiting[];
+}
+
+export type HandoffStatus = "open" | "handed_off" | "working" | "waiting_for_you" | "blocked" | "done" | "dropped";
+
+export interface TaskCard {
+  done_when?: string;
+  done_so_far?: string;
+  next_step?: string;
+  decisions?: string;
+  open_questions?: string;
+  load?: string;
+  reason?: string;
+  by?: string;
+  at?: string;
+}
+
+export interface TaskItem {
+  id: string;
+  row: string;
+  task: string;
+  goal: string | null;
+  project: string | null;
+  for: string | null;
+  milestone: boolean;
+  owner: string;
+  owner_label: string;
+  tool: string | null;
+  status: HandoffStatus;
+  status_words: string;
+  due: string | null;
+  evidence: string[];
+  card: TaskCard;
+  created: string;
+  updated: string;
+  days_open: number | null;
+  since_update: number | null;
+  unclaimed?: boolean;
+  key?: string;
+}
+
+export interface TaskDetail extends TaskItem {
+  log: StateEvent[];
+  rendered: string;
+}
+
+export interface HandoffsNow {
+  lanes: Record<"waiting_for_you" | "handed_off" | "working" | "blocked" | "open", TaskItem[]>;
+  done_this_week: TaskItem[];
+  count: number;
+}
+
+export interface TimelineEvent {
+  at: string;
+  task: string;
+  title: string;
+  owner: string;
+  kind: "open" | "handoff" | "claim" | "save" | "finish" | "blocked" | "dropped";
+  from?: string;
+  to?: string;
 }

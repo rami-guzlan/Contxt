@@ -13,7 +13,9 @@ import {
   useGoal,
   useGoalDecision,
   useLinkProject,
+  useLive,
   useSaveBoard,
+  useSheet,
 } from "../../api/hooks";
 import type { GoalBlock, GoalBoard, GoalPage as Goal } from "../../api/types";
 import { useAgentPanel } from "../../components/agent/AgentContext";
@@ -28,6 +30,7 @@ const BLOCKS: { type: GoalBlock["type"]; label: string }[] = [
   { type: "projects", label: "Projects" },
   { type: "links", label: "Links and files" },
   { type: "decisions", label: "Decisions" },
+  { type: "sheet", label: "Sheet" },
 ];
 
 export function GoalPage() {
@@ -286,7 +289,72 @@ function BlockBody({ goal, block, onChange }: { goal: Goal; block: GoalBlock; on
   }
   if (block.type === "projects") return <ProjectsBlock goal={goal} />;
   if (block.type === "links") return <Links block={block} onChange={onChange} />;
+  if (block.type === "sheet") return <SheetBlock block={block} onChange={onChange} />;
   return <Decisions goal={goal} />;
+}
+
+/** A State sheet on the board: pick one (or start one in Live context); its rows show here. */
+function SheetBlock({ block, onChange }: { block: GoalBlock; onChange: (patch: Partial<GoalBlock>) => void }) {
+  const { data: live } = useLive();
+  const { data: sheet } = useSheet(block.sheet_id ?? "");
+  return (
+    <div className="stack small">
+      <select aria-label="Sheet" value={block.sheet_id ?? ""} onChange={(event) => onChange({ sheet_id: event.target.value })}>
+        <option value="">Pick a sheet...</option>
+        {(live?.sheets ?? []).map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.title}
+          </option>
+        ))}
+      </select>
+      {sheet ? (
+        <>
+          <table className="mini-sheet">
+            <thead>
+              <tr>
+                {sheet.sheet.columns.slice(0, 4).map((c) => (
+                  <th key={c.name}>{c.name}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sheet.rows.slice(0, 8).map((r) => (
+                <tr key={r.id}>
+                  {sheet.sheet.columns.slice(0, 4).map((c) => (
+                    <td key={c.name}>{String((c.formula ? r.computed[c.name] : r.cells[c.name]?.value) ?? "")}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="row">
+            <label>
+              Drives progress{" "}
+              <select aria-label="Column that drives progress" value={block.drives ?? ""} onChange={(event) => onChange({ drives: event.target.value })}>
+                <option value="">No column</option>
+                {sheet.sheet.columns
+                  .filter((c) => c.type === "number" || c.type === "money" || c.formula)
+                  .map((c) => (
+                    <option key={c.name}>{c.name}</option>
+                  ))}
+              </select>
+            </label>
+            {block.drives ? (
+              <select aria-label="How" value={block.agg ?? "latest"} onChange={(event) => onChange({ agg: event.target.value as GoalBlock["agg"] })}>
+                <option value="latest">latest</option>
+                <option value="sum">sum</option>
+                <option value="average">average</option>
+                <option value="count">count</option>
+              </select>
+            ) : null}
+          </div>
+          <Link to={`/work/live/${encodeURIComponent(sheet.sheet.id)}`}>Open the sheet</Link>
+        </>
+      ) : (
+        <Link to="/work/workspace">Start a sheet in Live context</Link>
+      )}
+    </div>
+  );
 }
 
 function Checklist({ block, onChange }: { block: GoalBlock; onChange: (patch: Partial<GoalBlock>) => void }) {
@@ -459,7 +527,17 @@ function Rail({ goal }: { goal: Goal }) {
         )}
       </Section>
       <Section title="AI on this">
-        <p className="muted small">The tasks your AIs work for this goal show here once tasks and handoffs arrive.</p>
+        {goal.tasks?.length ? (
+          <ul className="small">
+            {goal.tasks.map((t) => (
+              <li key={t.id}>
+                <Link to="/activity?tab=tasks">{t.id}</Link> {t.task} <span className="muted">({t.owner_label}, {t.status_words.toLowerCase()})</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted small">No tasks yet. A suggestion you make a step becomes one.</p>
+        )}
       </Section>
       <Section title="Suggested">
         {goal.suggestions.length ? (
@@ -469,7 +547,7 @@ function Rail({ goal }: { goal: Goal }) {
                 “{s.text}” <span className="muted">({s.source})</span>
                 <div className="row">
                   <button type="button" className="link small" disabled={answer.isPending} onClick={() => answer.mutate({ step: s.id, accept: true })}>
-                    Make it a step
+                    Make it a task
                   </button>
                   <button type="button" className="link small" disabled={answer.isPending} onClick={() => answer.mutate({ step: s.id, accept: false })}>
                     No

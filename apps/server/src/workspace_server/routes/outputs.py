@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 
 from ..deps import Who
 from ..outputs import Outputs
-from ..schemas import OutputFolderIn, OutputMoveIn
+from ..schemas import OutputFolderIn, OutputLinkIn, OutputMoveIn
 from .brain import disposition
 
 router = APIRouter(prefix="/api/outputs")
@@ -45,6 +45,12 @@ def made_from(request: Request, who: Who, path: str) -> dict[str, Any]:
 @router.post("/folders", status_code=201)
 def make_folder(body: OutputFolderIn, request: Request, who: Who) -> dict[str, Any]:
     return outputs(request).make_folder(who, body.path)
+
+
+@router.post("/link")
+def link(body: OutputLinkIn, request: Request, who: Who) -> dict[str, Any]:
+    """Say what a file is for: a project, a State row."""
+    return outputs(request).link(who, body.path, project=body.project, row=body.row)
 
 
 @router.post("/move")

@@ -23,6 +23,7 @@ import {
 import type { BrainProject, BrainProjectDetail } from "../api/types";
 import { ContextPreview } from "../components/ContextPreview";
 import { GoalCard, SetGoal, goalUrl } from "../components/goals/GoalParts";
+import { ProjectTasks } from "../components/tasks/Tasks";
 import { Markdown } from "../components/Markdown";
 import { Empty, ErrorNote, Field, Loading, Section } from "../components/ui";
 import { ProjectWorkspace } from "../components/work/WorkspaceParts";
@@ -385,6 +386,7 @@ export function ProjectPage() {
         ) : null}
         <Objective project={project} />
         {project.summary ? <p className="lede">{project.summary}</p> : null}
+        <ProjectTasks project={project.id} />
       </header>
       <div className="grid-2">
         <Section title="Where it stands" tour="project-state">

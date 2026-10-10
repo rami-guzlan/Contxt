@@ -85,9 +85,18 @@ def build(
 ) -> dict[str, Any]:
     """A run's contract (see the module's docstring)."""
     tool = str((task.output_contract or {}).get("tool") or "")
+    # A run that works a task from the Tasks sheet does not close until it saved progress,
+    # passed the task on or finished it (goals plan 5.8).
+    handoff = str(((task.provenance or {}).get("skill") or {}).get("handoff") or "")
+    save = (
+        f"Before you stop, save progress on {handoff} with hand_off, pass it on, or finish it."
+        if handoff
+        else ""
+    )
     checks = [
         "Claim the run first and work from its packet.",
         *([f"Propose each result with {tool}, passing your run_id."] if tool else []),
+        *([save] if save else []),
         FINISH_CHECK,
         "Publish, send or export nothing yourself: a person reviews everything.",
     ]
@@ -97,7 +106,10 @@ def build(
         "task": task.id,
         "objective": _clip(task.title, 200) + (f": {purpose}" if purpose else ""),
         "checks": checks,
-        "finish": [{"check": FINISH_CHECK, "any": ["complete_task", "append_task_event"]}],
+        "finish": [
+            {"check": FINISH_CHECK, "any": ["complete_task", "append_task_event"]},
+            *([{"check": save, "any": ["hand_off"]}] if save else []),
+        ],
         "must_holds": must_holds(ws, task),
         "scope": {"folder": folder, "tools": list(tools)},
         "budget": {"steps": STEPS, "minutes": max(1, int(minutes))},

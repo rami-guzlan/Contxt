@@ -6102,3 +6102,139 @@ dl.differ dt {
 dl.differ dd {
   margin: 0.1rem 0 0;
 }
+
+/* Live context (step 6): the sheet's views, AI-filled and stale marks, the summary row. */
+.cell-ai {
+  background: color-mix(in srgb, var(--review) 12%, transparent);
+}
+.cell-stale {
+  text-decoration: underline dotted var(--active);
+}
+.cell-computed {
+  font-style: italic;
+  color: var(--muted);
+}
+.cell-waiting {
+  outline: 1px dashed var(--active);
+}
+.cell-key {
+  font-weight: 600;
+  cursor: pointer;
+}
+.legend span {
+  padding: 0 0.25rem;
+}
+.sheet-grid {
+  margin: 0.75rem 0;
+}
+.sheet-summary {
+  color: var(--muted);
+}
+.sheet-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(12rem, 1fr);
+  gap: 0.75rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+.board-lane {
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+  min-height: 6rem;
+}
+.board-lane.over {
+  outline: 2px solid var(--accent);
+}
+.board-lane h3 {
+  margin: 0;
+  text-transform: capitalize;
+}
+.board-card {
+  padding: 0.5rem;
+}
+.board-card p {
+  margin: 0.2rem 0;
+}
+.drag-handle {
+  cursor: grab;
+  margin-left: auto;
+  color: var(--muted);
+}
+.sheet-calendar {
+  margin: 0.75rem 0;
+}
+.sr-list {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.mini-sheet {
+  border-collapse: collapse;
+  width: 100%;
+}
+.mini-sheet th,
+.mini-sheet td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.2rem 0.3rem;
+  text-align: left;
+}
+
+/* Tasks and handoffs (G2): lanes, the timeline and a task's drawer. */
+.timeline-lanes {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9em;
+}
+.timeline-lanes th,
+.timeline-lanes td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.3rem;
+  text-align: left;
+  vertical-align: top;
+}
+.mark {
+  display: block;
+  border: 0;
+  background: none;
+  color: var(--text);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.mark-handoff {
+  color: var(--accent);
+}
+.mark-finish {
+  color: var(--done);
+}
+.mark-blocked,
+.mark-dropped {
+  color: var(--blocked);
+}
+.card-text {
+  white-space: pre-wrap;
+  font-family: var(--font);
+  background: color-mix(in srgb, var(--border) 30%, transparent);
+  padding: 0.5rem;
+  border-radius: var(--radius);
+}
+.composer fieldset {
+  border: 0;
+  padding: 0;
+  gap: 0.6rem;
+}
+.output-filters {
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.project-tasks p {
+  margin: 0.2rem 0;
+}

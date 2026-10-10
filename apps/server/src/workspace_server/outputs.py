@@ -111,7 +111,30 @@ class Outputs:
                     if len(files) >= MAX_FILES:
                         break
         files.sort(key=lambda f: f["modified"], reverse=True)
+        # What each is for (BL 16.5): the project, the State row, who made it.
+        known = self.ws.rt.brain.outputs_for(
+            [os.path.join(self.root, *f["path"].split("/")) for f in files]
+        )
+        for item in files:
+            found = known.get(os.path.join(self.root, *item["path"].split("/"))) or {}
+            item["project"] = found.get("project") or None
+            item["for"] = found.get("row_ref") or None
+            item["maker"] = found.get("maker") or ("you" if not found else None)
+            item["title"] = found.get("title") or None
+            if found.get("session_id") and not item["from"]:
+                item["from"] = "chat"
         return {"root": self.root, "folders": folders, "files": files}
+
+    def link(
+        self, who: Principal, rel: str, *, project: str | None, row: str | None
+    ) -> dict[str, Any]:
+        """The person says what a file is for: a project, a State row (`sheet/row`)."""
+        who.require("artifacts.read")
+        path = self._inside(rel)
+        if not os.path.isfile(path):
+            raise NotFound(f"No file {rel} in the outputs folder.")
+        self.ws.rt.brain.link_output(path, project=project, row=row)
+        return {"path": self._rel(path), "project": project, "for": row}
 
     def file(self, who: Principal, rel: str) -> tuple[str, str, str]:
         """(absolute path, file name, media type) of one file, for download."""

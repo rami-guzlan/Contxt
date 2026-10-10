@@ -393,8 +393,16 @@ class CatchUp:
         ]
         slipped = [c for c in port.goal_cards() if c["key"] not in hidden]
         steps = self._goal_steps(hidden)
+        handed, unclaimed = self._tasks(now, hidden)
+        state_waiting = [
+            w
+            for w in port.state_act("waiting").get("waiting") or []
+            if f"state:{w['event']}" not in hidden
+        ]
         seconds = (
             SECONDS["goal"] * len(slipped)
+            + SECONDS["judgment"] * len(handed)
+            + SECONDS["quick"] * (len(unclaimed) + len(state_waiting))
             + SECONDS["quick"] * len(steps)
             + SECONDS["check"] * len(work)
             + sum(SECONDS.get(card["type"], SECONDS["judgment"]) for card in judgment)
@@ -411,7 +419,17 @@ class CatchUp:
             "seconds": seconds,
             "minutes": math.ceil(seconds / 60) if seconds else 0,
             "caught_up": not (
-                judgment or quick or upkeep or offered or legacy or work or slipped or steps
+                judgment
+                or quick
+                or upkeep
+                or offered
+                or legacy
+                or work
+                or slipped
+                or steps
+                or handed
+                or unclaimed
+                or state_waiting
             ),
             "counts": {
                 "judgment": len(judgment),
@@ -425,7 +443,13 @@ class CatchUp:
                 "checks": len(work),
                 "goals": len(slipped),
                 "goal_steps": sum(len(g["steps"]) for g in steps),
+                "handed": len(handed),
+                "unclaimed": len(unclaimed),
+                "state_waiting": len(state_waiting),
             },
+            "handed": handed,
+            "unclaimed": unclaimed,
+            "state_waiting": state_waiting,
             "work": work,
             "goals": slipped,
             "goal_steps": steps,
@@ -446,6 +470,26 @@ class CatchUp:
             "nudges": [n for n in self._nudges(now, projects) if n["key"] not in hidden],
             "preset": policies.get("preset"),
         }
+
+    def _tasks(
+        self, now: datetime, hidden: set[str]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Tasks handed to you (Needs your judgment), and handoffs nobody claimed for a day
+        (a quick Remind or Take back)."""
+        handed, unclaimed = [], []
+        for task in self.rt.brain.tasks(open_only=True):
+            key = f"task:{task['id']}:{task['status']}"
+            if key in hidden:
+                continue
+            if task["status"] == "waiting_for_you":
+                handed.append(dict(task, key=key))
+            elif (
+                task["status"] == "handed_off"
+                and task.get("updated")
+                and now - parse_iso(task["updated"]) >= timedelta(days=1)
+            ):
+                unclaimed.append(dict(task, key=key))
+        return handed, unclaimed
 
     def _goal_steps(self, hidden: set[str]) -> list[dict[str, Any]]:
         """Suggested next steps for your goals, a quick yes grouped by goal."""

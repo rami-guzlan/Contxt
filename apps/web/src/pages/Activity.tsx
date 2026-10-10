@@ -12,6 +12,7 @@ import { Link, useSearchParams } from "react-router";
 import { useAiRequest, useAiRequests, useBrainCatalog, useLabelRequest, useProposeEntry, useReport, useWeekly } from "../api/hooks";
 import type { AiRequest, CostLineName, EvalCase, ReportCard, RequestPiece, RequestWhy, WhyRow } from "../api/types";
 import { Markdown } from "../components/Markdown";
+import { TasksTab } from "../components/tasks/Tasks";
 import { Empty, ErrorNote, Loading, Tabs } from "../components/ui";
 import { plural, when } from "../lib/format";
 import { ActivityPage as ChangesView } from "./brain/Activity";
@@ -22,6 +23,7 @@ const TABS = [
   { id: "requests", label: "Requests" },
   { id: "report", label: "Cost and quality" },
   { id: "changes", label: "Changes" },
+  { id: "tasks", label: "Tasks and handoffs" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -29,7 +31,7 @@ type TabId = (typeof TABS)[number]["id"];
 export function AiActivityPage() {
   const [params, setParams] = useSearchParams();
   const asked = params.get("tab");
-  const tab: TabId = asked === "changes" || asked === "report" ? asked : "requests";
+  const tab: TabId = asked === "changes" || asked === "report" || asked === "tasks" ? asked : "requests";
   return (
     <div className="page activity">
       <p className="eyebrow">Activity</p>
@@ -43,7 +45,9 @@ export function AiActivityPage() {
           setParams(next, { replace: true });
         }}
       />
-      {tab === "changes" ? (
+      {tab === "tasks" ? (
+        <TasksTab />
+      ) : tab === "changes" ? (
         <>
           <Week />
           <ChangesView />

@@ -41,6 +41,12 @@ import type {
   GoalView,
   GoalsHome,
   Ladder,
+  HandoffsNow,
+  LiveOverview,
+  SheetView,
+  StateEvent,
+  TaskDetail,
+  TimelineEvent,
   MadeFrom,
   MoveInKept,
   MoveInKind,
@@ -1674,5 +1680,77 @@ export function useProjectObjective(id: string) {
     mutationFn: (body: { objective: string; reason: string }) =>
       put<BrainProjectDetail>(`/api/brain/projects/${encodeURIComponent(id)}/objective`, body),
     onSettled: () => invalidate(keys.brain, goalsKey),
+  });
+}
+
+// ------------------------------------------------------------------ State and tasks (step 6)
+
+export const liveKey = ["live"] as const;
+export const tasksKey = ["handoffs"] as const;
+
+export const useLive = () => useQuery({ queryKey: [...liveKey, "overview"], queryFn: () => get<LiveOverview>("/api/work/live") });
+
+export const useSheet = (id: string) =>
+  useQuery({ queryKey: [...liveKey, "sheet", id], queryFn: () => get<SheetView>(`/api/work/live/${encodeURIComponent(id)}`), enabled: !!id });
+
+export const useRowHistory = (sheet: string, row: string | null) =>
+  useQuery({
+    queryKey: [...liveKey, "history", sheet, row],
+    queryFn: () => get<StateEvent[]>(`/api/work/live/${encodeURIComponent(sheet)}/history${query({ row: row ?? "" })}`),
+    enabled: !!row,
+  });
+
+/** One State action; the sheet comes back as it is now. */
+export function useLiveAct() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { action: string; fields: Record<string, unknown> }) => post<SheetView & { sheet: { id: string } }>("/api/work/live/act", body),
+    onSettled: () => {
+      void invalidate(liveKey, keys.catchUp, goalsKey);
+    },
+  });
+}
+
+export const useHandoffs = (filters: Record<string, string> = {}) =>
+  useQuery({ queryKey: [...tasksKey, "now", filters], queryFn: () => get<HandoffsNow>(`/api/work/handoffs${query(filters)}`) });
+
+export const useTimeline = (days = 7) =>
+  useQuery({
+    queryKey: [...tasksKey, "timeline", days],
+    queryFn: () => get<{ since: string; owners: string[]; events: TimelineEvent[] }>(`/api/work/handoffs/timeline${query({ days: String(days) })}`),
+  });
+
+export const useHandoffTask = (id: string | null) =>
+  useQuery({ queryKey: [...tasksKey, "one", id], queryFn: () => get<TaskDetail>(`/api/work/handoffs/${encodeURIComponent(id ?? "")}`), enabled: !!id });
+
+/** Open, save, pass on, claim or finish a task: the same function as the hand_off tool. */
+export function useHandOff() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => post<{ task: TaskDetail; card: string; task_status: string }>("/api/work/handoffs", body),
+    onSettled: () => {
+      void invalidate(tasksKey, keys.catchUp, goalsKey, liveKey);
+    },
+  });
+}
+
+export function useTakeBack() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => post<{ task: TaskDetail }>(`/api/work/handoffs/${encodeURIComponent(id)}/take-back`),
+    onSettled: () => {
+      void invalidate(tasksKey, keys.catchUp);
+    },
+  });
+}
+
+/** Say what an output is for: a project, a State row. */
+export function useLinkOutput() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { path: string; project?: string | null; row?: string | null }) => post<unknown>("/api/outputs/link", body),
+    onSettled: () => {
+      void invalidate(keys.outputs);
+    },
   });
 }

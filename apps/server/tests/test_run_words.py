@@ -52,9 +52,27 @@ def model_facing() -> dict[str, str]:
     return out
 
 
+# Where "task" is the new kind itself (G2: the Tasks sheet and hand_off), as the rule intends.
+NEW_KIND = {
+    "brain instructions",
+    "brain tool get_task_context",
+    "brain tool get_state",
+    "brain tool update_state",
+    "brain tool hand_off",
+    "tool get_state",
+    "tool update_state",
+    "tool hand_off",
+}
+
+
 def test_model_facing_text_says_run_for_runs():
-    found = {where: WORD.findall(text) for where, text in model_facing().items()}
+    texts = model_facing()
+    found = {where: WORD.findall(text) for where, text in texts.items() if where not in NEW_KIND}
     assert {where: words for where, words in found.items() if words} == {}
+    # And where it says task, it means a task from the Tasks sheet.
+    for where in NEW_KIND:
+        if WORD.search(texts[where]):
+            assert any(w in texts[where] for w in ("hand_off", "T-41", "State")), where
 
 
 def test_distillation_still_names_its_kinds_from_the_one_vocabulary():

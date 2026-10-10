@@ -1734,6 +1734,68 @@ class BrainKitAdapter:
             raise ValidationFailed(result.text, field=result.data.get("field"))
         return dict(result.data)
 
+    # ---------------------------------------------------------------- State and tasks
+
+    @staticmethod
+    def _raise(result: Any, field: str | None = None) -> None:
+        status = result.data.get("status")
+        if status == "missing":
+            raise NotFound(result.text)
+        if status in ("exists", "taken", "forbidden", "busy"):
+            raise Conflict(result.text)
+        raise ValidationFailed(result.text, field=result.data.get("field") or field)
+
+    def state_act(self, action: str, fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.state_act(action, fields or {})
+        if result.is_error:
+            self._raise(result)
+        return dict(result.data)
+
+    def update_state(
+        self, updates: list[dict[str, Any]], *, evidence: str = "", session_id: str = ""
+    ) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.update_state(
+                updates, evidence=evidence, session_id=session_id or None
+            )
+        if result.is_error:
+            self._raise(result)
+        return dict(result.data, text=result.text)
+
+    def get_state(self, *, sheet: str = "", row: str = "", query: str = "") -> dict[str, Any]:
+        result = self.brain.get_state(sheet=sheet, row=row, query=query)
+        return dict(result.data, text=result.text)
+
+    def hand_off(self, **fields: Any) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.hand_off(**fields)
+        if result.is_error:
+            self._raise(result)
+        return dict(result.data, text=result.text)
+
+    def tasks(self, **filters: Any) -> list[dict[str, Any]]:
+        return list(self.brain.tasks(**filters).data.get("tasks") or [])
+
+    def task(self, task_id: str) -> dict[str, Any]:
+        result = self.brain.task(task_id)
+        if result.is_error:
+            raise NotFound(result.text, id=task_id)
+        return dict(result.data)
+
+    def outputs_for(self, paths: list[str]) -> dict[str, dict[str, Any]]:
+        from brainkit.activity import normal_path
+
+        wanted = {normal_path(p): p for p in paths}
+        found = self.brain.ledger.outputs_for(list(wanted))
+        return {wanted[k]: v for k, v in found.items() if k in wanted}
+
+    def link_output(self, path: str, *, project: str | None = None, row: str | None = None) -> None:
+        from brainkit.activity import normal_path
+
+        with self._lock:
+            self.brain.ledger.link_output(normal_path(path), project=project, row_ref=row)
+
     def builtin_skills(self) -> dict[str, Any]:
         return dict(self.brain.builtin_skills().data)
 

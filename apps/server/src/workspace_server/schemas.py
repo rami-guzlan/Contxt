@@ -711,3 +711,37 @@ class GoalCoachIn(Body):
 
 class GoalSettingsIn(Body):
     weekly_review: bool
+
+
+# ------------------------------------------------------------------- State and tasks (step 6)
+
+
+class LiveActIn(Body):
+    action: Literal[
+        "create_sheet", "add_column", "add_row", "write", "touch", "decide", "remove_row"
+    ]
+    fields: dict[str, Any] = Field(default_factory=dict)
+
+
+class HandOffIn(Body):
+    task: str | None = Field(default=None, max_length=20)
+    new_task: dict[str, Any] | None = None
+    goal: str | None = Field(default=None, max_length=200)
+    to: str | None = Field(default=None, max_length=120)
+    claim: bool | None = None
+    status: Literal["working", "blocked", "waiting_for_you", "done", "dropped"] | None = None
+    done_so_far: str | None = Field(default=None, max_length=2000)
+    next_step: str | None = Field(default=None, max_length=1000)
+    done_when: str | None = Field(default=None, max_length=1000)
+    decisions: str | None = Field(default=None, max_length=2000)
+    open_questions: str | None = Field(default=None, max_length=2000)
+    load: str | None = Field(default=None, max_length=1000)
+    evidence: list[str] | None = Field(default=None, max_length=20)
+    goal_note: str | None = Field(default=None, max_length=1000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class OutputLinkIn(Body):
+    path: str = Field(min_length=1, max_length=1000)
+    project: str | None = Field(default=None, max_length=200)
+    row: str | None = Field(default=None, max_length=300)
