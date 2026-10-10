@@ -23,6 +23,7 @@ from brainkit.api import Brain, Result
 from brainkit.governance import summary_from
 from brainkit.model import listish
 from brainkit.scopes import Scopes
+from workspace_core.domain import statements as statements_core
 from workspace_core.errors import Conflict, NotFound, ValidationFailed
 from workspace_core.ports import (
     BrainArea,
@@ -188,6 +189,7 @@ class BrainKitAdapter:
         self._fetch_error: str | None = None
         # Skills' git history for the Skills page, kept while the Brain's files are unchanged.
         self._skills_history: tuple[str, dict[str, dict[str, Any]]] | None = None
+        self._held_texts: tuple[str, set[str]] | None = None  # live notes' fingerprints
         self._local_fetching: set[str] = set()  # local models being downloaded
         self._local_errors: dict[str, str] = {}
 
@@ -753,6 +755,17 @@ class BrainKitAdapter:
             if when and edited and when > edited:
                 changed.append({"key": str(key), "title": title, "at": when})
         return changed
+
+    def holds_text(self, fingerprints: list[str]) -> set[str]:
+        st = self.brain.state()
+        with self._lock:
+            if self._held_texts is None or self._held_texts[0] != st.fingerprint:
+                self._held_texts = (
+                    st.fingerprint,
+                    {statements_core.fingerprint(n.body) for n in st.index.notes.values()},
+                )
+            held = self._held_texts[1]
+        return {f for f in fingerprints if f in held}
 
     def skills_history(self, names: list[str]) -> dict[str, dict[str, Any]]:
         """Each skill's versions (their hashes, newest first), its last edit and what it loads

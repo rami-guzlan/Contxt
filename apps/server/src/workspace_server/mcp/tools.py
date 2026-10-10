@@ -14,6 +14,7 @@ from typing import Any
 
 from workspace_core.domain.policy import Principal
 from workspace_core.errors import ValidationFailed
+from workspace_core.services import prepass
 from workspace_core.workspace import Workspace
 
 from . import render
@@ -86,14 +87,17 @@ def claim_task(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str
         lease_seconds=int(lease) if lease else None,
         idempotency_key=_str(args, "idempotency_key"),
     )
-    return render.packet(claim.packet), {"run": claim.run.to_dict(), "packet": claim.packet}
+    return render.packet(claim.packet, redacting=redacting(ws, who)), {
+        "run": claim.run.to_dict(),
+        "packet": claim.packet,
+    }
 
 
 def get_task_packet(
     ws: Workspace, who: Principal, args: dict[str, Any]
 ) -> tuple[str, dict[str, Any]]:
     packet = ws.bus.packet(who, task_id=_str(args, "task_id"), run_id=_str(args, "run_id"))
-    return render.packet(packet), {"packet": packet}
+    return render.packet(packet, redacting=redacting(ws, who)), {"packet": packet}
 
 
 def append_task_event(
@@ -179,6 +183,8 @@ def get_context_item(
     text = item.body or ""
     if item.text_shadow:
         text += ("\n\n" if text else "") + f"Text of {item.filename}:\n{item.text_shadow}"
+    # Without its boilerplate, and redacted when the preset says so (decision 13).
+    text = prepass.for_model(text, redacting=redacting(ws, who))
     try:
         offset = max(0, int(args.get("offset") or 0))
     except (TypeError, ValueError) as exc:
@@ -267,6 +273,7 @@ def propose_brain_entry(
         must_hold=args.get("must_hold") or None,
         as_of=_str(args, "as_of"),
         valid_until=_str(args, "valid_until"),
+        said_by=_str(args, "said_by"),
     )
     # Refused is a failure the model must notice; a duplicate (the same proposal retried) is
     # not.
@@ -419,6 +426,18 @@ def _ids(args: dict[str, Any], name: str) -> list[str] | None:
     if isinstance(value, list):
         return [str(v) for v in value]
     raise ValidationFailed(f"{name} is a list of entry ids.", field=name)
+
+
+def redacting(ws: Workspace, who: Principal) -> bool:
+    """Does a model reading through these tools get what was brought in redacted? A model is
+    a cloud model here unless its connection says it runs on this computer (Ollama)."""
+    if who.is_human:
+        return False
+    try:
+        policy = ws.rt.brain.policies()
+    except (OSError, ValueError, RuntimeError, KeyError):  # unreadable: the careful default
+        return True
+    return bool(policy.get("redact_cloud", True))
 
 
 # ---------------------------------------------------------------------- registry
@@ -646,6 +665,14 @@ TOOLS: dict[str, Tool] = {
                     "valid_until": {
                         "type": "string",
                         "description": "The last day it holds, YYYY-MM-DD, when it says so.",
+                    },
+                    "said_by": {
+                        "type": "string",
+                        "enum": ["owner", "owner-ai", "person", "document", "system", "agent"],
+                        "description": "Who said it: owner (the person this Brain is for), "
+                        "person (someone else, in a meeting or an email), document (the "
+                        "document's own content). A rule someone else gives, or a document "
+                        "states, is kept as what they said, never as the owner's rule.",
                     },
                     "must_hold": {
                         "type": "object",

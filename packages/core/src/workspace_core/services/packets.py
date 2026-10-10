@@ -17,6 +17,7 @@ from workspace_core.db.tx import Tx
 from workspace_core.domain.schedule import Schedule
 from workspace_core.ports import BrainContext
 
+from . import prepass
 from .runtime import Runtime
 
 PACKET_SCHEMA = 1
@@ -56,6 +57,17 @@ def _context_item_input(tx: Tx, rt: Runtime, pin: dict[str, Any]) -> dict[str, A
     text = body or ""
     if item["text_shadow"] and object_key == item["object_key"]:
         text = (text + "\n\n" + item["text_shadow"]).strip() if text else item["text_shadow"]
+    task = tx.get(schema.tasks, pin["task_id"]) if pin.get("task_id") else None
+    triage = (((task or {}).get("provenance") or {}).get("distill") or {}).get("triage") or {}
+    kept = triage.get(str(pin["ref_id"])) if isinstance(triage, dict) else None
+    if kept and text:
+        # Triage named the parts worth distilling: only those reach the model (7.2, step 2).
+        parts = prepass.split(prepass.clean(text)[0])
+        chosen = [parts[i].text for i in kept["kept"] if 0 <= i < len(parts)]
+        if chosen:
+            text = "\n\n".join(chosen)
+            note = f"Triage kept {len(chosen)} of {len(parts)} parts."
+            pin = dict(pin, note=f"{pin['note']} {note}".strip() if pin.get("note") else note)
     text, clipped = _clip(text, rt.max_input_chars)
     out: dict[str, Any] = {
         "ref": ref,

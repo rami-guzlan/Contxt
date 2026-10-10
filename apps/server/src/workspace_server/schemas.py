@@ -125,6 +125,7 @@ class PoliciesIn(Body):
     model_checks: bool | None = None  # your own AI reads possible disagreements
     cross_check: bool | None = None  # the weekly cross-check of your beliefs
     challenger: bool | None = None  # the external challenger (off until turned on)
+    redact_cloud: bool | None = None  # sensitive spans redacted for cloud models (decision 13)
 
 
 class CatchUpItemIn(Body):
@@ -266,6 +267,7 @@ class RememberIn(Body):
 
 class DistillSettingsIn(Body):
     assignee_id: str | None = None  # the model that does the AI work the app starts
+    triage: str | None = None  # the model that triages first (claude, local:..., ollama:...)
 
 
 class ReconcileIn(Body):

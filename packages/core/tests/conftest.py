@@ -754,6 +754,9 @@ class FakeBrain:
     def download_models(self):
         return {"matching": {"enabled": True, "present": False, "downloading": True}}
 
+    def holds_text(self, fingerprints):
+        return set(fingerprints) & set(getattr(self, "held_texts", set()))
+
     def skills_history(self, names):
         return {n: {"hashes": [], "last_edited": None, "changed": []} for n in names}
 

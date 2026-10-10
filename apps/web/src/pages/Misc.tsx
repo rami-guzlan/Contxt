@@ -15,6 +15,7 @@ import { Empty, ErrorNote, Field, Loading, Section } from "../components/ui";
 import { plural, when } from "../lib/format";
 import { noteUrl } from "../lib/links";
 import { entryUrl } from "./brain/shared";
+import { TriageChoice } from "../components/TriageChoice";
 
 export function SearchPage() {
   const [params] = useSearchParams();
@@ -98,6 +99,7 @@ export function AiWork() {
           No model is connected yet. <Link to="/settings?tab=connections">Connect one</Link>.
         </p>
       )}
+      <TriageChoice />
       <ErrorNote error={set.error} />
     </Section>
   );

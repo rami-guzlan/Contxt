@@ -89,6 +89,48 @@ Before anything is staged, an upload passes these gates:
 The owner decides in the review UI (Inbox tab: file list, document preview, placement
 fields) or the CLI (`brain inbox`). See [Governance](GOVERNANCE.md).
 
+## At the door (brain-logic plan 7.1)
+
+- **Who said it** is recorded on every new statement (`said_by`): the proposer's word when it
+  gives one (a distilling model names it per statement), else where it came from: Moving in
+  brings the owner's own words (instruction files and pastes are the owner's; a model's reading
+  of an exported history is the owner's AI's), a file is a document, a meeting another person,
+  a run an agent; else how it came: the owner in the app, the owner's AI in a chat, a document
+  from a swept folder.
+- **An instruction found inside content** (a document, someone else in a meeting, a synced
+  system) is kept as what it is, "The document says: ...", never as a rule. The review card
+  says where it came from; the owner can still make it a rule. This is the gap memory
+  injection works through.
+- **Evidence must be real**: a quote an AI attributes to the person is checked against the
+  requests the ledger logged in that conversation. A quote that is not there marks the
+  statement inferred, and it waits, with a card line saying so.
+- **The circular-evidence rule**: a statement that only repeats a note from the brief an output
+  was made from cannot be promoted from that output (`record_output` links the file to its
+  conversation, the ledger to what that conversation was handed).
+
+## Before a model reads (brain-logic plan 7.2)
+
+- **Hash dedupe**: a capture whose text another capture already brought in and a model read,
+  or that the Brain holds word for word, makes no model call; two captures with the same text
+  in one request are read once. Asking again about the same capture still reads it.
+- **The pre-pass** (code, free): split by speakers, headings or slides; drop boilerplate
+  (recording notices, sign-offs, footers); find dates, figures and names, which the run's
+  packet lists first; find sensitive spans (emails, phone numbers, card, account and ID
+  numbers).
+- **Redaction**: those spans are replaced (`[email]`, `[phone]`, ...) in what a cloud model
+  reads, on under the careful and regulated presets, off under personal unless turned on
+  (`governance.redact_cloud`, a switch in Approval). The person always sees the text as
+  written.
+- **Triage**, off until it is measured: a cheaper model (Claude Code, a local model or Ollama,
+  chosen beside the model for AI work) names the parts worth distilling; only those reach the
+  distilling model, and a capture with none makes no distillation call. Under a redacting
+  preset a cloud model triages redacted text.
+- **Distillation** proposes a statement that contradicts the Brain whether or not it serves a
+  goal, and says who said each one.
+- **What was left out** stays searchable (Capture, "Left out when reading"), each item scored
+  again against the goals and active projects as they stand, so one left out for serving no
+  goal is marked once a goal it fits appears.
+
 ## Hygiene
 
 Automatic capture must not bury the owner in proposals:

@@ -15,6 +15,7 @@ read from what a note already records, unless it says.
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 from . import util
 
@@ -45,6 +46,16 @@ ORIGIN_SAID_BY = {"you": "owner", "workspace": "owner", "conversation": "owner-a
                   "library": "document", "folder": "document", "movein": "document",
                   "import": "document", "sync": "system", "work": "agent", "run": "agent",
                   "skill": "agent", "output": "agent", "agent": "agent"}
+# Moving in brings the person's own words: instruction files and pastes are the owner's; what
+# a model read out of an exported history of conversations is the owner's AI's reading.
+MOVE_IN = {"instructions": "owner", "cursor": "owner", "paste": "owner",
+           "chatgpt": "owner-ai", "claude": "owner-ai"}
+# Who speaks in content brought in: an instruction they give is reported, never kept as a rule.
+CONTENT_SPEAKERS = ("document", "person", "system")
+REPORTED = {"document": "The document says", "person": "Someone else said",
+            "system": "A synced system says"}
+# A quote attributed to the person: in curly or straight double quotes, four words or more.
+QUOTE = re.compile(r"[“\"]([^”\"]{12,600})[”\"]")
 # Days a statement holds before it is checked again, by kind, unless it sets `review_by`
 # (brain.json `statements.shelf_life` changes any of them). A decision also ends when it is
 # replaced; a procedure when it is used after a change (the updating loop, step 7).
@@ -104,6 +115,53 @@ def said_by(meta: dict, origin_kind: str = "") -> str:
     if own in SAID_BY:
         return own
     return ORIGIN_SAID_BY.get(str(origin_kind or "").strip().lower(), "")
+
+
+def said_at_door(origin=None, capture_origin=None, session_id=None, own=None) -> str:
+    """Who said a statement, recorded when it comes in (brain-logic plan 7.1): its proposer's
+    word when it gives one, else where it came from: Moving in brings the owner's own words, a
+    file a document, a meeting another person, a run an agent; else how it came: the owner in
+    the app, the owner's AI in a chat, a document from a swept folder."""
+    word = str(own or "").strip().lower()
+    if word in SAID_BY:
+        return word
+    kind_, _, ref = str(origin or "").partition(":")
+    kind_ = kind_.strip().lower()
+    if kind_ == "import" and ref.strip():
+        return MOVE_IN.get(ref.strip().split(":")[0].lower(), "owner")
+    if kind_ in ORIGIN_SAID_BY:
+        return ORIGIN_SAID_BY[kind_]
+    if capture_origin == "app":
+        return "owner"
+    if capture_origin == "chat" or session_id:
+        return "owner-ai"
+    if capture_origin == "folder":
+        return "document"
+    return ""
+
+
+def reported(text: str, speaker: str) -> str:
+    """An instruction found inside content, kept as what it is: "The document says: ..."."""
+    lead = REPORTED.get(speaker, REPORTED["document"])
+    body = str(text or "").strip()
+    return body if body.lower().startswith(lead.lower()) else f"{lead}: {body}"
+
+
+def quotes(evidence: str) -> list[str]:
+    """The quotes in a proposal's evidence that it attributes to someone's own words."""
+    return [m.group(1).strip() for m in QUOTE.finditer(str(evidence or ""))
+            if len(m.group(1).split()) >= 4]
+
+
+def _plain(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", str(text or "").lower()).split())
+
+
+def unheard(evidence: str, said: list[str]) -> list[str]:
+    """The quotes in the evidence that appear in none of the messages the person sent (the
+    requests the ledger logged in that conversation)."""
+    heard = [_plain(t) for t in said if t]
+    return [q for q in quotes(evidence) if not any(_plain(q) in h for h in heard)]
 
 
 def tier(note_kind: str | None, load: str = "") -> str:

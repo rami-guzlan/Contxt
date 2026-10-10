@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from workspace_core.services import prepass
 
-def packet(p: dict[str, Any]) -> str:
-    """A run's packet as a model-readable brief, with the exact calls to finish it."""
+
+def packet(p: dict[str, Any], *, redacting: bool = False) -> str:
+    """A run's packet as a model-readable brief, with the exact calls to finish it. What was
+    brought in reaches the model without its boilerplate, with what code found in it first,
+    and with its sensitive spans redacted when the preset says so (`redacting`)."""
     task, run = p.get("task") or {}, p.get("run")
     purpose = p.get("purpose") or {}
     lines = [f"# Run: {task.get('title')}", ""]
@@ -66,7 +70,13 @@ def packet(p: dict[str, Any]) -> str:
             if item.get("stale"):
                 lines.append("Warning: this Brain entry is marked stale.")
             if item.get("text"):
-                lines += ["", item["text"]]
+                text = str(item["text"])
+                if str(item.get("ref") or "").startswith("context_item:"):
+                    found = prepass.run(text).summary()
+                    if found:
+                        lines.append(f"Found by code: {found}")
+                    text = prepass.for_model(text, redacting=redacting)
+                lines += ["", text]
             if item.get("truncated"):
                 lines.append("(truncated; open it with get_context_item for the rest)")
             lines.append("")
