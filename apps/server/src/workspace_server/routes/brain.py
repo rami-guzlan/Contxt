@@ -30,6 +30,7 @@ from ..schemas import (
     MergeIn,
     MoveInIn,
     PoliciesIn,
+    ProjectObjectiveIn,
     ProjectUpdateIn,
     ProposalIn,
     ReconcileIn,
@@ -249,6 +250,14 @@ def project(project_id: str, who: Who, ws: WS) -> dict[str, Any]:
     """One project in full: its brief, where it stands, its progress newest first, its files
     and the notes filed with it."""
     return ws.brain.project(who, project_id)
+
+
+@router.put("/projects/{project_id}/objective")
+def project_objective(
+    project_id: str, body: ProjectObjectiveIn, who: Who, ws: WS
+) -> dict[str, Any] | None:
+    """Change the output the project is chasing (it reaches every brief in the project)."""
+    return ws.brain.project_objective(who, project_id, body.objective, reason=body.reason)
 
 
 @router.post("/projects/{project_id}/updates", status_code=201)

@@ -531,6 +531,8 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
             target["kind"] = "rule" if RULE_START.match(text) else "fact"
     elif summary:
         target["index_line"] = summary
+    if note_kind == "goal":
+        target["kind"] = "goal"  # no layer implies it, so even an older vault says so
     if startup_text:
         target["startup_text"] = startup_text
     target.update(must)
@@ -1279,11 +1281,13 @@ FIELDS = ("owner", "review_days", "review_by", "classification", "area", "topic"
           "load", "applies_to", "triggers", "must_text", "critical", "baseline", "as_of",
           "valid_until", "library", "refresh", "origin", "tags", "prompt_skills",
           "prompt_agent", "prompt_docs", "prompt_reads", "title", "project_id", "said_by",
-          "subtype", "objective", "goals")
+          "subtype", "objective", "goals", *(f for f in statements.GOAL_FIELDS
+                                              if f not in ("review_by", "level")))
 CARD_FIELDS = ("library", "refresh", "origin", "tags", "prompt_skills", "prompt_agent",
                "prompt_docs", "prompt_reads", "title", "project_id")
 # Card fields that hold a list, set as comma-separated words.
-LIST_FIELDS = ("aliases", "tags", "prompt_skills", "prompt_docs", "prompt_reads", "goals")
+LIST_FIELDS = ("aliases", "tags", "prompt_skills", "prompt_docs", "prompt_reads", "goals",
+               "serves")
 # When a note reaches a model: in every session, whenever its domain comes up (a must-hold),
 # when relevant, or only when asked for. Set together and checked by must_hold_fields.
 MUST_FIELDS = ("load", "applies_to", "triggers", "must_text", "critical")
@@ -1315,6 +1319,11 @@ def update(brain, note_id, fields, *, reason="", actor=None):
         problems.append("only a project has an objective and the goals it serves")
     if wanted.get("objective") and statements.objective_problem(wanted["objective"]):
         problems.append(statements.objective_problem(wanted["objective"]))
+    goal_fields = [k for k in wanted if k in statements.GOAL_FIELDS]
+    if goal_fields and note.kind != "goal":
+        problems.append(f"only a goal has {', '.join(goal_fields)}")
+    elif goal_fields:
+        problems += statements.goal_problems(wanted)
     if "objective" in wanted and not str(reason or "").strip():
         # Like the rest of a project's baseline: a change says why, and makes an undo point.
         problems.append("a change to a project's objective needs a reason")

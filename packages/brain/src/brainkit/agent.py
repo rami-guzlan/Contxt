@@ -349,6 +349,31 @@ def _drift(brain, st) -> list[dict]:
     return out
 
 
+def _goals_needing_a_look(brain, st) -> list[dict]:
+    """Your goals with no recent check-in, no projects, or no plan for what gets in the way
+    (goals plan 7): one candidate each, saying which."""
+    from . import ladder
+    out = []
+    for note in ladder.goal_notes(st, "yours"):
+        if ladder.lifecycle(note) != "active":
+            continue
+        shown = ladder.view(brain, note, st=st)
+        plan = brain.vault.goal_plan(note.id).lower()
+        why = []
+        if shown["status"] == "not_checked_in":
+            why.append("no check-in lately")
+        if not shown["projects"]:
+            why.append("no projects")
+        if "obstacle" not in plan and "plan" not in plan.split("\n", 1)[-1]:
+            why.append("no plan for what gets in the way")
+        if why:
+            out.append({"kind": "goal", "ids": [note.id], "title": note.title,
+                        "text": f"Your goal `{note.id}`: {note.title}. Why: "
+                                f"{shown['why'] or 'not said'}. Status: {shown['words']}. "
+                                f"Needs a look: {', '.join(why)}."})
+    return out
+
+
 def _alignment(brain, st) -> list[dict]:
     used = _usage(brain)
     out = [{"kind": "goals", "ids": [GOALS_ID], "title": "The goals and projects",
@@ -356,6 +381,7 @@ def _alignment(brain, st) -> list[dict]:
                      + "\n\nActive projects:\n" + ("\n".join(
                          f"- `{p['id']}` {p['title']}: {p['current'] or p['status']}"
                          for p in _projects(st) if p["active"]) or "None."))}]
+    out += _goals_needing_a_look(brain, st)
     for note in st.index.notes.values():
         if note.must_hold and note.live and not (note.triggers or note.applies_to):
             out.append({"kind": "note", "ids": [note.id], "title": note.title,

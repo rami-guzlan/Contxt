@@ -1321,6 +1321,14 @@ class BrainKitAdapter:
         data: dict[str, Any] = dict(result.data)
         return data
 
+    def project_objective(self, project_id: str, objective: str, *, reason: str) -> None:
+        with self._lock:
+            result = self.brain.update(project_id, {"objective": objective}, reason=reason)
+        if result.is_error and result.data.get("status") != "unchanged":
+            if result.data.get("status") == "missing":
+                raise NotFound(result.text)
+            raise ValidationFailed(result.text, field="objective")
+
     def project_update(
         self, project_id: str, *, summary: str, changes: dict[str, str], evidence: str = ""
     ) -> dict[str, Any]:
@@ -1696,6 +1704,32 @@ class BrainKitAdapter:
             result = self.brain.set_goals(answers)
         if result.is_error:
             if result.data.get("status") == "forbidden":
+                raise Conflict(result.text)
+            raise ValidationFailed(result.text, field=result.data.get("field"))
+        return dict(result.data)
+
+    def ladder(self, *, with_signals: bool = False) -> dict[str, Any]:
+        return dict(self.brain.ladder(with_signals=with_signals).data)
+
+    def goal(self, goal_id: str) -> dict[str, Any]:
+        result = self.brain.goal(goal_id)
+        if result.is_error:
+            raise NotFound(result.text, id=goal_id)
+        return dict(result.data)
+
+    def goal_cards(self) -> list[dict[str, Any]]:
+        return list(self.brain.goal_cards().data.get("cards") or [])
+
+    def act_goal(
+        self, action: str, goal_id: str = "", fields: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.act_goal(action, goal_id, fields or {})
+        if result.is_error:
+            status = result.data.get("status")
+            if status == "missing":
+                raise NotFound(result.text, id=goal_id)
+            if status in ("forbidden", "busy"):
                 raise Conflict(result.text)
             raise ValidationFailed(result.text, field=result.data.get("field"))
         return dict(result.data)

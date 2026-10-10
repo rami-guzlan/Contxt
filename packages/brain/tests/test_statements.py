@@ -147,13 +147,13 @@ class GoalsAndObjectivesTest(unittest.TestCase):
         made = self.brain.propose(
             area="marketing", topic="goals", text="Grow webinar attendance to 150 a session.",
             title="Webinar attendance", note_kind="goal", principal=self.owner(),
-            extra={"level": "yours", "due": "2026-12-15", "goal_status": "on_track"})
+            extra={"level": "yours", "due": "2026-12-15", "goal_status": "active"})
         self.assertFalse(made.is_error, made.text)
         approved = self.brain.approve(made.data["proposal_id"], actor=self.owner())
         self.assertFalse(approved.is_error, approved.text)
         note = self.brain.state().index.note(made.data["id"])
         self.assertEqual((note.kind, note.load), ("goal", "manual"))
-        self.assertEqual(note.meta["goal_status"], "on_track")
+        self.assertEqual(note.meta["goal_status"], "active")
         self.assertEqual(note.tier, "alignment")
         wrong = self.brain.propose(
             area="marketing", topic="goals", text="Something else.", note_kind="goal",

@@ -36,12 +36,13 @@ import { entryUrl } from "./brain/shared";
 import { ConnectionsPage } from "./Connections";
 import { PRESETS } from "./FirstRun";
 import { AiWork, EarlierWorkspace } from "./Misc";
+import { Alignment } from "./settings/Alignment";
 import { LocalModels } from "./settings/LocalModels";
 import { RedactCloud } from "./settings/Privacy";
 
 const TABS = [
   { id: "apps", label: "Your AI apps" },
-  { id: "goals", label: "Your goals" },
+  { id: "alignment", label: "Alignment" },
   { id: "approval", label: "Approval" },
   { id: "computer", label: "On this computer" },
   { id: "backups", label: "Backups" },
@@ -50,7 +51,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 // Addresses from before: each old tab lands where its content went.
-const MOVED: Record<string, Tab> = { connections: "apps", policies: "approval", workspace: "about" };
+const MOVED: Record<string, Tab> = { connections: "apps", policies: "approval", workspace: "about", goals: "alignment" };
 
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
@@ -62,7 +63,7 @@ export function SettingsPage() {
       <h1>Settings</h1>
       <Tabs tour="settings-tabs" tabs={TABS} active={tab} onChange={(next) => setParams(next === "apps" ? {} : { tab: next }, { replace: true })} />
       {tab === "apps" ? <YourApps /> : null}
-      {tab === "goals" ? <YourGoals /> : null}
+      {tab === "alignment" ? <Alignment purpose={<YourGoals />} /> : null}
       {tab === "approval" ? <Approval /> : null}
       {tab === "computer" ? <ThisComputer /> : null}
       {tab === "backups" ? <Backups /> : null}

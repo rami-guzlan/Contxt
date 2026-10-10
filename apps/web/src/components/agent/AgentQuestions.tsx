@@ -24,7 +24,7 @@ function targetLink(question: AgentQuestion): string | null {
   if (type === "note") return `/brain/entries/${encodeURIComponent(id)}`;
   if (type === "project") return `/projects/${encodeURIComponent(id)}`;
   if (type === "skill") return `/work/skills/${encodeURIComponent(id)}`;
-  if (type === "goals") return "/settings?tab=goals";
+  if (type === "goals") return "/settings?tab=alignment";
   return null;
 }
 

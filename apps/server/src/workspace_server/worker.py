@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass
 
 from workspace_core.workspace import Workspace
 
 log = logging.getLogger("workspace.worker")
+GOAL_CHECK_SECONDS = 600  # how often the worker looks for goal checks that are due
 
 
 @dataclass
@@ -31,6 +33,7 @@ class Worker:
         self.interval = max(1.0, float(interval))
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._goals_at = 0.0  # when goal checks last looked for what is due
 
     def tick(self) -> Tick:
         expired = self.ws.bus.expire_leases()
@@ -44,6 +47,16 @@ class Worker:
             scheduled = {"applied": []}
         if scheduled.get("applied"):
             log.info("%d scheduled revision(s) went in", len(scheduled["applied"]))
+        if time.monotonic() - self._goals_at >= GOAL_CHECK_SECONDS:
+            # Goal checks are code only; each runs on its own cadence, so this finds few.
+            self._goals_at = time.monotonic()
+            try:
+                checked = self.ws.goals.run_checks(system)
+            except Exception:  # a check that cannot run now: the next look tries again
+                log.warning("goal checks could not run", exc_info=True)
+                checked = []
+            if checked:
+                log.info("%d goal check(s) ran", len(checked))
         if expired or woke or assigned:
             log.info(
                 "expired %d lease(s), %d task(s) came due, %d waiting request(s) assigned",

@@ -75,6 +75,10 @@ CREATE TABLE IF NOT EXISTS model_calls (
     at TEXT, job TEXT, model TEXT, tokens_in INTEGER, tokens_out INTEGER, cache_read INTEGER,
     cache_write INTEGER, cost REAL, ms INTEGER, ref TEXT, measured INTEGER);
 CREATE INDEX IF NOT EXISTS model_calls_at ON model_calls(at);
+CREATE TABLE IF NOT EXISTS goal_checks (
+    goal_id TEXT, at TEXT, value REAL, status TEXT, source TEXT, note TEXT,
+    card INTEGER DEFAULT 0);
+CREATE INDEX IF NOT EXISTS goal_checks_goal ON goal_checks(goal_id, at);
 CREATE TABLE IF NOT EXISTS model_daily (
     day TEXT NOT NULL, job TEXT NOT NULL, model TEXT NOT NULL,
     calls INTEGER NOT NULL DEFAULT 0, tokens_in INTEGER NOT NULL DEFAULT 0,
@@ -720,6 +724,34 @@ class Ledger:
                         or "", "entry": row["item"], "close": []})
         out.sort(key=lambda g: g["at"], reverse=True)
         return out[:int(limit)]
+
+    # ------------------------------------------------------------------ goal checks
+    def add_goal_check(self, goal_id: str, *, status: str, value: float | None = None,
+                       source: str = "code", note: str = "", at: str | None = None,
+                       card: bool = False) -> None:
+        """One point on a goal's trend line: your check-in (`you`) or a computed check
+        (`code`), `card` when it raised a Catch up card. Kept for good, past the ledger's
+        retention."""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO goal_checks (goal_id, at, value, status, source, note, card) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (goal_id, at or util.now_iso(), value, status, source, note[:500],
+                 1 if card else 0))
+
+    def goal_checks(self, goal_id: str, *, limit: int = 50, source: str | None = None
+                    ) -> list[dict]:
+        """A goal's checks, newest first; only yours (`you`) or computed (`code`) with
+        `source`."""
+        query = ("SELECT goal_id, at, value, status, source, note, card FROM goal_checks "
+                 "WHERE goal_id = ?")
+        args: list = [goal_id]
+        if source:
+            query += " AND source = ?"
+            args.append(source)
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                query + " ORDER BY at DESC, rowid DESC LIMIT ?", (*args, max(1, int(limit))))]
 
     def dismiss(self, key: str) -> None:
         with self._connect() as conn:

@@ -66,10 +66,12 @@ TIERS = ("alignment", "state", "knowledge")
 # fields ride in its front matter; it is loaded `manual`, so no goal ever changes what a request
 # receives.
 GOAL_LEVELS = ("purpose", "yours", "agent")
-GOAL_STATUSES = ("on_track", "at_risk", "off_track", "needs_attention", "no_data", "paused",
-                 "met", "missed", "retired")
-GOAL_FIELDS = ("owner", "level", "serves", "progress", "measure", "due", "cadence", "goal_status",
-               "why", "started", "review_by")
+# A goal's lifecycle; how it is going (on track, at risk, ...) comes from its check-ins and checks.
+GOAL_STATUSES = ("active", "paused", "met", "missed", "dropped", "retired")
+# `kept_by` names the agent keeping an agent goal; your goals are kept by you.
+GOAL_FIELDS = ("kept_by", "level", "serves", "progress", "measure", "due", "cadence",
+               "goal_status", "why", "started", "review_by")
+CADENCES = {"daily": 1, "weekly": 7, "monthly": 30}
 OBJECTIVE_WORDS = 60  # a project's objective: a sentence or two
 
 
@@ -209,6 +211,14 @@ def goal_problems(fields: dict) -> list[str]:
     for name in ("due", "started", "review_by"):
         if str(fields.get(name) or "").strip() and util.parse_date(fields.get(name)) is None:
             problems.append(f"{name} is a date (YYYY-MM-DD)")
+    cadence = str(fields.get("cadence") or "").strip()
+    if cadence and cadence not in CADENCES:
+        problems.append(f"a goal's cadence is one of {', '.join(CADENCES)}")
+    if fields.get("measure") not in (None, ""):
+        from . import measures
+        measure = measures.parse(fields.get("measure"))
+        problems += (measures.problems(measure) if measure
+                     else ["a measure names its kind, for example {\"kind\": \"at_most\"}"])
     return problems
 
 

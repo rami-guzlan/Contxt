@@ -16,7 +16,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 
-import { useBringIn, useCatchUp, useGoals, useHome, useNewDoc } from "../api/hooks";
+import { useBringIn, useCatchUp, useGoals, useHome, useLadder, useNewDoc } from "../api/hooks";
 import { minutes } from "../lib/catchup";
 import { AgentProvider } from "./agent/AgentContext";
 import { AgentDock, AgentPanel } from "./agent/AgentPanel";
@@ -47,6 +47,8 @@ export const DEMOS = ["knowledge-company", "programmer", "entrepreneur", "person
 export function Layout({ children }: { children: ReactNode }) {
   const { data: home } = useHome();
   const { data: plan } = useCatchUp();
+  // The sidebar says Projects until you set your first goal (goals plan, decision 15).
+  const { data: ladder } = useLadder();
   const location = useLocation();
   const showCatchUp = (plan && !plan.caught_up) || location.pathname.startsWith("/catch-up") || location.pathname.startsWith("/review");
   return (
@@ -60,7 +62,7 @@ export function Layout({ children }: { children: ReactNode }) {
               {NAV.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.end} className="nav-link">
                   <item.icon className="nav-icon" aria-hidden="true" />
-                  {item.label}
+                  {item.to === "/projects" && ladder?.has_goals ? "Goals and Projects" : item.label}
                 </NavLink>
               ))}
               {showCatchUp ? (

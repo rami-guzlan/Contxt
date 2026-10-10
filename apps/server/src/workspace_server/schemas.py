@@ -636,3 +636,78 @@ class SkillPushIn(Body):
 
 class SuggestionDismissIn(Body):
     key: str = Field(min_length=1, max_length=80)
+
+
+# ------------------------------------------------------------------------- goals (G1)
+
+
+class ProjectObjectiveIn(Body):
+    objective: str = Field(max_length=1000)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class GoalIn(Body):
+    """A goal from the coach's draft or the form; `board` fills the plan template's notes,
+    `first_steps` become suggestions, `project` links a project to it."""
+
+    title: str = Field(min_length=1, max_length=160)
+    why: str = Field(default="", max_length=600)
+    level: Literal["yours", "agent"] = "yours"
+    kept_by: str | None = Field(default=None, max_length=120)
+    measure: dict[str, Any] | None = None
+    due: str | None = Field(default=None, max_length=10)
+    cadence: Literal["daily", "weekly", "monthly"] = "weekly"
+    serves: list[str] | None = Field(default=None, max_length=10)
+    template: Literal["plan", "launch", "grow", "blank"] = "plan"
+    board: dict[str, str] | None = None
+    first_steps: list[str] = Field(default_factory=list, max_length=3)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class GoalChangeIn(Body):
+    title: str | None = Field(default=None, min_length=1, max_length=160)
+    why: str | None = Field(default=None, max_length=600)
+    measure: dict[str, Any] | None = None
+    due: str | None = Field(default=None, max_length=10)
+    cadence: Literal["daily", "weekly", "monthly"] | None = None
+    status: Literal["active", "paused", "met", "missed", "dropped", "retired"] | None = None
+    serves: list[str] | None = Field(default=None, max_length=10)
+    reason: str = Field(default="", max_length=500)
+
+
+class GoalCheckInIn(Body):
+    call: Literal["on_track", "at_risk", "off_track"]
+    value: float | None = None
+    line: str = Field(default="", max_length=300)
+
+
+class GoalBoardIn(Body):
+    layout: dict[str, Any]
+    expected_version: int | None = None
+
+
+class GoalSuggestionIn(Body):
+    accept: bool
+
+
+class GoalDecisionIn(Body):
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class GoalLinkIn(Body):
+    project: str = Field(min_length=1, max_length=200)
+    linked: bool = True
+
+
+class GoalCoachTurn(Body):
+    role: Literal["you", "coach"]
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class GoalCoachIn(Body):
+    messages: list[GoalCoachTurn] = Field(min_length=1, max_length=8)
+    model: str | None = Field(default=None, max_length=140)
+
+
+class GoalSettingsIn(Body):
+    weekly_review: bool

@@ -1195,6 +1195,18 @@ class Brain:
             raise NotFound(f"The Brain follows no project {project_id}.")
         return found
 
+    def project_objective(
+        self, who: Principal, project_id: str, objective: str, *, reason: str
+    ) -> dict[str, Any] | None:
+        """Change a project's objective: the output it is chasing, which opens every brief in
+        the project. Like its baseline, a change says why and makes an undo point."""
+        who.require("brain.govern")
+        text = " ".join(str(objective or "").split())
+        if not " ".join(str(reason or "").split()):
+            raise ValidationFailed("Say in a few words why the objective changes.", field="reason")
+        self.rt.brain.project_objective(project_id, text, reason=reason)
+        return self.project(who, project_id)
+
     def project_update(
         self,
         who: Principal,
