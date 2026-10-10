@@ -433,6 +433,7 @@ class BuiltinChecks:
         cases: list[dict[str, Any]] = [
             {
                 "id": f"HC-problem-{i + 1}",
+                "gates": ["health.problems"],
                 "suite": "health",
                 "kind": "table",
                 "title": text[:90],
@@ -449,6 +450,7 @@ class BuiltinChecks:
         cases += [
             {
                 "id": f"HC-warning-{i + 1}",
+                "gates": ["health.warnings"],
                 "suite": "health",
                 "kind": "table",
                 "title": text[:90],
@@ -663,6 +665,7 @@ class BuiltinChecks:
         return {
             "id": f"{prefix}-{row['id']}",
             "suite": label,
+            "gates": ["eval.must_recall.holdout", "eval.noise_share"] if prefix == "eval" else [],
             "kind": "retrieval",
             "title": " ".join(str(row.get("request") or "").split())[:90],
             "sensitive": False,

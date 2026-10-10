@@ -210,3 +210,81 @@ def test_a_workspace_with_no_brain_says_so(tmp_path, clock):
 @pytest.mark.parametrize("bad", ["", "../health", "everything"])
 def test_only_the_listed_checks_start(owner, bad):
     assert owner.post(f"{PREFIX}/runs", json={"kind": bad}).status_code == 422
+
+
+# ------------------------------------------------------------------ watch it work
+def ledger_counts(runtime):
+    ledger = runtime.brain.brain.ledger
+    with ledger._connect() as conn:
+        return {
+            table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("sessions", "packets", "deliveries", "usage_daily")
+        }
+
+
+def test_a_typed_request_is_drawn_stage_by_stage_and_leaves_no_trace(owner, runtime):
+    before = ledger_counts(runtime)
+    files = vault_files(runtime.settings.brain_vault)
+    drawn = owner.ok(
+        owner.post(f"{PREFIX}/watch", json={"request": "Write a headline for the site"})
+    )
+    assert drawn["test"] is True and drawn["client"] == "contxt-test" and drawn["read_only"] is True
+    assert [s["id"] for s in drawn["stages"]] == [
+        "read",
+        "gate",
+        "admission",
+        "search",
+        "cut",
+        "second",
+        "fit",
+    ]
+    by_id = {s["id"]: s for s in drawn["stages"]}
+    assert by_id["read"]["state"] == "done" and by_id["read"]["in"] == 1
+    assert by_id["search"]["in"] == len(runtime.brain.brain.state().index.notes)
+    assert by_id["fit"]["out"] >= 1 and drawn["tokens"] > 0 and drawn["ms"] >= 0
+    if not builtin_checks.engine_ready():
+        for waiting in ("gate", "cut", "second"):
+            assert by_id[waiting]["state"] == "waiting"
+            assert "Waits for the retrieval engine (build step 3b)" in by_id[waiting]["note"]
+    assert drawn["notes"], "the notes the request would get are listed with why"
+    assert ledger_counts(runtime) == before, "it counts as no request, in usage or in evals"
+    assert vault_files(runtime.settings.brain_vault) == files
+
+
+def test_a_case_of_the_built_in_checks_is_routed_again_with_its_labels(owner, runtime):
+    add_eval_cases(runtime.settings.brain_vault)
+    started, _live = run(owner, "eval")
+    before = ledger_counts(runtime)
+    drawn = owner.ok(
+        owner.post(f"{PREFIX}/watch", json={"run": started["run"], "case": "evalcases-headline"})
+    )
+    assert drawn["request"] == "Write a headline for the site" and not drawn.get("from_record")
+    assert drawn["labels"], "the case's labels travel with it so notes can be colored"
+    assert ledger_counts(runtime) == before
+
+
+@pytest.mark.parametrize("body", [{}, {"request": "   "}, {"request": "x" * 2001}])
+def test_watch_needs_a_real_request(owner, body):
+    assert owner.post(f"{PREFIX}/watch", json=body).status_code == 422
+
+
+def test_the_engines_own_record_fills_the_stages_that_wait():
+    from workspace_server import watch
+
+    engine = {
+        "mode": "engine",
+        "layers": {
+            "gate": {"in": 1, "out": 1, "ms": 12.5},
+            "relevance": {
+                "in": 40,
+                "out": 9,
+                "ms": 80.0,
+                "dropped": [{"id": "n1", "title": "Menu", "why": "below the cut"}],
+            },
+        },
+    }
+    filled = watch.engine_stages(engine)
+    assert filled["gate"]["state"] == "done" and filled["gate"]["ms"] == 12.5
+    assert (filled["cut"]["in"], filled["cut"]["out"]) == (40, 9)
+    assert filled["cut"]["dropped"][0]["why"] == "below the cut"
+    assert watch.engine_stages(None) == {} and watch.engine_stages({"layers": "x"}) == {}

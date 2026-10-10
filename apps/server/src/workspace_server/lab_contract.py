@@ -286,6 +286,14 @@ class Case(BaseModel):
     request: str | None = None
     view: dict[str, Any] = Field(default_factory=dict)
 
+    def behind(self, gate: str) -> bool:
+        """Whether this case is one behind a gate: it names the gate in `gates`, or, when it
+        names none, its suite is the gate's first word (retrieval.noise_share: retrieval)."""
+        named = (self.model_extra or {}).get("gates")
+        if isinstance(named, list):
+            return gate in named
+        return bool(self.suite) and self.suite == gate.split(".", 1)[0]
+
     def listing(self) -> dict[str, Any]:
         """The row the Cases list shows: everything but the view."""
         return {
@@ -417,6 +425,7 @@ class Results:
         kind: str | None = None,
         suite: str | None = None,
         passed: bool | None = None,
+        gate: str | None = None,
         offset: int = 0,
         limit: int = 100,
     ) -> dict[str, Any]:
@@ -435,6 +444,8 @@ class Results:
             if suite and case.suite != suite:
                 continue
             if passed is not None and case.passed is not passed:
+                continue
+            if gate and not case.behind(gate):
                 continue
             rows.append(case)
         skipped += self.skipped

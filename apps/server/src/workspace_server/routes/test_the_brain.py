@@ -26,6 +26,13 @@ class StartIn(BaseModel):
     request: str | None = Field(default=None, max_length=2000)
 
 
+class WatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request: str | None = Field(default=None, max_length=2000)
+    run: str | None = Field(default=None, max_length=120)
+    case: str | None = Field(default=None, max_length=120)
+
+
 class LabIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     folder: str = Field(min_length=1, max_length=1000)
@@ -74,16 +81,24 @@ def cases(
     kind: str | None = None,
     suite: str | None = None,
     result: str | None = Query(default=None, pattern="^(pass|fail)$"),
+    gate: str | None = Query(default=None, max_length=120),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, Any]:
     passed = None if result is None else result == "pass"
-    return testing.cases(run, kind=kind, suite=suite, passed=passed, offset=offset, limit=limit)
+    return testing.cases(
+        run, kind=kind, suite=suite, passed=passed, gate=gate, offset=offset, limit=limit
+    )
 
 
 @router.get("/runs/{run}/cases/{case_id}")
 def case(run: str, case_id: str, testing: Testing) -> dict[str, Any]:
     return testing.case(run, case_id)
+
+
+@router.get("/overview")
+def overview(testing: Testing) -> dict[str, Any]:
+    return testing.overview()
 
 
 @router.get("/gates")
@@ -104,6 +119,12 @@ def live(testing: Testing, after: int = Query(default=0, ge=0)) -> dict[str, Any
 @router.post("/runs", status_code=202)
 def start(body: StartIn, testing: Testing) -> dict[str, Any]:
     return testing.start(body.kind, body.suite, body.confirm, body.request)
+
+
+@router.post("/watch")
+def watch(body: WatchIn, testing: Testing) -> dict[str, Any]:
+    """Read only: routes the request on this app's Brain and records nothing."""
+    return testing.watch(request=body.request, run=body.run, case=body.case)
 
 
 @router.post("/runs/{run}/cancel")

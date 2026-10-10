@@ -490,6 +490,8 @@ def test_only_the_owner_can_see_or_use_any_of_it(client, owner, model, connected
         ("post", f"{PREFIX}/runs"),
         ("post", f"{PREFIX}/runs/x/cancel"),
         ("post", f"{PREFIX}/lab"),
+        ("post", f"{PREFIX}/watch"),
+        ("get", f"{PREFIX}/overview"),
         ("delete", f"{PREFIX}/lab"),
     ]
     for who, expected in ((anonymous, 401), (model, 403)):
@@ -508,6 +510,7 @@ def test_the_page_writes_nothing_but_starting_and_cancelling_runs(
         ("POST", f"{PREFIX}/runs/{{run}}/cancel"),
         ("POST", f"{PREFIX}/lab"),
         ("DELETE", f"{PREFIX}/lab"),
+        ("POST", f"{PREFIX}/watch"),  # read only: routes a request and records nothing
     }
     from workspace_server.routes import test_the_brain as page
 
@@ -536,3 +539,60 @@ def test_the_page_writes_nothing_but_starting_and_cancelling_runs(
         owner.ok(owner.get(path))
     assert tree_listing(connected) == lab_before
     assert tree_listing(runtime.settings.brain_vault) == brain_before
+
+
+# ------------------------------------------------------------------ the overview
+def test_the_overview_rolls_the_gates_up_by_pillar(owner, connected):
+    empty = owner.ok(owner.get(f"{PREFIX}/overview"))
+    assert [p["id"] for p in empty["pillars"]] == ["retrieval", "briefs", "management", "agent"]
+    assert all(p["measured"] == 0 for p in empty["pillars"]), "nothing is measured before a run"
+    run_fast(owner)
+    found = owner.ok(owner.get(f"{PREFIX}/overview"))
+    retrieval, briefs, _management, agent = found["pillars"]
+    assert (retrieval["total"], retrieval["measured"], retrieval["met"]) == (2, 2, 1)
+    assert retrieval["confident"] == 1
+    assert retrieval["headline"]["value"] == 0.78 and retrieval["headline"]["ci"] == [0.69, 0.86]
+    assert (briefs["total"], briefs["met"]) == (1, 1)
+    assert (agent["total"], agent["measured"]) == (1, 0)
+    assert found["effect"]["value"] == 0.21 and found["effect"]["ci"] == [0.05, 0.36]
+    assert {r["state"] for r in found["ready"]} >= {"ready", "waiting_step", "pc_only"}
+    assert found["labels"]["sitting"]["state"] == "ready"
+    assert found["last"]["kind"] == "fast"
+
+
+def test_a_labs_saved_case_is_drawn_from_its_own_record_and_nothing_is_rerun(owner, connected):
+    started, _live = run_fast(owner)
+    drawn = owner.ok(
+        owner.post(f"{PREFIX}/watch", json={"run": started["run"], "case": "RT-demo-1"})
+    )
+    assert drawn["from_record"] is True and drawn["test"] is True and drawn["read_only"] is True
+    fit = next(s for s in drawn["stages"] if s["id"] == "fit")
+    assert [d["title"] for d in fit["dropped"]] == ["Open day dates"]
+    assert drawn["request"] == "Write an invite for the autumn open day."
+
+
+def test_a_gate_opens_the_cases_behind_it_worst_first(owner, connected):
+    started, _live = run_fast(owner)
+    behind = owner.ok(
+        owner.get(
+            f"{PREFIX}/runs/{started['run']}/cases",
+            params={"gate": "retrieval.needed_recall.heldout"},
+        )
+    )
+    assert [c["id"] for c in behind["cases"]] == ["RT-demo-1"], "the suite is the gate's first word"
+    none = owner.ok(
+        owner.get(f"{PREFIX}/runs/{started['run']}/cases", params={"gate": "agent.precision"})
+    )
+    assert none["total"] == 0
+    named = os.path.join(connected, "results", "runs", started["run"], "cases.jsonl")
+    with open(named, encoding="utf-8") as handle:
+        lines = [json.loads(line) for line in handle]
+    for line in lines:
+        if line["id"] == "OC-demo-1":
+            line["gates"] = ["agent.precision"]
+    with open(named, "w", encoding="utf-8") as handle:
+        handle.writelines(json.dumps(line) + "\n" for line in lines)
+    again = owner.ok(
+        owner.get(f"{PREFIX}/runs/{started['run']}/cases", params={"gate": "agent.precision"})
+    )
+    assert [c["id"] for c in again["cases"]] == ["OC-demo-1"], "a case that names its gates wins"

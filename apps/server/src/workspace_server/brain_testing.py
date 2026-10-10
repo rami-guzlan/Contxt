@@ -15,6 +15,7 @@ from typing import Any
 
 from workspace_core.errors import Conflict, NotFound, ValidationFailed
 
+from . import watch as watching
 from .lab_contract import (
     ContractError,
     Lab,
@@ -324,6 +325,91 @@ class TestTheBrain:
             "metrics": metrics,
             "flipped": flipped,
         }
+
+    def overview(self) -> dict[str, Any]:
+        """Is the Brain helping? A card per pillar, the Brain's effect, what is ready and what
+        waits, label progress, and the report card's lines."""
+        gates = self.gates()["gates"]
+        pillars = []
+        for pillar_id, name in PILLARS:
+            rows = [g for g in gates if g["pillar"] == pillar_id]
+            measured = [g for g in rows if g["value"] is not None]
+            head = measured[0] if measured else None
+            pillars.append(
+                {
+                    "id": pillar_id,
+                    "name": name,
+                    "total": len(rows),
+                    "measured": len(measured),
+                    "met": sum(1 for g in rows if g["met"] is True),
+                    "confident": sum(1 for g in rows if g["met_confident"] is True),
+                    "headline": {k: head[k] for k in ("id", "name", "value", "ci", "bar")}
+                    if head
+                    else None,
+                    "trend": head["trend"] if head else [],
+                }
+            )
+        results = self.results()
+        summaries = results.summaries(limit=40) if results else []
+        effect = None
+        card = None
+        for summary in summaries:
+            if summary.valid and effect is None:
+                for metric in summary.metrics:
+                    if metric.id.lower() == "o1" or metric.id.lower().endswith("brain_effect"):
+                        effect = dict(metric.model_dump(exclude_none=True), run=summary.run)
+                        break
+            if card is None and isinstance(summary.model_extra, dict):
+                card = summary.model_extra.get("card")
+        status = None
+        try:
+            status = self._status(self.lab())
+        except ContractError:
+            status = None
+        last = summaries[0] if summaries else None
+        return {
+            "source": "lab" if self.connected_folder() else "builtin",
+            "pillars": pillars,
+            "effect": effect,
+            "ready": status.ready if status else [],
+            "labels": status.labels if status else {},
+            "card": card,
+            "last": {"run": last.run, "kind": last.kind, "ended": last.ended, "valid": last.valid}
+            if last
+            else None,
+            "lock_holder": status.lock_holder() if status else None,
+        }
+
+    def watch(
+        self, *, request: str | None = None, run: str | None = None, case: str | None = None
+    ) -> dict[str, Any]:
+        """One request drawn stage by stage. Typed, it runs read only on this app's Brain and
+        records nothing. A saved case of a Lab is drawn from the Lab's own record; a case of
+        the built-in checks is routed again, read only, with the labels it carried."""
+        labels: dict[str, str] = {}
+        if run and case:
+            saved = self.case(run, case)
+            for note in (saved.get("view") or {}).get("notes") or []:
+                labels[str(note.get("id"))] = str(note.get("label") or "")
+            if self.connected_folder():
+                return dict(watching.from_record(saved), request=saved.get("request"), case=case)
+            text = str(saved.get("request") or "")
+        else:
+            text = " ".join(str(request or "").split())
+        if not text:
+            raise ValidationFailed("Type a request, or pick a case.", field="request")
+        if len(text) > 2000:
+            raise ValidationFailed("Keep the request under 2,000 characters.", field="request")
+        adapter = self.builtin.adapter if self.builtin else None
+        if adapter is None:
+            raise Conflict("This workspace has no Brain to read yet. Run contxt setup first.")
+        try:
+            found = watching.run_request(adapter, text)
+        except ValueError as exc:
+            raise ValidationFailed(str(exc), field="request") from None
+        for note in found["notes"]:
+            note["label"] = labels.get(note["id"], "")
+        return dict(found, request=text, case=case, labels=labels)
 
     # ----- running
     def start(
