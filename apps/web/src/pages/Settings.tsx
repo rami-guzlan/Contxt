@@ -36,12 +36,14 @@ import { entryUrl } from "./brain/shared";
 import { ConnectionsPage } from "./Connections";
 import { PRESETS } from "./FirstRun";
 import { AiWork, EarlierWorkspace } from "./Misc";
+import { TestTheBrain } from "./settings/test-the-brain/TestTheBrain";
 
 const TABS = [
   { id: "apps", label: "Your AI apps" },
   { id: "goals", label: "Your goals" },
   { id: "approval", label: "Approval" },
   { id: "computer", label: "On this computer" },
+  { id: "test", label: "Test the Brain" },
   { id: "backups", label: "Backups" },
   { id: "about", label: "About" },
 ] as const;
@@ -63,6 +65,7 @@ export function SettingsPage() {
       {tab === "goals" ? <YourGoals /> : null}
       {tab === "approval" ? <Approval /> : null}
       {tab === "computer" ? <ThisComputer /> : null}
+      {tab === "test" ? <TestTheBrain /> : null}
       {tab === "backups" ? <Backups /> : null}
       {tab === "about" ? <About /> : null}
     </div>
