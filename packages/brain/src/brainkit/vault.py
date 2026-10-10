@@ -355,6 +355,35 @@ class Vault:
         util.append_jsonl(self.path(relpath), record)
         return relpath
 
+    def append_goal_entry(self, goal_id: str, record: dict) -> str:
+        """A line in a goal's journal: a check-in, an agent's progress note, a decision."""
+        relpath = f"journal/goals/{goal_id}.jsonl"
+        self.touch(self.path(relpath))
+        util.append_jsonl(self.path(relpath), record)
+        return relpath
+
+    def goal_journal(self, goal_id: str) -> list[dict]:
+        return util.read_jsonl(self.path("journal", "goals", f"{goal_id}.jsonl"))
+
+    def write_goal_plan(self, goal_id: str, text: str) -> str:
+        """A goal's shared plan (`goals/<id>/plan.md`): generated from the board's shared
+        blocks, rewritten on save. Empty text removes it."""
+        relpath = f"goals/{goal_id}/plan.md"
+        if not text.strip():
+            self.remove_file(relpath)
+            return relpath
+        self.touch(self.path(relpath))
+        os.makedirs(os.path.dirname(self.path(relpath)), exist_ok=True)
+        util.atomic_write(self.path(relpath), text.strip() + "\n")
+        return relpath
+
+    def goal_plan(self, goal_id: str) -> str:
+        try:
+            with open(self.path("goals", goal_id, "plan.md"), encoding="utf-8") as handle:
+                return handle.read()
+        except FileNotFoundError:
+            return ""
+
     def append_decision(self, record: dict) -> str:
         relpath = "journal/decisions.jsonl"
         util.append_jsonl(self.path(relpath), record)

@@ -638,6 +638,10 @@ export interface BrainProject {
   updates: number;
   /** Where its notes are filed, area/topic. */
   topic: string;
+  /** The output it is chasing: it opens every brief in the project. */
+  objective?: string;
+  /** The goals it serves. */
+  goals?: string[];
 }
 
 /** One progress update on a project, as its journal keeps it. */
@@ -677,6 +681,10 @@ export interface BrainProjectDetail {
   updates: ProjectUpdate[];
   files: ProjectFile[];
   notes: { id: string; title: string; summary: string; kind: string; type: string | null; added: string | null }[];
+  /** The output it is chasing; it opens every brief in the project. */
+  objective?: string;
+  /** The goals it serves. */
+  goals?: string[];
 }
 
 /** What filing a file did: filed at once (with an undo point) or waiting for review. */
@@ -1321,7 +1329,9 @@ export interface Offer {
 
 export type Nudge =
   | { key: string; type: "start_project"; name: string; capture: { id: string; title: string }; title: string }
-  | { key: string; type: "add_goal"; subject: string; count: number; captures: { id: string; title: string }[]; title: string };
+  | { key: string; type: "add_goal"; subject: string; count: number; captures: { id: string; title: string }[]; title: string }
+  /** An agent's "Goals it serves" line that names no goal. */
+  | { key: string; type: "agent_goal"; agent: string; line: string; title: string };
 
 /** Offered once: what the earlier workspace holds that the Brain does not. */
 export interface LegacyOffer {
@@ -1410,6 +1420,10 @@ export interface CatchUpPlan {
   legacy: LegacyOffer | null;
   nudges: Nudge[];
   preset: Preset | null;
+  /** Agent goals that slipped (one card per slip). */
+  goals?: GoalCard[];
+  /** Suggested next steps for your goals, a quick yes grouped by goal. */
+  goal_steps?: { goal: string; title: string; steps: GoalSuggestion[] }[];
 }
 
 // ---------------------------------------------------------------- goals and built-in skills
@@ -1897,6 +1911,8 @@ export interface AgentAction {
   id: string;
   label: string;
   blurb: string;
+  /** The goal it works toward ("Why I'm doing this"), when that goal is on. */
+  serves?: { id: string; title: string; words: string } | null;
 }
 
 /** Something the agent asks the owner, with the one-tap answers its kind allows. */
@@ -1937,6 +1953,8 @@ export interface AgentRun {
 export interface AgentOverview {
   model: string;
   suggestions: boolean;
+  /** The goals it keeps (on once you turn them on in Settings > Alignment). */
+  goals?: GoalView[];
   actions: AgentAction[];
   questions: AgentQuestion[];
   runs: AgentRun[];
@@ -2401,4 +2419,169 @@ export interface SkillBroughtIn {
   files: number;
   /** What the Brain does not keep in a skill, with why. */
   skipped: string[];
+}
+
+// ---------------------------------------------------------------- the goal ladder (goals plan G1)
+
+export type GoalCall = "on_track" | "at_risk" | "off_track";
+export type GoalStatus =
+  | GoalCall
+  | "needs_attention"
+  | "no_data"
+  | "not_checked_in"
+  | "paused"
+  | "met"
+  | "missed"
+  | "dropped"
+  | "retired";
+
+export interface GoalMeasure {
+  kind: "enter" | "at_most" | "at_least" | "reach_by" | "every_period" | "trend" | "judgment";
+  signal?: string;
+  params?: Record<string, number>;
+  target?: number;
+  unit?: string;
+}
+
+/** One goal as the app shows it: yours, or an agent's. */
+export interface GoalView {
+  id: string;
+  title: string;
+  level: "yours" | "agent";
+  kept_by: string | null;
+  why: string;
+  serves: string[];
+  measure: GoalMeasure | null;
+  measure_words: string;
+  due: string | null;
+  cadence: "daily" | "weekly" | "monthly";
+  lifecycle: "active" | "paused" | "met" | "missed" | "dropped" | "retired";
+  started: string | null;
+  status: GoalStatus;
+  words: string;
+  /** Your latest call, when it still stands. */
+  call: GoalCall | null;
+  /** A computed measure that disagrees with your call; your call stands. */
+  flag: string;
+  stale: boolean;
+  now: number | null;
+  target: number | null;
+  unit: string | null;
+  trend: number[];
+  checked_at: string | null;
+  checked_in_at: string | null;
+  check_in_due: boolean;
+  projects: { id: string; title: string; status: string }[];
+  shared_plan: boolean;
+  /** Suggested next steps waiting (your goals, on the ladder). */
+  suggestions?: number;
+}
+
+export interface GoalSignal {
+  name: string;
+  label: string;
+  params: Record<string, number>;
+  available: boolean;
+  waits_for: string | null;
+  now: number | null;
+}
+
+export interface Ladder {
+  purpose: { id: string; exists: boolean; text: string; signals: string[] };
+  yours: GoalView[];
+  agents: GoalView[];
+  has_goals: boolean;
+  check_ins_due: number;
+  starters: { id: string; title: string; on: boolean }[];
+  signals: GoalSignal[];
+}
+
+export interface GoalBlock {
+  id: string;
+  type: "note" | "checklist" | "doc" | "projects" | "links" | "decisions";
+  title: string;
+  shared: boolean;
+  collapsed: boolean;
+  column: 0 | 1;
+  text?: string;
+  items?: { text: string; done: boolean }[];
+  doc_id?: string;
+  doc_title?: string;
+  links?: { title: string; url: string }[];
+}
+
+export interface GoalBoard {
+  columns: 1 | 2;
+  template: string;
+  blocks: GoalBlock[];
+  version: number;
+}
+
+export interface GoalSuggestion {
+  id: string;
+  text: string;
+  source: string;
+  at: string;
+  status: "waiting" | "accepted" | "dismissed";
+}
+
+export interface GoalJournalEntry {
+  at: string;
+  kind: "check_in" | "decision" | "progress";
+  by: string;
+  call?: GoalCall;
+  value?: number | null;
+  line?: string;
+  text?: string;
+}
+
+/** A goal with no per-page extras: what the shared pieces read. */
+export type GoalBase = Omit<GoalView, "suggestions">;
+
+export interface GoalPage extends GoalBase {
+  journal: GoalJournalEntry[];
+  checks: { at: string; value: number | null; status: string; source: "you" | "code"; note: string }[];
+  plan: string;
+  context: string;
+  board: GoalBoard;
+  suggestions: GoalSuggestion[];
+  templates: { id: string; label: string }[];
+}
+
+export interface GoalDraft {
+  title: string;
+  why: string;
+  due: string;
+  cadence: "daily" | "weekly" | "monthly";
+  measure: GoalMeasure | null;
+  board: { wish?: string; outcome?: string; obstacle?: string; plan?: string };
+  first_steps: string[];
+  project: string;
+}
+
+export interface GoalCoachResult {
+  questions?: string[];
+  draft?: GoalDraft;
+  error?: string;
+}
+
+export interface GoalsHome {
+  has_goals: boolean;
+  purpose: string;
+  check_ins: GoalView[];
+  agent_goals: GoalView[];
+  review: {
+    goals: { id: string; title: string; words: string; flag: string | null }[];
+    agent_goals: { id: string; title: string; words: string }[];
+    notes: { goal: string; at: string; line: string }[];
+    next_steps: { goal: string; text: string }[];
+  } | null;
+}
+
+/** An agent goal that slipped, waiting in Catch up (one card per slip). */
+export interface GoalCard {
+  key: string;
+  goal: GoalView;
+  why: string;
+  at: string;
 }

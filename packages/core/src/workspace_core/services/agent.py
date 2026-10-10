@@ -43,6 +43,12 @@ from workspace_core.ids import new_id
 from .brain import Brain
 from .runtime import Runtime
 
+# The goal each action works toward, among the knowledge agent's four (brainkit/ladder.py).
+ACTION_GOALS = {
+    "freshen-up": "goal-notes-checked",
+    "fill-gaps": "goal-questions-answered",
+    "check-alignment": "goal-rules-reach",
+}
 ACTIONS: dict[str, dict[str, str]] = {
     "tidy-repeats": {
         "label": "Find repeats",
@@ -185,10 +191,33 @@ class KnowledgeAgent:
         questions waiting, and the last runs (newest first)."""
         who.require("brain.read")
         state = self._state()
+        goals = [
+            g
+            for g in self.rt.brain.ladder().get("agents") or []
+            if g.get("kept_by") == "knowledge-agent"
+        ]
+        kept = {g["id"]: g for g in goals}
         return {
             "model": state.get("model") or DEFAULT_MODEL,
             "suggestions": state.get("suggestions", True) is not False,
-            "actions": [{"id": k, **v} for k, v in ACTIONS.items()],
+            # Its goals first, and for each action the goal it serves ("Why I'm doing this").
+            "goals": goals,
+            "actions": [
+                {
+                    "id": k,
+                    **v,
+                    "serves": (
+                        {
+                            "id": ACTION_GOALS[k],
+                            "title": kept[ACTION_GOALS[k]]["title"],
+                            "words": kept[ACTION_GOALS[k]]["words"],
+                        }
+                        if ACTION_GOALS.get(k) in kept
+                        else None
+                    ),
+                }
+                for k, v in ACTIONS.items()
+            ],
             "questions": [q for q in state.get("questions") or [] if q.get("status") == "open"],
             "runs": list(reversed(state.get("runs") or [])),
         }

@@ -5915,3 +5915,190 @@ li.missing {
   cursor: pointer;
   color: var(--muted);
 }
+
+/* Goals and Projects (goals plan G1): goal cards, a goal's page with its board and rail, the
+   coach panel, Alignment's agent goal rows and drawer, and Home's strip. Status words carry a
+   shape as well as a color. */
+.goal-cards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.goal-card header {
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.goal-card h3 {
+  margin: 0;
+}
+.goal-status {
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+.goal-on_track,
+.goal-met {
+  color: var(--done);
+}
+.goal-at_risk,
+.goal-needs_attention {
+  color: var(--active);
+}
+.goal-off_track,
+.goal-missed {
+  color: var(--blocked);
+}
+.goal-no_data,
+.goal-not_checked_in,
+.goal-paused,
+.goal-retired,
+.goal-dropped {
+  color: var(--neutral);
+}
+.flag {
+  border-left: 3px solid var(--active);
+  padding: 0.2rem 0.6rem;
+  margin: 0.3rem 0;
+}
+.trend {
+  vertical-align: middle;
+  color: var(--accent);
+}
+.check-in {
+  gap: 0.5rem;
+  align-items: center;
+}
+.check-in .calls {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  gap: 0.6rem;
+}
+input.narrow {
+  width: 6rem;
+}
+.grow {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.goal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .goal-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.goal-board > header {
+  align-items: center;
+  gap: 0.6rem;
+}
+.goal-board h2 {
+  margin: 0;
+}
+.board-columns {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+.board-columns.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 640px) {
+  .board-columns.cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.board-column {
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+}
+.board-block header {
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.board-block textarea {
+  width: 100%;
+}
+.block-title {
+  font-weight: 600;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0.1rem 0;
+  min-width: 8rem;
+}
+.checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.goal-rail .updates {
+  padding-left: 1rem;
+}
+.link.current {
+  font-weight: 600;
+  text-decoration: underline;
+}
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(30rem, 100%);
+  overflow-y: auto;
+  z-index: 40;
+  border-radius: 0;
+  box-shadow: -4px 0 16px rgb(0 0 0 / 0.12);
+  background: var(--surface);
+}
+.side-panel > header {
+  justify-content: space-between;
+  align-items: baseline;
+}
+.coach-turns {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.coach-turns .coach {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.5rem;
+}
+.goal-rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.goal-row {
+  gap: 0.7rem;
+  align-items: center;
+  border-left: 2px solid var(--border);
+  padding-left: 0.5rem;
+}
+.goals-strip {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0.5rem 0 1rem;
+}
+.goals-strip p {
+  margin: 0;
+}
+dl.differ div {
+  margin-bottom: 0.6rem;
+}
+dl.differ dt {
+  font-weight: 600;
+}
+dl.differ dd {
+  margin: 0.1rem 0 0;
+}

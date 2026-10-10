@@ -33,6 +33,14 @@ import type {
   DifferenceExample,
   Dictation,
   Goals,
+  GoalBoard,
+  GoalCall,
+  GoalCoachResult,
+  GoalDraft,
+  GoalPage,
+  GoalView,
+  GoalsHome,
+  Ladder,
   MadeFrom,
   MoveInKept,
   MoveInKind,
@@ -215,7 +223,7 @@ export const useBrainProject = (id: string) =>
 export function useCreateBrainProject() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: { name: string; summary: string; aliases: string[] }) =>
+    mutationFn: (body: { name: string; summary: string; aliases: string[]; objective?: string; goals?: string[] }) =>
       post<BrainProject>("/api/brain/projects", body),
     onSuccess: () => invalidate(keys.brain, keys.events, keys.onboarding),
   });
@@ -1587,3 +1595,84 @@ export const useWorkAttention = () =>
       }>("/api/work/attention"),
     staleTime: 60_000,
   });
+
+// ------------------------------------------------------------------ goals and projects (G1)
+
+export const goalsKey = ["goals"] as const;
+
+export const useLadder = (signals = false) =>
+  useQuery({ queryKey: [...goalsKey, "ladder", signals], queryFn: () => get<Ladder>(`/api/goals${signals ? "?signals=true" : ""}`) });
+
+export const useGoal = (id: string) =>
+  useQuery({ queryKey: [...goalsKey, "one", id], queryFn: () => get<GoalPage>(`/api/goals/${encodeURIComponent(id)}`), enabled: !!id });
+
+export const useGoalsHome = () => useQuery({ queryKey: [...goalsKey, "home"], queryFn: () => get<GoalsHome>("/api/goals/home") });
+
+export const useGoalSettings = () =>
+  useQuery({ queryKey: [...goalsKey, "settings"], queryFn: () => get<{ weekly_review: boolean }>("/api/goals/settings") });
+
+function useGoalMutation<B, R>(fn: (body: B) => Promise<R>) {
+  const invalidate = useInvalidate();
+  // Refresh in the background: the page that asked goes on at once (a check-in stays fast).
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => {
+      void invalidate(goalsKey, keys.catchUp, [...keys.brain, "projects"]);
+    },
+  });
+}
+
+/** Set a goal from the coach's draft or the form. */
+export const useSetGoal = () =>
+  useGoalMutation((body: Partial<GoalDraft> & { title: string; template?: string; level?: "yours" | "agent"; kept_by?: string; serves?: string[] }) =>
+    post<GoalPage>("/api/goals", body),
+  );
+
+export const useChangeGoal = (id: string) =>
+  useGoalMutation((body: Record<string, unknown>) => api<GoalPage>(`/api/goals/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }));
+
+export const useCheckIn = (id: string) =>
+  useGoalMutation((body: { call: GoalCall; value?: number | null; line?: string }) =>
+    post<GoalView>(`/api/goals/${encodeURIComponent(id)}/check-in`, body),
+  );
+
+export const useSaveBoard = (id: string) =>
+  useGoalMutation((board: GoalBoard) =>
+    put<GoalPage>(`/api/goals/${encodeURIComponent(id)}/board`, { layout: board, expected_version: board.version || null }),
+  );
+
+export const useAnswerStep = (id: string) =>
+  useGoalMutation(({ step, accept }: { step: string; accept: boolean }) =>
+    post<GoalPage>(`/api/goals/${encodeURIComponent(id)}/suggestions/${encodeURIComponent(step)}`, { accept }),
+  );
+
+export const useGoalDecision = (id: string) =>
+  useGoalMutation((text: string) => post<GoalPage>(`/api/goals/${encodeURIComponent(id)}/decisions`, { text }));
+
+export const useLinkProject = (id: string) =>
+  useGoalMutation(({ project, linked }: { project: string; linked: boolean }) =>
+    post<GoalPage>(`/api/goals/${encodeURIComponent(id)}/projects`, { project, linked }),
+  );
+
+export const useGoalStarters = () => useGoalMutation(() => post<Ladder>("/api/goals/starters"));
+
+export const useRunGoalChecks = () => useGoalMutation(() => post<{ checks: unknown[]; ladder: Ladder }>("/api/goals/checks"));
+
+export const useGoalSettingsSave = () =>
+  useGoalMutation((body: { weekly_review: boolean }) => put<{ weekly_review: boolean }>("/api/goals/settings", body));
+
+/** One turn of the goal coach, in the background on your chosen model. */
+export const useGoalCoach = () =>
+  useMutation({
+    mutationFn: (messages: { role: "you" | "coach"; text: string }[]) => post<WorkJob<GoalCoachResult>>("/api/goals/coach", { messages }),
+  });
+
+/** Change a project's objective, with a reason (it reaches every brief in the project). */
+export function useProjectObjective(id: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { objective: string; reason: string }) =>
+      put<BrainProjectDetail>(`/api/brain/projects/${encodeURIComponent(id)}/objective`, body),
+    onSettled: () => invalidate(keys.brain, goalsKey),
+  });
+}

@@ -19,6 +19,8 @@ You get the map of the Brain and candidates, each with a reference (`c1`, ...):
 - **The goals and projects** (`kind: goals`): the owner's own words on what the Brain is for,
   and the active projects. Compare them with the map: which goals or projects does the Brain
   say little or nothing about?
+- **Your goals that need a look** (`kind: goal`): one of the owner's goals with no check-in
+  lately, no projects, or no plan for what gets in the way.
 - **Must-holds with nothing to bring them up**: rules that must reach every brief in their
   domain, but name no words or areas that put the domain in play.
 - **Notes no AI used in months**: do they serve a goal, a project or a standing rule?
@@ -28,6 +30,8 @@ You get the map of the Brain and candidates, each with a reference (`c1`, ...):
 - For the goals and projects: `question` for each real gap, at most five, the most useful
   first: one question the owner can answer in a sentence or two (`"text"`), naming the goal or
   project it serves in `why`. Nothing missing: `fine`.
+- For a goal: `question` with one next step or question the owner can act on (a project to
+  start, a plan for the obstacle), naming the goal in `why`; `fine` when nothing helps.
 - For a must-hold: `triggers`, with the words and phrases a request would use when its domain
   is in play (`"triggers": [...]`, three to eight, lower case).
 - For an unused note: `retire` when it serves no goal, project or rule (old campaigns, one-off

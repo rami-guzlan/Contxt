@@ -57,13 +57,13 @@ function Knows() {
         {goals?.exists ? (
           <p>
             {goals.purpose}{" "}
-            <Link className="small" to="/settings?tab=goals">
+            <Link className="small" to="/settings?tab=alignment">
               All your answers
             </Link>
           </p>
         ) : (
           <p className="muted">
-            Not said yet. <Link to="/settings?tab=goals">Say what your Brain is for</Link>: everything you bring in is sifted against it.
+            Not said yet. <Link to="/settings?tab=alignment">Say what your Brain is for</Link>: everything you bring in is sifted against it.
           </p>
         )}
       </Section>

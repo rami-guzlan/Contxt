@@ -391,6 +391,11 @@ class BrainPort(Protocol):
         """Record progress on a project: one append-only update, never a rewrite."""
         ...
 
+    def project_objective(self, project_id: str, objective: str, *, reason: str) -> None:
+        """Change a project's objective (it reaches every brief in the project): a reason
+        and an undo point, like the rest of its baseline."""
+        ...
+
     def preview(
         self, request: str, *, project: str | None = None, tools: bool = True
     ) -> dict[str, Any]:
@@ -650,6 +655,28 @@ class BrainPort(Protocol):
         """Set the Brain's goals as its owner, as one undo point."""
         ...
 
+    def ladder(self, *, with_signals: bool = False) -> dict[str, Any]:
+        """The goal ladder (brainkit/ladder.py): {"purpose", "yours", "agents", "has_goals",
+        "check_ins_due", "starters", "signals"}; the signal library (each signal's value now,
+        for the measure picker) only `with_signals`."""
+        ...
+
+    def goal(self, goal_id: str) -> dict[str, Any]:
+        """One goal in full: its checks, journal, shared plan and `context` (what an AI
+        receives). NotFound when there is no such goal."""
+        ...
+
+    def goal_cards(self) -> list[dict[str, Any]]:
+        """Agent goals that slipped: one card per slip, until the goal recovers."""
+        ...
+
+    def act_goal(
+        self, action: str, goal_id: str = "", fields: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """set | change | check_in | note | plan | starters | link | check
+        (brainkit/ladder.py)."""
+        ...
+
     def builtin_skills(self) -> dict[str, Any]:
         """The skills every Brain comes with: {"skills": [{"name", "installed", ...}],
         "missing"}."""
@@ -795,6 +822,9 @@ class NoBrain:
 
     def project(self, project_id: str) -> dict[str, Any] | None:
         return None
+
+    def project_objective(self, project_id: str, objective: str, *, reason: str) -> None:
+        raise Conflict("This workspace has no Brain to keep projects in.")
 
     def project_update(self, project_id: str, **_: Any) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to follow projects in.")
@@ -978,6 +1008,35 @@ class NoBrain:
         return {"questions": [], "answers": {}, "exists": False, "updated": None, "text": ""}
 
     def set_goals(self, answers: dict[str, str]) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep goals in.")
+
+    def ladder(self, *, with_signals: bool = False) -> dict[str, Any]:
+        return {
+            "purpose": {
+                "id": "you-goals",
+                "exists": False,
+                "text": "",
+                "signals": [],
+                "rules": {},
+            },
+            "must_holds": [],
+            "yours": [],
+            "agents": [],
+            "has_goals": False,
+            "check_ins_due": 0,
+            "starters": [],
+            "signals": [],
+        }
+
+    def goal(self, goal_id: str) -> dict[str, Any]:
+        raise NotFound("This workspace has no Brain.")
+
+    def goal_cards(self) -> list[dict[str, Any]]:
+        return []
+
+    def act_goal(
+        self, action: str, goal_id: str = "", fields: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to keep goals in.")
 
     def builtin_skills(self) -> dict[str, Any]:

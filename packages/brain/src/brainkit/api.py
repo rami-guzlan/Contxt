@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 from . import config as config_mod
 from . import engine as engine_mod
+from . import frontmatter as fm
 from . import kernel as kernel_mod
 from . import models_client
 from . import packets as packets_mod
@@ -558,7 +559,13 @@ class Brain:
             header += f"\nStale ({stale}): verify before relying on it."
         if note.confidence:
             header += f"\nConfidence: {note.confidence}."
-        return Result(header + "\n\n" + note.body.strip() + "\n",
+        body = note.body.strip()
+        if note.kind == "goal":
+            # A goal opens with its shared plan: only the board blocks its owner shared.
+            plan = self.vault.goal_plan(note.id).strip()
+            if plan:
+                body += "\n\n" + plan
+        return Result(header + "\n\n" + body + "\n",
                       {"id": note.id, "path": note.path, "meta": note.meta,
                        "body": note.body, "route_key": note.route_key, "title": note.title,
                        "summary": note.summary, "kind": note.kind, "added": note.added,
@@ -741,6 +748,8 @@ class Brain:
             "aliases": list(found.aliases), "status": state.get("status") or "active",
             "active": found.active, "state": state, "brief": found.note.body.strip(),
             "route_key": found.note.route_key,
+            "objective": str(found.note.meta.get("objective") or ""),
+            "goals": fm.as_list(found.note.meta.get("goals")),
             "updates": [dict(seq=u.seq, at=u.at, summary=u.summary, changes=u.changes,
                              evidence=u.evidence, actor=u.actor)
                         for u in reversed(found.updates)],
@@ -1253,6 +1262,67 @@ class Brain:
         point (goals.py)."""
         from . import goals
         return self._write(lambda: goals.write(self, answers, **kwargs))
+
+    def ladder(self, *, with_signals=False) -> Result:
+        """The goal ladder: the purpose, your goals and agent goals, and with `with_signals`
+        the signal library with each signal's value now (ladder.py)."""
+        from . import ladder
+        found = ladder.ladder(self)
+        found["signals"] = ladder.signals(self) if with_signals else []
+        return Result(f"{len(found['yours'])} goals of yours, {len(found['agents'])} agent "
+                      "goals.", found)
+
+    def goal(self, goal_id) -> Result:
+        """One goal in full: its checks, journal and shared plan, and what an AI receives."""
+        from . import ladder
+        st = self.state()
+        note = st.index.note(str(goal_id or ""))
+        if not ladder.is_goal(note):
+            return error(f"No goal {goal_id!r}.", status="missing")
+        found = ladder.view(self, note, st=st, full=True)
+        found["context"] = ladder.context(self, note.id)
+        return Result(note.title, found)
+
+    def goal_cards(self) -> Result:
+        """Agent goals that slipped and wait for the owner in Catch up."""
+        from . import ladder
+        found = ladder.cards(self)
+        return Result(f"{len(found)} agent goals need a look.", {"cards": found})
+
+    def act_goal(self, action, goal_id="", fields=None, *, actor=None) -> Result:
+        """One change to the ladder (ladder.py): `set`, `change`, `check_in`, `note`, `plan`
+        (the board's shared blocks), `starters` (the knowledge agent's goals), `link` (a
+        project to the goal) or `check` (run the computed checks now)."""
+        from . import ladder
+        fields = dict(fields or {})
+        if action == "check":
+            return Result("Checked.", {"checks": ladder.run_checks(
+                self, force=bool(fields.get("force")), only=[goal_id] if goal_id else None)})
+        runs = {
+            "set": lambda: ladder.set_goal(
+                self, actor=actor, apply=fields.pop("apply", True) is not False, **{
+                    k: v for k, v in fields.items() if k in (
+                        "title", "why", "level", "kept_by", "measure", "due", "cadence",
+                        "serves", "goal_id")}),
+            "change": lambda: ladder.change_goal(
+                self, goal_id, fields.get("changes") or {}, reason=fields.get("reason", ""),
+                actor=actor),
+            "check_in": lambda: ladder.check_in(
+                self, goal_id, call=fields.get("call"), value=fields.get("value"),
+                line=fields.get("line", ""), actor=actor, via=fields.get("via", "app")),
+            "note": lambda: ladder.journal_note(
+                self, goal_id, fields.get("text", ""), kind=fields.get("kind", "decision"),
+                by=fields.get("by"), actor=actor),
+            "plan": lambda: ladder.write_plan(self, goal_id, fields.get("blocks") or [],
+                                              actor=actor),
+            "starters": lambda: ladder.turn_on_starters(self, actor=actor),
+            "link": lambda: ladder.link_project(self, goal_id, fields.get("project"),
+                                                linked=fields.get("linked", True) is not False,
+                                                actor=actor),
+        }
+        if action not in runs:
+            return error(f"Do one of {', '.join([*runs, 'check'])}.", status="invalid")
+        return self._write(runs[action])
 
     def move_in(self, sources, *, name="", principal=None) -> Result:
         """Read what an AI app already knows (a memory list, an instruction file, pasted text)

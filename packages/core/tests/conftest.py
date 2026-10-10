@@ -920,6 +920,25 @@ class FakeBrain:
             "text": "\n\n".join(self.goal_answers.values()) if exists else "",
         }
 
+    # The goal ladder: no goals, like a Brain that has none yet.
+    def ladder(self, *, with_signals=False):
+        from workspace_core.ports import NoBrain
+
+        return NoBrain().ladder(with_signals=with_signals)
+
+    def goal_cards(self):
+        return []
+
+    def goal(self, goal_id):
+        from workspace_core.errors import NotFound
+
+        raise NotFound(f"No goal {goal_id!r}.")
+
+    def act_goal(self, action, goal_id="", fields=None):
+        from workspace_core.errors import Conflict
+
+        raise Conflict("The test Brain keeps no goals.")
+
     def set_goals(self, answers):
         if not answers.get("purpose"):
             from workspace_core.errors import ValidationFailed

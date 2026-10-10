@@ -36,6 +36,7 @@ from .routes import (
     captures,
     compose,
     connections,
+    goals,
     legacy,
     library,
     mcp,
@@ -198,6 +199,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         compose,
         workflows,
         work,
+        goals,
         mcp,
     )
     for module in routers:
