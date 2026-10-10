@@ -324,7 +324,26 @@ export type EntryField =
 // ---- the context supply chain
 
 export interface EntryOrigin {
-  kind: "conversation" | "workspace" | "work" | "file" | "meeting" | "output" | "doc" | "you" | "import" | "unknown";
+  kind:
+    | "conversation"
+    | "workspace"
+    | "work"
+    | "file"
+    | "meeting"
+    | "output"
+    | "doc"
+    | "you"
+    | "import"
+    | "capture"
+    | "library"
+    | "project"
+    | "skill"
+    | "run"
+    | "movein"
+    | "upload"
+    | "chat"
+    | "folder"
+    | "unknown";
   ref: string;
   label: string;
 }
@@ -592,6 +611,13 @@ export interface BrainFile {
   /** How many parts of it the Brain can quote on their own. */
   sections?: number;
   work?: boolean;
+  /** Its kind in the Library (guide, reference, influence, asset), when its card says. */
+  library?: string | null;
+  /** Where it came from, as its card says (capture:recording, library, run:<id>), or inferred
+   * from its card for a file filed before origins were kept; null when nobody knows. */
+  origin?: string | null;
+  origin_inferred?: boolean;
+  scope?: string | null;
 }
 
 /** A piece of work the Brain follows across conversations (a Focus). */
@@ -1515,6 +1541,72 @@ export interface AiRequest {
 export interface AiRequestFull extends AiRequest {
   text: string | null;
   startup: { fingerprint: string; text: string | null } | null;
+  /** Its place in your private eval set, with your labels, when you labeled it. */
+  eval?: EvalCase | null;
+}
+
+/** One of your real requests in the private eval set: the notes it needed, the ones that
+ * helped, the ones that were noise, and the ones it should have had. */
+export interface EvalCase {
+  id: string;
+  packet_id: string | null;
+  request: string;
+  labeled: boolean;
+  holdout?: boolean;
+  must: string[][];
+  useful: string[];
+  noise: string[];
+  missing?: string[];
+}
+
+export interface CostLine {
+  tokens: number;
+  usd: number;
+}
+
+export type CostLineName = "fixed" | "briefs" | "rereads" | "rewrites" | "jobs";
+
+export interface CostDay {
+  day: string;
+  lines: Record<CostLineName, CostLine>;
+  total_usd: number;
+  total_tokens: number;
+  sources: Record<string, string>;
+  packets: number;
+  brief_tokens: number;
+  median_brief_by_type: Record<string, number>;
+  claude_code?: { calls: number; sessions: number; all_usd: number };
+  jobs?: { job: string; model: string; calls: number; tokens_in: number; tokens_out: number; cost: number }[];
+}
+
+export interface EvalScores {
+  cases: number;
+  must_recall: number;
+  precision: number;
+  noise_share: number;
+  avg_tokens: number;
+}
+
+/** What context cost by day and line, how big briefs are by request type, and how well they
+ * carry what a task needs. */
+export interface ReportCard {
+  days: number;
+  per_day_usd: number;
+  spend: {
+    days: CostDay[];
+    factor: { factor: number; measured: boolean; samples?: number; method?: string; at?: string };
+    overhead: { per_call_claude_code: number; per_call_other: number; kernel: number; tools: number };
+    model: string;
+    later_calls: number;
+    later_calls_source: string;
+    transcripts: boolean;
+    sessions_read: number;
+  };
+  brief_tokens_by_type: Record<string, number>;
+  eval_set: { cases: number; labeled: number; held_out: number };
+  eval?: Record<"tuning" | "holdout" | "all", EvalScores>;
+  private_eval?: Record<"tuning" | "holdout" | "all", EvalScores>;
+  text: string;
 }
 
 export interface AiRequests {
@@ -1780,15 +1872,23 @@ export interface AgentSkill {
 
 // ------------------------------------------------------------------ Work: the Library
 
-export type LibraryKind = "guide" | "reference" | "influence";
+/** What an item is for; a prompt has its own tab (Prompts) and never routes on its own. */
+export type LibraryKind = "guide" | "reference" | "influence" | "prompt" | "asset";
 export type LibraryRefresh = "never" | "weekly" | "monthly";
 
-/** A document kept whole, by what it is for: a guide to follow, a reference to read whole, an
- * influence whose taste to borrow; with where it was fetched from and what uses it. */
+/** An item kept whole, by what it is for: a guide to follow, a reference to read whole, an
+ * influence whose taste to borrow, or an asset kept byte for byte; with where it came from,
+ * where it was fetched from and what uses it. */
 export interface LibraryItem {
   path: string;
   title: string;
   kind: LibraryKind;
+  /** The file it is: a document kept as text, or an asset kept byte for byte. */
+  file_kind: "reference" | "asset";
+  mime: string;
+  origin: string | null;
+  origin_inferred: boolean;
+  scope: string | null;
   summary: string;
   entry_id: string | null;
   source_url: string | null;
@@ -1807,7 +1907,8 @@ export interface LibraryItem {
 }
 
 export interface LibraryItemFull extends LibraryItem {
-  text: string;
+  /** The document's text; null for an asset, which the page shows or offers as a file. */
+  text: string | null;
   checked_at: string | null;
 }
 
@@ -1965,20 +2066,33 @@ export interface ComposeAssembly {
   makes_files: boolean;
 }
 
-/** A prompt saved from Compose: its words with versions, its picks, and how often it ran. */
+/** A prompt kept word for word in the Brain's Library, in your own scope: its words with every
+ * version, its tags and project, what it is used with, the files that came with it, and how
+ * often it ran. Any AI connected to the Brain finds it by name; none gets it unasked. */
 export interface SavedPrompt {
+  /** Its card in the Brain. */
   id: string;
+  /** Its file, under references/prompts/. */
+  path: string;
   title: string;
   body: string;
   picks: ComposePicks;
+  tags: string[];
+  project: string | null;
+  project_title: string | null;
+  /** Where it came from: chat (saved by an AI in a conversation), upload (saved here). */
+  origin: string | null;
+  scope: string | null;
   revision: number;
   version: number;
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
   archived_at: string | null;
   uses: number;
   last_used: string | null;
-  versions: { revision: number; title: string; body: string; at: string }[];
+  /** Newest first; only on one prompt's page. */
+  versions: { revision: number; title: string; body: string; at: string | null }[];
+  attachments: { path: string; title: string; kind: "asset" | "reference" }[];
 }
 
 // ------------------------------------------------------------------ Work: Workflows

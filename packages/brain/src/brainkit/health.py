@@ -126,13 +126,21 @@ def report(brain, *, strict=False):
         warnings.append(f"{len(proposals)} proposal(s) waiting in the inbox (oldest {oldest[:10]})")
 
     owner_chain = st.scopes.chain(config.owner) or [st.scopes.root()]
-    kernel_text, fingerprint = kernel_mod.render(config, index, st.scopes, owner_chain)
-    kernel_tokens = util.tokens(kernel_text)
+    found = kernel_mod.compile(config, index, st.scopes, owner_chain)
+    fingerprint = found.fingerprint
+    kernel_tokens = found.tokens
     budget = int(config.budgets.get("kernel_tokens") or 6000)
-    facts.append(f"kernel for {owner_chain[-1]}: {kernel_tokens} tokens (budget {budget}), "
-                 f"fingerprint {fingerprint}")
+    layers = ", ".join(f"{layer.name} {layer.tokens}/{layer.budget}" for layer in found.layers
+                       if layer.scopes)
+    facts.append(f"kernel for {owner_chain[-1]}: {kernel_tokens} tokens ({layers}; target "
+                 f"{found.budget}), fingerprint {fingerprint}")
     if kernel_tokens > budget:
         problems.append(f"kernel is {kernel_tokens} tokens, over the {budget} budget")
+    elif found.over_budget():
+        # Each layer has a budget (brain.json kernel.budgets): move what is not needed on every
+        # turn into must-holds or notes, which briefs bring when a task needs them.
+        warnings.append("kernel over its target: " + "; ".join(found.over_budget())
+                        + " tokens")
     warnings += must_hold_warnings(config, index, owner_chain)
     on_disk = kernel_mod.file_fingerprint(brain.repo_root)
     if on_disk != fingerprint:

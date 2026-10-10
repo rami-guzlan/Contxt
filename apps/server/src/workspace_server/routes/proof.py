@@ -62,7 +62,10 @@ def goals_followup(body: FollowupIn, request: Request, who: Who) -> dict[str, An
     """One follow-up question on an answer in the goals interview, from Claude Code on this
     computer; none when the answer is specific enough."""
     text = request.app.state.runtime.runners.ask(
-        who, FOLLOWUP.format(question=body.question.strip(), answer=body.answer.strip()), timeout=90
+        who,
+        FOLLOWUP.format(question=body.question.strip(), answer=body.answer.strip()),
+        timeout=90,
+        job="goals",
     )
     line = " ".join(text.split()).strip()
     return {"followup": None if not line or line.upper().startswith("NONE") else line[:300]}

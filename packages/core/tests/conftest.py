@@ -87,6 +87,7 @@ class FakeBrain:
         self.challenged: list[dict] = []  # challenges raised
         self.builtin: dict[str, bool] = {"knowledge-check": False, "wrap-up": True}
         self.gathered: dict[str, list[dict]] = {}  # the knowledge agent's candidates, by action
+        self.prompt_cards: dict[str, dict] = {}  # prompts kept in the Library, by card id
         self.entries = {
             "voice-guide": BrainEntry(
                 id="voice-guide",
@@ -193,10 +194,13 @@ class FakeBrain:
                 "verify",
                 "mark",
             )
-            ok = target in self.entries if on_entry else target in waiting
+            card = self.prompt_cards.get(target) if on_entry else None
+            ok = (target in self.entries or card is not None) if on_entry else target in waiting
             if ok and not on_entry:
                 self.decided[target] = action == "approve"
                 waiting.discard(target)
+            if card is not None:
+                self._decide_prompt(card, action, item.get("fields") or {})
             status = {
                 "approve": "approved",
                 "reject": "rejected",
@@ -438,7 +442,9 @@ class FakeBrain:
         wait=False,
         library=None,
         replaces=None,
+        came_from=None,
     ):
+        self.came_from = [*getattr(self, "came_from", []), came_from]
         self.uploaded.append(
             {
                 "filename": filename,
@@ -455,6 +461,9 @@ class FakeBrain:
                 "replaces": replaces,
             }
         )
+        prior = next((c for c in self.prompt_cards.values() if c["path"] == replaces), None)
+        if (library or {}).get("library") == "prompt" or prior is not None:
+            return self._keep_prompt(filename, data, title, project, library or {}, prior)
         if self.file_policy == "apply" and not wait:
             return BrainProposal(
                 status="applied",
@@ -472,6 +481,85 @@ class FakeBrain:
             message="Waiting for the owner's review.",
             proposal_id=f"file-{len(self.uploaded)}",
         )
+
+    # ---- prompts kept in the Library: a card with the words, in the owner's own scope
+
+    def prompts(self, *, archived=False):
+        return [
+            {k: v for k, v in c.items() if k != "versions"}
+            for c in reversed(self.prompt_cards.values())
+            if c["archived"] == archived
+        ]
+
+    def prompt(self, prompt_id):
+        found = self.prompt_cards.get(prompt_id)
+        return None if found is None else dict(found, versions=list(found["versions"]))
+
+    def _keep_prompt(self, filename, data, title, project, library, prior):
+        words = data.decode("utf-8")
+        if prior is not None and prior["body"] == words:
+            return BrainProposal(
+                status="duplicate", message="Nothing new.", path=prior["path"], entry_id=prior["id"]
+            )
+        if prior is None:
+            card_id = f"prompt-{len(self.prompt_cards) + 1}"
+            prior = self.prompt_cards[card_id] = {
+                "id": card_id,
+                "path": f"references/prompts/{filename}",
+                "title": title,
+                "body": words,
+                "tags": list(library.get("tags") or []),
+                "picks": {
+                    "skills": list(library.get("prompt_skills") or []),
+                    "agent": library.get("prompt_agent") or None,
+                    "docs": list(library.get("prompt_docs") or []),
+                    "library": list(library.get("prompt_reads") or []),
+                    "project": project,
+                },
+                "project": project,
+                "project_title": None,
+                "version": 1,
+                "added": "2026-10-09",
+                "updated": "2026-10-09T12:00:00Z",
+                "origin": self.came_from[-1],
+                "scope": "person:owner",
+                "archived": False,
+                "attachments": [],
+                "versions": [],
+            }
+        else:
+            prior.update(body=words, version=prior["version"] + 1)
+        prior["versions"].insert(
+            0, {"ref": f"v{prior['version']}", "at": "2026-10-09T12:00:00Z", "body": words}
+        )
+        return BrainProposal(
+            status="applied",
+            message="Kept it.",
+            proposal_id=f"file-{len(self.uploaded)}",
+            entry_id=prior["id"],
+            path=prior["path"],
+            version=prior["version"],
+            project=project,
+            checkpoint_id="cp-1",
+        )
+
+    @staticmethod
+    def _decide_prompt(card, action, fields):
+        if action in ("archive", "unarchive"):
+            card["archived"] = action == "archive"
+        lists = {"prompt_skills": "skills", "prompt_docs": "docs", "prompt_reads": "library"}
+        for key, value in fields.items():
+            words = [w.strip() for w in str(value).split(",") if w.strip()]
+            if key == "tags":
+                card["tags"] = words
+            elif key in lists:
+                card["picks"][lists[key]] = words
+            elif key == "prompt_agent":
+                card["picks"]["agent"] = value or None
+            elif key == "title":
+                card["title"] = value
+            elif key == "project_id":
+                card["project"] = card["picks"]["project"] = value or None
 
     def projects(self):
         return list(self.started)
@@ -674,6 +762,30 @@ class FakeBrain:
 
     def kernel(self, *, tools=True):
         return {"text": "# Startup\nWrite plainly.", "tokens": 6}
+
+    def record_model_call(self, job, model, **figures):
+        self.model_calls = [*getattr(self, "model_calls", []), (job, model, figures)]
+
+    def report(self, *, days=7, claude_code=False, quality=True):
+        return {"days": days, "spend": {"days": []}, "per_day_usd": 0.0, "text": "No use."}
+
+    def replay(self, packet_ids, *, at=None, proposal=None):
+        return {"against": "now", "replayed": len(packet_ids), "changed": 0, "rows": []}
+
+    def eval_case(self, packet_id):
+        return None
+
+    def eval_label(self, packet_id, labels):
+        return {"id": packet_id, "labeled": True, **labels}
+
+    def eval_status(self):
+        return {"cases": 0, "labeled": 0, "held_out": 0, "by_type": {}}
+
+    def calibration_samples(self):
+        return [{"label": "kernel", "text": "# Startup\nWrite plainly.", "estimated": 6}]
+
+    def set_calibration(self, pairs, *, method):
+        return {"factor": 1.0, "method": method, "samples": len(pairs)}
 
     def agent_outline(self, *, brief=False):
         return {

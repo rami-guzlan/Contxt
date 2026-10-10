@@ -5132,6 +5132,46 @@ button.big,
   color: var(--active);
 }
 
+.kind-prompt {
+  color: var(--muted);
+}
+
+/* Prompts: your own words, with their tags. */
+.tag-chip {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--border);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+.prompts-filter {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.prompts-filter input[type="search"] {
+  flex: 1 1 16rem;
+}
+
+.prompt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem;
+}
+
+.prompt-head h2 {
+  margin: 0 0.3rem 0 0;
+}
+
+.prompt-form {
+  max-width: 48rem;
+}
+
 @media (max-width: 640px) {
   .library-item {
     grid-template-columns: minmax(0, 1fr);
@@ -5737,4 +5777,110 @@ li.missing {
   padding-left: 1.2rem;
   display: grid;
   gap: 0.35rem;
+}
+
+/* Activity, Cost and quality: the report card, and the labels for the private eval set. */
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.report-table th,
+.report-table td {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.report-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.report-table td .muted {
+  display: block;
+}
+
+.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.label-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.label-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 0;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.85rem;
+  background: transparent;
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--border);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text, #fff);
+}
+/* Knowledge Work: whose an item is ("Yours" in the solo app), and assets in the Library. */
+.scope-chip {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+  vertical-align: middle;
+}
+
+.asset-preview {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius);
+}
+
+.small-thumb {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+}
+
+.small-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.file-subgroup h4 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.9rem;
 }

@@ -142,10 +142,12 @@ class Models:
         *,
         json_only: bool = False,
         timeout: float = 240.0,
+        job: str = "agent",
     ) -> str:
-        """One answer to one prompt."""
+        """One answer to one prompt; what it used is counted under `job` in the cost report
+        (a local model's tokens cost nothing, but they are counted too)."""
         if choice.id == "claude":
-            return self.runners.ask(who, prompt, timeout=timeout)
+            return self.runners.ask(who, prompt, timeout=timeout, job=job)
         if choice.id.startswith("ollama:"):
             who.require("workspace.admin")
             body: dict[str, Any] = {
@@ -163,6 +165,19 @@ class Models:
                 found = self.fetch(f"{self.ollama_url}/api/chat", body, timeout=timeout)
             except (OSError, ValueError, urllib.error.URLError) as exc:
                 raise Conflict(f"The local model did not answer: {exc}") from exc
+            if isinstance(found, dict) and (
+                found.get("prompt_eval_count") or found.get("eval_count")
+            ):
+                self.runners.count_usage(
+                    job,
+                    {
+                        "model": choice.id,
+                        "tokens_in": int(found.get("prompt_eval_count") or 0),
+                        "tokens_out": int(found.get("eval_count") or 0),
+                        "cost": 0.0,
+                        "ms": int(int(found.get("total_duration") or 0) / 1e6) or None,
+                    },
+                )
             text = str(((found or {}).get("message") or {}).get("content") or "")
             return THINKING.sub("", text).strip()
         raise ValidationFailed(f"No model {choice.id} here.", field="model")

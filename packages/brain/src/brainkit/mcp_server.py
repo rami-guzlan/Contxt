@@ -30,11 +30,14 @@ PROTOCOL_DEFAULT = "2024-11-05"
 INSTRUCTIONS = ("Call get_task_context first for every task, and again for every later "
                 "message in the conversation that asks for something new: it sends only what the "
                 "conversation does not already hold, and one line for a pure edit. Pass the "
-                "user's message as they wrote it, and the session_id it returns on every later "
-                "call. If the packet lacks something the task needs, search_notes in your own "
-                "words and open a hit with get_note. Open procedures and documents only when the "
-                "packet points at them. When the person shares or works on a document (a "
-                "proposal, a brief, a deck), keep it with add_file and name its project.")
+                "user's message as they wrote it, and the session_id it returns (or the one your "
+                "session start named) on every later call. If the packet lacks something the "
+                "task needs, search_notes in your own words and open a hit with get_note. Open "
+                "procedures and documents only when the packet points at them. Capture as you "
+                "go, without being asked: a durable rule, correction, preference, decision or "
+                "changed fact the person states goes to propose_note (quote them in evidence); "
+                "a procedure you work out together to propose_skill; a document they share or "
+                "work on (a proposal, a brief, a deck) to add_file, with its project.")
 
 _STR = {"type": "string"}
 AGENT_TOOLS = [
@@ -182,7 +185,10 @@ AGENT_TOOLS = [
                     "slides and pages, so later packets quote the part a request is about; "
                     "assets are kept byte for byte. The owner's policy decides whether it is "
                     "filed at once (with an undo point) or waits for review. Skip one-off "
-                    "material (an article to summarize).",
+                    "material (an article to summarize). When the person asks you to save a "
+                    "prompt to their Brain, use kind prompt with their exact words in "
+                    "`content`, and file each file that came with it with `attach_to` naming "
+                    "the prompt's path.",
      "inputSchema": {"type": "object", "properties": {
          "source_path": {"type": "string", "description": "A local file path"},
          "content": {"type": "string", "description": "Text content, with `filename`"},
@@ -203,6 +209,13 @@ AGENT_TOOLS = [
          "replaces": {"type": "string", "description": "When this is a new version of a file "
                       "the brain already has, its path (references/brand-voice.md); in a "
                       "project, a file of the same name is found without it."},
+         "kind": {"type": "string",
+                  "enum": ["guide", "reference", "influence", "prompt", "asset"],
+                  "description": "What it is in the Library; prompt keeps the person's own "
+                                 "prompt word for word."},
+         "tags": {"type": "string", "description": "Comma-separated tags, for a prompt."},
+         "attach_to": {"type": "string", "description": "The path of the prompt (or "
+                       "document) this file came with."},
          "evidence": _STR, "session_id": _STR}}},
     {"name": "record_focus_update",
      "description": "Append one progress snapshot to a Focus journal. Never rewrites history.",
@@ -307,7 +320,9 @@ HANDLERS = {
         purpose=a.get("purpose"), topic=a.get("topic"), evidence=a.get("evidence") or "",
         replaces=a.get("replaces"), session_id=a.get("session_id"),
         project=a.get("project"), status=a.get("status"), version=a.get("version"),
-        dated=a.get("dated"), origin="chat"),
+        dated=a.get("dated"), origin="chat", came_from="chat",
+        library={k: v for k, v in (("library", a.get("kind")), ("tags", a.get("tags")),
+                                   ("attached_to", a.get("attach_to"))) if v} or None),
     "record_focus_update": lambda b, a: b.focus_update(
         a.get("focus"), a.get("summary"), a.get("changes"), evidence=a.get("evidence") or "",
         session_id=a.get("session_id") or a.get("source_session")),

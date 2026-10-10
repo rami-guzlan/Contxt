@@ -90,7 +90,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("Filed Studio rates", document["content"][0]["text"])
         self.assertIn("can use it now", document["content"][0]["text"])
         asked = self.call("get_task_context", {"request": "What is the studio day rate?"})
-        self.assertIn("From your files", asked["content"][0]["text"])
+        self.assertIn("Evidence from your files", asked["content"][0]["text"])
         self.assertIn("Day rate: 900.", asked["content"][0]["text"])
         unsafe = self.call("add_file", {"content": "TOKEN=1", "filename": ".env"})
         self.assertTrue(unsafe["isError"])

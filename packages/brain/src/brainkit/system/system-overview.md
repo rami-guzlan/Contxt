@@ -14,8 +14,9 @@ with you), people, one folder per project, and topics. Each note has a title say
 is for and a one-line summary; its kind (identity, rule, fact, state, focus) says how it is
 used. Old ids resolve through `aliases.json`.
 
-A request becomes a packet in three steps: the kernel (standing identity, rules and core
-facts, rendered into CLAUDE.md/AGENTS.md) is already in the session; `get_task_context`
+A request becomes a packet in three steps: the kernel (the company's, the role's and the
+person's standing notes; the shared part in AGENTS.md, which CLAUDE.md imports) is already in
+the session; `get_task_context`
 routes the request to what the caller's scope admits; the packet delivers only what is
 relevant and not already delivered in this session. Nothing is cached on disk except
 embeddings and the session ledger, so every request reads the current vault.

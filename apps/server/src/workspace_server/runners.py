@@ -312,8 +312,42 @@ def describe(line: str) -> list[dict[str, Any]]:
     if kind == "result":
         ok = message.get("subtype") == "success" and not message.get("is_error")
         text = str(message.get("result") or message.get("subtype") or "")
-        return [{"kind": "result", "ok": ok, "text": text.strip()}]
+        event: dict[str, Any] = {"kind": "result", "ok": ok, "text": text.strip()}
+        spent = usage_of(message)
+        if spent is not None:
+            event["usage"] = spent
+        return [event]
     return []
+
+
+def usage_of(message: dict[str, Any]) -> dict[str, Any] | None:
+    """What Claude Code says a run or an answer used, from its final message: the model, the
+    tokens in, out, read from the cache and written to it, and what it cost. None when it says
+    nothing."""
+    usage = message.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    models = message.get("modelUsage")
+    model = "claude"
+    if isinstance(models, dict) and models:
+        model = max(
+            models,
+            key=lambda name: (
+                float((models.get(name) or {}).get("costUSD") or 0)
+                if isinstance(models.get(name), dict)
+                else 0.0
+            ),
+        )
+    cost = message.get("total_cost_usd")
+    return {
+        "model": str(model),
+        "tokens_in": int(usage.get("input_tokens") or 0),
+        "tokens_out": int(usage.get("output_tokens") or 0),
+        "cache_read": int(usage.get("cache_read_input_tokens") or 0),
+        "cache_write": int(usage.get("cache_creation_input_tokens") or 0),
+        "cost": float(cost) if isinstance(cost, int | float) else None,
+        "ms": int(message.get("duration_ms") or 0) or None,
+    }
 
 
 def _text_of(content: Any) -> str:
@@ -620,11 +654,21 @@ class Runners:
         timer.start()
         return run
 
-    def ask(self, who: Principal, prompt: str, *, timeout: float = 180.0) -> str:
+    def ask(self, who: Principal, prompt: str, *, timeout: float = 180.0, job: str = "ask") -> str:
         """One answer from Claude Code on this computer, with no tools and no MCP server at
         all, and told so, so it knows only what the prompt says: one side of a comparison with
         and without the Brain, or a follow-up question in the goals interview. In an empty
-        temporary folder, restricted, with no saved session."""
+        temporary folder, restricted, with no saved session. What it used is counted under
+        `job` (a check, a comparison, the knowledge agent) in the Brain's cost report."""
+        found = self.ask_json(who, prompt, timeout=timeout)
+        spent = usage_of(found)
+        if spent is not None:
+            self.count_usage(job, spent)
+        return str(found.get("result") or "").strip()
+
+    def ask_json(self, who: Principal, prompt: str, *, timeout: float = 180.0) -> dict[str, Any]:
+        """`ask`, returning Claude Code's whole final message (the answer in `result`, and
+        `usage`) without counting it anywhere."""
         who.require("workspace.admin")
         spec = RUNNERS["claude"]
         status = self.status(spec)
@@ -687,7 +731,7 @@ class Runners:
                 else "it stopped"
             )
             raise Conflict(f"{spec.label} could not answer: {reason[:200]}")
-        return str(found.get("result") or "").strip()
+        return found
 
     def get(self, who: Principal, run_id: str) -> LocalRun:
         who.require("workspace.admin")
@@ -781,6 +825,8 @@ class Runners:
                     self._add(run, **event)
                     if event["kind"] == "result":
                         run.summary = str(event.get("text") or "")[:2000]
+                        if event.get("usage"):
+                            self.count_usage("run", event["usage"], run.id)
         except (OSError, ValueError):
             pass  # the pipe closed under us (a stopped run)
         finally:
@@ -976,6 +1022,14 @@ class Runners:
         )
         if proc is not None:
             _kill(proc)
+
+    def count_usage(self, job: str, usage: dict[str, Any], ref: str = "") -> None:
+        """Count a call's tokens and cost in the Brain's ledger (the jobs line of the cost
+        report)."""
+        figures = {k: v for k, v in usage.items() if k != "model"}
+        self.ws.rt.brain.record_model_call(
+            job, str(usage.get("model") or "claude"), ref=ref, **figures
+        )
 
     def _add(self, run: LocalRun, kind: str, **fields: Any) -> None:
         with self._lock:

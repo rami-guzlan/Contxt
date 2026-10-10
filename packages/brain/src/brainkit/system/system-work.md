@@ -1,7 +1,7 @@
 ---
 id: system-work
-title: Work: agents, the Library, workflows, Compose and the Workspace
-keywords: work agent agents role get_agent list_agents subagent library guide reference influence refresh workflow workflows schedule check run_workflow list_workflows compose prompt workspace doc skill import export push claude code
+title: Work: agents, the Library, prompts, workflows and the Workspace
+keywords: work agent agents role get_agent list_agents subagent library guide reference influence refresh workflow workflows schedule check run_workflow list_workflows prompt prompts save this prompt compose workspace doc skill import export push claude code
 ---
 Work is where the brain gets put to use. Every part reads from the brain, and what it makes
 waits for the owner's yes: drafts, outputs and proposals, never anything sent or published.
@@ -26,8 +26,13 @@ tools of the owner's own connectors, read-only unless the owner says otherwise),
 upkeep action, or a check where the run waits for the owner. Each step reads what the step
 before made, at the version it was then.
 
-COMPOSE shows the whole prompt a model gets for a request and what was picked with it (skills,
-an agent, notes, documents, a project), improves it, runs it and saves it. The WORKSPACE is
+PROMPTS are the person's own words for later, kept word for word in the Library
+(`references/prompts/`) in their own scope, with the files that came with them, versions,
+tags and a project. Asked to "save this prompt to my brain", call `add_file` with kind `prompt`
+and their exact words, and file each attached file with `attach_to` naming the prompt's path.
+A prompt never comes with a brief unless the request names it: find it with `search_notes`,
+open it with `get_note`. Its page in the app runs it too, secondary: picks (skills, an agent,
+notes, documents), the whole prompt a model gets, improving it. The WORKSPACE is
 the owner's private docs and links, linked to projects without copying; no AI reads them
 until the owner asks about a doc or adds it to the brain. Skills come in from a zip, a folder
 or a GitHub repository, go out as a zip, and can be copied into Claude Code with a stamp of

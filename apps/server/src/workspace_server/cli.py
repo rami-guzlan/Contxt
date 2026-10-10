@@ -32,6 +32,7 @@ import os
 import sys
 import threading
 from datetime import UTC, datetime
+from typing import Any
 
 from workspace_connectors.providers import BRAIN_CLIENTS, PROVIDERS, brain_setup, mcp_setup
 from workspace_core.backup import backup, restore
@@ -106,6 +107,16 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--brain-dir")
     p = sub.add_parser("export-legacy")
     p.add_argument("--out", help="the folder to write (default: a new one under the exports)")
+    p = sub.add_parser("report", help="what context cost by day and line, and brief quality")
+    p.add_argument("--days", type=int, default=7)
+    p.add_argument(
+        "--claude-code",
+        action="store_true",
+        help="read Claude Code's transcripts here for exact figures (counts only)",
+    )
+    p.add_argument("--no-quality", action="store_true")
+    p = sub.add_parser("tokens", help="measure the Brain's token estimates against Claude")
+    p.add_argument("action", choices=["calibrate", "status"])
     return parser
 
 
@@ -213,6 +224,14 @@ def main(argv: list[str] | None = None) -> int:
         if command == "token":
             print(f"Sign in: {settings.base_url}/auth/login?token={runtime.owner_token}")
             return 0
+        if command == "report":
+            found = ws.rt.brain.report(
+                days=args.days, claude_code=args.claude_code, quality=not args.no_quality
+            )
+            print(str(found.get("text") or "No Brain configured.").rstrip())
+            return 0
+        if command == "tokens":
+            return _tokens(runtime, args.action)
         if command == "status":
             info, counts = ws.info(), ws.counts(ws.owner())
             work = ", ".join(f"{n} {s}" for s, n in sorted(counts["ai_work"].items())) or "none"
@@ -439,6 +458,51 @@ def _connect(settings: Settings, client: str | None) -> int:
         else:
             print(f"In {setup['file']}:\n{setup['config']}")
         print(setup["note"] + "\n")
+    return 0
+
+
+def _input_tokens(found: dict[str, Any]) -> int:
+    usage = found.get("usage") or {}
+    return sum(
+        int(usage.get(key) or 0)
+        for key in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+    )
+
+
+def _tokens(runtime: Any, action: str) -> int:
+    """Measure what the Brain sends (its kernel, recent briefs) with Claude's own tokenizer:
+    Claude Code answers "OK" once with and once without each text, and the difference in the
+    input it reports is that text in Claude tokens. A few cents of your plan's usage."""
+    from .runners import usage_of
+
+    brain = runtime.ws.rt.brain
+    if action == "status":
+        found = brain.report(days=1, quality=False)
+        factor = (found.get("spend") or {}).get("factor") or {}
+        print(json.dumps(factor, indent=1))
+        return 0
+    samples = brain.calibration_samples()
+    if not samples:
+        print("The Brain has sent nothing yet to measure.")
+        return 1
+    owner = runtime.ws.owner()
+    ask = runtime.runners.ask_json
+    print(f"Measuring {len(samples)} text(s) with Claude Code (one short answer each)...")
+    floor = ask(owner, "Reply with OK.")
+    runtime.runners.count_usage("calibration", usage_of(floor) or {})
+    pairs = []
+    for sample in samples:
+        found = ask(owner, "Reply with OK.\n\n" + str(sample["text"]))
+        runtime.runners.count_usage("calibration", usage_of(found) or {})
+        measured = _input_tokens(found) - _input_tokens(floor)
+        print(f"  {sample['label']}: estimated {sample['estimated']}, Claude {measured}")
+        if measured > 0:
+            pairs.append((int(sample["estimated"]), measured))
+    result = brain.set_calibration(pairs, method="claude code")
+    print(
+        f"One estimated token is {result['factor']} Claude tokens "
+        f"({result['samples']} samples); every figure in the report uses it now."
+    )
     return 0
 
 

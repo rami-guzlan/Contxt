@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from . import config as config_mod
 from . import kernel as kernel_mod
 from . import packets as packets_mod
+from . import request_type as request_type_mod
 from . import runtime as runtime_mod
 from . import systemdocs, util
 from .index import Embedder, Index, Reranker, configured_model
@@ -256,18 +257,27 @@ class Brain:
 
     # ------------------------------------------------------------------ kernel
     def kernel(self, principal=None, via=None, tools=True) -> Result:
-        """The startup context. Without `tools`, as a model that cannot call the brain needs
-        it: nothing in it asks for a tool (its fingerprint is then of that text)."""
+        """The startup context: the shared part startup files carry and the person's own
+        layer, with each layer's size against its budget. Without `tools`, as a model that
+        cannot call the brain needs it: nothing in it asks for a tool (its fingerprint is then
+        of that text)."""
         caller = self.caller(principal, via)
         if isinstance(caller, Result):
             return caller
         chain, partitions = caller
         st = self.state()
-        text, fingerprint = kernel_mod.render(st.config, st.index, st.scopes, chain, partitions,
-                                              tools=tools)
-        return Result(text, {"fingerprint": fingerprint, "scope_chain": chain,
-                             "tokens": util.tokens(text),
-                             "budget": st.config.budgets.get("kernel_tokens")})
+        found = kernel_mod.compile(st.config, st.index, st.scopes, chain, partitions,
+                                   tools=tools)
+        return Result(found.text, {
+            "fingerprint": found.fingerprint, "scope_chain": chain,
+            "tokens": found.tokens, "budget": found.budget,
+            "shared": found.shared, "person": found.person,
+            "person_fingerprint": found.person_fingerprint,
+            "layers": [{"name": layer.name, "scopes": list(layer.scopes),
+                        "tokens": layer.tokens, "budget": layer.budget}
+                       for layer in found.layers],
+            "over_budget": found.over_budget(),
+            "ceiling": st.config.budgets.get("kernel_tokens")})
 
     def write_kernel(self) -> Result:
         """Rewrite CLAUDE.md / AGENTS.md for the owner. Returns what changed."""
@@ -287,12 +297,13 @@ class Brain:
     def context(self, request, *, principal=None, via=None, partition=None,
                 session_id=None, fresh=False, focus=None, task_type=None,
                 startup_fingerprint=None, explain=False, record=True,
-                include_kernel=None, tools=True) -> Result:
+                include_kernel=None, tools=True, delivery="pull") -> Result:
         """Route one request and return one bounded context packet.
 
         Without `tools`, the packet for a model that cannot call the brain at all: it holds
         nothing from before and cannot continue a session, so nothing in the text asks for a
-        tool, the procedure comes in full, and nothing is recorded."""
+        tool, the procedure comes in full, and nothing is recorded. `delivery` says how it
+        reached the model: "pull" (the model asked) or "push" (a client's hook sent it)."""
         if not str(request or "").strip():
             return error("get_task_context needs the request text.")
         st = self.state()
@@ -311,18 +322,26 @@ class Brain:
         packet = packets_mod.build(route, config=st.config, index=st.index,
                                    delivered=delivered, fresh=bool(fresh), session_id=session,
                                    partition=partition, explain=explain, tools=tools)
-        kernel_text, kernel_fp = kernel_mod.render(st.config, st.index, st.scopes, chain,
-                                                   partitions)
+        kernel = kernel_mod.compile(st.config, st.index, st.scopes, chain, partitions)
+        kernel_fp = kernel.fingerprint
+        # The shared part is held when this conversation got it or the client's startup file
+        # carries it (its fingerprint); the person's own layer when this conversation got it,
+        # in a brief or from a hook at session start. It never sits in a shared file.
         kernel_held = tools and (("kernel", kernel_fp) in delivered or (
             str(startup_fingerprint or "").strip() == kernel_fp))
+        person_held = tools and (not kernel.person or (
+            "kernel-person", kernel.person_fingerprint) in delivered)
         if include_kernel is not None:
-            kernel_held = not include_kernel
+            kernel_held = person_held = not include_kernel
         parts = []
         if not kernel_held and tools:
-            parts.append("# Startup context (kernel " + kernel_fp + ")\n\n" + kernel_text)
+            parts.append("# Startup context (kernel " + kernel_fp + ")\n\n" + kernel.text)
         elif not kernel_held:
-            parts.append("# Startup context\n\n" + kernel_mod.render(
-                st.config, st.index, st.scopes, chain, partitions, tools=False)[0])
+            parts.append("# Startup context\n\n" + kernel_mod.compile(
+                st.config, st.index, st.scopes, chain, partitions, tools=False).text)
+        elif not person_held:
+            parts.append("# Startup context, your own layer\n\n" + kernel.person)
+        person_sent = bool(kernel.person) and not person_held
         parts.append("# Task context\n\n" + packet.text)
         status = "continuing" if continuing else "new"
         if tools:
@@ -334,21 +353,32 @@ class Brain:
                 f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n")
         data = dict(packet.data)
         data.update({"kernel_fingerprint": kernel_fp, "kernel_included": not kernel_held,
-                     "session_status": status, "vault_fingerprint": st.fingerprint[:12]})
+                     "person_fingerprint": kernel.person_fingerprint or None,
+                     "person_included": person_sent, "delivery": delivery,
+                     "session_status": status, "vault_fingerprint": st.fingerprint[:12],
+                     "request_type": request_type_mod.classify(route)})
         if record and tools:
+            if fresh and continuing:
+                # Nothing this conversation got before counts as held from here on.
+                self.ledger.refresh(session)
             items = list(packet.items)
             if ("kernel", kernel_fp) not in delivered:
                 # Held from now on either way: delivered in this packet, or proven by the
                 # fingerprint the client presented. Later calls need not repeat either.
                 items.append(("kernel", kernel_fp, kernel_fp,
-                              0 if kernel_held else util.tokens(kernel_text)))
+                              0 if kernel_held else util.tokens(kernel.shared)))
+            if kernel.person and ("kernel-person", kernel.person_fingerprint) not in delivered:
+                items.append(("kernel-person", kernel.person_fingerprint,
+                              kernel.person_fingerprint,
+                              util.tokens(kernel.person) if person_sent else 0))
             self.ledger.touch(session, chain[-1], label=self.client,
                               engine=runtime_mod.STARTED_WITH)
             self.ledger.record(session, packet.id, str(request), route.mode, packet.text,
                                data, items)
-            if not kernel_held:
+            if not kernel_held or person_sent:
                 # The startup context as it was sent, once per version, for Activity to show.
-                self.ledger.record_kernel(kernel_fp, parts[0])
+                self.ledger.record_kernel(kernel_fp if not kernel_held
+                                          else kernel.person_fingerprint, parts[0])
         return Result("\n\n".join(parts), data)
 
     def preview(self, request, *, principal=None, focus=None, partition=None,

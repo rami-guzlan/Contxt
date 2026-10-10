@@ -40,10 +40,12 @@ The nudge reaches the agent twice:
   updates, which are captures already).
 - **On the raw message.** In Claude Code, the `UserPromptSubmit` hook
   (`hooks/capture_prompt.py`) adds the same nudge as context before the model sees the
-  message. It is silent when nothing is flagged and never fails the prompt.
+  message. It is silent when nothing is flagged and never fails the prompt. The same hook
+  pushes the brain's brief for a message that asks for something, when the brain holds
+  something the conversation was not given (ROUTING.md, "Push").
 
-The kernel (CLAUDE.md, AGENTS.md) carries the standing instruction: capture as you go,
-without being asked; one-off instructions need no capture.
+The MCP server's instructions carry the standing instruction: capture as you go, without
+being asked; one-off instructions need no capture.
 
 ## 2. Propose
 
@@ -51,7 +53,7 @@ without being asked; one-off instructions need no capture.
 |---|---|
 | `propose_note` | a rule, fact, preference or decision, with the person's words in `evidence` |
 | `propose_skill` | a new procedure, or a change to one: SKILL.md fields, body and files |
-| `add_file` | a document (filed as a reference, as Markdown that keeps its headings, slides and pages) or an asset (kept byte for byte), from a path or base64 content, with its card: what it covers, its sections, and which copy it is (`version`, `status`, `dated`). With `project`, it is filed in that project (`project_id` on its card), and a file named like one already there ("v3", "final" and dates set aside) is its new version: written over the old text in place, its card brought up to date, the earlier text kept in git. `replaces` names the file to replace directly. The capture policy decides whether it is filed at once (an undo point) or waits |
+| `add_file` | a document (filed as a reference, as Markdown that keeps its headings, slides and pages) or an asset (kept byte for byte), from a path or base64 content, with its card: what it covers, its sections, and which copy it is (`version`, `status`, `dated`). With `project`, it is filed in that project (`project_id` on its card), and a file named like one already there ("v3", "final" and dates set aside) is its new version: written over the old text in place, its card brought up to date, the earlier text kept in git. `replaces` names the file to replace directly. With `kind: prompt`, the person's own prompt is kept word for word in their own scope (`references/prompts/`), found by name and never routed unless a request names it; each file that came with it is filed with `attach_to` naming the prompt's path. The capture policy decides whether it is filed at once (an undo point) or waits |
 | `create_focus` | a project: its name, one line on what it is for, and `aliases` (the names the person calls it), so requests that use one bring its state and files |
 | `record_focus_update` | project progress: append-only, never a note |
 

@@ -83,7 +83,7 @@ describe("layout", () => {
       "Capture",
       "Projects",
       "Brain",
-      "Work",
+      "Knowledge Work",
       "Activity",
       "Catch up",
     ]);

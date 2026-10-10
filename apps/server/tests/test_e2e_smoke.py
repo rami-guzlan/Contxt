@@ -182,11 +182,12 @@ def test_two_brain_processes_share_one_conversation(home, apps):
     )
     assert "# Startup context (kernel " in again  # after a compaction, everything again
 
-    # A new conversation that already holds the kernel skips it; a stale fingerprint gets it.
+    # A new conversation that already holds the kernel skips it (the person's own layer,
+    # never in a shared file, comes once); a stale fingerprint gets it.
     held, _ = first.call(
         "get_task_context", request="Draft a newsletter intro", startup_fingerprint=kernel
     )
-    assert "# Startup context" not in held
+    assert "# Startup context (kernel " not in held
     stale, _ = first.call(
         "get_task_context", request="Draft a newsletter intro", startup_fingerprint="0" * 12
     )

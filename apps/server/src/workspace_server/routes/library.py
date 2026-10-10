@@ -1,6 +1,7 @@
-"""The Library over REST: documents kept whole, by what they are for (guides to follow,
-references to read whole, influences whose taste to borrow), added by upload, by writing, from a
-web page or from a GitHub repository, and kept current from where they came from."""
+"""The Library over REST: items kept whole, by what they are for (guides to follow, references
+to read whole, influences whose taste to borrow, assets kept byte for byte), added by upload, by
+writing, from a web page or from a GitHub repository, and kept current from where they came
+from. Brain > Files opens the same item page for every file."""
 
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ from ..schemas import LibraryItemIn, LibraryRefreshIn, LibraryRepoIn, LibraryUrl
 router = APIRouter(prefix="/api/library")
 
 MAX_UPLOAD = 10 * 1024 * 1024
-KINDS = ("guide", "reference", "influence")
+KINDS = ("guide", "reference", "influence", "asset")
 
 
 def library(request: Request) -> Library:
@@ -46,18 +47,25 @@ def items(who: Who, ws: WS) -> list[dict[str, Any]]:
 
 @router.get("/item")
 def item(path: str, request: Request, who: Who, ws: WS) -> dict[str, Any]:
-    """One item with its text, and when the app last checked it against its source."""
+    """One item with its text (an asset has none: the page shows or offers the file), and
+    when the app last checked it against its source."""
     found = ws.brain.library_item(who, path)
-    content = ws.brain.file_content(who, path)
-    found["text"] = content.data.decode("utf-8", errors="replace")
+    if found.get("file_kind") == "asset":
+        found["text"] = None
+    else:
+        content = ws.brain.file_content(who, path)
+        found["text"] = content.data.decode("utf-8", errors="replace")
     found["checked_at"] = library(request).checks.read().get(path)
     return found
 
 
 @router.put("/item")
 def update(body: LibraryItemIn, who: Who, ws: WS) -> dict[str, Any]:
-    """Change what kind of item it is, or how often it is fetched again: one undo point."""
-    return ws.brain.library_update(who, body.path, kind=body.kind, refresh=body.refresh)
+    """Change what kind of item it is, how often it is fetched again, or where it came from:
+    one undo point."""
+    return ws.brain.library_update(
+        who, body.path, kind=body.kind, refresh=body.refresh, origin=body.origin
+    )
 
 
 @router.post("/write", status_code=201)
@@ -82,11 +90,14 @@ async def upload(
     kind: Annotated[str, Form()] = "reference",
     title: Annotated[str, Form()] = "",
     project: Annotated[str, Form()] = "",
+    attach_to: Annotated[str, Form()] = "",
 ) -> dict[str, Any]:
-    """Keep a document whole in the Library: PDF, Word, PowerPoint, HTML, Markdown or text."""
+    """Keep an item whole in the Library: a document (PDF, Word, PowerPoint, HTML, Markdown
+    or text) or an asset (an image, a font, a sheet), kept byte for byte; `attach_to` names
+    the prompt (or document) it came with."""
     if kind not in KINDS:
         raise ValidationFailed(
-            "A Library item is a guide, a reference or an influence.", field="kind"
+            "A Library item is a guide, a reference, an influence or an asset.", field="kind"
         )
     data = await file.read(MAX_UPLOAD + 1)
     result = ws.brain.add_file(
@@ -95,7 +106,7 @@ async def upload(
         data=data,
         title=title,
         project=project or None,
-        library={"library": kind},
+        library={"library": kind, "attached_to": attach_to.strip() or None},
     )
     return _filed(result)
 

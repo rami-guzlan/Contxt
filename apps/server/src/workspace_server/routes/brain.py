@@ -32,6 +32,8 @@ from ..schemas import (
     ProjectUpdateIn,
     ProposalIn,
     ReconcileIn,
+    ReplayIn,
+    RequestLabelsIn,
     VerifyIn,
 )
 
@@ -380,6 +382,35 @@ def request(packet_id: str, who: Who, ws: WS) -> dict[str, Any]:
     """One request in full: what it got, the exact text it was handed, and the startup
     context when that went with it."""
     return ws.brain.request(who, packet_id)
+
+
+@router.put("/requests/{packet_id}/labels")
+def label_request(packet_id: str, body: RequestLabelsIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Say which notes a logged request needed, which helped, which were noise and which it
+    should have had: it joins your private eval set, kept beside the Brain."""
+    return ws.brain.label_request(who, packet_id, body.model_dump())
+
+
+@router.get("/report")
+def report(
+    who: Who, ws: WS, days: int = 7, claude_code: bool = False, quality: bool = True
+) -> dict[str, Any]:
+    """The report card: what context cost by day and line, brief sizes by request type and
+    how well briefs carry what a task needs."""
+    return ws.brain.report(who, days=days, claude_code=claude_code, quality=quality)
+
+
+@router.post("/replay")
+def replay(body: ReplayIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Rebuild logged briefs against the Brain now, at a git ref, or with a waiting proposal
+    applied in a copy, and say what would change. Nothing is recorded or changed."""
+    return ws.brain.replay(who, body.packets, at=body.at, proposal=body.proposal)
+
+
+@router.get("/eval")
+def eval_status(who: Who, ws: WS) -> dict[str, Any]:
+    """How many of your requests are in the private eval set, and how many are labeled."""
+    return ws.brain.eval_status(who)
 
 
 @router.get("/weekly")

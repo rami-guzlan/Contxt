@@ -1,12 +1,13 @@
-// Work, Library: what good looks like. Guides to follow, references to read whole, and
-// influences whose taste to borrow, each a document the Brain keeps whole. Add one by upload, by
-// writing it here, from a web page or from a GitHub repository; a fetched one can be fetched
-// again by hand or on a schedule. Skills, agents and workflows point to them, so they always
-// read the current version.
+// Knowledge Work, Library: everything the Brain keeps whole. Guides to follow, references to read
+// whole, influences whose taste to borrow, and assets kept byte for byte (images, fonts, sheets),
+// each with where it came from and its scope. Add one by upload, by writing it here, from a web
+// page or from a GitHub repository; a fetched one can be fetched again by hand or on a schedule.
+// Skills, agents and workflows point to them, so they always read the current version. Every
+// file in Brain > Files opens its page here.
 
 import { BookOpen, RefreshCw } from "lucide-react";
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, Navigate, useSearchParams } from "react-router";
 
 import {
   brainFileUrl,
@@ -22,19 +23,26 @@ import {
 import type { LibraryFiled, LibraryItem, LibraryKind, LibraryRefresh } from "../../api/types";
 import { Markdown } from "../../components/Markdown";
 import { Empty, ErrorNote, Field, Loading, Section, Tabs } from "../../components/ui";
+import { ScopeChip } from "../../components/work/Scope";
 import { plural, when } from "../../lib/format";
 import { skillUrl } from "../../lib/links";
-import { entryUrl } from "../brain/shared";
+import { originLine, SETTABLE_ORIGINS } from "../../lib/origins";
+import { entryUrl, libraryItemUrl } from "../brain/shared";
 
 export const KIND_WORDS: Record<LibraryKind, { one: string; many: string; what: string }> = {
   guide: { one: "Guide", many: "Guides", what: "to follow: rules and conventions, read whole" },
   reference: { one: "Reference", many: "References", what: "to read whole: specs, contracts, product sheets" },
   influence: { one: "Influence", many: "Influences", what: "whose taste to borrow: a repository, a site, a writer" },
+  prompt: { one: "Prompt", many: "Prompts", what: "your own words, kept for later" },
+  asset: { one: "Asset", many: "Assets", what: "kept byte for byte: images, fonts, sheets, recordings" },
 };
-const KINDS: LibraryKind[] = ["guide", "reference", "influence"];
+const KINDS: LibraryKind[] = ["guide", "reference", "influence", "asset"];
+const DOCUMENT_KINDS: LibraryKind[] = ["guide", "reference", "influence"];
+const ASSET_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.svg,.ttf,.otf,.woff,.woff2,.csv,.json,.xlsx,.mp3,.wav,.m4a,.mp4,.mov,.webm";
 const REFRESH_WORDS: Record<LibraryRefresh, string> = { never: "Only when I say", weekly: "Every week", monthly: "Every month" };
 
-export const libraryItemUrl = (path: string) => `/work/library/view?path=${encodeURIComponent(path)}`;
+// One page per item, shared with Brain > Files.
+export { libraryItemUrl };
 
 function host(url: string): string {
   try {
@@ -66,20 +74,22 @@ function usedLine(item: LibraryItem): string {
 }
 
 export function LibraryPage() {
-  const { data: items, isLoading, error } = useLibrary();
+  const { data: kept, isLoading, error } = useLibrary();
   const [params, setParams] = useSearchParams();
   const shown = (params.get("kind") as LibraryKind | null) ?? null;
   const [adding, setAdding] = useState(params.get("add") === "1");
   if (isLoading) return <Loading />;
-  if (!items) return <ErrorNote error={error} />;
+  if (!kept) return <ErrorNote error={error} />;
+  const items = kept.filter((i) => i.kind !== "prompt"); // prompts have their own tab
   const list = shown ? items.filter((i) => i.kind === shown) : items;
   const count = (kind: LibraryKind) => items.filter((i) => i.kind === kind).length;
   return (
     <div className="work-tab library">
       <div className="work-intro">
         <p>
-          What good looks like: guides to follow, references to read whole, and influences whose taste to borrow. Skills, agents and
-          workflows point to them, so they always read the current version.
+          Everything your Brain keeps whole: guides to follow, references to read whole, influences whose taste to borrow, and assets.
+          Skills, agents and workflows point to them, so they always read the current version. Your own prompts are in{" "}
+          <Link to="/work/prompts">Prompts</Link>.
         </p>
         {!adding ? (
           <button type="button" className="primary" onClick={() => setAdding(true)}>
@@ -108,15 +118,23 @@ export function LibraryPage() {
         <ul className="library-list" aria-label="Library">
           {list.map((item) => (
             <li key={item.path} className="library-item">
-              <span className={`kind-chip kind-${item.kind}`}>{KIND_WORDS[item.kind].one}</span>
+              <span className={`kind-chip kind-${item.kind}`}>{KIND_WORDS[item.kind]?.one ?? item.kind}</span>
               <div className="library-item-main">
                 <Link to={libraryItemUrl(item.path)} className="library-item-title">
                   {item.title}
                 </Link>
+                <ScopeChip scope={item.scope} />
                 {item.summary ? <p className="muted small">{item.summary}</p> : null}
-                {[sourceLine(item), usedLine(item), item.project_title ? `in ${item.project_title}` : ""].some(Boolean) ? (
-                  <p className="muted small">{[sourceLine(item), usedLine(item), item.project_title ? `in ${item.project_title}` : ""].filter(Boolean).join(" · ")}</p>
-                ) : null}
+                <p className="muted small">
+                  {[
+                    `from ${originLine(item.origin).toLowerCase()}`,
+                    sourceLine(item),
+                    usedLine(item),
+                    item.project_title ? `in ${item.project_title}` : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
               </div>
             </li>
           ))}
@@ -144,11 +162,19 @@ const WAYS = [
 ] as const;
 type Way = (typeof WAYS)[number]["id"];
 
-function KindPicker({ value, onChange }: { value: LibraryKind; onChange: (kind: LibraryKind) => void }) {
+function KindPicker({
+  value,
+  onChange,
+  kinds = DOCUMENT_KINDS,
+}: {
+  value: LibraryKind;
+  onChange: (kind: LibraryKind) => void;
+  kinds?: LibraryKind[];
+}) {
   return (
     <Field label="What it is">
       <select value={value} onChange={(event) => onChange(event.target.value as LibraryKind)}>
-        {KINDS.map((kind) => (
+        {kinds.map((kind) => (
           <option key={kind} value={kind}>
             {KIND_WORDS[kind].one}: {KIND_WORDS[kind].what}
           </option>
@@ -303,13 +329,19 @@ function Upload({ onDone }: { onDone: (result: LibraryFiled) => void }) {
         if (file) upload.mutate({ file, title: title.trim() || undefined, kind }, { onSuccess: onDone });
       }}
     >
-      <Field label="The document" hint="PDF, Word, PowerPoint, HTML, Markdown or text, up to 10 MB. It is kept whole, as text.">
-        <input type="file" accept=".pdf,.docx,.pptx,.html,.htm,.md,.txt" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-      </Field>
+      <KindPicker value={kind} onChange={setKind} kinds={KINDS} />
+      {kind === "asset" ? (
+        <Field label="The asset" hint="An image, a font, a sheet, a recording or a video, up to 10 MB, kept byte for byte.">
+          <input type="file" accept={ASSET_ACCEPT} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+        </Field>
+      ) : (
+        <Field label="The document" hint="PDF, Word, PowerPoint, HTML, Markdown or text, up to 10 MB. It is kept whole, as text.">
+          <input type="file" accept=".pdf,.docx,.pptx,.html,.htm,.md,.txt" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+        </Field>
+      )}
       <Field label="Title (optional)">
         <input value={title} onChange={(event) => setTitle(event.target.value)} />
       </Field>
-      <KindPicker value={kind} onChange={setKind} />
       <div className="row">
         <button type="submit" className="primary" disabled={!file || upload.isPending}>
           {upload.isPending ? "Keeping…" : "Keep it"}
@@ -360,21 +392,35 @@ export function LibraryItemPage() {
   const refresh = useRefreshLibraryItem();
   if (isLoading) return <Loading />;
   if (!item) return <ErrorNote error={error} />;
+  if (item.kind === "prompt" && item.entry_id) return <Navigate to={`/work/prompts/${encodeURIComponent(item.entry_id)}`} replace />;
   const fetched = !!(item.source_url || item.source_repo);
+  const asset = item.file_kind === "asset";
   return (
     <div className="library-item-page">
       <nav className="breadcrumb" aria-label="Breadcrumb">
-        <Link to="/work/library">Library</Link>
+        <Link to="/work/library">Library</Link> · <Link to="/brain/files">Brain, Files</Link>
       </nav>
       <header className="entry-head">
         <h1>
           <BookOpen className="title-icon" aria-hidden="true" /> {item.title}
         </h1>
+        <ScopeChip scope={item.scope} />
         {item.summary ? <p className="lede">{item.summary}</p> : null}
       </header>
       <div className="entry-layout">
         <div className="document">
-          <Markdown text={item.text} />
+          {item.text !== null ? (
+            <Markdown text={item.text} />
+          ) : item.mime.startsWith("image/") ? (
+            <img className="asset-preview" src={brainFileUrl(item.path)} alt={item.title} />
+          ) : (
+            <p>
+              <a href={brainFileUrl(item.path)} download>
+                Download {item.path.split("/").pop()}
+              </a>{" "}
+              <span className="muted small">({item.mime}, kept byte for byte)</span>
+            </p>
+          )}
         </div>
         <aside className="entry-side">
           <Section title="What it is">
@@ -382,10 +428,10 @@ export function LibraryItemPage() {
               <Field label="Kind">
                 <select
                   value={item.kind}
-                  disabled={update.isPending || !item.entry_id}
+                  disabled={update.isPending || !item.entry_id || asset}
                   onChange={(event) => update.mutate({ path: item.path, kind: event.target.value as LibraryKind })}
                 >
-                  {KINDS.map((kind) => (
+                  {(asset ? (["asset"] as LibraryKind[]) : DOCUMENT_KINDS).map((kind) => (
                     <option key={kind} value={kind}>
                       {KIND_WORDS[kind].one}
                     </option>
@@ -409,6 +455,28 @@ export function LibraryItemPage() {
               ) : null}
               <ErrorNote error={update.error} />
             </div>
+          </Section>
+          <Section title="Where it came from">
+            <p className="small">
+              {originLine(item.origin)}
+              {item.origin_inferred ? <span className="muted"> (read from its card)</span> : null}
+            </p>
+            {(!item.origin || item.origin_inferred) && item.entry_id ? (
+              <Field label="Set where it came from" hint="It was filed before the Brain kept this. One undo point.">
+                <select
+                  value=""
+                  disabled={update.isPending}
+                  onChange={(event) => event.target.value && update.mutate({ path: item.path, origin: event.target.value })}
+                >
+                  <option value="">Choose…</option>
+                  {SETTABLE_ORIGINS.map((origin) => (
+                    <option key={origin.value} value={origin.value}>
+                      {origin.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : null}
           </Section>
           {fetched ? (
             <Section title="Where it comes from">

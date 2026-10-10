@@ -444,10 +444,20 @@ class Index:
         # own (sections.py). A file whose card was archived is out of the Brain: its sections
         # are not offered.
         self.cards = file_cards(self.notes, self.references)
+        # An asset's card names it in `file` too: its kind, where it came from, its project.
+        self.asset_cards = {}
+        for note in sorted(self.notes.values(), key=lambda n: n.id):
+            path = str(note.meta.get("file") or "").strip()
+            if path.startswith("assets/"):
+                self.asset_cards.setdefault(path, note)
         retired = set(file_cards(self.archived, self.references)) - set(self.cards)
+        # A prompt is the person's own words for later: never quoted as a file's section.
+        prompts = {path for path, card in self.cards.items()
+                   if str(card.meta.get("library") or "") == "prompt"}
         self.sections = {}
         for path, ref in sorted(self.references.items()):
-            if os.path.basename(path).lower() == "readme.md" or path in retired:
+            if os.path.basename(path).lower() == "readme.md" or path in retired \
+                    or path in prompts:
                 continue
             for section in sections_mod.split(path, ref.body):
                 self.sections[section.id] = section
@@ -498,10 +508,38 @@ class Index:
         return ref.title if ref is not None else path.rsplit("/", 1)[-1]
 
     def section_search_text(self, section) -> str:
-        """What a section is matched on: its file's title, its headings and its text. The
-        title makes "the LinkedIn part of the campaign proposal" prefer the proposal's
-        LinkedIn section to a LinkedIn section elsewhere."""
-        return f"{self.file_title(section.path)} {section.heading} {section.text}"
+        """What a section is matched on: a line naming its document (its title, what kind of
+        document it is, its date, what it is for and its project), its headings and its text.
+        The title makes "the LinkedIn part of the campaign proposal" prefer the proposal's
+        LinkedIn section to a LinkedIn section elsewhere; the rest is contextual retrieval: a
+        section's own words rarely say which document it belongs to or what that is for."""
+        return f"{self.file_context(section.path)} {section.heading} {section.text}"
+
+    def file_context(self, path) -> str:
+        """One line naming a filed document: title, kind, date, purpose and project."""
+        if not hasattr(self, "_file_contexts"):
+            self._file_contexts: dict[str, str] = {}
+        found = self._file_contexts.get(path)
+        if found is not None:
+            return found
+        card = self.cards.get(path)
+        meta = card.meta if card is not None else {}
+        parts = [self.file_title(path)]
+        kind = str(meta.get("library") or "").strip()
+        if kind:
+            parts.append(f"a {kind}")
+        dated = str(meta.get("dated") or "").strip()[:10]
+        if dated:
+            parts.append(dated)
+        summary = str(card.summary if card is not None else "").strip()
+        if summary and summary.lower() not in parts[0].lower():
+            parts.append(" ".join(summary.split()[:30]))
+        home = self.file_project(path)
+        if home is not None:
+            parts.append(f"project {home.title}")
+        line = ". ".join(parts) + "."
+        self._file_contexts[path] = line
+        return line
 
     def file_sections(self, path) -> list:
         return [s for s in self.sections.values() if s.path == path]

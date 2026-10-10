@@ -39,6 +39,30 @@ class EvalDataTest(unittest.TestCase):
                                          "unrelated"})
         self.assertEqual(sum(p["relation"] == "contradicts" for p in pairs), 24)
 
+    def test_every_retrieval_case_names_real_notes_and_about_a_third_are_held_out(self):
+        cases = _spec("retrieval.json")["cases"]
+        for case in cases:
+            known = set(se._note_files(os.path.join(BRAINS, case["brain"], "vault")))
+            named = {i for group in case["must"] for i in group}
+            named |= set(case.get("useful") or []) | set(case.get("noise") or [])
+            self.assertLessEqual(named, known, case["id"])
+            self.assertFalse(named & set(case.get("noise") or []) & {
+                i for group in case["must"] for i in group}, case["id"])
+        held = sum(bool(c.get("holdout")) for c in cases)
+        self.assertTrue(0.2 <= held / len(cases) <= 0.4, held)
+
+
+class RetrievalBarsTest(unittest.TestCase):
+    """The retrieval baseline (docs/evals/retrieval-baseline.md), by words: later phases may
+    only raise it."""
+
+    def test_needed_notes_reach_at_least_the_baseline(self):
+        result = se.run_retrieval(BRAINS, _spec("retrieval.json"))
+        self.assertGreaterEqual(result["all"]["must_recall"], 0.6)
+        self.assertGreaterEqual(result["all"]["precision"], 0.7)
+        self.assertLessEqual(result["all"]["noise_share"], 0.15)
+        self.assertGreaterEqual(result["type_accuracy"], 0.85)
+
 
 class HarnessTest(unittest.TestCase):
     def test_scratch_copies_take_meta_changes_and_new_notes_without_touching_the_source(self):

@@ -1186,11 +1186,17 @@ def unarchive(brain, note_id, *, reason="", actor=None):
 
 
 # What the owner sets on an entry directly: who answers for it, how often it is checked, how
-# sensitive it is, and where it is filed; on a document's card, what kind of Library item it is
-# and how often it is fetched again. An empty value clears the field.
+# sensitive it is, and where it is filed; on a filed item's card, what kind of Library item it
+# is, how often it is fetched again, where it came from, its title, the project it is for and,
+# for a prompt, its tags and what it is used with. An empty value clears the field.
 FIELDS = ("owner", "review_days", "review_by", "classification", "area", "topic", "aliases",
           "load", "applies_to", "triggers", "must_text", "critical", "baseline", "as_of",
-          "valid_until", "library", "refresh")
+          "valid_until", "library", "refresh", "origin", "tags", "prompt_skills",
+          "prompt_agent", "prompt_docs", "prompt_reads", "title", "project_id")
+CARD_FIELDS = ("library", "refresh", "origin", "tags", "prompt_skills", "prompt_agent",
+               "prompt_docs", "prompt_reads", "title", "project_id")
+# Card fields that hold a list, set as comma-separated words.
+LIST_FIELDS = ("aliases", "tags", "prompt_skills", "prompt_docs", "prompt_reads")
 # When a note reaches a model: in every session, whenever its domain comes up (a must-hold),
 # when relevant, or only when asked for. Set together and checked by must_hold_fields.
 MUST_FIELDS = ("load", "applies_to", "triggers", "must_text", "critical")
@@ -1218,10 +1224,25 @@ def update(brain, note_id, fields, *, reason="", actor=None):
             problems.append(f"{name} is a date (YYYY-MM-DD)")
     if wanted.get("classification") and wanted["classification"] not in CLASSIFICATIONS:
         problems.append(f"classification is one of {', '.join(CLASSIFICATIONS)}")
-    if ("library" in wanted or "refresh" in wanted) and str(note.meta.get("type")) != "file":
+    if any(k in wanted for k in CARD_FIELDS) and str(note.meta.get("type")) != "file":
         problems.append("only a document's card goes in the Library")
+    asset = str(note.meta.get("file") or "").startswith("assets/")
     if wanted.get("library") and wanted["library"] not in uploads.LIBRARY_KINDS:
         problems.append(f"library is one of {', '.join(uploads.LIBRARY_KINDS)}")
+    elif wanted.get("library") and asset != (wanted["library"] == "asset"):
+        problems.append("an asset's kind is asset, and a document's is guide, reference or "
+                        "influence")
+    elif wanted.get("library") and (wanted["library"] == "prompt") != (
+            str(note.meta.get("library") or "") == "prompt"):
+        # A prompt's card carries its words and is used only when named: it is filed as one.
+        problems.append("a prompt is filed as a prompt; file the words again to change that")
+    if "title" in wanted and not wanted["title"]:
+        problems.append("a title cannot be empty")
+    if wanted.get("project_id") and wanted["project_id"] not in st.index.focuses:
+        problems.append(f"no project {wanted['project_id']!r}")
+    if wanted.get("origin") and uploads.origin_kind(wanted["origin"]) not in uploads.ORIGINS:
+        problems.append(f"origin is one of {', '.join(uploads.ORIGINS)}, optionally with "
+                        "which one after a colon (capture:recording)")
     if wanted.get("refresh") and wanted["refresh"] not in uploads.LIBRARY_REFRESH:
         problems.append(f"refresh is one of {', '.join(uploads.LIBRARY_REFRESH)}")
     if wanted.get("owner") and not st.scopes.exists(wanted["owner"]):
@@ -1261,12 +1282,13 @@ def update(brain, note_id, fields, *, reason="", actor=None):
             else:
                 meta.pop(key, None)
             continue
-        if key == "aliases":
-            # Other names for it, comma separated: a project is found by any of them.
+        if key in LIST_FIELDS:
+            # Comma separated: a project's other names (it is found by any of them), a
+            # prompt's tags, what it was used with.
             names = list(dict.fromkeys(" ".join(a.split()) for a in value.split(",")
                                        if a.strip()))
             if names:
-                meta[key] = names[:12]
+                meta[key] = names[:12 if key == "aliases" else 20]
             else:
                 meta.pop(key, None)
             continue

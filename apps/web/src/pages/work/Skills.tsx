@@ -26,6 +26,7 @@ import { Empty, ErrorNote, Loading, Pill, Section, Tabs } from "../../components
 import { bytes, label, plural, when } from "../../lib/format";
 import { SKILLS, skillUrl } from "../../lib/links";
 import { fileViewUrl } from "../brain/shared";
+import { ScopeChip } from "../../components/work/Scope";
 
 /** A skill's description, cut at its first sentence or two: what it does, not every trigger. */
 function gist(description: string, limit = 180): string {
@@ -88,11 +89,11 @@ export function SkillsPage() {
         <section className="skill-panel" aria-label="Run skills">
           <h2>Run skills</h2>
           <p className="muted small">
-            Run one or several in Compose, in the order you pick, with your notes and documents, and see the whole prompt your AI gets
+            Run one or several with a prompt, in the order you pick, with your notes and documents, and see the whole prompt your AI gets
             before it runs.
           </p>
-          <Link className="button primary" to="/work/compose">
-            Open Compose
+          <Link className="button primary" to="/work/prompts/new?run=1">
+            Run skills with a prompt
           </Link>
         </section>
       ) : null}
@@ -115,6 +116,7 @@ export function SkillsPage() {
                   <Link to={skillUrl(skill.name)} className="skill-card-title">
                     /{skill.name}
                   </Link>
+                  <ScopeChip />
                   {skill.description ? <p className="skill-card-text">{gist(skill.description)}</p> : null}
                   {skill.use === "run" && skill.triggers[0] ? (
                     <p className="skill-card-meta muted small" title="Your AI picks it up when you ask like this, in any chat">

@@ -1,14 +1,16 @@
 // Activity: what your AI asked, what it got, and what changed. Requests: every request from
 // every connected app, with what it was handed and why, its tokens and share of the Brain, what
 // it opened after, and what it saved; open the exact text it got, and the startup context when
-// that went with it; flag a piece that should not have been there, or teach what was missing.
-// Changes: the Brain's history and its undo points.
+// that went with it; flag a piece that should not have been there, teach what was missing, or
+// label it for your private eval set. Cost and quality: what context cost by day and line, how
+// big briefs are, and how well they carry what a task needs. Changes: the Brain's history and
+// its undo points.
 
 import { useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { useAiRequest, useAiRequests, useProposeEntry, useWeekly } from "../api/hooks";
-import type { AiRequest, RequestPiece } from "../api/types";
+import { useAiRequest, useAiRequests, useBrainCatalog, useLabelRequest, useProposeEntry, useReport, useWeekly } from "../api/hooks";
+import type { AiRequest, CostLineName, EvalCase, ReportCard, RequestPiece } from "../api/types";
 import { Markdown } from "../components/Markdown";
 import { Empty, ErrorNote, Loading, Tabs } from "../components/ui";
 import { plural, when } from "../lib/format";
@@ -18,12 +20,16 @@ import { entryUrl, fileViewUrl } from "./brain/shared";
 
 const TABS = [
   { id: "requests", label: "Requests" },
+  { id: "report", label: "Cost and quality" },
   { id: "changes", label: "Changes" },
 ] as const;
 
+type TabId = (typeof TABS)[number]["id"];
+
 export function AiActivityPage() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "changes" ? "changes" : "requests";
+  const asked = params.get("tab");
+  const tab: TabId = asked === "changes" || asked === "report" ? asked : "requests";
   return (
     <div className="page activity">
       <p className="eyebrow">Activity</p>
@@ -33,7 +39,7 @@ export function AiActivityPage() {
         active={tab}
         onChange={(id) => {
           const next = new URLSearchParams();
-          if (id === "changes") next.set("tab", "changes");
+          if (id !== "requests") next.set("tab", id);
           setParams(next, { replace: true });
         }}
       />
@@ -42,9 +48,152 @@ export function AiActivityPage() {
           <Week />
           <ChangesView />
         </>
+      ) : tab === "report" ? (
+        <Report />
       ) : (
         <Requests />
       )}
+    </div>
+  );
+}
+
+const LINE_WORDS: Record<CostLineName, string> = {
+  fixed: "Fixed overhead",
+  briefs: "Briefs, first read",
+  rereads: "Briefs, read again",
+  rewrites: "Rewritten after pauses",
+  jobs: "Background jobs",
+};
+
+const LINE_HELP: Record<CostLineName, string> = {
+  fixed: "What sits in front of every call: the Brain's instructions, its tool names and, in its own folder, the startup context.",
+  briefs: "Each answer from the Brain, written into a chat once.",
+  rereads: "The same answers read again from the cache on every later turn, until the chat is compacted.",
+  rewrites: "Brain content written to the cache again after a pause longer than the cache lasts.",
+  jobs: "Checks, the knowledge agent and runs the app sends to a model.",
+};
+
+function usd(value: number): string {
+  return value >= 0.1 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
+}
+
+/** What context cost by day and line, brief sizes by request type, and eval results. */
+function Report() {
+  const [days, setDays] = useState(7);
+  const [claudeCode, setClaudeCode] = useState(false);
+  const { data, isLoading, error } = useReport(days, claudeCode);
+  return (
+    <div className="stack">
+      <div className="row wrap">
+        <label className="inline-select">
+          <span className="muted small">Days</span>
+          <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
+            {[1, 7, 14, 30].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={claudeCode} onChange={(event) => setClaudeCode(event.target.checked)} />
+          <span>
+            Use Claude Code's own figures <span className="muted small">(reads token counts from its transcripts on this computer, nothing else)</span>
+          </span>
+        </label>
+      </div>
+      {isLoading ? <Loading /> : null}
+      <ErrorNote error={error} />
+      {data ? <ReportBody report={data} /> : null}
+    </div>
+  );
+}
+
+function ReportBody({ report }: { report: ReportCard }) {
+  const { spend } = report;
+  const lines = Object.keys(LINE_WORDS) as CostLineName[];
+  const totals = Object.fromEntries(lines.map((line) => [line, spend.days.reduce((sum, day) => sum + day.lines[line].usd, 0)])) as Record<
+    CostLineName,
+    number
+  >;
+  const all = lines.reduce((sum, line) => sum + totals[line], 0);
+  return (
+    <>
+      <p className="muted small">
+        {spend.factor.measured
+          ? `Token counts are measured against Claude (×${spend.factor.factor}, ${plural(spend.factor.samples ?? 0, "sample")}).`
+          : "Token counts are estimates until you measure them against Claude: run `contxt tokens calibrate` once."}{" "}
+        Estimated figures use {spend.model} prices; a brief is read again {spend.later_calls} times on average (
+        {spend.later_calls_source === "claude code" ? "from Claude Code" : "assumed"}).
+      </p>
+      {spend.days.length ? (
+        <table className="report-table">
+          <thead>
+            <tr>
+              <th>Line</th>
+              <th className="num">Tokens</th>
+              <th className="num">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line) => (
+              <tr key={line}>
+                <td>
+                  {LINE_WORDS[line]}
+                  <span className="muted small"> {LINE_HELP[line]}</span>
+                </td>
+                <td className="num">{spend.days.reduce((sum, day) => sum + day.lines[line].tokens, 0).toLocaleString()}</td>
+                <td className="num">{usd(totals[line])}</td>
+              </tr>
+            ))}
+            <tr>
+              <td>
+                <strong>All</strong> <span className="muted small">{usd(report.per_day_usd)} a day on average</span>
+              </td>
+              <td className="num" />
+              <td className="num">
+                <strong>{usd(all)}</strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      ) : (
+        <p className="muted">No AI asked the Brain anything in this period.</p>
+      )}
+      {Object.keys(report.brief_tokens_by_type).length ? (
+        <p className="small">
+          Median brief by kind of request:{" "}
+          {Object.entries(report.brief_tokens_by_type)
+            .map(([kind, tokens]) => `${kind} ${tokens.toLocaleString()} tokens`)
+            .join(", ")}
+          .
+        </p>
+      ) : null}
+      {report.private_eval ? <Scores title="Your labeled requests" scores={report.private_eval} /> : null}
+      {report.eval ? <Scores title="The Brain's own test cases" scores={report.eval} /> : null}
+      <p className="muted small">
+        Your private eval set: {report.eval_set.labeled} of {plural(report.eval_set.cases, "request")} labeled, {report.eval_set.held_out} held out
+        to test on. Label a request from its row in Requests.
+      </p>
+    </>
+  );
+}
+
+function Scores({ title, scores }: { title: string; scores: NonNullable<ReportCard["eval"]> }) {
+  return (
+    <div>
+      <h3>{title}</h3>
+      <ul className="plain small">
+        {(["tuning", "holdout"] as const)
+          .filter((name) => scores[name].cases)
+          .map((name) => (
+            <li key={name}>
+              {name === "holdout" ? "Held out" : "Tuning"}: {plural(scores[name].cases, "request")}, needed notes found{" "}
+              {Math.round(scores[name].must_recall * 100)}%, precision {Math.round(scores[name].precision * 100)}%, noise{" "}
+              {Math.round(scores[name].noise_share * 100)}% of tokens, {scores[name].avg_tokens.toLocaleString()} tokens on average
+            </li>
+          ))}
+      </ul>
     </div>
   );
 }
@@ -149,6 +298,7 @@ const PIECE_WORDS: Record<string, string> = {
 export function RequestRow({ request, brainTokens }: { request: AiRequest; brainTokens: number }) {
   const [open, setOpen] = useState(false);
   const [teaching, setTeaching] = useState(false);
+  const [labeling, setLabeling] = useState(false);
   const got = request.got.filter((p) => p.kind !== "focus" || !request.project);
   const share = request.share ?? (brainTokens ? request.tokens / brainTokens : 0);
   return (
@@ -196,10 +346,17 @@ export function RequestRow({ request, brainTokens }: { request: AiRequest; brain
           ) : null}
           {teaching ? (
             <Teach request={request} onClose={() => setTeaching(false)} />
+          ) : labeling ? (
+            <Label request={request} onClose={() => setLabeling(false)} />
           ) : (
-            <button type="button" className="link small" onClick={() => setTeaching(true)}>
-              Something was missing? Teach it
-            </button>
+            <div className="row">
+              <button type="button" className="link small" onClick={() => setTeaching(true)}>
+                Something was missing? Teach it
+              </button>
+              <button type="button" className="link small" onClick={() => setLabeling(true)}>
+                Label it for your eval
+              </button>
+            </div>
           )}
         </div>
       ) : null}
@@ -277,6 +434,120 @@ function SentText({ summary, text }: { summary: string; text: string }) {
         {copied ? "Copied" : "Copy it as sent"}
       </button>
     </details>
+  );
+}
+
+type Verdict = "needed" | "useful" | "noise" | "";
+
+function verdictsFrom(found: EvalCase | null | undefined): Record<string, Verdict> {
+  const out: Record<string, Verdict> = {};
+  if (!found?.labeled) return out;
+  for (const group of found.must) for (const id of group) if (!found.missing?.includes(id)) out[id] = "needed";
+  for (const id of found.useful) out[id] = "useful";
+  for (const id of found.noise) out[id] = "noise";
+  return out;
+}
+
+/** Your labels for this request, for the private eval set the Brain is tuned and tested on:
+ * which notes it needed, which helped, which were noise, and which it should have had. They
+ * stay on this computer, beside the Brain. */
+function Label({ request, onClose }: { request: AiRequest; onClose: () => void }) {
+  const { data: full } = useAiRequest(request.id);
+  const { data: catalog } = useBrainCatalog();
+  const label = useLabelRequest(request.id);
+  const notes = [...request.got, ...request.opened].filter((p, i, all) => p.kind === "note" && all.findIndex((q) => q.id === p.id) === i);
+  const [verdicts, setVerdicts] = useState<Record<string, Verdict> | null>(null);
+  const [missing, setMissing] = useState<string[] | null>(null);
+  const [adding, setAdding] = useState("");
+  const current = verdicts ?? verdictsFrom(full?.eval);
+  const absent = missing ?? full?.eval?.missing ?? [];
+  const titles = new Map((catalog?.entries ?? []).map((entry) => [entry.title, entry.id]));
+  if (label.isSuccess) {
+    return (
+      <p className="small" role="status">
+        Labeled. It counts in your private eval set: see Cost and quality.{" "}
+        <button type="button" className="link" onClick={onClose}>
+          Close
+        </button>
+      </p>
+    );
+  }
+  const pick = (id: string, verdict: Verdict) => setVerdicts({ ...current, [id]: verdict });
+  const ids = (verdict: Verdict) => Object.entries(current).filter(([, v]) => v === verdict).map(([id]) => id);
+  return (
+    <form
+      className="stack-tight"
+      onSubmit={(event) => {
+        event.preventDefault();
+        label.mutate({ needed: ids("needed"), useful: ids("useful"), noise: ids("noise"), missing: absent });
+      }}
+    >
+      <p className="muted small">For each note it got: did the task need it, did it help, or was it noise? Then add any note it should have had.</p>
+      {notes.length ? (
+        <ul className="label-list">
+          {notes.map((note) => (
+            <li key={note.id}>
+              <span>{note.title ?? note.id}</span>
+              <span className="segmented" role="group" aria-label={`Label ${note.title ?? note.id}`}>
+                {(["needed", "useful", "noise"] as const).map((verdict) => (
+                  <button
+                    key={verdict}
+                    type="button"
+                    aria-pressed={current[note.id] === verdict}
+                    onClick={() => pick(note.id, current[note.id] === verdict ? "" : verdict)}
+                  >
+                    {verdict === "needed" ? "Needed" : verdict === "useful" ? "Helped" : "Noise"}
+                  </button>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted small">It got no notes.</p>
+      )}
+      <label className="field">
+        <span className="field-label">It should have had</span>
+        <input
+          list={`notes-${request.id}`}
+          value={adding}
+          placeholder="Type a note's title"
+          onChange={(event) => {
+            const id = titles.get(event.target.value);
+            if (id) {
+              setMissing([...absent.filter((m) => m !== id), id]);
+              setAdding("");
+            } else setAdding(event.target.value);
+          }}
+        />
+        <datalist id={`notes-${request.id}`}>
+          {(catalog?.entries ?? []).map((entry) => (
+            <option key={entry.id} value={entry.title} />
+          ))}
+        </datalist>
+      </label>
+      {absent.length ? (
+        <ul className="plain small">
+          {absent.map((id) => (
+            <li key={id}>
+              {catalog?.entries.find((entry) => entry.id === id)?.title ?? id}{" "}
+              <button type="button" className="link" onClick={() => setMissing(absent.filter((m) => m !== id))}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="row">
+        <button type="submit" className="primary" disabled={label.isPending || (!Object.values(current).some(Boolean) && !absent.length)}>
+          Save labels
+        </button>
+        <button type="button" className="link" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+      <ErrorNote error={label.error} />
+    </form>
   );
 }
 

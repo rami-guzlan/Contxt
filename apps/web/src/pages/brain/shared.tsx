@@ -71,7 +71,12 @@ export function filesTab(path: string): "references" | "assets" | "skills" {
   return "references";
 }
 
-export const fileViewUrl = (path: string) => `/brain/files/view${query({ path })}`;
+/** A document's or an asset's one page, in the Library. */
+export const libraryItemUrl = (path: string) => `/work/library/view${query({ path })}`;
+
+/** Where a file opens: a document or an asset on its Library page, a skill's file in place. */
+export const fileViewUrl = (path: string) =>
+  path.startsWith("references/") || path.startsWith("assets/") ? libraryItemUrl(path) : `/brain/files/view${query({ path })}`;
 
 export const entryUrl = (id: string) => `/brain/entries/${encodeURIComponent(id)}`;
 
@@ -85,6 +90,15 @@ const ORIGINS: Record<EntryOrigin["kind"], string> = {
   doc: "A doc",
   you: "You",
   import: "Imported",
+  capture: "A capture",
+  library: "The Library",
+  project: "A project",
+  skill: "A skill",
+  run: "A run",
+  movein: "Moving in",
+  upload: "An upload in the app",
+  chat: "An AI conversation",
+  folder: "A swept folder",
   unknown: "Not recorded",
 };
 

@@ -44,7 +44,10 @@ const WorkAgentPage = page(() => import("./pages/work/Agents"), "WorkAgentPage")
 const NewWorkAgentPage = page(() => import("./pages/work/Agents"), "NewWorkAgentPage");
 const SkillPage = page(() => import("./pages/work/Skills"), "SkillPage");
 const SkillsPage = page(() => import("./pages/work/Skills"), "SkillsPage");
-const ComposePage = page(() => import("./pages/work/Compose"), "ComposePage");
+const ComposeMoved = page(() => import("./pages/work/Compose"), "ComposeMoved");
+const PromptsPage = page(() => import("./pages/work/Prompts"), "PromptsPage");
+const NewPromptPage = page(() => import("./pages/work/Prompts"), "NewPromptPage");
+const PromptPage = page(() => import("./pages/work/Prompts"), "PromptPage");
 const WorkflowsPage = page(() => import("./pages/work/Workflows"), "WorkflowsPage");
 const WorkflowPage = page(() => import("./pages/work/Workflows"), "WorkflowPage");
 const NewWorkflowPage = page(() => import("./pages/work/Workflows"), "NewWorkflowPage");
@@ -118,7 +121,11 @@ export function App() {
           </Route>
           <Route path="/work" element={<WorkLayout />}>
             <Route index element={<WorkOverviewPage />} />
-            <Route path="compose" element={<ComposePage />} />
+            <Route path="prompts" element={<PromptsPage />} />
+            <Route path="prompts/new" element={<NewPromptPage />} />
+            <Route path="prompts/:promptId" element={<PromptPage />} />
+            {/* Compose became Prompts: its links open a new prompt with the run panel open. */}
+            <Route path="compose" element={<ComposeMoved />} />
             <Route path="workspace" element={<WorkspacePage />} />
             <Route path="workspace/:docId" element={<WorkspaceDocPage />} />
             <Route path="skills" element={<SkillsPage />} />

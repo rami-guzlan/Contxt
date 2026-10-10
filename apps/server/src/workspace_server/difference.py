@@ -201,10 +201,12 @@ class Differences:
 
     def _run(self, who: Principal, job: Comparison, context: str) -> None:
         try:
-            job.without = self.runners.ask(who, job.request)
+            job.without = self.runners.ask(who, job.request, job="comparison")
             job.step = "with"
             job.with_context = self.runners.ask(
-                who, WITH_CONTEXT.format(context=context.strip(), request=job.request)
+                who,
+                WITH_CONTEXT.format(context=context.strip(), request=job.request),
+                job="comparison",
             )
             job.step = "differences"
             items = "\n".join(f"- {p['id']}: {p['title']}" for p in job.pieces) or "(none)"
@@ -217,6 +219,7 @@ class Differences:
                     without=job.without,
                     with_=job.with_context,
                 ),
+                job="comparison",
             )
             job.differences = parse_differences(raw, {p["id"] for p in job.pieces})
             job.step, job.status = "done", "done"

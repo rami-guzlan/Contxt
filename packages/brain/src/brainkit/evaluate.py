@@ -39,9 +39,20 @@ def run(brain, path=None, holdout=None, verbose=False):
     aliases = dict(st.config.aliases)
     style_topics = set(spec.get("style_topics") or st.config.routing.house_style_topics)
     style_notes = set(spec.get("style_notes") or [])
-    brain.close()
+    # A throwaway ledger for the run; the brain's own comes back after, so a running app
+    # that evaluates keeps its real history.
+    real = brain._ledger
     brain._ledger = Ledger(os.path.join(tempfile.mkdtemp(prefix="brain-eval-"),
                                         "sessions.sqlite"), 30)
+    try:
+        rows = _cases(brain, st, spec, holdout, verbose, aliases, style_topics, style_notes)
+    finally:
+        brain._ledger.close()
+        brain._ledger = real
+    return summarize(rows, spec.get("thresholds") or {})
+
+
+def _cases(brain, st, spec, holdout, verbose, aliases, style_topics, style_notes):
     owner = st.config.owner
     rows = []
     for ordinal, case in enumerate(spec.get("cases") or []):
@@ -55,16 +66,21 @@ def run(brain, path=None, holdout=None, verbose=False):
             setup_ids = set(setup.data.get("note_ids") or [])
         started = time.perf_counter()
         res = brain.context(case["request"], principal=user, session_id=session,
-                            explain=verbose)
+                            partition=case.get("partition") or None, explain=verbose)
         ms = (time.perf_counter() - started) * 1000
         data = res.data
         chain = data.get("scope_chain") or []
         standing = {n.id for n in st.index.notes.values() if n.standing and n.scope in chain}
         delivered = set(data.get("note_ids") or [])
-        seen = delivered | set(data.get("held_ids") or []) | set(
+        # A must-hold in the brief's "Must hold" section was delivered: its one line is the
+        # point of the note, and the model can open the rest.
+        must_held = set(data.get("must_hold_ids") or []) | set(data.get("must_hold_listed") or [])
+        seen = delivered | must_held | set(data.get("held_ids") or []) | set(
             data.get("standing_ids") or []) | standing
         groups = [_resolve(g, aliases) for g in case.get("must") or []]
         hits = sum(1 for g in groups if seen & set(g))
+        whole = seen - set(data.get("pointer_ids") or [])
+        body_hits = sum(1 for g in groups if whole & set(g))
         must_ids = {i for g in groups for i in g}
         useful = must_ids | set(_resolve(case.get("useful") or [], aliases))
         if case.get("style_ok"):
@@ -85,16 +101,20 @@ def run(brain, path=None, holdout=None, verbose=False):
         missed = [g for g in groups if not seen & set(g)]
         reachable = seen | set(data.get("related_ids") or [])
         reach = sum(1 for g in groups if reachable & set(g))
+        sizes = data.get("note_tokens") or {}
         rows.append({
             "id": case["id"], "holdout": bool(case.get("holdout")), "request": case["request"],
-            "must": len(groups), "hits": hits, "reach": reach, "delivered": len(delivered),
+            "must": len(groups), "hits": hits, "body_hits": body_hits, "reach": reach,
+            "delivered": len(delivered),
             "good": good,
             "noise": sorted(noise), "missed": missed, "problems": problems,
             "tokens": data.get("token_count"), "ms": round(ms, 1), "mode": data.get("mode"),
+            "request_type": data.get("request_type"), "expected_type": case.get("type"),
+            "noise_tokens": sum(int(sizes.get(i) or 0) for i in noise),
             "notes": data.get("note_ids"), "extra": sorted(delivered - useful),
             "trace": data.get("trace") if verbose else None,
         })
-    return summarize(rows, spec.get("thresholds") or {})
+    return rows
 
 
 def summarize(rows, thresholds):
@@ -104,15 +124,21 @@ def summarize(rows, thresholds):
         delivered = sum(r["delivered"] for r in subset)
         good = sum(r["good"] for r in subset)
         reach = sum(r.get("reach", r["hits"]) for r in subset)
+        tokens = sum(r["tokens"] or 0 for r in subset)
+        whole = sum(r.get("body_hits", r["hits"]) for r in subset)
         return {
             "cases": len(subset),
             "must_recall": round(hits / must, 3) if must else 1.0,
+            # Needed notes the brief carried whole (not only in short).
+            "body_recall": round(whole / must, 3) if must else 1.0,
             "reachable": round(reach / must, 3) if must else 1.0,
             "precision": round(good / delivered, 3) if delivered else 1.0,
             "noise_hits": sum(len(r["noise"]) for r in subset),
+            # The share of brief tokens spent on notes labeled noise (target 15% or less).
+            "noise_share": round(sum(r.get("noise_tokens") or 0 for r in subset) / tokens, 3)
+            if tokens else 0.0,
             "problems": sum(len(r["problems"]) for r in subset),
-            "avg_tokens": round(sum(r["tokens"] or 0 for r in subset) / len(subset))
-            if subset else 0,
+            "avg_tokens": round(tokens / len(subset)) if subset else 0,
         }
     tuning = [r for r in rows if not r["holdout"]]
     held = [r for r in rows if r["holdout"]]
@@ -145,7 +171,8 @@ def report(result, show_holdout_detail=True) -> str:
         m = result[name]
         lines.append(f"{name:8s} cases {m['cases']:2d}  must-recall {m['must_recall']:.3f}  "
                      f"(listed {m['reachable']:.3f})  precision {m['precision']:.3f}  "
-                     f"noise {m['noise_hits']:2d}  avg tokens {m['avg_tokens']}")
+                     f"noise {m['noise_hits']:2d} ({m['noise_share']:.1%} of tokens)  "
+                     f"avg tokens {m['avg_tokens']}")
     for r in result["rows"]:
         if r["holdout"] and not show_holdout_detail:
             continue

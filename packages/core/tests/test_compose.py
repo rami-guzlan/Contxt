@@ -1,7 +1,7 @@
 """Compose: a request and its picks planned exactly as the run will start (an agent's run when an
 agent is picked, else a run like the Skills page's, or the Brain picks), shown as the packet a
-model gets, copied short for any AI, improved by a model, run here; and saved prompts, with
-versions and their uses counted, private to the app."""
+model gets, copied short for any AI, improved by a model, run here; and saved prompts, kept word
+for word in the Brain's Library with their versions, and their uses counted."""
 
 import pytest
 
@@ -197,12 +197,83 @@ def test_a_saved_prompt_keeps_its_versions_and_counts_its_runs(ws, owner, connec
         )
 
 
-def test_saved_prompts_stay_private_to_the_app(ws, owner, connect):
+def test_a_saved_prompt_is_kept_in_the_brain_word_for_word(ws, owner, connect, brain):
     claude = connect()
-    saved = ws.prompts.create(owner, title="Weekly posts", body="Three posts about polls.")
-    with pytest.raises(PermissionDenied):
+    words = "Three posts about polls.\n\n- One question each\n- No hype"
+    saved = ws.prompts.create(
+        owner, title="Weekly posts", body=words, tags=["social", "weekly"], picks={"agent": "ed"}
+    )
+    (filed,) = [u for u in brain.uploaded if u["library"]]
+    assert filed["library"]["library"] == "prompt" and filed["data"].decode() == words
+    assert (saved.body, saved.tags, saved.origin, saved.scope) == (
+        words,
+        ["social", "weekly"],
+        "upload",
+        "person:owner",
+    )
+    with pytest.raises(PermissionDenied):  # an AI keeps one with add_file, not here
         ws.prompts.create(claude, title="Mine", body="A prompt.")
+    # Its title, tags and picks change on its card, each an undo point; its words stay.
+    renamed = ws.prompts.update(owner, saved.id, title="Poll posts", tags="social")
+    assert (renamed.title, renamed.tags, renamed.version) == ("Poll posts", ["social"], 1)
+    assert brain.batches[-1]["label"] == "Prompt: Weekly posts"
+    assert brain.batches[-1]["decisions"][0]["fields"] == {"title": "Poll posts", "tags": "social"}
+    # Never one of the owner's notes or working context.
     assert saved.id not in [n.id for n in ws.notes.list(owner)]
     assert saved.id not in [i.id for i in ws.context.list(owner)]
     assert ws.context.search(claude, "polls") == []
-    assert ws.search(owner, "polls").notes == []
+
+
+def test_prompts_saved_before_the_brain_move_in_once(ws, owner):
+    from workspace_core.db import schema
+
+    with ws.rt.write() as tx:
+        old = tx.insert(
+            schema.context_items,
+            {
+                "id": tx.new_id("ctx"),
+                "workspace_id": ws.rt.workspace_id,
+                "scope_kind": "workspace",
+                "scope_id": None,
+                "kind": "prompt",
+                "title": "Thank-you note",
+                "body": "A thank-you note for the speakers.",
+                "labels": [],
+                "revision": 2,
+                "provenance": {"made_by": owner.actor_id, "picks": {"skills": ["weekly-posts"]}},
+                "created_by": owner.actor_id,
+                "created_at": tx.now,
+                "updated_at": tx.now,
+                "version": 1,
+                "archived_at": None,
+            },
+        )
+        earlier = ((1, "A thank-you note."), (2, "A thank-you note for the speakers."))
+        for revision, words in earlier:
+            tx.insert(
+                schema.context_item_revisions,
+                {
+                    "item_id": old["id"],
+                    "revision": revision,
+                    "title": "Thank-you note",
+                    "body": words,
+                    "created_by": owner.actor_id,
+                    "created_at": tx.now,
+                },
+            )
+    (moved,) = ws.prompts.list(owner)
+    assert (moved.title, moved.body, moved.picks["skills"]) == (
+        "Thank-you note",
+        "A thank-you note for the speakers.",
+        ["weekly-posts"],
+    )
+    assert [p.id for p in ws.prompts.list(owner)] == [moved.id]  # once
+    found = ws.prompts.get(owner, old["id"])  # the old id still finds it, with its versions
+    assert found.id == moved.id
+    assert [v["body"] for v in found.versions] == [
+        "A thank-you note for the speakers.",
+        "A thank-you note.",
+    ]
+    with ws.rt.read() as tx:
+        row = tx.get(schema.context_items, old["id"])
+    assert row["archived_at"] and row["provenance"]["moved_to"] == moved.id

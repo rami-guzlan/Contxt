@@ -32,6 +32,7 @@ import { linesOf, PickMany, textOf } from "../../components/work/PickMany";
 import { plural, when } from "../../lib/format";
 import { agentUrl, skillUrl } from "../../lib/links";
 import { libraryItemUrl } from "./Library";
+import { ScopeChip } from "../../components/work/Scope";
 
 /** "content-strategist" as CS: the face of an agent on its card. */
 export function initials(name: string): string {
@@ -135,6 +136,7 @@ export function AgentCard({ agent, heartbeat }: { agent: WorkAgent; heartbeat?: 
         <Link to={agentUrl(agent.name)} className="agent-card-name">
           {agent.name}
         </Link>
+        <ScopeChip />
         <p className="small">{agent.role}</p>
         {pointers.length ? (
           <ul className="chips" aria-label="Points to">
@@ -524,9 +526,9 @@ function AskIt({ agent }: { agent: WorkAgent }) {
           </button>
           <Link
             className="small"
-            to={`/work/compose?agent=${encodeURIComponent(agent.name)}${project ? `&project=${encodeURIComponent(project)}` : ""}${text.trim() ? `&ask=${encodeURIComponent(text.trim())}` : ""}`}
+            to={`/work/prompts/new?agent=${encodeURIComponent(agent.name)}${project ? `&project=${encodeURIComponent(project)}` : ""}${text.trim() ? `&ask=${encodeURIComponent(text.trim())}` : ""}`}
           >
-            Open in Compose
+            More picks, and the whole prompt
           </Link>
           <Link
             className="small"

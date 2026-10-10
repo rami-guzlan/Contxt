@@ -47,7 +47,9 @@ Everything below lives in the vault. The engine supplies a default for every key
                  "default_owner": "person:alex", "review_days": {"state": 30}},
   "sync": {"drop": ["drop"], "skills": []},
   "kernel": {"action_policy": "...", "extra": ["one more working rule"],
-             "files": ["CLAUDE.md", "AGENTS.md"]},
+             "files": ["CLAUDE.md", "AGENTS.md"],
+             "budgets": {"company": 150, "role": 150, "person": 100, "total": 500}},
+  "hooks": {"push": "words"},
   "sessions": {"retention_days": 90},
   "git": {"auto_commit": true}
 }
@@ -60,6 +62,16 @@ Everything below lives in the vault. The engine supplies a default for every key
   a note goes when nothing names a better place).
 - **Kinds** are how a note is used, wherever it is filed. The kernel groups standing notes by
   kind; a kind with `constraint: true` renders as "Required constraints" in packets.
+- **The kernel** is compiled for a principal in layers: the company's (the action policy and
+  company-wide standing notes), the role's (the scopes between, such as a team) and the
+  person's (their own standing notes), with a contract line and the must-hold index. `budgets`
+  sets each layer's token target (the health check warns when one is over; `kernel_tokens`
+  stays the hard ceiling). `files` are written with the shared part only: AGENTS.md in full
+  and CLAUDE.md as a stub that imports it (`@AGENTS.md`). The person's layer never goes in a
+  file: Claude Code's session-start hook prints it, and otherwise the first brief carries it.
+- **Hooks**: `push` is how Claude Code's prompt hook sends a brief before the model asks:
+  `words` (the default, about a second), `meaning` (the router exactly as `get_task_context`
+  runs it, a few seconds while the model loads) or `off`.
 - **Focus**: a note of kind `focus` is a project's live state. `create_focus` gives each new
   one its own folder under `focus.area`.
 - `owner` is the default principal (override per process with `BRAIN_PRINCIPAL`).

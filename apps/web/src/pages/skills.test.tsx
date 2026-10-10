@@ -173,14 +173,14 @@ describe("the Skills place", () => {
     expect(screen.getByText(/Other skills build on it/)).toBeInTheDocument();
   });
 
-  it("sends running several skills to Compose", async () => {
+  it("sends running several skills to a prompt", async () => {
     mockApi({ ...side, "GET /api/skills/runs": [] });
     renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills" });
     const panel = await screen.findByRole("region", { name: "Run skills" });
-    expect(within(panel).getByRole("link", { name: "Open Compose" })).toHaveAttribute("href", "/work/compose");
+    expect(within(panel).getByRole("link", { name: "Run skills with a prompt" })).toHaveAttribute("href", "/work/prompts/new?run=1");
   });
 
-  it("starts a new skill from words brought from Compose", async () => {
+  it("starts a new skill from words brought from a prompt", async () => {
     mockApi({ ...side, "GET /api/skills/runs": [] });
     renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills?new=1&ask=Make%20a%20skill%20from%20my%20weekly%20posts" });
     expect(await screen.findByLabelText("What should it do?")).toHaveValue("Make a skill from my weekly posts");

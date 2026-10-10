@@ -200,3 +200,47 @@ def test_a_guide_written_here_and_a_document_uploaded_are_kept_whole(owner):
     )
     kinds = {i["path"]: i["kind"] for i in owner.ok(owner.get("/api/library"))}
     assert kinds[written["path"]] == "guide" and kinds[uploaded["path"]] == "reference"
+
+
+def test_an_asset_joins_the_library_with_where_it_came_from(owner, web):
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    filed = owner.ok(
+        owner.post(
+            "/api/library/upload",
+            files={"file": ("logo.png", png, "image/png")},
+            data={"kind": "asset", "title": "Logo"},
+        ),
+        201,
+    )
+    assert filed["status"] == "applied", filed
+    items = {i["path"]: i for i in owner.ok(owner.get("/api/library"))}
+    logo = items[filed["path"]]
+    assert (logo["kind"], logo["file_kind"], logo["mime"]) == ("asset", "asset", "image/png")
+    assert logo["origin"] == "library" and logo["origin_inferred"] is False
+    full = owner.ok(owner.get("/api/library/item", params={"path": filed["path"]}))
+    assert full["text"] is None  # an asset is shown or offered, never read as text
+    page = keep_page(owner)
+    assert items.get(page["path"]) is None  # filed after the list was read
+    doc = owner.ok(owner.get("/api/library/item", params={"path": page["path"]}))
+    assert doc["origin"] == "library" and "Feed the starter" in doc["text"]
+    # An asset cannot become a guide; a document cannot become an asset.
+    refused = owner.put("/api/library/item", json={"path": filed["path"], "kind": "guide"})
+    assert refused.status_code == 422 and "asset's kind is asset" in refused.text
+    refused = owner.put("/api/library/item", json={"path": page["path"], "kind": "asset"})
+    assert refused.status_code == 422
+
+
+def test_an_older_file_is_told_where_it_came_from_as_a_decision(owner):
+    filed = owner.ok(
+        owner.post("/api/brain/files", files={"file": ("plan.md", b"# Plan\n\nShip in May.")}),
+        201,
+    )
+    assert filed["status"] == "applied", filed
+    item = owner.ok(owner.get("/api/library/item", params={"path": filed["path"]}))
+    assert item["origin"] == "upload"  # filed by a person in the app
+    changed = owner.ok(
+        owner.put("/api/library/item", json={"path": filed["path"], "origin": "capture:export"})
+    )
+    assert changed["origin"] == "capture:export" and changed["checkpoint"]
+    wrong = owner.put("/api/library/item", json={"path": filed["path"], "origin": "nowhere"})
+    assert wrong.status_code == 422 and "origin is one of" in wrong.text

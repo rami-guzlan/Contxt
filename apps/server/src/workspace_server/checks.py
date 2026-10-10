@@ -68,7 +68,7 @@ class CheckWorker:
         batch = dict(batch, pairs=pairs)
         self.asked = {today: self.asked.get(today, 0) + len(pairs)}
         try:
-            answer = self.runners.ask(owner, adjudicate.prompt(batch))
+            answer = self.runners.ask(owner, adjudicate.prompt(batch), job="check")
         except WorkspaceError as exc:
             log.info("could not read %s side by side: %s", batch["subject"], exc)
             self.failed[str(batch["subject"])] = now + RETRY

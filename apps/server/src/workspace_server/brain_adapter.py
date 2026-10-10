@@ -522,16 +522,21 @@ class BrainKitAdapter:
                     source_paths=tuple(str(p) for p in (meta.get("source_paths") or [])),
                     fetched_at=str(meta.get("fetched_at") or "") or None,
                     refresh=str(meta.get("refresh") or "") or None,
+                    **_origin(meta, project=home is not None),
+                    scope=card.scope if card is not None else None,
                 )
             )
         assets = []
         for full in _walk(vault.path("assets")):
             path = brain_util.rel(full, vault.root)
-            pointer = pointers.get(path)
+            card = st.index.asset_cards.get(path)
+            pointer = card if card is not None else pointers.get(path)
+            meta = card.meta if card is not None else {}
             title = pointer.meta.get("title") if pointer else None
             if pointer and not title:
                 found = ASSET_TITLE.match(pointer.body.strip())
                 title = found.group(1) if found else None
+            home = st.index.focuses.get(str(meta.get("project_id") or "")) if meta else None
             assets.append(
                 BrainFile(
                     path=path,
@@ -542,6 +547,11 @@ class BrainKitAdapter:
                     updated=modified(full),
                     description=pointer.summary if pointer else "",
                     entry_id=pointer.id if pointer else None,
+                    project=home.id if home is not None else None,
+                    project_title=home.title if home is not None else None,
+                    library=str(meta.get("library") or "") or None,
+                    **_origin(meta, project=home is not None),
+                    scope=card.scope if card is not None else None,
                 )
             )
         skills = []
@@ -914,6 +924,89 @@ class BrainKitAdapter:
         data: dict[str, Any] = self.brain.entry(found).data
         return data
 
+    # ---------------------------------------------------------------- prompts
+
+    def prompts(self, *, archived: bool = False) -> list[dict[str, Any]]:
+        """The owner's prompts kept in the Library, newest first: each prompt's card (its
+        words exactly, its tags, what it was used with, its project) and the files that came
+        with it."""
+        st = self.brain.state()
+        chain, partitions = self._view(st)
+        pool = st.index.archived if archived else st.index.notes
+        cards = [
+            n
+            for n in pool.values()
+            if str(n.meta.get("library") or "") == "prompt"
+            and Scopes.admits(n.scope, n.partition, chain, partitions)
+        ]
+        rows = [self._prompt_row(st, card) for card in cards]
+        rows.sort(key=lambda r: (str(r["updated"] or ""), r["title"]), reverse=True)
+        return rows
+
+    def prompt(self, prompt_id: str) -> dict[str, Any] | None:
+        """One prompt, live or set aside, with every version of its words."""
+        st = self.brain.state()
+        card = st.index.note(prompt_id, include_archived=True)
+        if (
+            card is None
+            or str(card.meta.get("library") or "") != "prompt"
+            or card.id not in self._seen(st)
+        ):
+            return None
+        row = self._prompt_row(st, card)
+        found = self.brain.versions(card.id, with_text=True).data.get("versions") or []
+        kept: list[dict[str, Any]] = []
+        for v in found:  # newest first; a version whose words did not change is not one
+            words = prompt_words(str(v.get("body") or ""))
+            if kept and kept[-1]["body"] == words:
+                kept[-1].update(ref=v.get("ref"), at=v.get("at"))
+                continue
+            kept.append(
+                {"ref": v.get("ref"), "at": v.get("at"), "by": v.get("author"), "body": words}
+            )
+        row["versions"] = kept
+        return row
+
+    def _prompt_row(self, st: Any, card: Any) -> dict[str, Any]:
+        meta = card.meta
+        path = str(meta.get("file") or "")
+        home = st.index.focuses.get(str(meta.get("project_id") or "")) or (
+            st.index.file_project(path) if path else None
+        )
+        attached = [
+            {
+                "path": p,
+                "title": c.title,
+                "kind": "asset" if p.startswith("assets/") else "reference",
+            }
+            for p, c in [*st.index.cards.items(), *st.index.asset_cards.items()]
+            if str(c.meta.get("attached_to") or "") == path and path
+        ]
+        full = self.brain.vault.path(*path.split("/")) if path else ""
+        return {
+            "id": card.id,
+            "path": path,
+            "title": card.title,
+            "body": prompt_words(card.body),
+            "tags": [str(t) for t in meta.get("tags") or []],
+            "picks": {
+                "skills": [str(s) for s in meta.get("prompt_skills") or []],
+                "agent": str(meta.get("prompt_agent") or "") or None,
+                "docs": [str(d) for d in meta.get("prompt_docs") or []],
+                "library": [str(r) for r in meta.get("prompt_reads") or []],
+                "project": home.id if home is not None else None,
+            },
+            "project": home.id if home is not None else None,
+            "project_title": home.title if home is not None else None,
+            "version": _number(meta.get("version")) or 1,
+            "added": str(meta.get("added") or "") or None,
+            "updated": modified(full) if full else None,
+            "origin": str(meta.get("origin") or "") or None,
+            "scope": card.scope,
+            "archived": not card.live,
+            "attachments": attached,
+        }
+
     def versions(self, entry_id: str, *, with_text: bool = False) -> list[dict[str, Any]] | None:
         found = self._visible_id(entry_id)
         if found is None:
@@ -1014,6 +1107,7 @@ class BrainKitAdapter:
         wait: bool = False,
         library: dict[str, Any] | None = None,
         replaces: str | None = None,
+        came_from: str | None = None,
     ) -> BrainProposal:
         with self._lock:
             result = self.brain.add_file(
@@ -1029,6 +1123,7 @@ class BrainKitAdapter:
                 source=f"{WORKSPACE_SOURCE}{proposer}",
                 library=library or None,
                 replaces=replaces or None,
+                came_from=came_from or None,
             )
         found = result.data
         outcome = str(found.get("status") or ("refused" if result.is_error else "pending"))
@@ -1284,7 +1379,97 @@ class BrainKitAdapter:
 
     def kernel(self, *, tools: bool = True) -> dict[str, Any]:
         found = self.brain.kernel(tools=tools)
-        return {"text": found.text, "tokens": int(found.data.get("tokens") or 0)}
+        return {
+            "text": found.text,
+            "tokens": int(found.data.get("tokens") or 0),
+            "fingerprint": found.data.get("fingerprint"),
+            "budget": found.data.get("budget"),
+            "layers": list(found.data.get("layers") or []),
+            "over_budget": list(found.data.get("over_budget") or []),
+        }
+
+    # ---------------------------------------------------------------- measuring
+
+    def record_model_call(self, job: str, model: str, **figures: Any) -> None:
+        """A background call the app made to a model, for the jobs line of the cost report.
+        Never raises: a call that ran is not undone by a ledger that could not count it."""
+        try:
+            self.brain.ledger.record_model_call(job, model, **figures)
+        except Exception:
+            log.warning("Could not record a model call for %s", job, exc_info=True)
+
+    def report(
+        self, *, days: int = 7, claude_code: bool = False, quality: bool = True
+    ) -> dict[str, Any]:
+        """The report card: cost by day and line, brief sizes by type and, with `quality`,
+        the eval results. Evals route on a second instance of the Brain, so the app's own
+        ledger and its conversations are never touched."""
+        from brainkit import costs, report
+
+        folder = costs.default_transcripts() if claude_code else None
+        found = report.card(self.brain, days=days, transcripts=folder, quality=False)
+        if quality:
+            other = Brain(self.vault, embeddings=self.brain.embedder is not None, local_models=True)
+            try:
+                scored = report.card(other, days=1, quality=True)
+            finally:
+                other.close()
+            for key in ("eval", "private_eval"):
+                if key in scored:
+                    found[key] = scored[key]
+        found["text"] = report.render(found)
+        return dict(found)
+
+    def replay(
+        self, packet_ids: list[str], *, at: str | None = None, proposal: str | None = None
+    ) -> dict[str, Any]:
+        from brainkit import replay
+
+        try:
+            return dict(replay.replay(self.brain, packet_ids, at=at, proposal=proposal))
+        except ValueError as exc:
+            raise ValidationFailed(str(exc)) from exc
+
+    def eval_case(self, packet_id: str) -> dict[str, Any] | None:
+        from brainkit import evalset
+
+        found = evalset.case_for(self.brain, packet_id)
+        return dict(found) if found else None
+
+    def eval_label(self, packet_id: str, labels: dict[str, list[str]]) -> dict[str, Any]:
+        """The owner's labels for one logged request: it joins the private eval set first if
+        it is not in it yet."""
+        from brainkit import evalset
+
+        found = self.brain.ledger.packet(packet_id)
+        if found is None:
+            raise NotFound(f"No logged request {packet_id}.")
+        evalset.add(self.brain, str(found.get("request") or ""), packet_id)
+        try:
+            return dict(evalset.label(self.brain, packet_id, **labels))
+        except (KeyError, ValueError) as exc:
+            raise ValidationFailed(str(exc)) from exc
+
+    def eval_status(self) -> dict[str, Any]:
+        from brainkit import evalset
+
+        return dict(evalset.status(self.brain))
+
+    def calibration_samples(self) -> list[dict[str, Any]]:
+        from brainkit import costs
+
+        return [
+            dict(s, estimated=brain_util.tokens(s["text"]))
+            for s in costs.calibration_samples(self.brain)
+        ]
+
+    def set_calibration(self, pairs: list[tuple[int, int]], *, method: str) -> dict[str, Any]:
+        from brainkit import costs
+
+        try:
+            return dict(costs.set_factor(self.brain.ledger, pairs, method=method))
+        except ValueError as exc:
+            raise ValidationFailed(str(exc)) from exc
 
     # ---------------------------------------------------------------- the knowledge agent
 
@@ -1508,6 +1693,28 @@ def _revision(meta: dict[str, Any]) -> str | None:
         if meta.get(key):
             return str(meta[key])
     return None
+
+
+def prompt_words(card_body: str) -> str:
+    """A prompt's words as its card keeps them: everything after the card's first line."""
+    text = str(card_body or "").replace("\r\n", "\n")
+    if text.startswith("Prompt kept word for word"):
+        _first, _sep, rest = text.partition("\n\n")
+        return rest.strip()
+    return text.strip()
+
+
+def _origin(meta: dict[str, Any], *, project: bool) -> dict[str, Any]:
+    """Where a filed item came from: what its card says, else what its card shows (fetched
+    for the Library, filed in a project), marked as inferred; else nobody knows (None)."""
+    said = str(meta.get("origin") or "").strip()
+    if said:
+        return {"origin": said, "origin_inferred": False}
+    if meta.get("source_url") or meta.get("source_repo") or meta.get("library"):
+        return {"origin": "library", "origin_inferred": True}
+    if project:
+        return {"origin": "project", "origin_inferred": True}
+    return {"origin": None, "origin_inferred": False}
 
 
 def _number(value: Any) -> int | None:
