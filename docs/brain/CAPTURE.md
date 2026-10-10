@@ -40,10 +40,12 @@ The nudge reaches the agent twice:
   updates, which are captures already).
 - **On the raw message.** In Claude Code, the `UserPromptSubmit` hook
   (`hooks/capture_prompt.py`) adds the same nudge as context before the model sees the
-  message. It is silent when nothing is flagged and never fails the prompt.
+  message. It is silent when nothing is flagged and never fails the prompt. The same hook
+  pushes the brain's brief for a message that asks for something, when the brain holds
+  something the conversation was not given (ROUTING.md, "Push").
 
-The kernel (CLAUDE.md, AGENTS.md) carries the standing instruction: capture as you go,
-without being asked; one-off instructions need no capture.
+The MCP server's instructions carry the standing instruction: capture as you go, without
+being asked; one-off instructions need no capture.
 
 ## 2. Propose
 

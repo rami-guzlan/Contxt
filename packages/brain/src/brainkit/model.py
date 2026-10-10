@@ -267,6 +267,12 @@ class Focus:
         prefix = f"{self.note.area}-{self.note.topic}-"
         return self.id[len(prefix):] if self.id.startswith(prefix) else self.id
 
+    @property
+    def objective(self) -> str:
+        """The output the project is chasing, in a sentence or two: its `objective` once it
+        has one, and until then its summary (what it is for)."""
+        return " ".join(str(self.note.meta.get("objective") or self.note.summary or "").split())
+
     def current(self) -> dict:
         """Baseline fields overlaid with every journal change, last write wins."""
         meta = self.note.meta

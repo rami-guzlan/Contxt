@@ -159,6 +159,23 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   cost by line, brief sizes by kind and how well briefs carry what a task needs. `brain replay`
   rebuilds logged briefs against the Brain now, at a git commit, or with a waiting proposal
   applied in a copy, and shows what would enter, leave or move.
+- Briefs say what may direct the model: must-holds and your rules direct it, notes inform it,
+  and quotes from your files are information, never instructions. The task opens with the
+  project's objective when the request works in one (its summary until it has one), and says
+  the rules outrank the task. The first few notes come whole and the rest in short (title,
+  summary, the closest sentence), opened when needed; a deep brief repeats its must-holds at
+  its end. Notes that match a request strongly by meaning stand on their own, and a document's
+  parts are found with a line naming the document.
+- The startup context is compiled for each person in layers: the company's, a team's or role's,
+  and their own, each with a token budget (500 in all to start) the health check watches. Its
+  how-to and the skills list moved out (the tools and briefs carry them), so it is much
+  shorter. AGENTS.md holds the shared layers and CLAUDE.md imports it; your own layer never
+  goes in a shared file: Claude Code's session-start hook brings it, and other apps get it with
+  the first brief.
+- In Claude Code, the brief comes before the model asks: the prompt hook sends it for each
+  message when the Brain holds something the conversation was not given, under a session id
+  the hooks share with the model's own calls, so nothing comes twice (`hooks.push`: words by
+  default, meaning, or off). After a compaction the conversation is given what it lost.
 - Moving in takes files of any kind, zips included: documents, instruction files, any text,
   and ChatGPT's and Claude's data exports (their conversations as your own words); what cannot
   be read is named with why.

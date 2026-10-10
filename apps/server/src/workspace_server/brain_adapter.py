@@ -1379,7 +1379,14 @@ class BrainKitAdapter:
 
     def kernel(self, *, tools: bool = True) -> dict[str, Any]:
         found = self.brain.kernel(tools=tools)
-        return {"text": found.text, "tokens": int(found.data.get("tokens") or 0)}
+        return {
+            "text": found.text,
+            "tokens": int(found.data.get("tokens") or 0),
+            "fingerprint": found.data.get("fingerprint"),
+            "budget": found.data.get("budget"),
+            "layers": list(found.data.get("layers") or []),
+            "over_budget": list(found.data.get("over_budget") or []),
+        }
 
     # ---------------------------------------------------------------- measuring
 

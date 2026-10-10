@@ -10,7 +10,7 @@ adds the routing trace). `propose "<text>" --area A --topic T --title "..."` pro
 topic=...` to move it) and rejects proposals. `focus` lists, shows and updates Focus items.
 `serve` starts the local review UI and JSON API. `bench` runs the context usefulness
 evaluation and the behavior checks. `scout <folder>` proposes knowledge found in documents;
-`intake <file>` files a source document under references/. `kernel` rewrites CLAUDE.md and
-AGENTS.md. `models` shows the local embedding and reranker models (`--download` fetches
+`intake <file>` files a source document under references/. `kernel` rewrites AGENTS.md and
+the CLAUDE.md stub that imports it. `models` shows the local embedding and reranker models (`--download` fetches
 the optional reranker; nothing downloads on its own). `test` runs the engine tests. `tools/reorganize.py` moves an older layer-layout
 vault to areas.

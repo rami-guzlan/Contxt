@@ -164,6 +164,25 @@ Thresholds live in `routing.json` under `policy` (see `router.Policy`).
 `match` accepts `any_phrases`, `any_terms`, `regex` (one must hit), `all_terms`, `all_of`
 (word groups), `none_phrases`, `none_terms`, `none_regex`, and `max_terms`.
 
+## Push: the brief before the model asks
+
+A brief that waits for the model to ask is missed whenever it forgets, most often on a
+follow-up. In Claude Code the prompt hook (`hooks/capture_prompt.py`) asks the router itself
+for each message that asks for something, under the conversation's own session (`cc:` and
+Claude Code's id; the session-start hook names it, so the model passes it on its own calls).
+When the brief holds something the conversation was not given (a note, a part of a document,
+a procedure, a must-hold the first time, the startup context when the file is stale), it comes
+with the message; otherwise nothing is pushed and the hook only reminds the model to ask. The
+model's own `get_task_context` with that session id then sends only what the push did not.
+Pushed briefs are logged with `delivery: push`, so the report weighs push against pull.
+
+`hooks.push` in brain.json: `words` (the default, about a second a message), `meaning` (the
+router exactly as `get_task_context` runs it, a few seconds while the embedding model loads)
+or `off`; `BRAIN_HOOK_PUSH=0` turns it off for a process.
+
+The task section of every brief opens with the project's objective when the request works in
+one (its summary until it has an objective), then the request, then that the rules outrank it.
+
 ## Measuring it
 
 `brain bench` runs two things.

@@ -160,6 +160,17 @@ class RoutingTests(unittest.TestCase):
         packet = self.ctx("The Figma prototype was approved by the client, record that").text
         self.assertIn("record_focus_update", packet)
 
+    def test_a_task_in_a_project_opens_with_the_projects_objective(self):
+        # Its summary stands in until the project has an objective of its own.
+        text = self.ctx("Draft the launch email for the website redesign").text
+        task = text.split("## Task\n\n", 1)[1]
+        self.assertTrue(task.startswith("Objective of the project Website Redesign: Northwind "
+                                        "site relaunch from the Figma prototype\n\nDraft the "
+                                        "launch email"), task[:200])
+        focus = self.brain.state().index.focuses["state-focus-website-redesign"]
+        focus.note.meta["objective"] = "A relaunched site that wins two new clients a quarter."
+        self.assertEqual(focus.objective, "A relaunched site that wins two new clients a quarter.")
+
     def test_portfolio(self):
         data = self.ctx("What is active in my brain?").data
         self.assertEqual(data["mode"], "portfolio")

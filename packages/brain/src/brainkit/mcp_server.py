@@ -30,11 +30,14 @@ PROTOCOL_DEFAULT = "2024-11-05"
 INSTRUCTIONS = ("Call get_task_context first for every task, and again for every later "
                 "message in the conversation that asks for something new: it sends only what the "
                 "conversation does not already hold, and one line for a pure edit. Pass the "
-                "user's message as they wrote it, and the session_id it returns on every later "
-                "call. If the packet lacks something the task needs, search_notes in your own "
-                "words and open a hit with get_note. Open procedures and documents only when the "
-                "packet points at them. When the person shares or works on a document (a "
-                "proposal, a brief, a deck), keep it with add_file and name its project.")
+                "user's message as they wrote it, and the session_id it returns (or the one your "
+                "session start named) on every later call. If the packet lacks something the "
+                "task needs, search_notes in your own words and open a hit with get_note. Open "
+                "procedures and documents only when the packet points at them. Capture as you "
+                "go, without being asked: a durable rule, correction, preference, decision or "
+                "changed fact the person states goes to propose_note (quote them in evidence); "
+                "a procedure you work out together to propose_skill; a document they share or "
+                "work on (a proposal, a brief, a deck) to add_file, with its project.")
 
 _STR = {"type": "string"}
 AGENT_TOOLS = [

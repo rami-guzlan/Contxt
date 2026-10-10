@@ -477,8 +477,10 @@ class BrainPort(Protocol):
         ...
 
     def kernel(self, *, tools: bool = True) -> dict[str, Any]:
-        """The startup context every conversation gets once: {"text", "tokens"}. Without
-        `tools`, as a model that cannot call the Brain needs it: nothing asks for a tool."""
+        """The startup context every conversation gets once: {"text", "tokens", "fingerprint",
+        "budget", "layers" (each {"name", "scopes", "tokens", "budget"}), "over_budget"}.
+        Without `tools`, as a model that cannot call the Brain needs it: nothing asks for a
+        tool."""
         ...
 
     # ---- measuring: what context costs and how good briefs are

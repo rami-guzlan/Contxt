@@ -114,10 +114,15 @@ class MustHoldTest(unittest.TestCase):
         index = text.split("## Must-hold domains")[1].split("\n## ")[0]
         # critical: its line in full; the rest by title and id
         self.assertIn("allergic to peanuts", index)
-        self.assertIn("(`money-budget`)", index)
-        self.assertIn("The monthly budget", index)
         self.assertIn("- food (", index)
-        self.assertIn("topics.md", index)
+        # A person's own must-holds are indexed in their own layer, never in a shared file.
+        found = kernel_mod.compile(st.config, st.index, st.scopes, chain)
+        listed = f"{index}\n{found.person}"
+        self.assertIn("(`money-budget`)", listed)
+        self.assertIn("The monthly budget", listed)
+        budget = st.index.note("money-budget")
+        if budget is not None and budget.scope == chain[-1]:
+            self.assertNotIn("(`money-budget`)", found.shared)
 
     def test_without_tools_the_kernel_carries_only_the_critical_lines(self):
         st = self.brain.state()

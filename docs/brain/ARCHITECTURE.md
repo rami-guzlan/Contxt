@@ -23,7 +23,7 @@ scopes.py       scope chains and sealed partitions; admission
 index.py        in-memory BM25 over notes, skills and topic descriptions; cached embeddings
 router.py       request signals, intents, Focus naming, note-first selection, skills -> Route
 packets.py      budgets, session deduplication, rendering -> Packet
-kernel.py       standing context for a scope chain; CLAUDE.md and AGENTS.md
+kernel.py       standing context compiled per principal in layers; AGENTS.md, CLAUDE.md stub
 sessions.py     SQLite session ledger: packets and deliveries per conversation; daily use
                 counts kept for good; gaps (requests served poorly)
 governance.py   proposals, policy, approve, reject, supersede, edit, restore, unarchive,
@@ -61,7 +61,8 @@ get_task_context(request, session_id)
                             selection, related list, or lean
   -> packets.build()        Focus and pins, house style, selected notes within the budget,
                             session dedup, render with titles
-  -> kernel.render()        included only when the client's fingerprint is stale
+  -> kernel.compile()       the shared part when the client's fingerprint is stale; the
+                            person's layer once per conversation
   -> Ledger.record()        packet and deliveries, for dedup and follow-up continuity
 ```
 

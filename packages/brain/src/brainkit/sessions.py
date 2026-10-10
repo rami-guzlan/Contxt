@@ -7,9 +7,13 @@ history and usage counts, nothing else.
 
 DEDUPLICATION RULE. A note body is withheld from a later packet only when the SAME session
 already received the SAME body hash. A caller that lost its context (a compacted or new
-conversation) passes `fresh=true` or a new session id and receives everything again.
-Over-delivery costs tokens; silent omission costs correctness, so the rule errs toward
-sending.
+conversation) passes `fresh=true` or a new session id and receives everything again; from a
+fresh call on, nothing the session got before it counts as held (`refresh`). Over-delivery costs
+tokens; silent omission costs correctness, so the rule errs toward sending.
+
+HOOKS share a conversation's session: Claude Code's hooks name it `cc:<its session id>`, push
+briefs under it and record what they hand over outside a brief (`hand`), so the model's own
+`get_task_context` calls with that session id send only what is new.
 
 USAGE. Every handout is counted by day in `usage_daily` (how many conversations got the
 item, and how: in a packet, opened afterwards, or in AI work the workspace ran), which is
@@ -72,6 +76,7 @@ CREATE TABLE IF NOT EXISTS model_daily (
 VIA = {"packet": "in_packets", "opened": "opened", "work": "in_work"}
 FOLLOWUP = "followup"  # the packet id of items opened after a packet (get_note and the like)
 WORK = "work"          # the packet id of items handed to AI work the workspace ran
+HOOK = "hook"          # the packet id of items a client's hook handed over outside a brief
 
 
 class Ledger:
@@ -100,6 +105,12 @@ class Ledger:
         if "engine" not in held:
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE sessions ADD COLUMN engine TEXT")
+        if "epoch" not in held:
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE sessions ADD COLUMN epoch INTEGER")
+        if "epoch" not in columns:
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE deliveries ADD COLUMN epoch INTEGER")
         claimed = conn.execute("INSERT OR IGNORE INTO ledger_meta (key, value) VALUES "
                                "('usage_backfill', ?)", (util.now_iso(),)).rowcount
         if claimed:
@@ -166,6 +177,7 @@ class Ledger:
             conn.execute(
                 "INSERT INTO sessions (id, principal, created, seen, label, engine) "
                 "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET seen = excluded.seen, "
+                "principal = COALESCE(NULLIF(sessions.principal, ''), excluded.principal), "
                 "label = COALESCE(NULLIF(sessions.label, ''), excluded.label), "
                 "engine = COALESCE(NULLIF(sessions.engine, ''), excluded.engine)",
                 (session_id, principal, now, now, str(label or "") or None,
@@ -184,6 +196,24 @@ class Ledger:
             return conn.execute("SELECT 1 FROM sessions WHERE id = ?",
                                 (session_id,)).fetchone() is not None
 
+    def refresh(self, session_id: str) -> None:
+        """The conversation lost what it held (a compaction, a clear): from now on, nothing
+        it was handed before counts as held. The record of what it got stays: each refresh
+        starts a new epoch of the session, and only the current epoch's deliveries are held."""
+        now = util.now_iso()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO sessions (id, principal, created, seen, epoch) "
+                "VALUES (?, '', ?, ?, 1) ON CONFLICT(id) DO UPDATE SET "
+                "epoch = COALESCE(sessions.epoch, 0) + 1, seen = excluded.seen",
+                (session_id, now, now))
+
+    def hand(self, session_id: str, items, *, principal: str = "", label: str = "") -> None:
+        """Items a hook gave a conversation outside a brief (the person's kernel layer at
+        session start): held from now on, and counted as handed out."""
+        self.touch(session_id, principal, label)
+        self._record(session_id, HOOK, items, "packet")
+
     # ------------------------------------------------------------------ deliveries
     def delivered(self, session_id: str) -> dict:
         """{(kind, item): {"hash", "packet_id", "at"}} for everything this session holds."""
@@ -191,9 +221,11 @@ class Ledger:
         if not session_id:
             return out
         with self._connect() as conn:
+            epoch = self._epoch(conn, session_id)
             for row in conn.execute(
                     "SELECT kind, item, hash, packet_id, at FROM deliveries "
-                    "WHERE session_id = ? ORDER BY at", (session_id,)):
+                    "WHERE session_id = ? AND COALESCE(epoch, 0) = ? ORDER BY at",
+                    (session_id, epoch)):
                 out[(row["kind"], row["item"])] = {
                     "hash": row["hash"], "packet_id": row["packet_id"], "at": row["at"]}
         return out
@@ -232,16 +264,24 @@ class Ledger:
         with self._connect() as conn:
             self._deliver(conn, session_id, packet_id, items, via, util.now_iso())
 
+    @staticmethod
+    def _epoch(conn, session_id) -> int:
+        """The session's current epoch: how many times it was refreshed (0 if never)."""
+        found = conn.execute("SELECT epoch FROM sessions WHERE id = ?",
+                             (session_id,)).fetchone()
+        return int((found["epoch"] if found is not None else 0) or 0)
+
     def _deliver(self, conn, session_id, packet_id, items, via, now) -> None:
         rows = [tuple(item) + (None,) * (5 - len(item)) for item in items]
+        epoch = self._epoch(conn, session_id)
         day = now[:10]
         held = {(r["kind"], r["item"]) for r in conn.execute(
             "SELECT kind, item FROM deliveries WHERE session_id = ? AND at >= ?",
             (session_id, day))}
         conn.executemany(
             "INSERT INTO deliveries (session_id, packet_id, kind, item, hash, tokens, at, "
-            "reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [(session_id, packet_id, kind, item, digest, int(tokens or 0), now, reason)
+            "reason, epoch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(session_id, packet_id, kind, item, digest, int(tokens or 0), now, reason, epoch)
              for kind, item, digest, tokens, reason in rows])
         column = VIA[via]
         for kind, item, _digest, tokens, _reason in rows:

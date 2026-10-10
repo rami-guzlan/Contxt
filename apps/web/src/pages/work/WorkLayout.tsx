@@ -34,7 +34,7 @@ export function WorkLayout() {
           <Stat label="Skills" value={skills?.skills.length} />
           <Stat label="Agents" value={agents?.length} />
           <Stat label="Workflows" value={workflows?.length} />
-          <Stat label="Library" value={library?.length} />
+          <Stat label="Library" value={library?.filter((item) => item.kind !== "prompt").length} />
         </dl>
       }
     />

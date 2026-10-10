@@ -37,6 +37,10 @@ CLIENTS = (
 MAX_LIMIT = 200
 
 
+# What a request got as its startup context, not as a piece of the brief.
+KERNEL_KINDS = ("kernel", "kernel-person")
+
+
 def _result(message, data=None, is_error=False):
     from .api import Result
     return Result(message, data or {}, is_error)
@@ -77,6 +81,8 @@ def _piece(st, kind: str, item: str, tokens: int, reason) -> dict:
         out.update(title=st.index.file_title(item), path=item)
     elif kind == "kernel":
         out.update(title="The startup context")
+    elif kind == "kernel-person":
+        out.update(title="Your own startup layer")
     elif kind == "system":
         out.update(title="How the brain works")
     else:
@@ -134,8 +140,8 @@ def _shape(st, row, brain_tokens: int, current: str, saved: dict) -> dict:
         "project": ({"id": focus, "title": st.index.focuses[focus].title}
                     if focus and focus in st.index.focuses else None),
         "skill": data.get("skill_id"),
-        "got": [p for p in got if p["kind"] != "kernel"],
-        "kernel": any(p["kind"] == "kernel" and p["tokens"] for p in got),
+        "got": [p for p in got if p["kind"] not in KERNEL_KINDS],
+        "kernel": any(p["kind"] in KERNEL_KINDS and p["tokens"] for p in got),
         "opened": [_piece(st, *piece) for piece in row["opened"]],
         "nothing": data.get("mode") == "lean" and not (
             data.get("note_ids") or data.get("standing_ids") or data.get("held_ids")
@@ -172,6 +178,10 @@ def request(brain, packet_id):
         kept = brain.ledger.kernel_text(fingerprint)
         startup = {"fingerprint": fingerprint,
                    "text": kept or _kernel_now(brain, st, row, fingerprint)}
+    elif data.get("person_included") and data.get("person_fingerprint"):
+        # Only the person's own layer went with it (the shared part was in their startup file).
+        own = str(data["person_fingerprint"])
+        startup = {"fingerprint": own, "text": brain.ledger.kernel_text(own)}
     shaped["startup"] = startup
     return _result(f"Request {row['id']}.", shaped)
 

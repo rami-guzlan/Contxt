@@ -103,7 +103,7 @@ export function WorkOverviewPage() {
       question: "What is kept whole",
       text: "Guides to follow, references to read whole, influences whose taste to borrow and assets, each with where it came from, kept current.",
       to: "/work/library",
-      count: library ? plural(library.length, "item") : undefined,
+      count: library ? plural(library.filter((item) => item.kind !== "prompt").length, "item") : undefined,
     },
     {
       title: "Prompts",
