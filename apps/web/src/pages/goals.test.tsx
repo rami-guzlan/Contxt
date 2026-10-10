@@ -172,7 +172,7 @@ describe("A goal's page", () => {
     const sent = calls.find((c) => c.method === "PUT")?.body as { layout: { blocks: { type: string; shared: boolean }[] }; expected_version: number };
     expect(sent.expected_version).toBe(3);
     expect(sent.layout.blocks.at(-1)).toMatchObject({ type: "note", shared: false });
-    await userEvent.click(screen.getByRole("button", { name: "Make it a step" }));
+    await userEvent.click(screen.getByRole("button", { name: "Make it a task" }));
     await waitFor(() => expect(calls.find((c) => c.path.endsWith("/suggestions/s1"))?.body).toEqual({ accept: true }));
   });
 });

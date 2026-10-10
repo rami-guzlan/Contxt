@@ -62,6 +62,8 @@ class StateTest(unittest.TestCase):
                                        "values": {"Health": "amber"}})
         history = state.history(self.brain, "accounts", north.id, "Health")
         self.assertEqual([e["value"] for e in history], ["amber", "green"])
+        by_alias = state.history(self.brain, "accounts", "NW", "Health")
+        self.assertEqual([e["value"] for e in by_alias], ["amber", "green"])
         snapshot = open(os.path.join(self.vault, "state", "accounts", "SNAPSHOT.md"),
                         encoding="utf-8").read()
         self.assertIn("| Northwind |", snapshot)

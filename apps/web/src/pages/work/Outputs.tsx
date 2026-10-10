@@ -7,7 +7,7 @@ import { Download, Eye, FolderPlus } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { outputFileUrl, useMadeFrom, useMakeOutputFolder, useMoveOutput, useOutputs } from "../../api/hooks";
+import { outputFileUrl, useBrainProjects, useLinkOutput, useMadeFrom, useMakeOutputFolder, useMoveOutput, useOutputs } from "../../api/hooks";
 import type { OutputFile, RequestPiece } from "../../api/types";
 import { Empty, ErrorNote, Loading } from "../../components/ui";
 import { bytes, plural, when } from "../../lib/format";
@@ -30,11 +30,30 @@ const KIND_WORDS: Record<string, string> = {
 
 export function OutputsPage() {
   const { data, isLoading, error } = useOutputs();
+  const { data: projects } = useBrainProjects();
   const [folder, setFolder] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [group, setGroup] = useState<"project" | "folder">("project");
+  const [filter, setFilter] = useState({ project: "", entity: "", maker: "", kind: "", q: "" });
   if (isLoading) return <Loading />;
   if (!data) return <ErrorNote error={error} />;
-  const files = folder === null ? data.files : data.files.filter((f) => f.folder === folder || f.folder.startsWith(`${folder}/`));
+  const titles = new Map((projects ?? []).map((p) => [p.id, p.title]));
+  const inFolder = folder === null ? data.files : data.files.filter((f) => f.folder === folder || f.folder.startsWith(`${folder}/`));
+  const files = inFolder.filter(
+    (f) =>
+      (!filter.project || (filter.project === "none" ? !f.project : f.project === filter.project)) &&
+      (!filter.entity || f.for === filter.entity) &&
+      (!filter.maker || (f.maker ?? "") === filter.maker) &&
+      (!filter.kind || f.kind === filter.kind) &&
+      (!filter.q || `${f.name} ${f.title ?? ""}`.toLowerCase().includes(filter.q.toLowerCase())),
+  );
+  const entities = [...new Set(data.files.map((f) => f.for).filter(Boolean))] as string[];
+  const makers = [...new Set(data.files.map((f) => f.maker).filter(Boolean))] as string[];
+  const kinds = [...new Set(data.files.map((f) => f.kind))];
+  const set = (k: keyof typeof filter, v: string) => setFilter({ ...filter, [k]: v });
+  const row = (file: OutputFile) => (
+    <FileRow key={file.path} file={file} folders={data.folders} open={open === file.path} onOpen={() => setOpen(open === file.path ? null : file.path)} />
+  );
   return (
     <div className="work-tab outputs">
       <div className="work-intro">
@@ -56,17 +75,107 @@ export function OutputsPage() {
           <NewFolder />
         </nav>
         <div className="files">
-          {files.length ? (
-            <ul className="file-list">
-              {files.map((file) => (
-                <FileRow key={file.path} file={file} folders={data.folders} open={open === file.path} onOpen={() => setOpen(open === file.path ? null : file.path)} />
+          <div className="row wrap output-filters" aria-label="Filters">
+            <label className="small">
+              Group by{" "}
+              <select value={group} onChange={(event) => setGroup(event.target.value as "project" | "folder")}>
+                <option value="project">Project, then what it is for</option>
+                <option value="folder">Newest first</option>
+              </select>
+            </label>
+            <select aria-label="Project" value={filter.project} onChange={(event) => set("project", event.target.value)}>
+              <option value="">Every project</option>
+              {[...titles].map(([id, title]) => (
+                <option key={id} value={id}>
+                  {title}
+                </option>
               ))}
-            </ul>
+              <option value="none">No project</option>
+            </select>
+            {entities.length ? (
+              <select aria-label="For" value={filter.entity} onChange={(event) => set("entity", event.target.value)}>
+                <option value="">Anything it is for</option>
+                {entities.map((e) => (
+                  <option key={e} value={e}>
+                    {e.split("/").slice(1).join("/")}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {makers.length > 1 ? (
+              <select aria-label="Made by" value={filter.maker} onChange={(event) => set("maker", event.target.value)}>
+                <option value="">Anyone</option>
+                {makers.map((m) => (
+                  <option key={m}>{m}</option>
+                ))}
+              </select>
+            ) : null}
+            <select aria-label="Kind" value={filter.kind} onChange={(event) => set("kind", event.target.value)}>
+              <option value="">Every kind</option>
+              {kinds.map((k) => (
+                <option key={k} value={k}>
+                  {KIND_WORDS[k] ?? k}
+                </option>
+              ))}
+            </select>
+            <input aria-label="Search outputs" placeholder="Search" value={filter.q} onChange={(event) => set("q", event.target.value)} />
+          </div>
+          {files.length && group === "project" ? (
+            <Grouped files={files} titles={titles} row={row} />
+          ) : files.length ? (
+            <ul className="file-list">{files.map(row)}</ul>
           ) : (
             <Empty why="Nothing here yet. When a skill makes a file, or your AI saves one for you, it lands in this folder." />
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** By project (the default), then by what each is for (an account's bucket), then newest. */
+function Grouped({ files, titles, row }: { files: OutputFile[]; titles: Map<string, string>; row: (f: OutputFile) => React.ReactNode }) {
+  const projects = [...new Set(files.map((f) => f.project ?? ""))].sort((a, b) => (a ? (b ? a.localeCompare(b) : -1) : 1));
+  return (
+    <>
+      {projects.map((project) => {
+        const mine = files.filter((f) => (f.project ?? "") === project);
+        const buckets = [...new Set(mine.map((f) => f.for ?? ""))].sort((a, b) => (a ? (b ? a.localeCompare(b) : -1) : 1));
+        return (
+          <section key={project || "none"} aria-label={project ? (titles.get(project) ?? project) : "No project"}>
+            <h3 className="small-head">{project ? (titles.get(project) ?? project) : "No project"}</h3>
+            {buckets.map((bucket) => (
+              <div key={bucket || "general"}>
+                {buckets.length > 1 || bucket ? <h4 className="small muted">{bucket ? bucket.split("/").slice(1).join("/") : "Not for one entity"}</h4> : null}
+                <ul className="file-list">{mine.filter((f) => (f.for ?? "") === bucket).map(row)}</ul>
+              </div>
+            ))}
+          </section>
+        );
+      })}
+    </>
+  );
+}
+
+function LinkFor({ file }: { file: OutputFile }) {
+  const link = useLinkOutput();
+  const { data: projects } = useBrainProjects();
+  const [row, setRow] = useState(file.for ?? "");
+  return (
+    <div className="row small">
+      <select aria-label={`Project for ${file.name}`} value={file.project ?? ""} onChange={(event) => link.mutate({ path: file.path, project: event.target.value })}>
+        <option value="">No project</option>
+        {(projects ?? []).map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.title}
+          </option>
+        ))}
+      </select>
+      <input aria-label={`What ${file.name} is for`} placeholder="For (sheet/row)" value={row} onChange={(event) => setRow(event.target.value)} />
+      <button type="button" className="link small" onClick={() => link.mutate({ path: file.path, row: row.trim() })}>
+        Save
+      </button>
+      <ErrorNote error={link.error} />
     </div>
   );
 }
@@ -117,6 +226,9 @@ function FileRow({ file, folders, open, onOpen }: { file: OutputFile; folders: s
           {file.folder ? ` · ${file.folder}` : ""}
         </span>
         {file.from === "skill" ? <span className="chip small">From a skill run</span> : null}
+        {file.from === "chat" ? <span className="chip small">From a chat</span> : null}
+        <span className="muted small">Made by {file.maker ?? "you"}</span>
+        {file.for ? <span className="chip small">For {file.for.split("/").slice(1).join("/")}</span> : null}
         {file.working ? <span className="chip small">Still being made</span> : null}
       </div>
       <div className="file-actions row">
@@ -133,7 +245,12 @@ function FileRow({ file, folders, open, onOpen }: { file: OutputFile; folders: s
         </button>
       </div>
       {moving ? <Move file={file} folders={folders} onDone={() => setMoving(false)} /> : null}
-      {open ? <MadeFromPanel path={file.path} /> : null}
+      {open ? (
+        <>
+          <LinkFor file={file} />
+          <MadeFromPanel path={file.path} />
+        </>
+      ) : null}
     </li>
   );
 }

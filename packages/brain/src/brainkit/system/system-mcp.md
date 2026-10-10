@@ -12,6 +12,6 @@ To restart: reconnect the MCP server from the client (Claude Code: `/mcp`, then 
 `brain`; or restart the session). To check health first: `brain check`, or the
 `brain_health` tool. Agent tools: get_task_context, search_notes, get_note, get_skill,
 get_reference, propose_note, record_focus_update, create_focus, brain_health, list_agents,
-get_agent. When a packet
+get_agent, get_state, update_state, hand_off. When a packet
 lacks something, search_notes finds notes in the agent's own words and get_note opens one;
 both record what the session holds, so packets do not repeat it.

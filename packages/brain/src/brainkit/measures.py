@@ -78,6 +78,51 @@ def _quiet_projects(brain, st, params) -> float:
     return float(count)
 
 
+def _sheet_column(brain, st, params) -> float | None:
+    """A column of a State sheet: its latest value, sum, count, average, or the rows in one
+    status (`agg`: latest, sum, count, average, or status:<value>)."""
+    from . import formulas, state
+    sheet_id, column = str(params.get("sheet") or ""), str(params.get("column") or "")
+    found = state.sheet(brain, sheet_id)
+    if found is None or found.column(column) is None:
+        return None
+    current = state.rows(brain, sheet_id)
+    agg = str(params.get("agg") or "latest")
+    is_computed = found.column(column).computed
+
+    def value(row):
+        return row.computed.get(column) if is_computed else row.value(column)
+
+    if agg.startswith("status:"):
+        wanted = agg.split(":", 1)[1].lower()
+        return float(sum(1 for r in current if str(value(r) or "").lower() == wanted))
+    if agg == "count":
+        return float(sum(1 for r in current if value(r) not in (None, "")))
+    numbers = [n for n in (formulas._number(value(r)) for r in current) if n is not None]
+    if agg == "sum":
+        return float(sum(numbers))
+    if agg == "average":
+        return sum(numbers) / len(numbers) if numbers else None
+    latest = max(current, key=lambda r: r.updated, default=None)
+    return formulas._number(value(latest)) if latest is not None else None
+
+
+def _milestones(brain, st, params) -> float:
+    """Milestone tasks done, in one project or all."""
+    from . import handoff
+    project = str(params.get("project") or "")
+    return float(sum(1 for t in handoff.tasks(brain, status="done", project=project)
+                     if t["milestone"]))
+
+
+def _unclaimed(brain, st, params) -> float:
+    """Handoffs nobody claimed within N days."""
+    from . import handoff
+    days = int(params.get("days", 1))
+    return float(sum(1 for t in handoff.tasks(brain, status="handed_off")
+                     if _older_than(t.get("updated") or "", days - 1)))
+
+
 SIGNALS: dict[str, Signal] = {s.name: s for s in (
     Signal("notes_overdue", "Much-used notes past their review date, or unchecked for 180 days",
            _notes_overdue),
@@ -88,9 +133,11 @@ SIGNALS: dict[str, Signal] = {s.name: s for s in (
            {"days": 14}),
     Signal("must_hold_recall", "Must-hold recall on your eval set", None,
            waits_for="the private eval set, labeled"),
-    Signal("milestones", "Milestones done in linked projects", None,
-           waits_for="milestones on the Tasks sheet (G2)"),
-    Signal("sheet_column", "A column of a sheet", None, waits_for="State sheets (step 6)"),
+    Signal("milestones", "Milestone tasks done", _milestones, {"project": ""}),
+    Signal("sheet_column", "The {agg} of {column} in the {sheet} sheet", _sheet_column,
+           {"sheet": "", "column": "", "agg": "latest"}),
+    Signal("unclaimed", "Handoffs nobody claimed within {days} days", _unclaimed,
+           {"days": 1}),
 )}
 
 

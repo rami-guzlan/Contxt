@@ -12,6 +12,7 @@ import { Empty, ErrorNote, Field, Loading, Section } from "../../components/ui";
 import { NewThings, WorkspaceRow } from "../../components/work/WorkspaceParts";
 import { WORKSPACE } from "../../lib/links";
 import { NoteEditor } from "../Notes";
+import { LiveSection } from "./Live";
 
 export function WorkspacePage() {
   const [params, setParams] = useSearchParams();
@@ -25,7 +26,7 @@ export function WorkspacePage() {
     <div className="work-tab workspace">
       <div className="work-intro">
         <p>
-          Where you think first. Write, outline and plan here, keep the links you work from, and link any of it to a project. It is yours
+          <strong>Your docs.</strong> Where you think first. Write, outline and plan here, keep the links you work from, and link any of it to a project. It is yours
           alone until you ask your AI about a doc or add it to the Brain.
         </p>
       </div>
@@ -57,6 +58,7 @@ export function WorkspacePage() {
           }
         />
       )}
+      {archived ? null : <LiveSection />}
     </div>
   );
 }

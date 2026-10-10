@@ -128,7 +128,7 @@ def test_a_check_in_then_a_suggestion_becomes_a_step(owner, runtime):
         owner.post(f"/api/goals/{goal}/suggestions/{step['id']}", json={"accept": True})
     )
     key_results = next(b for b in after["board"]["blocks"] if b["type"] == "checklist")
-    assert key_results["items"][-1]["text"] == "Book 2 partner promos"
+    assert key_results["items"][-1]["text"] == "T-1 Book 2 partner promos"
     assert "Book 2 partner promos" in after["plan"]
     no = after["suggestions"][0]
     later = owner.ok(

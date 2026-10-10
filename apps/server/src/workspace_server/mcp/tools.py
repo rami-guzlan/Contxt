@@ -428,6 +428,58 @@ def _ids(args: dict[str, Any], name: str) -> list[str] | None:
     raise ValidationFailed(f"{name} is a list of entry ids.", field=name)
 
 
+def get_state(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    who.require("brain.read")
+    found = ws.rt.brain.get_state(
+        sheet=str(args.get("sheet") or ""),
+        row=str(args.get("row") or ""),
+        query=str(args.get("query") or ""),
+    )
+    return str(found.pop("text", "")), found
+
+
+def update_state(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    who.require("brain.propose")
+    updates = args.get("updates")
+    if not isinstance(updates, list) or not updates:
+        raise ValidationFailed("Send updates as a list of {sheet, row, column, value}.")
+    found = ws.rt.brain.update_state(
+        updates, evidence=str(args.get("evidence") or ""), session_id=""
+    )
+    return str(found.pop("text", "")), found
+
+
+HAND_OFF_FIELDS = (
+    "task",
+    "new_task",
+    "goal",
+    "to",
+    "claim",
+    "status",
+    "done_so_far",
+    "next_step",
+    "done_when",
+    "decisions",
+    "open_questions",
+    "load",
+    "evidence",
+    "goal_note",
+    "reason",
+)
+
+
+def hand_off(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """A run moves a task as the app's own work ("Gnomon run"), acting for the owner; a run
+    for an agent moves it as that agent."""
+    who.require("brain.propose")
+    fields = {k: args[k] for k in HAND_OFF_FIELDS if args.get(k) not in (None, "")}
+    agent = str(args.get("agent") or "").strip()
+    found = ws.rt.brain.hand_off(
+        **fields, caller=f"agent:{agent}" if agent else "you", tool="Gnomon run"
+    )
+    return str(found.pop("text", "")), found
+
+
 def redacting(ws: Workspace, who: Principal) -> bool:
     """Does a model reading through these tools get what was brought in redacted? A model is
     a cloud model here unless its connection says it runs on this computer (Ollama)."""
@@ -874,6 +926,67 @@ TOOLS: dict[str, Tool] = {
                 ["run_id"],
             ),
             propose_brain_skill,
+            "brain.propose",
+        ),
+        Tool(
+            "get_state",
+            "Read State: fast-changing values per entity (accounts, repos, tasks). No sheet "
+            "lists the sheets; a sheet lists its rows (filter with query); a row gives its "
+            "values with dates and recent changes.",
+            _obj(
+                {
+                    "sheet": {"type": "string"},
+                    "row": {"type": "string"},
+                    "query": {"type": "string"},
+                }
+            ),
+            get_state,
+            "brain.read",
+        ),
+        Tool(
+            "update_state",
+            "Write State values you learned, with evidence: a list of {sheet, row, column, "
+            "value, as_of}. Some columns apply at once, some wait for the owner, some are "
+            "theirs alone. Tasks move only with hand_off.",
+            _obj(
+                {
+                    "updates": {"type": "array", "items": {"type": "object"}},
+                    "evidence": {"type": "string"},
+                },
+                ["updates"],
+            ),
+            update_state,
+            "brain.propose",
+        ),
+        Tool(
+            "hand_off",
+            "Move a task: claim it, save progress (no `to`), pass it on (`to`, with done_when "
+            "and next_step), or finish (status done, with evidence). new_task opens one. "
+            "Save before the run ends.",
+            _obj(
+                {
+                    "task": {"type": "string"},
+                    "new_task": {"type": "object"},
+                    "goal": {"type": "string"},
+                    "goal_note": {"type": "string"},
+                    "to": {"type": "string"},
+                    "claim": {"type": "boolean"},
+                    "status": {
+                        "type": "string",
+                        "enum": ["working", "blocked", "waiting_for_you", "done", "dropped"],
+                    },
+                    "done_so_far": {"type": "string"},
+                    "next_step": {"type": "string"},
+                    "done_when": {"type": "string"},
+                    "decisions": {"type": "string"},
+                    "open_questions": {"type": "string"},
+                    "load": {"type": "string"},
+                    "evidence": {"type": "array", "items": {"type": "string"}},
+                    "reason": {"type": "string"},
+                    "agent": {"type": "string", "description": "The agent this run works as."},
+                }
+            ),
+            hand_off,
             "brain.propose",
         ),
         Tool(

@@ -677,6 +677,47 @@ class BrainPort(Protocol):
         (brainkit/ladder.py)."""
         ...
 
+    # ---- State (BL 8) and tasks (goals plan 5)
+
+    def state_act(self, action: str, fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The owner's State actions (brainkit/state.py): sheets, templates, rows, history,
+        waiting, promotions; create_sheet, add_column, add_row, write, touch, decide,
+        remove_row. NotFound, Conflict or ValidationFailed on a refusal."""
+        ...
+
+    def update_state(
+        self, updates: list[dict[str, Any]], *, evidence: str = "", session_id: str = ""
+    ) -> dict[str, Any]:
+        """An AI's cell updates through the app's runs: {"text", "results"}."""
+        ...
+
+    def get_state(self, *, sheet: str = "", row: str = "", query: str = "") -> dict[str, Any]:
+        """State as an AI reads it: {"text", ...}."""
+        ...
+
+    def hand_off(self, **fields: Any) -> dict[str, Any]:
+        """Take, save, pass on or finish a task, or add a goal note (brainkit/handoff.py):
+        {"task", "card", "owner", "task_status"}. ValidationFailed with how to fix the
+        call."""
+        ...
+
+    def tasks(self, **filters: Any) -> list[dict[str, Any]]:
+        """Tasks from the Tasks sheet, filtered by owner, status, goal or project."""
+        ...
+
+    def task(self, task_id: str) -> dict[str, Any]:
+        """One task with its card, its rendered card and its log. NotFound without one."""
+        ...
+
+    def outputs_for(self, paths: list[str]) -> dict[str, dict[str, Any]]:
+        """What the Brain recorded for these output files (by absolute path): the project,
+        the State row, who made it, the conversation."""
+        ...
+
+    def link_output(self, path: str, *, project: str | None = None, row: str | None = None) -> None:
+        """The person says what an output is for."""
+        ...
+
     def builtin_skills(self) -> dict[str, Any]:
         """The skills every Brain comes with: {"skills": [{"name", "installed", ...}],
         "missing"}."""
@@ -1038,6 +1079,36 @@ class NoBrain:
         self, action: str, goal_id: str = "", fields: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to keep goals in.")
+
+    def state_act(self, action: str, fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        if action in ("sheets", "waiting", "promotions"):
+            return {"sheets": [], "waiting": [], "suggestions": []}
+        if action == "templates":
+            return {"templates": []}
+        raise Conflict("This workspace has no Brain to keep State in.")
+
+    def update_state(
+        self, updates: list[dict[str, Any]], *, evidence: str = "", session_id: str = ""
+    ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep State in.")
+
+    def get_state(self, *, sheet: str = "", row: str = "", query: str = "") -> dict[str, Any]:
+        return {"text": "No State sheets yet.", "sheets": []}
+
+    def hand_off(self, **fields: Any) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep tasks in.")
+
+    def tasks(self, **filters: Any) -> list[dict[str, Any]]:
+        return []
+
+    def task(self, task_id: str) -> dict[str, Any]:
+        raise NotFound("This workspace has no Brain.")
+
+    def outputs_for(self, paths: list[str]) -> dict[str, dict[str, Any]]:
+        return {}
+
+    def link_output(self, path: str, *, project: str | None = None, row: str | None = None) -> None:
+        return None
 
     def builtin_skills(self) -> dict[str, Any]:
         return {"skills": [], "missing": []}

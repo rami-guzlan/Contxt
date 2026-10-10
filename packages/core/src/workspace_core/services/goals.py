@@ -29,14 +29,13 @@ import sqlalchemy as sa
 from workspace_core.clock import parse_iso
 from workspace_core.db import schema
 from workspace_core.domain.policy import Principal
-from workspace_core.errors import ValidationFailed
+from workspace_core.errors import Conflict, ValidationFailed
 
 from .runtime import Runtime
 
 CALLS = ("on_track", "at_risk", "off_track")
 CADENCES = ("daily", "weekly", "monthly")
-# The sheet block waits for State sheets (build step 6).
-BLOCK_TYPES = ("note", "checklist", "doc", "projects", "links", "decisions")
+BLOCK_TYPES = ("note", "checklist", "doc", "projects", "links", "decisions", "sheet")
 MAX_BLOCKS = 24
 MAX_TEXT = 8000
 MAX_ITEMS = 50
@@ -175,6 +174,11 @@ def clean_layout(layout: Any) -> dict[str, Any]:
         elif raw["type"] == "doc":
             block["doc_id"] = _clip(raw.get("doc_id"), 60)
             block["doc_title"] = _clip(raw.get("doc_title"), 200)
+        elif raw["type"] == "sheet":
+            block["sheet_id"] = _clip(raw.get("sheet_id"), 64)
+            block["drives"] = _clip(raw.get("drives"), 80)  # the column that drives progress
+            agg = _clip(raw.get("agg"), 20)
+            block["agg"] = agg if agg in ("latest", "sum", "average", "count") else "latest"
         elif raw["type"] == "links":
             block["links"] = [
                 {"title": _clip(i.get("title"), 200), "url": _clip(i.get("url"), 1000)}
@@ -204,6 +208,9 @@ def render(block: dict[str, Any], goal: dict[str, Any]) -> str:
             f"- {link['title'] or link['url']}" + (f": {link['url']}" if link["url"] else "")
             for link in block.get("links") or []
         )
+    if kind == "sheet":
+        sheet = block.get("sheet_id") or "a sheet"
+        return f"State sheet `{sheet}`: read it with get_state (sheet {sheet})."
     if kind == "decisions":
         return "\n".join(
             f"- {str(e.get('at') or '')[:10]}: {e.get('text')}"
@@ -293,6 +300,8 @@ class Goals:
         found = self.rt.brain.goal(goal_id)
         row = self._row(goal_id)
         found["board"] = self._board(row, found)
+        # What AI is doing for it: tasks on this goal owned by an agent or a tool.
+        found["tasks"] = self.rt.brain.tasks(goal=goal_id)
         found["suggestions"] = [
             s for s in (row["suggestions"] if row else []) if s.get("status") == "waiting"
         ]
@@ -501,6 +510,7 @@ class Goals:
                 )
             else:
                 tx.update(table, row, {"layout": board}, expected_version=expected_version or None)
+        self._drive(goal_id, board, goal)
         # Only shared blocks ever reach the vault, so only they reach a brief.
         shared = [
             {"title": b["title"], "text": render(b, goal)}
@@ -508,6 +518,38 @@ class Goals:
             if b.get("shared")
         ]
         self.rt.brain.act_goal("plan", goal_id, {"blocks": shared})
+
+    def _drive(self, goal_id: str, board: dict[str, Any], goal: dict[str, Any]) -> None:
+        """A sheet block whose column drives progress becomes the goal's computed measure
+        (shown beside your call, never over it); the target stays what it was."""
+        block = next(
+            (
+                b
+                for b in board["blocks"]
+                if b["type"] == "sheet" and b.get("sheet_id") and b.get("drives")
+            ),
+            None,
+        )
+        current = dict(goal.get("measure") or {})
+        if block is None:
+            return
+        params = {
+            "sheet": block["sheet_id"],
+            "column": block["drives"],
+            "agg": block.get("agg") or "latest",
+        }
+        if current.get("signal") == "sheet_column" and current.get("params") == params:
+            return
+        measure = {"kind": "at_least", "signal": "sheet_column", "params": params}
+        if isinstance(current.get("target"), (int, float)):
+            measure["target"] = current["target"]
+        if current.get("unit"):
+            measure["unit"] = current["unit"]
+        self.rt.brain.act_goal(
+            "change",
+            goal_id,
+            {"changes": {"measure": measure}, "reason": "A sheet drives its progress."},
+        )
 
     # ---------------------------------------------------------------- suggestions
 
@@ -579,13 +621,23 @@ class Goals:
             raise ValidationFailed("That suggestion is not waiting.", field="suggestion_id")
         match["status"] = "accepted" if accept else "dismissed"
         board = dict(row["layout"])
+        task_id = ""
         if accept:
+            # It becomes a task (goals plan 5.5): yours until you hand it on.
+            try:
+                made = self.rt.brain.hand_off(new_task={"title": match["text"], "goal": goal_id})
+                task_id = str((made.get("task") or {}).get("id") or "")
+            except (ValidationFailed, Conflict):
+                task_id = ""
+            if task_id:
+                match["task"] = task_id
             blocks = [dict(b) for b in board.get("blocks") or []]
             target = next((b for b in blocks if b["type"] == "checklist"), None)
             if target is None:
                 target = _block("checklist", "Next steps", True, items=[])
                 blocks.append(target)
-            target["items"] = [*(target.get("items") or []), {"text": match["text"], "done": False}]
+            text = f"{task_id} {match['text']}" if task_id else match["text"]
+            target["items"] = [*(target.get("items") or []), {"text": text, "done": False}]
             board["blocks"] = blocks
         table = schema.goal_boards
         with self.rt.write() as tx:

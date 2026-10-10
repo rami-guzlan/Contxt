@@ -371,7 +371,11 @@ def summary(found: Sheet, out: list[Row]) -> dict:
 
 
 def history(brain, sheet_id: str, row_id: str, column: str | None = None) -> list[dict]:
-    """A row's events, newest first (a column's only, with `column`)."""
+    """A row's events, newest first (a column's only, with `column`). The row by its id, key
+    or an alias."""
+    if not os.path.isfile(os.path.join(_folder(brain, sheet_id), f"{row_id}.jsonl")):
+        found = find_row(brain, sheet_id, row_id)
+        row_id = found.id if found is not None else row_id
     events = _events(brain, sheet_id, row_id)
     if column:
         events = [e for e in events if str(e.get("column") or "").lower()

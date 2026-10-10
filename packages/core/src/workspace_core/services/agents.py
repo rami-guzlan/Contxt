@@ -278,15 +278,19 @@ class Agents:
         ask: str,
         project: str | None = None,
         capture_id: str | None = None,
+        handoff: str | None = None,
     ) -> Task:
         """Ask the agent for something: a run like a skill run, opening with its role. With
         `capture_id`, a note it works from (a Workspace doc: "I outline, you write"), pinned at
-        the version it is now."""
+        the version it is now. With `handoff`, the run works that task from the Tasks sheet,
+        and its contract asks for a hand_off before it stops."""
         who.require("tasks.write")
         doc = self.notes.get(who, capture_id) if capture_id else None
         plan = self.plan(who, name, ask=ask, project=project, docs=[doc] if doc else None)
         if doc is not None:
             plan["about"]["capture"] = {"id": doc.id, "title": doc.title, "revision": doc.revision}
+        if handoff:
+            plan["about"]["handoff"] = handoff
         return self.skills.queue(who, **plan)
 
     def plan(

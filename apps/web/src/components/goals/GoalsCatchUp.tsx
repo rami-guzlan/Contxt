@@ -66,7 +66,7 @@ function StepGroup({ goal, title, steps }: { goal: string; title: string; steps:
           <li key={s.id} className="row">
             <span>“{s.text}”</span>
             <button type="button" className="link small" disabled={answer.isPending} onClick={() => answer.mutate({ step: s.id, accept: true })}>
-              Make it a step
+              Make it a task
             </button>
             <button type="button" className="link small" disabled={answer.isPending} onClick={() => answer.mutate({ step: s.id, accept: false })}>
               No

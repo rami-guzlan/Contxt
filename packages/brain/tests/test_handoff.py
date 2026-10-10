@@ -166,3 +166,24 @@ class HandoffTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StopHookTest(unittest.TestCase):
+    def setUp(self):
+        self.vault = se.copy_vault(os.path.join(BRAINS, "knowledge-company", "vault"))
+        self.brain = Brain(self.vault, embeddings=False)
+
+    def tearDown(self):
+        self.brain.close()
+        shutil.rmtree(os.path.dirname(self.vault), ignore_errors=True)
+
+    def test_a_session_with_an_active_task_is_asked_to_save_once(self):
+        from brainkit.hooks import task_stop
+        self.brain.hand_off(new_task={"title": "Fix the figure"})
+        session = "cc:abc123"
+        self.brain.context("pick up T-1", context="T-1", session_id=session)
+        line = task_stop.reminder(self.brain, session)
+        self.assertIn("save where you are on T-1 with hand_off", line)
+        self.brain.hand_off(task="T-1", next_step="Check the source", session_id=session)
+        self.assertIsNone(task_stop.reminder(self.brain, session))
+        self.assertIsNone(task_stop.reminder(self.brain, "cc:none"))

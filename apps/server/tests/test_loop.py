@@ -5,6 +5,9 @@ import os
 
 TOOLS = {
     "get_due_tasks",
+    "get_state",
+    "update_state",
+    "hand_off",
     "claim_task",
     "get_task_packet",
     "append_task_event",
