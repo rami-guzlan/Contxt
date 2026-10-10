@@ -23,6 +23,7 @@ class StartIn(BaseModel):
     kind: str = Field(min_length=1, max_length=64)
     suite: str | None = Field(default=None, max_length=64)
     confirm: bool = False
+    request: str | None = Field(default=None, max_length=2000)
 
 
 class LabIn(BaseModel):
@@ -102,7 +103,7 @@ def live(testing: Testing, after: int = Query(default=0, ge=0)) -> dict[str, Any
 
 @router.post("/runs", status_code=202)
 def start(body: StartIn, testing: Testing) -> dict[str, Any]:
-    return testing.start(body.kind, body.suite, body.confirm)
+    return testing.start(body.kind, body.suite, body.confirm, body.request)
 
 
 @router.post("/runs/{run}/cancel")

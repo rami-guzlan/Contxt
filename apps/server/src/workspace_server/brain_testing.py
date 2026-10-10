@@ -326,12 +326,16 @@ class TestTheBrain:
         }
 
     # ----- running
-    def start(self, kind: str, suite: str | None, confirm: bool) -> dict[str, Any]:
+    def start(
+        self, kind: str, suite: str | None, confirm: bool, request: str | None = None
+    ) -> dict[str, Any]:
         lab = self.lab()
         if lab is None:
             if self.builtin is None:
                 raise Conflict("Connect a Lab to run its tests.")
-            return self.builtin.start(kind, suite, confirm)
+            return self.builtin.start(kind, suite, confirm, request)
+        if request:
+            raise ValidationFailed("A Lab run takes a run kind and a suite only.", field="request")
         try:
             status = self._status(lab)
         except ContractError as exc:

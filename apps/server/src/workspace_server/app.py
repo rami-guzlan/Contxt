@@ -20,6 +20,7 @@ from workspace_core.workspace import Workspace
 from . import web, webapp
 from .brain_adapter import BrainKitAdapter
 from .brain_testing import TestTheBrain
+from .builtin_checks import BuiltinChecks
 from .deps import error_response
 from .difference import Differences
 from .extractor import DocumentExtractor
@@ -126,6 +127,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         outputs=settings.exports_dir or os.path.join(settings.data_dir, "exports"),
     )
     models = Models(runners)
+    differences = Differences(ws, runners)
     return Runtime(
         settings=settings,
         ws=ws,
@@ -134,12 +136,16 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         owner_token=token,
         runners=runners,
         speech=Speech(settings.speech_models),
-        differences=Differences(ws, runners),
+        differences=differences,
         outputs=Outputs(ws, settings.exports_dir or os.path.join(settings.data_dir, "exports")),
         models=models,
         agent=AgentWork(ws, models),
         library=Library(ws, settings.data_dir),
-        testing=TestTheBrain(settings, ws),
+        testing=TestTheBrain(
+            settings,
+            ws,
+            builtin=BuiltinChecks(settings.data_dir, ws, adapter, differences),
+        ),
     )
 
 
