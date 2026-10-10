@@ -587,6 +587,18 @@ class BrainPort(Protocol):
         """Fetch the matching model in the background (the owner's call, never automatic)."""
         ...
 
+    def local_models(self) -> dict[str, Any]:
+        """This computer's local models (brain-logic plan 5.11.16): the machine and its setup,
+        each role's model and pinned options, and whether the engine runs in full."""
+        ...
+
+    def act_local_models(
+        self, action: str, name: str = "", on: bool | None = None
+    ) -> dict[str, Any]:
+        """check | default | download | remove | speed | claude_code; returns local_models()
+        with a `notice` (a warning that does not refuse)."""
+        ...
+
     def made_from(self, path: str) -> dict[str, Any] | None:
         """What a file an AI saved for the person was made from, when it said so: the
         conversation's requests and what each got; None when nothing was recorded."""
@@ -914,6 +926,14 @@ class NoBrain:
 
     def download_models(self) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to download a model for.")
+
+    def local_models(self) -> dict[str, Any]:
+        return {"enabled": False}
+
+    def act_local_models(
+        self, action: str, name: str = "", on: bool | None = None
+    ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to run local models for.")
 
     def made_from(self, path: str) -> dict[str, Any] | None:
         return None

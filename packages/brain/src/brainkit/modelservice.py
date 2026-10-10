@@ -15,6 +15,14 @@ model once and the engine, the app and every MCP session share it. It binds to 1
   `{"model", "results": [{"index", "relevance_score"}], "latency_ms"}` out (scores 0 to 1).
 - `POST /v1/systemone`: System One, Jev's request format, which Kev speaks:
   `{"model", "state", "questions"}` in; `{"model", "answers", "usage", "latency_ms"}` out.
+- `POST /v1/generate`: the knowledge agent's model (brain-logic plan 17): `{"model", "system",
+  "prompt", "schema", "max_tokens"}` in; `{"model", "text", "json", "latency_ms"}` out, the
+  answer bound to the JSON schema while it is generated where the runtime can, and checked
+  again here.
+- `POST /v1/reload`: choose and load the models again (after the person changes a default).
+
+Which model serves a role: the person's choice on this machine, else the machine setup's
+default (machine.py), else the lock's default for the role.
 - On start it writes `<model home>/modelservice.json` (its address, process and lock), which is
   how every client finds it; it removes the file when it stops.
 
@@ -39,7 +47,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import modellock, models_client
 
 DEFAULT_PORT = 8791
-ROLES = ("rerank", "decide")
 MAX_BODY = 32 * 1024 * 1024  # bytes in one request
 QWEN_SYSTEM = ("Judge whether the Document meets the requirements based on the Query and the "
                "Instruct provided. Note that the answer can only be \"yes\" or \"no\".")
@@ -77,6 +84,94 @@ class DecideBackend(Backend):
     def answers(self, state, questions: dict) -> dict:
         """System One answers: {question id: answer}."""
         raise NotImplementedError
+
+
+class AgentBackend(Backend):
+    role = "agent"
+
+    def generate(self, system: str, prompt: str, schema: dict | None,
+                 max_tokens: int) -> str:
+        """The model's answer as text; with a schema, JSON bound to it."""
+        raise NotImplementedError
+
+
+class LlamaCppAgent(AgentBackend):
+    """A 4-bit GGUF build through llama.cpp (CUDA, or the CPU on Windows without a GPU), its
+    answer bound to the JSON schema while it is generated. Not run where it cannot."""
+
+    def load(self) -> None:
+        from llama_cpp import Llama
+        files = sorted(f for f in os.listdir(self.folder) if f.endswith(".gguf"))
+        if not files:
+            raise RuntimeError("no .gguf file in the model's folder")
+        self.net = Llama(model_path=os.path.join(self.folder, files[0]), n_ctx=8192,
+                         n_gpu_layers=-1, verbose=False)
+
+    def generate(self, system: str, prompt: str, schema: dict | None,
+                 max_tokens: int) -> str:
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
+        kwargs: dict = {"max_tokens": max_tokens, "temperature": 0.2}
+        if schema:
+            kwargs["response_format"] = {"type": "json_object", "schema": schema}
+        found = self.net.create_chat_completion(messages=messages, **kwargs)
+        usage = found.get("usage") or {}
+        self.usage = {"tokens_in": int(usage.get("prompt_tokens") or 0),
+                      "tokens_out": int(usage.get("completion_tokens") or 0)}
+        return str(found["choices"][0]["message"]["content"] or "")
+
+
+class MlxAgent(AgentBackend):
+    """A 4-bit MLX build on a Mac. MLX has no schema-bound decoding here, so the answer is
+    checked against the schema in code (one retry in the agent's loop)."""
+
+    def load(self) -> None:
+        from mlx_lm import load
+        self.net, self.tokenizer = load(self.folder)
+
+    def generate(self, system: str, prompt: str, schema: dict | None,
+                 max_tokens: int) -> str:
+        from mlx_lm import generate
+        text = self.tokenizer.apply_chat_template(
+            [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+            add_generation_prompt=True, tokenize=False)
+        return str(generate(self.net, self.tokenizer, prompt=text, max_tokens=max_tokens))
+
+
+def _agent_backend(pin, folder):
+    """MLX on a Mac with Apple Silicon, llama.cpp elsewhere."""
+    import platform
+    if platform.system() == "Darwin" and platform.machine() == "arm64":
+        return MlxAgent(pin, folder)
+    return LlamaCppAgent(pin, folder)
+
+
+def schema_problems(value, schema: dict | None) -> list[str]:
+    """What keeps a JSON answer from matching a schema's top level: its type, the keys it
+    requires, and each property's type. The agent's loop retries once on a problem."""
+    if not schema:
+        return []
+    kind = schema.get("type")
+    types = {"object": dict, "array": list, "string": str, "integer": int, "number": (int, float),
+             "boolean": bool}
+
+    def a(word: str) -> str:
+        return f"{'an' if word[:1] in 'aeiou' else 'a'} {word}"
+
+    if kind in types and not isinstance(value, types[kind]):
+        return [f"the answer is not {a(kind)}"]
+    problems = []
+    if isinstance(value, dict):
+        for key in schema.get("required") or []:
+            if key not in value:
+                problems.append(f"it has no {key}")
+        for key, spec in (schema.get("properties") or {}).items():
+            want = (spec or {}).get("type")
+            if key in value and want in types and not isinstance(value[key], types[want]):
+                problems.append(f"{key} is not {a(want)}")
+            allowed = (spec or {}).get("enum")
+            if key in value and allowed and value[key] not in allowed:
+                problems.append(f"{key} is not one of {', '.join(map(str, allowed))}")
+    return problems
 
 
 class QwenReranker(RerankBackend):
@@ -168,7 +263,10 @@ class KevServer(DecideBackend):
             process.terminate()
 
 
-BACKENDS = {"qwen3-reranker-0.6b": QwenReranker, "kev-4b": KevServer, "kev-9b": KevServer}
+BACKENDS = {"qwen3-reranker-0.6b": QwenReranker, "kev-0.8b": KevServer, "kev-4b": KevServer,
+            "kev-9b": KevServer, "qwen3.5-4b": _agent_backend, "qwen3.5-9b": _agent_backend,
+            "qwen3.8-27b": _agent_backend, "qwen3.6-35b-a3b": _agent_backend}
+SERVED = ("rerank", "decide", "agent")
 
 
 def free_port() -> int:
@@ -201,19 +299,39 @@ class ModelService:
         self.lock = lock or modellock.Lock.load()
         self.models_dir = models_dir or os.path.join(models_client.model_home(), "models")
         self.factories = dict(BACKENDS if factories is None else factories)
-        self.choose = dict(choose or {})  # role: model name, else the lock's default
+        self.wanted = dict(choose or {})  # role: model name, before this machine's choices
+        self.choose: dict = {}
         self.backends: dict[str, Backend] = {}
         self.roles: dict[str, dict] = {}
         self.started = time.time()
 
     def prepare(self) -> dict:
         """Verify and load one model per role. Returns {role: health row}."""
-        for role in ROLES:
+        from . import machine
+        self.settings = machine.load()
+        self.setup = machine.setup_of(self.settings)
+        self.choose = {}
+        for role in SERVED:
+            named = machine.chosen(role, self.settings, self.lock)
+            if self.wanted.get(role):
+                self.choose[role] = self.wanted[role]  # the lock still refuses what it lacks
+            elif named and named in self.lock.pins:
+                self.choose[role] = named
+            elif not named and role in machine.SETUPS[self.setup]["models"]:
+                self.choose[role] = None  # this setup runs no model for the role
+        self.close()
+        for role in SERVED:
             self.roles[role] = self._prepare(role)
         return self.roles
 
+    def reload(self) -> dict:
+        return self.prepare()
+
     def _prepare(self, role: str) -> dict:
         wanted = self.choose.get(role)
+        if role in self.choose and wanted is None:
+            return {"model": None, "verified": False, "loaded": False,
+                    "reason": f"this computer's setup ({self.setup}) runs no {role} model"}
         try:
             pin = self.lock.pin(wanted) if wanted else next(
                 (p for p in self.lock.for_role(role) if p.default), None)
@@ -246,8 +364,32 @@ class ModelService:
         return row
 
     def health(self) -> dict:
+        from . import machine
+        decider = (self.roles.get("decide") or {}).get("model")
+        settings = getattr(self, "settings", {})
         return {"lock": self.lock.fingerprint, "roles": self.roles,
+                "setup": getattr(self, "setup", ""),
+                "ceiling": machine.SETUPS.get(getattr(self, "setup", ""), {}).get("ceiling"),
+                "qualified": {step: machine.qualified(decider, step, settings, self.lock)
+                              for step in machine.STEPS},
                 "since": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.started))}
+
+    def generate(self, body: dict) -> dict:
+        backend = self._backend("agent", body)
+        schema = body.get("schema") if isinstance(body.get("schema"), dict) else None
+        started = time.perf_counter()
+        text = backend.generate(str(body.get("system") or ""), str(body.get("prompt") or ""),
+                                schema, int(body.get("max_tokens") or 800))
+        found = None
+        if schema:
+            try:
+                found = json.loads(text)
+            except ValueError:
+                found = None
+        return {"model": backend.model, "text": text, "json": found,
+                "problems": schema_problems(found, schema) if schema else [],
+                "usage": dict(getattr(backend, "usage", None) or {}),
+                "latency_ms": round((time.perf_counter() - started) * 1000, 1)}
 
     def rerank(self, body: dict) -> dict:
         backend = self._backend("rerank", body)
@@ -332,6 +474,12 @@ def handler_for(service: ModelService):
                     self._send(200, service.rerank(body))
                 elif self.path.rstrip("/") == "/v1/systemone":
                     self._send(200, service.decide(body))
+                elif self.path.rstrip("/") == "/v1/generate":
+                    self._send(200, service.generate(body))
+                elif self.path.rstrip("/") == "/v1/reload":
+                    service.reload()
+                    models_client.forget()
+                    self._send(200, service.health())
                 else:
                     self._send(404, {"error": f"no {self.path}"})
             except Unavailable as exc:
@@ -401,6 +549,14 @@ def ensure(python: str | None = None) -> str:
         return "the model service is off (BRAIN_MODEL_SERVICE)"
     if running():
         return f"the model service is running at {models_client.address()}"
+    from . import machine
+    settings, lock = machine.load(), modellock.Lock.load()
+    missing = [role for role in models_client.NEEDED
+               if not machine.here(machine.chosen(role, settings, lock), lock)]
+    if missing:
+        return ("the local models for this computer's setup are not downloaded yet ("
+                + ", ".join(machine.ROLE_WORDS[r] for r in missing)
+                + "): retrieval runs on words and meaning")
     flags = 0
     if sys.platform == "win32":
         flags = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]

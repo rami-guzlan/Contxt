@@ -59,11 +59,16 @@ def build_parser():
     p = sub.add_parser("models", help="local model status; --download fetches missing ones; "
                                       "lock, pin and serve for the retrieval engine's models")
     p.add_argument("action", nargs="?", default="status",
-                   choices=["status", "lock", "pin", "serve"],
+                   choices=["status", "lock", "pin", "serve", "machine", "use", "download",
+                            "remove", "speed"],
                    help="status (default); lock: the pinned models and whether each is here; "
                         "pin <name> <folder>: record a downloaded copy's checksums in the "
-                        "lock; serve: run the local model service")
-    p.add_argument("name", nargs="?", help="with pin: the model's name in the lock")
+                        "lock; serve: run the local model service; machine: read this "
+                        "computer again and show its setup; use <name>: make a pinned model "
+                        "the default for its role here; download <name> and remove <name>; "
+                        "speed: time the models the service runs")
+    p.add_argument("name", nargs="?", help="with pin, use, download and remove: the model's "
+                                           "name in the lock")
     p.add_argument("folder", nargs="?", help="with pin: the downloaded model's folder")
     p.add_argument("--revision", default="", help="with pin: the revision downloaded")
     p.add_argument("--port", type=int, default=8791, help="with serve: the port on 127.0.0.1")
@@ -509,17 +514,67 @@ def main(argv=None) -> int:
     return 2
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def _machine_overview(found: dict) -> int:
+    """Print what Settings > On this computer > Local models shows."""
+    m = found["machine"]
+    gpu = f", {m['gpu']} with {m['gpu_gb']:g} GB" if m.get("gpu") else ", no GPU for models"
+    print(f"This computer: {m['ram_gb']:g} GB of RAM{gpu}"
+          + (", Apple Silicon" if m.get("apple_silicon") else "")
+          + f". Setup: {found['setup_label']}.")
+    for row in found["roles"]:
+        print(f"  {row['label']}: {row['model'] or 'none on this setup'}")
+    print(f"  About {found['ram_in_use_gb']:g} GB of RAM for these models.")
+    for line in found["fallbacks"]:
+        print(f"  {line}.")
+    engine = found["engine"]
+    print("The retrieval engine is " + ("on." if engine["ready"]
+                                         else f"in fallback: {engine['reason']}."))
+    return 0
 
 
 def _models(args) -> int:
     """The retrieval engine's models: the lock, pinning a downloaded copy, the service."""
     import os
 
-    from brainkit import modellock, models_client, modelservice
+    from brainkit import machine, modellock, models_client, modelservice
     if args.action == "serve":
         return modelservice.main(["--port", str(args.port)])
+    if args.action in ("use", "download", "remove") and not args.name:
+        print(f"brain models {args.action} <name>")
+        return 2
+    try:
+        if args.action == "machine":
+            machine.check()
+            return _machine_overview(machine.overview())
+        if args.action == "use":
+            lock = modellock.Lock.load()
+            made = machine.choose(lock.pin(args.name).role, args.name, lock=lock)
+            print(f"{made['model']} is now the {machine.ROLE_WORDS[made['role']]} model here."
+                  + (f" {made['warning']}." if made["warning"] else ""))
+            if models_client.status(refresh=True).url:
+                models_client.reload()
+                print("The model service loaded it.")
+            return 0
+        if args.action == "download":
+            verdict = machine.download(args.name)
+            print(f"{args.name}: " + ("downloaded and verified against the lock" if verdict.ok
+                                      else f"downloaded, but refused: {verdict.reason}"))
+            return 0 if verdict.ok else 1
+        if args.action == "remove":
+            machine.remove(args.name)
+            print(f"Removed {args.name} from this computer.")
+            return 0
+        if args.action == "speed":
+            found = machine.check_speed()
+            for name, ms in found["measured"].items():
+                print(f"  {name}: {ms:g} ms")
+            for warning in found["slow"]:
+                print(f"  {warning}")
+            return 0
+    except (modellock.Refused, ValueError, RuntimeError, OSError,
+            models_client.ServiceError) as exc:
+        print(f"Not done: {exc}")
+        return 1
     if args.action == "pin":
         if not args.name or not args.folder:
             print("brain models pin <name> <folder> [--revision <rev>]")
@@ -543,3 +598,7 @@ def _models(args) -> int:
         print(f"  {pin.role:7s} {pin.name}{mark}: {pin.repository or '-'}@"
               f"{pin.revision or 'unpinned'}; {where}")
     return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

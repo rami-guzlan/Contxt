@@ -17,7 +17,9 @@
       "extra": {
         "license": "Apache-2.0",
         "max_length": 8192,
-        "instruction": "Judge whether this note would help an AI do this task"
+        "instruction": "Judge whether this note would help an AI do this task",
+        "ram_gb": 1.2,
+        "size_gb": 1.2
       }
     },
     {
@@ -39,13 +41,15 @@
       },
       "extra": {
         "license": "Apache-2.0",
-        "note": "the fallback reranker; off in fallback retrieval"
+        "note": "the fallback reranker, when Qwen3-Reranker misses the speed budget on a machine without a GPU; off in fallback retrieval",
+        "ram_gb": 0.1,
+        "size_gb": 0.1
       }
     },
     {
       "name": "kev-4b",
       "role": "decide",
-      "default": true,
+      "default": false,
       "repository": "jaredpalmer/kev-4b",
       "revision": "139fdd94",
       "files": {},
@@ -60,7 +64,11 @@
         "temperature": 2.41,
         "validated_state_tokens": 8192,
         "max_options": 255,
-        "format": "System One (POST /v1/systemone)"
+        "format": "System One (POST /v1/systemone)",
+        "ram_gb": 9.0,
+        "size_gb": 8.5,
+        "new_sources": 0.838,
+        "needs": "a GPU with 12 GB or more, or a Mac with 32 GB or more"
       }
     },
     {
@@ -79,7 +87,10 @@
         "temperature": 2.19,
         "validated_state_tokens": 8192,
         "max_options": 255,
-        "min_gpu_gb": 24
+        "min_gpu_gb": 24,
+        "ram_gb": 17.0,
+        "size_gb": 17.0,
+        "needs": "a GPU with 24 GB or more"
       }
     },
     {
@@ -101,7 +112,9 @@
       },
       "extra": {
         "license": "MIT",
-        "note": "the meaning index today"
+        "note": "the meaning index today",
+        "ram_gb": 0.2,
+        "size_gb": 0.1
       }
     },
     {
@@ -118,7 +131,115 @@
       },
       "extra": {
         "license": "Apache-2.0",
-        "note": "compared with bge-small (5.11.11)"
+        "note": "compared with bge-small (5.11.11)",
+        "ram_gb": 1.2,
+        "size_gb": 1.2
+      }
+    },
+    {
+      "name": "kev-0.8b",
+      "role": "decide",
+      "default": true,
+      "repository": "jaredpalmer/kev-0.8b",
+      "revision": "9a45d25e",
+      "files": {},
+      "dtype": "bfloat16",
+      "runtime": {
+        "kev": "1.0"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "release": "kev-1.0",
+        "base": "Qwen3.5-0.8B-Base",
+        "temperature": 2.35,
+        "validated_state_tokens": 8192,
+        "max_options": 255,
+        "ram_gb": 2.0,
+        "size_gb": 1.8,
+        "new_sources": 0.697,
+        "qualify": [
+          "gate",
+          "second_pass"
+        ],
+        "note": "the laptop's decision model; each Kev step runs only once it qualified"
+      }
+    },
+    {
+      "name": "qwen3.5-4b",
+      "role": "agent",
+      "default": true,
+      "repository": "Qwen/Qwen3.5-4B",
+      "revision": "",
+      "files": {},
+      "dtype": "q4",
+      "runtime": {
+        "llama.cpp": "any",
+        "mlx": "any"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "ram_gb": 2.2,
+        "size_gb": 2.6,
+        "thinking": false,
+        "build": "4-bit, text-only: an official build or a community build verified by checksum (GGUF for llama.cpp, MLX on a Mac)"
+      }
+    },
+    {
+      "name": "qwen3.5-9b",
+      "role": "agent",
+      "default": false,
+      "repository": "Qwen/Qwen3.5-9B",
+      "revision": "",
+      "files": {},
+      "dtype": "q4",
+      "runtime": {
+        "llama.cpp": "any",
+        "mlx": "any"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "ram_gb": 5.5,
+        "size_gb": 5.8,
+        "thinking": false
+      }
+    },
+    {
+      "name": "qwen3.8-27b",
+      "role": "agent",
+      "default": false,
+      "repository": "Qwen/Qwen3.8-27B",
+      "revision": "",
+      "files": {},
+      "dtype": "q4",
+      "runtime": {
+        "llama.cpp": "any",
+        "mlx": "any"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "ram_gb": 16.5,
+        "size_gb": 16.5,
+        "thinking": false
+      }
+    },
+    {
+      "name": "qwen3.6-35b-a3b",
+      "role": "agent",
+      "default": false,
+      "repository": "Qwen/Qwen3.6-35B-A3B",
+      "revision": "",
+      "files": {},
+      "dtype": "q4",
+      "runtime": {
+        "llama.cpp": "any",
+        "mlx": "any"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "ram_gb": 20.0,
+        "size_gb": 20.0,
+        "thinking": false,
+        "note": "mixture of experts, fast for its size"
       }
     }
   ]

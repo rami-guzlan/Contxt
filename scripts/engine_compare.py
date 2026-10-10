@@ -134,6 +134,22 @@ def passes(result: dict, baseline_tokens: int | None) -> list[str]:
     return missed
 
 
+def qualification(results: list[dict]) -> dict:
+    """Which Kev steps the decision model passed here (5.11.15): the gate when setup C clears
+    held-out recall and both nothing gates; the second pass when setup D clears held-out
+    recall, noise and decoys. Judged with the default embedding."""
+    ran = {r["setup"]: r for r in results
+           if "skipped" not in r and r["embedding"] == EMBEDDINGS[0]}
+    out = {}
+    if "C" in ran:
+        missed = set(passes(ran["C"], None))
+        out["gate"] = not missed & {"held-out recall", "correct nothing", "false nothing"}
+    if "D" in ran:
+        missed = set(passes(ran["D"], None))
+        out["second_pass"] = not missed & {"held-out recall", "noise", "decoys"}
+    return out
+
+
 def report(results: list[dict]) -> str:
     def pct(value):
         return "-" if value is None else f"{value:.0%}"
@@ -181,6 +197,9 @@ def main(argv=None) -> int:
     parser.add_argument("--setups", default="ABCDE", help="which setups to run (default all)")
     parser.add_argument("--markdown", help="write the report to this file too")
     parser.add_argument("--json", action="store_true", help="print the results as JSON")
+    parser.add_argument("--record", action="store_true",
+                        help="keep which Kev steps the running decision model qualified for "
+                             "on this machine (Settings shows each fallback)")
     args = parser.parse_args(argv)
     results = []
     for key in [k for k in args.setups.upper() if k in SETUPS]:
@@ -189,6 +208,8 @@ def main(argv=None) -> int:
             results.append(found)
             if "skipped" in found:
                 print(f"Setup {key} with {embedding}: skipped ({found['skipped']})", flush=True)
+    if args.record:
+        record_qualification(results)
     if args.json:
         print(json.dumps(results, indent=1))
         return 0
@@ -198,6 +219,19 @@ def main(argv=None) -> int:
         with open(args.markdown, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(text)
     return 0
+
+
+def record_qualification(results: list[dict]) -> None:
+    from brainkit import machine
+    steps = qualification(results)
+    decider = (models_client.status(refresh=True).roles.get("decide") or {}).get("model")
+    if not decider or not steps:
+        print("Nothing recorded: no decision model ran, or setups C and D were skipped.")
+        return
+    machine.record(decider, steps=steps)
+    print(f"Recorded for {decider} on this machine: " + ", ".join(
+        f"{step.replace('_', ' ')} {'qualified' if ok else 'not qualified'}"
+        for step, ok in steps.items()))
 
 
 if __name__ == "__main__":

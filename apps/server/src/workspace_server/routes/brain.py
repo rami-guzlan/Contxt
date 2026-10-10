@@ -25,6 +25,7 @@ from ..schemas import (
     DistillSettingsIn,
     GapIn,
     GoalsIn,
+    LocalModelsIn,
     MarkIn,
     MergeIn,
     MoveInIn,
@@ -341,6 +342,20 @@ def models(who: Who, ws: WS) -> dict[str, Any]:
 def download_models(who: Who, ws: WS) -> dict[str, Any]:
     """Fetch the matching model (about 70 MB, once): the owner's call, never automatic."""
     return ws.brain.download_models(who)
+
+
+@router.get("/local-models")
+def local_models(who: Who, ws: WS) -> dict[str, Any]:
+    """This computer's local models: the machine and its setup, each role's model and the
+    pinned options, and whether the retrieval engine runs in full or in fallback."""
+    return ws.brain.local_models(who)
+
+
+@router.post("/local-models")
+def act_local_models(body: LocalModelsIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Check this computer again, make a pinned model the default for its role, download,
+    remove or time one, or turn Claude Code on or off for the knowledge agent."""
+    return ws.brain.act_local_models(who, body.action, body.name, body.on)
 
 
 @router.get("/catch-up")

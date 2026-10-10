@@ -460,9 +460,14 @@ function WhyList({ rows, label }: { rows: WhyRow[]; label: string }) {
 
 /** Why each candidate went in or stayed out, read back from the ledger, never recomputed. */
 function Why({ why }: { why: RequestWhy }) {
+  const gate = why.gate
+    ? why.gate.by === "reranker"
+      ? `; the reranker's best score was ${why.gate.yes.toFixed(2)} against the cut of ${why.gate.cut}`
+      : `; the gate said ${why.gate.yes.toFixed(2)} against ${why.gate.cut}`
+    : "";
   const engine =
     why.mode === "on"
-      ? `The local engine chose these (lock ${why.lock}${why.gate ? `; the gate said ${why.gate.yes.toFixed(2)} against ${why.gate.cut}` : ""}${why.rounds ? `; ${plural(why.rounds, "link round")}` : ""}).`
+      ? `The local engine chose these (lock ${why.lock}${gate}${why.rounds ? `; ${plural(why.rounds, "link round")}` : ""}).`
       : `Chosen by words and meaning, without the local engine${why.reason ? ` (${why.reason})` : ""}.`;
   return (
     <details className="request-why">
@@ -471,6 +476,13 @@ function Why({ why }: { why: RequestWhy }) {
         {engine}
         {why.ceiling_hit ? " More candidates matched than the ceiling allows; the best were scored." : ""}
       </p>
+      {why.notes?.length ? (
+        <ul className="plain muted small" aria-label="This computer's fallbacks">
+          {why.notes.map((note) => (
+            <li key={note}>{note}.</li>
+          ))}
+        </ul>
+      ) : null}
       <h4>Why this</h4>
       <WhyList rows={why.in} label="Why this" />
       <h4>Why not that one</h4>

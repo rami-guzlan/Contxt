@@ -85,6 +85,7 @@ class Settings:
     enabled: bool = True
     layers: dict = field(default_factory=lambda: dict(LAYERS))
     scorer: str = "rerank"
+    ceiling_set: bool = False  # brain.json names a ceiling (else the machine setup's)
 
     @classmethod
     def of(cls, config) -> Settings:
@@ -113,7 +114,8 @@ class Settings:
                    instruction=str(data.get("instruction") or INSTRUCTION),
                    fitted=dict(data.get("fitted") or {}),
                    enabled=data.get("enabled", True) is not False,
-                   layers=layers, scorer=scorer if scorer in SCORERS else "rerank")
+                   layers=layers, scorer=scorer if scorer in SCORERS else "rerank",
+                   ceiling_set="ceiling" in data)
 
 
 @dataclass
@@ -160,6 +162,8 @@ class Audit:
     rounds: int = 0
     domains: dict = field(default_factory=dict)  # must-hold domain: P(the request touches it)
     candidates: list = field(default_factory=list)
+    notes: list = field(default_factory=list)    # fallbacks of this machine's setup, in words
+    refit: bool = False                          # the cuts were fitted for other models
 
     def summary(self) -> dict:
         counts: dict = {}
@@ -169,7 +173,7 @@ class Audit:
                 "cuts": self.cuts, "fitted": self.fitted, "timings": self.timings,
                 "ceiling_hit": self.ceiling_hit, "rounds": self.rounds,
                 "domains": self.domains, "candidates": len(self.candidates),
-                "outcomes": counts}
+                "outcomes": counts, "notes": self.notes, "refit": self.refit}
 
     def rows(self) -> list[dict]:
         return [c.row() for c in self.candidates]
@@ -247,13 +251,41 @@ def fallback(route, reason: str, lock: str = "") -> Audit:
 class Engine:
     """The pipeline for one Brain state, with its two models."""
 
-    def __init__(self, st, settings: Settings, reranker, decider, lock: str):
+    def __init__(self, st, settings: Settings, reranker, decider, lock: str,
+                 status: models_client.Status | None = None):
         self.st = st
         self.router = st.router
         self.settings = settings
         self.reranker = reranker
         self.decider = decider
         self.lock = lock
+        self.notes: list[str] = []  # what the audit says about this run's setup
+        found = status or models_client.Status()
+        decider_name = (found.roles.get("decide") or {}).get("model") or "the decision model"
+        # A decision model runs a Kev step only once it qualified for it here (5.11.15).
+        for step in ("gate", "second_pass"):
+            if found.qualified and not found.qualified.get(step, True) \
+                    and settings.layers.get(step):
+                settings.layers[step] = False
+                self.notes.append(
+                    f"{decider_name} has not qualified for the "
+                    f"{'gate' if step == 'gate' else 'second pass'} here: "
+                    + ("the reranker's best score against the cut decides instead"
+                       if step == "gate" else "it is skipped"))
+        if not settings.ceiling_set and found.ceiling:
+            settings.ceiling = int(found.ceiling)
+        # Cuts fitted for other models no longer hold: the defaults stand in, and a refit is
+        # suggested (5.11.16).
+        running = {role: (found.roles.get(role) or {}).get("model")
+                   for role in ("rerank", "decide")}
+        fitted_for = settings.fitted.get("models") or {}
+        self.refit = bool(fitted_for) and any(
+            fitted_for.get(role) and fitted_for.get(role) != running.get(role)
+            for role in running)
+        if self.refit:
+            settings.cuts = dict(CUTS)
+            self.notes.append("the cuts were fitted for other models: the defaults stand in, "
+                              "and a refit on this Brain's labels is suggested")
 
     @classmethod
     def connect(cls, st, *, status: models_client.Status | None = None):
@@ -266,17 +298,21 @@ class Engine:
         if not found.ready:
             return None, found
         return cls(st, settings, models_client.Reranker(found),
-                   models_client.Decider(found), found.lock), found
+                   models_client.Decider(found), found.lock, found), found
 
     # ------------------------------------------------------------------ the pipeline
     def refine(self, route) -> Audit:
         s = self.settings
-        audit = Audit(mode="on", lock=self.lock, cuts=dict(s.cuts), fitted=dict(s.fitted))
+        audit = Audit(mode="on", lock=self.lock, cuts=dict(s.cuts), fitted=dict(s.fitted),
+                      notes=list(self.notes), refit=self.refit)
         if route.mode in CODE_ROUTES:
             audit.reason = f"routed by code ({route.mode})"
             return audit
         started = time.perf_counter()
-        gate = self._gate(route, audit) if s.layers["gate"] else True
+        gate = True
+        if s.layers["gate"] or s.layers["second_pass"]:
+            gate = self._gate(route, audit, ask=s.layers["gate"],
+                              domains=s.layers["second_pass"])
         audit.timings["gate"] = _ms(started)
         if not gate:
             self._nothing(route, f"the gate: {audit.gate['yes']:.2f} < {s.cuts['gate']}")
@@ -288,6 +324,12 @@ class Engine:
         started = time.perf_counter()
         survivors = self._cut(route, candidates)
         audit.timings["cut"] = _ms(started)
+        if not s.layers["gate"]:
+            # Without the decision model's gate, the reranker's best score against the cut
+            # decides whether the request gets anything (5.11.15).
+            best = max((c.rerank or 0.0 for c in candidates), default=0.0)
+            audit.gate = {"by": "reranker", "yes": round(best, 4),
+                          "cut": s.cuts["relevance"], "passed": bool(survivors)}
         started = time.perf_counter()
         if s.layers["second_pass"]:
             survivors = self._second_pass(route, survivors, survivors)
@@ -315,25 +357,34 @@ class Engine:
         return audit
 
     # ------------------------------------------------------------------ 1. the gate
-    def _gate(self, route, audit: Audit) -> bool:
+    def _gate(self, route, audit: Audit, *, ask: bool = True, domains: bool = True) -> bool:
+        """The gate's yes or no and, in the same call, the second pass's question of which
+        must-hold domains the request touches (asked early, so their must-holds attach before
+        the find). `ask` and `domains` follow the steps this machine runs."""
         s = self.settings
-        domains = self._domains_open(route)
-        questions = {"gate": models_client.noul(
-            "Would anything kept in this Brain help with this request? Answer no when the "
-            "request is about something the Brain does not cover: general knowledge, someone "
-            "else's work, or code outside the Brain's own projects.")}
-        for key, name in domains.items():
+        open_domains = self._domains_open(route) if domains else {}
+        questions = {}
+        if ask:
+            questions["gate"] = models_client.noul(
+                "Would anything kept in this Brain help with this request? Answer no when the "
+                "request is about something the Brain does not cover: general knowledge, "
+                "someone else's work, or code outside the Brain's own projects.")
+        for key, name in open_domains.items():
             questions[f"domain.{key}"] = models_client.noul(
                 f"Does the request touch {name}?")
+        if not questions:
+            return True
         answers = self.decider.ask({"request": route.request, "brain": self._map()},
                                    questions)
-        p = models_client.yes(answers.get("gate"))
-        audit.gate = {"yes": round(p, 4), "cut": s.cuts["gate"], "passed": p >= s.cuts["gate"]}
-        for key in domains:
+        for key in open_domains:
             touched = models_client.yes(answers.get(f"domain.{key}"))
             audit.domains[key] = round(touched, 4)
             if touched >= s.cuts["domain"]:
                 self._attach_domain(route, key, touched)
+        if not ask:
+            return True
+        p = models_client.yes(answers.get("gate"))
+        audit.gate = {"yes": round(p, 4), "cut": s.cuts["gate"], "passed": p >= s.cuts["gate"]}
         return p >= s.cuts["gate"]
 
     def _map(self) -> list[dict]:

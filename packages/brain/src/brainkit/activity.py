@@ -303,5 +303,6 @@ def why(brain, st, packet_id: str, data: dict) -> dict | None:
             "lock": engine.get("lock") or "", "gate": engine.get("gate"),
             "cuts": engine.get("cuts") or {}, "fitted": engine.get("fitted") or {},
             "timings": engine.get("timings") or {}, "rounds": engine.get("rounds") or 0,
-            "ceiling_hit": bool(engine.get("ceiling_hit")), "in": inside,
+            "ceiling_hit": bool(engine.get("ceiling_hit")), "notes": engine.get("notes") or [],
+            "refit": bool(engine.get("refit")), "in": inside,
             "out": outside[:OUT_SHOWN], "out_count": len(outside)}

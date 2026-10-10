@@ -64,7 +64,7 @@ def _setting(name: str) -> bool:
 
 
 @pytest.fixture(autouse=True)
-def no_live_configuration(monkeypatch):
+def no_live_configuration(monkeypatch, tmp_path_factory):
     """Tests never inherit a developer's live Contxt (a real data folder or Brain), and what
     a test loads from a home's .env never outlives it."""
     for name in list(os.environ):
@@ -73,6 +73,8 @@ def no_live_configuration(monkeypatch):
     # No local model service: retrieval runs as it does without one, whatever this machine
     # runs (the engine's own tests point it at a stand-in service).
     monkeypatch.setenv("BRAIN_MODEL_SERVICE", "off")
+    # This computer's model settings (machine setups, defaults) stay the developer's.
+    monkeypatch.setenv("BRAIN_MODEL_HOME", str(tmp_path_factory.mktemp("model-home")))
     yield
     for name in list(os.environ):
         if _setting(name):

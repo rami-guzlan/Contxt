@@ -6,7 +6,9 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def no_model_service(monkeypatch):
+def no_model_service(monkeypatch, tmp_path):
     if not os.environ.get("BRAIN_TEST_MODEL_SERVICE"):
         monkeypatch.setenv("BRAIN_MODEL_SERVICE", "off")
+        # This machine's model settings stay the developer's: a test keeps its own.
+        monkeypatch.setenv("BRAIN_MODEL_HOME", str(tmp_path / "model-home"))
     yield

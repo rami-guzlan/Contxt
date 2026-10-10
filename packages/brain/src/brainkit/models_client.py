@@ -51,6 +51,15 @@ class Status:
     reason: str = ""
     lock: str = ""               # the service's lock fingerprint
     roles: dict = field(default_factory=dict)  # role: {"model", "verified", "loaded", "reason"}
+    setup: str = ""              # the machine setup the service runs (machine.py)
+    ceiling: int | None = None   # the setup's candidate ceiling
+    qualified: dict = field(default_factory=dict)  # Kev step: does the decision model run it
+
+    @property
+    def agent(self) -> str:
+        """The knowledge agent's local model when it is verified and loaded, else ""."""
+        row = self.roles.get("agent") or {}
+        return str(row.get("model") or "") if row.get("verified") and row.get("loaded") else ""
 
     @property
     def models(self) -> dict:
@@ -106,8 +115,12 @@ def _check(url: str, lock: modellock.Lock) -> Status:
         return Status(url=url, reason=f"the model service at {url} did not answer ({exc})")
     roles = dict(health.get("roles") or {})
     theirs = str(health.get("lock") or "")
+    extra = {"setup": str(health.get("setup") or ""),
+             "ceiling": health.get("ceiling") if isinstance(health.get("ceiling"), int)
+             else None,
+             "qualified": dict(health.get("qualified") or {})}
     if theirs != lock.fingerprint:
-        return Status(url=url, lock=theirs, roles=roles,
+        return Status(url=url, lock=theirs, roles=roles, **extra,
                       reason=f"the model service runs lock {theirs or 'unknown'}, this engine "
                              f"{lock.fingerprint}: refused")
     missing = [role for role in NEEDED
@@ -116,15 +129,15 @@ def _check(url: str, lock: modellock.Lock) -> Status:
     if missing:
         why = "; ".join(f"{role}: {(roles.get(role) or {}).get('reason') or 'no model'}"
                         for role in missing)
-        return Status(url=url, lock=theirs, roles=roles,
+        return Status(url=url, lock=theirs, roles=roles, **extra,
                       reason=f"the model service has no verified model for {why}")
     for role in NEEDED:
         model = str((roles.get(role) or {}).get("model") or "")
         try:
             lock.pin(model)
         except modellock.Refused as exc:
-            return Status(url=url, lock=theirs, roles=roles, reason=str(exc))
-    return Status(url=url, ready=True, lock=theirs, roles=roles)
+            return Status(url=url, lock=theirs, roles=roles, reason=str(exc), **extra)
+    return Status(url=url, ready=True, lock=theirs, roles=roles, **extra)
 
 
 def _get(url: str, timeout: float) -> dict:
@@ -183,6 +196,33 @@ class Decider:
         found = _post(f"{self.url}/v1/systemone", {"model": self.model, "state": state,
                                                    "questions": questions}, CALL_TIMEOUT)
         return dict(found.get("answers") or {})
+
+
+class Agent:
+    """The knowledge agent's local model (brain-logic plan 17): one bounded question, answered
+    as JSON bound to a schema where the runtime can, and checked again by the service."""
+
+    def __init__(self, service: Status):
+        self.url = service.url
+        self.model = service.agent
+
+    def generate(self, prompt: str, *, system: str = "", schema: dict | None = None,
+                 max_tokens: int = 800, timeout: float = 240.0) -> dict:
+        """{"text", "json", "problems", "model", "latency_ms"}."""
+        return _post(f"{self.url}/v1/generate", {"model": self.model, "system": system,
+                                                 "prompt": prompt, "schema": schema,
+                                                 "max_tokens": max_tokens}, timeout)
+
+
+def reload(service: Status | None = None) -> dict:
+    """Ask the service to choose and load its models again (after a new default)."""
+    found = service or status(refresh=True)
+    if not found.url:
+        raise ServiceError("no model service is running")
+    try:
+        return _post(f"{found.url}/v1/reload", {}, 600.0)
+    finally:
+        forget()
 
 
 def noul(instructions: str, *, yes: str = "", no: str = "") -> dict:

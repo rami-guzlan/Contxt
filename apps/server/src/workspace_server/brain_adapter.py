@@ -194,6 +194,8 @@ class BrainKitAdapter:
         self._lock = threading.Lock()
         self._fetching = False  # the matching model is being downloaded
         self._fetch_error: str | None = None
+        self._local_fetching: set[str] = set()  # local models being downloaded
+        self._local_errors: dict[str, str] = {}
 
     def close(self) -> None:
         self.brain.close()
@@ -253,6 +255,101 @@ class BrainKitAdapter:
 
         threading.Thread(target=fetch, name="matching-model", daemon=True).start()
         return self.models()
+
+    # ---------------------------------------------------------------- local models
+
+    def local_models(self) -> dict[str, Any]:
+        """Settings, On this computer, Local models (brain-logic plan 5.11.16)."""
+        from brainkit import machine
+
+        found = machine.overview()
+        embedder = self.brain.embedder
+        here = bool(embedder is not None and embedder.present())
+        for role in found.get("roles") or []:
+            for option in role["options"]:
+                if option.get("with_brain"):  # the meaning index's model, kept with the Brain
+                    option.update(downloaded=here, why_not="" if here else "not downloaded")
+        found.update(
+            enabled=True,
+            downloading=sorted(self._local_fetching),
+            errors=dict(self._local_errors),
+        )
+        return found
+
+    def act_local_models(
+        self, action: str, name: str = "", on: bool | None = None
+    ) -> dict[str, Any]:
+        """One change the owner asked for. A refusal (the lock, the RAM check, a model in
+        use) is a ValidationFailed with the reason; a warning that does not refuse comes
+        back as `notice`."""
+        from brainkit import machine, modellock, models_client
+
+        notice = ""
+        try:
+            if action == "check":
+                machine.check()  # and with the models here, time them again
+                if models_client.status(refresh=True).ready:
+                    notice = "; ".join(machine.check_speed()["slow"])
+            elif action == "default":
+                lock = modellock.Lock.load()
+                made = machine.choose(lock.pin(name).role, name, lock=lock)
+                notice = str(made.get("warning") or "")
+                self._reload_local_models()
+            elif action == "download":
+                self._download_local_model(name)
+            elif action == "remove":
+                machine.remove(name)
+            elif action == "speed":
+                notice = "; ".join(machine.check_speed()["slow"])
+            elif action == "claude_code":
+                machine.set_agent_claude_code(bool(on))
+        except (modellock.Refused, ValueError) as exc:
+            raise ValidationFailed(str(exc)) from exc
+        except (models_client.ServiceError, OSError, RuntimeError) as exc:
+            raise Conflict(f"Not done: {exc}") from exc
+        found = self.local_models()
+        found["notice"] = notice
+        return found
+
+    def _reload_local_models(self) -> None:
+        """A running model service loads the new default; with none running, one starts when
+        this computer's models are here."""
+        from brainkit import models_client, modelservice
+
+        found = models_client.status(refresh=True)
+        if found.url:
+            models_client.reload(found)
+        else:
+            log.info(modelservice.ensure())
+
+    def _download_local_model(self, name: str) -> None:
+        """Fetch a pinned model in the background, then verify it against the lock."""
+        from brainkit import machine, modellock
+
+        lock = modellock.Lock.load()
+        machine.downloadable(name, lock)  # refused now, not in the background
+        with self._lock:
+            if name in self._local_fetching:
+                return
+            self._local_fetching.add(name)
+            self._local_errors.pop(name, None)
+
+        def fetch() -> None:
+            try:
+                verdict = machine.download(name, lock=lock)
+                if not verdict.ok:
+                    self._local_errors[name] = (
+                        f"Downloaded, but it does not match the lock, so it is not used: "
+                        f"{verdict.reason}"
+                    )
+            except Exception as exc:  # the network, the disk: say what went wrong
+                self._local_errors[name] = f"{name} could not be downloaded: {exc}"
+                log.warning(self._local_errors[name], exc_info=True)
+            finally:
+                with self._lock:
+                    self._local_fetching.discard(name)
+
+        threading.Thread(target=fetch, name=f"local-model-{name}", daemon=True).start()
 
     # ---------------------------------------------------------------- reads
 

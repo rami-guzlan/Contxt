@@ -21,6 +21,16 @@ shows each pin and whether it is here; `brain models pin <name> <folder>` record
 copy; `brain models serve` runs the service on 127.0.0.1 (the app starts it). Decisions use
 System One, Jev's request format, which Kev speaks; relevance uses a rerank interface.
 
+THIS COMPUTER'S SETUP decides the default models: a laptop (16 GB) runs bge-small,
+Qwen3-Reranker-0.6B, Kev-0.8B and the Qwen3.5-4B agent; a workstation (a 12 GB GPU or a 32 GB Mac)
+Kev-4B and Qwen3.5-9B; a large one Kev-9B and Qwen3.6-35B-A3B; under 16 GB, code and the meaning
+index alone. Settings, On this computer, Local models shows the machine, each role's options
+(size, RAM, speed here) and lets the person download one, make it the default, remove it, or
+check the computer again; a choice that will not fit in RAM is refused with the reason.
+Kev-0.8B runs a step only once it qualified for it here: until then the gate falls back to the
+reranker's best score, and the second pass is skipped. Claude Code for the knowledge agent is
+the person's opt-in once a local agent model is here.
+
 EVERY DECISION is kept in the ledger: each candidate's keyword, meaning and reranker scores, the
 decision model's answers, the outcome and its reason, the lock's fingerprint, the gate and each
 layer's time. Activity's request view shows "why this note" and "why not that one". The cuts

@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from . import util
 
 LOCK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models.lock.json")
-ROLES = ("rerank", "decide", "embed")
+ROLES = ("rerank", "decide", "embed", "agent")
 CHUNK = 1 << 20
 
 

@@ -940,6 +940,71 @@ describe("settings", () => {
     await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/models/download")).toBe(true));
   });
 
+  it("shows this computer's setup and local models, and refuses what will not fit", async () => {
+    const option = (name: string, extra: Record<string, unknown> = {}) => ({
+      name,
+      repository: "",
+      revision: null,
+      pinned: false,
+      size_gb: 1.2,
+      ram_gb: 1.2,
+      license: "Apache-2.0",
+      downloaded: false,
+      why_not: "not here",
+      fits: true,
+      fit_reason: "",
+      measured: null,
+      slow: "",
+      in_use: false,
+      setup_default: false,
+      ...extra,
+    });
+    const overview = {
+      enabled: true,
+      machine: { ram_gb: 15.8, gpu: "", gpu_gb: 0, apple_silicon: false, system: "Windows" },
+      setup: "laptop",
+      setup_label: "Laptop",
+      ram_in_use_gb: 5.6,
+      fallbacks: ["kev-0.8b has not qualified for the second pass here: it is skipped"],
+      engine: { ready: false, reason: "no model service is running", lock: "", agent: "" },
+      agent_claude_code: true,
+      roles: [
+        {
+          role: "agent",
+          label: "knowledge agent",
+          model: "qwen3.5-4b",
+          options: [
+            option("qwen3.5-4b", { in_use: true, setup_default: true }),
+            option("qwen3.6-35b-a3b", { pinned: true, fits: false, fit_reason: "these models need about 23.4 GB and this computer has room for about 6.3 GB" }),
+            option("qwen3.5-9b", { pinned: true, downloaded: true, why_not: "" }),
+          ],
+        },
+      ],
+      downloading: [],
+      errors: {},
+    };
+    const calls = mockApi({
+      "GET /api/brain/models": { matching: { enabled: false, present: false, downloading: false } },
+      "GET /api/brain/local-models": overview,
+      "POST /api/brain/local-models": { ...overview, notice: "" },
+      "GET /api/actors": [],
+      "GET /api/runners": [],
+    });
+    const user = userEvent.setup();
+    renderAt(<SettingsPage />, { path: "/settings", route: "/settings?tab=computer" });
+    expect(await screen.findByText(/Setup:/)).toBeInTheDocument();
+    expect(screen.getByText(/runs in fallback, on words and meaning: no model service is running/)).toBeInTheDocument();
+    expect(screen.getByText(/has not qualified for the second pass here/)).toBeInTheDocument();
+    expect(screen.getByText(/Will not fit here: these models need about 23.4 GB/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Make qwen3.6-35b-a3b the default" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Make qwen3.5-9b the default" }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === "POST" && c.path === "/api/brain/local-models" && JSON.stringify(c.body).includes("qwen3.5-9b"))).toBe(true),
+    );
+    await user.click(screen.getByRole("checkbox", { name: /Let the knowledge agent use Claude Code/ }));
+    await waitFor(() => expect(calls.some((c) => JSON.stringify(c.body ?? {}).includes("claude_code"))).toBe(true));
+  });
+
   it("shows the goals and what they steer, with earlier versions", async () => {
     mockApi({ "GET /api/brain/goals": goals });
     renderAt(<SettingsPage />, { path: "/settings", route: "/settings?tab=goals" });

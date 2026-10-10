@@ -20,6 +20,7 @@ import type {
   BackupFile,
   BackupMade,
   LocalModels,
+  LocalModelsOverview,
   AiApp,
   AiRequestFull,
   AiRequests,
@@ -985,6 +986,24 @@ export const useModels = () =>
     queryFn: () => get<LocalModels>("/api/brain/models"),
     refetchInterval: (q) => (q.state.data?.matching.downloading ? 3000 : false),
   });
+
+/** This computer's local models (Settings, On this computer): refreshed while one downloads. */
+export const useLocalModels = () =>
+  useQuery({
+    queryKey: [...keys.brain, "local-models"],
+    queryFn: () => get<LocalModelsOverview>("/api/brain/local-models"),
+    refetchInterval: (q) => (q.state.data?.downloading?.length ? 3000 : false),
+  });
+
+/** One change to this computer's local models: the person's call, never automatic. */
+export function useActLocalModels() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { action: "check" | "default" | "download" | "remove" | "speed" | "claude_code"; name?: string; on?: boolean }) =>
+      post<LocalModelsOverview>("/api/brain/local-models", body),
+    onSettled: () => invalidate([...keys.brain, "local-models"], [...keys.brain, "agent"]),
+  });
+}
 
 /** Fetch the model that matches by meaning, once: the person's call, never automatic. */
 export function useDownloadModels() {

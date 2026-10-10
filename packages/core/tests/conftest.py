@@ -754,6 +754,13 @@ class FakeBrain:
     def download_models(self):
         return {"matching": {"enabled": True, "present": False, "downloading": True}}
 
+    def local_models(self):
+        return {"enabled": True, "setup": "laptop", "roles": []}
+
+    def act_local_models(self, action, name="", on=None):
+        self.local_acts = [*getattr(self, "local_acts", []), (action, name, on)]
+        return dict(self.local_models(), notice="")
+
     def made_from(self, path):
         return None
 

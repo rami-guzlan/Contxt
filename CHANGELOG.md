@@ -186,6 +186,14 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   retrieval runs exactly as before (checked byte for byte on the eval sets) and health says so.
   Label a request as one that should get nothing; the eval counts correct nothing and false
   nothing. `scripts/engine_compare.py` compares setups A to E.
+- Machine setups and model settings: the app reads the computer and picks a setup (laptop,
+  workstation, large, or under 16 GB) with a default model per role. Settings, On this computer,
+  Local models shows each role's pinned options with their size, RAM and speed here; download
+  one (verified against the lock), make it the default (refused with the reason when it will
+  not fit in RAM), remove it, or check the computer again. Kev-0.8B runs a step only once it
+  qualified on the machine; until then Settings and Activity name each fallback. The knowledge
+  agent gets a local option (Qwen3.5-4B through the same model service, its answers bound to a
+  schema), and Claude Code becomes its opt-in once a local agent model is here.
 - Moving in takes files of any kind, zips included: documents, instruction files, any text,
   and ChatGPT's and Claude's data exports (their conversations as your own words); what cannot
   be read is named with why.

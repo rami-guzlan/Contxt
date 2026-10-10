@@ -36,6 +36,7 @@ import { entryUrl } from "./brain/shared";
 import { ConnectionsPage } from "./Connections";
 import { PRESETS } from "./FirstRun";
 import { AiWork, EarlierWorkspace } from "./Misc";
+import { LocalModels } from "./settings/LocalModels";
 
 const TABS = [
   { id: "apps", label: "Your AI apps" },
@@ -372,6 +373,7 @@ function ThisComputer() {
   return (
     <>
       <MatchingModel />
+      <LocalModels />
       <AiWork />
       <ConnectionsPage embedded computer />
     </>

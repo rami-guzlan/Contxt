@@ -233,6 +233,32 @@ relevance scorer) on the labeled requests, with requests that should get nothing
 must-hold decoys. The cuts are fitted on the tuning part of the labeled set and kept in
 brain.json with the date and eval run; until then they are starting points.
 
+**Machine setups and model settings (5.11.15, 5.11.16).** `machine.py` reads the computer (RAM,
+an NVIDIA GPU and its memory, Apple Silicon or not) at first run and on request, and picks a
+setup, each with a default model per role:
+
+| Setup | Detected as | Meaning, reranker, decisions, agent | Ceiling |
+| --- | --- | --- | --- |
+| Laptop | 16 GB, no GPU with 12 GB or more | bge-small, Qwen3-Reranker-0.6B, Kev-0.8B, Qwen3.5-4B | 100 |
+| Workstation | an NVIDIA GPU with 12 GB or more, or a Mac with 32 GB or more | bge-small, Qwen3-Reranker-0.6B, Kev-4B, Qwen3.5-9B | 300 |
+| Large workstation | a GPU with 24 GB or more, or a Mac with 64 GB or more | bge-small, Qwen3-Reranker-0.6B, Kev-9B, Qwen3.6-35B-A3B | 300 |
+| Small | under 16 GB | bge-small and MiniLM; no decision model or agent | 100 |
+
+The person can make any pinned option the default for its role (Settings, On this computer,
+Local models, or `brain models use <name>`); a choice the RAM check says will not fit is refused
+with the reason (about 9.5 GB stays with the system; a GPU counts its memory less 1 GB plus
+spare RAM), and one that measured slower than the machine's budget (5.11.7) is allowed with a
+warning. The choices, what was measured here and which Kev steps qualified live in this
+machine's settings (`<model home>/settings.json`), never in a Brain. The machine's ceiling
+applies unless brain.json names one.
+
+A decision model the lock marks with `extra.qualify` (Kev-0.8B) runs a Kev step only once it
+qualified for it on this machine (`engine_compare.py --record`): until then the gate falls back
+to the reranker's best score against the cut, the second pass (with its must-hold domain
+question) is skipped, and the brief's audit, Activity and Settings name each fallback. Cuts
+fitted for other models (`engine.fitted.models`) give way to the defaults, and a refit is
+suggested.
+
 ## Measuring it
 
 `brain bench` runs two things.

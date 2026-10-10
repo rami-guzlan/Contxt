@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -228,6 +228,14 @@ class RequestLabelsIn(Body):
     noise: list[str] = Field(default_factory=list, max_length=40)
     missing: list[str] = Field(default_factory=list, max_length=40)
     nothing: bool = False  # it should get nothing from the Brain
+
+
+class LocalModelsIn(Body):
+    """One change to this computer's local models (Settings, On this computer)."""
+
+    action: Literal["check", "default", "download", "remove", "speed", "claude_code"]
+    name: str = Field(default="", max_length=100)
+    on: bool | None = None
 
 
 class ReplayIn(Body):

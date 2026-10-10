@@ -22,7 +22,8 @@ from unittest import mock
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from brainkit import modellock, models_client, modelservice, safeguards_eval  # noqa: E402
+from brainkit import engine as engine_mod  # noqa: E402
+from brainkit import machine, modellock, models_client, modelservice, safeguards_eval  # noqa: E402
 from brainkit.api import Brain  # noqa: E402
 from brainkit.hooks import capture_prompt  # noqa: E402
 from brainkit.vault import Vault  # noqa: E402
@@ -31,6 +32,7 @@ from tests import fixture  # noqa: E402
 REPO = os.path.dirname(os.path.dirname(ROOT))
 FILES = {"standin-reranker": b"a reranker that answers from a table",
          "standin-decider": b"a decision model that answers from a table"}
+AGENT_FILE = b"a knowledge agent model that answers with fixed text"
 
 
 class TableReranker(modelservice.RerankBackend):
@@ -52,6 +54,19 @@ class TableReranker(modelservice.RerankBackend):
             found = re.match(r"\[([^\]]+)\]", doc)
             out.append(self.table.get(found.group(1) if found else "", self.default))
         return out
+
+
+class StandinAgent(modelservice.AgentBackend):
+    """The knowledge agent's model, stood in: it answers with fixed text."""
+
+    def __init__(self, pin, folder, text=""):
+        super().__init__(pin, folder)
+        self.text = text
+        self.asked = []
+
+    def generate(self, system, prompt, schema, max_tokens):
+        self.asked.append((system, prompt, schema, max_tokens))
+        return self.text
 
 
 class TableDecider(modelservice.DecideBackend):
@@ -83,18 +98,30 @@ class TableDecider(modelservice.DecideBackend):
         return out
 
 
-def write_lock(folder: str, *, tamper: bool = False) -> str:
-    """A lock with the two stand-ins pinned to the files written beside it."""
+# A machine with a 12 GB GPU: the workstation setup, whose ceiling is the engine's default.
+WORKSTATION = {"machine": {"ram_gb": 32.0, "gpu": "a stand-in GPU", "gpu_gb": 12.0,
+                           "apple_silicon": False, "system": "Windows"},
+               "setup": "workstation"}
+
+
+def write_lock(folder: str, *, tamper: bool = False, qualify=None, agent: bool = False) -> str:
+    """A lock with the stand-ins pinned to the files written beside it. `qualify` names the
+    Kev steps the stand-in decision model must qualify for (as Kev-0.8B must)."""
     models = []
-    for name, data in FILES.items():
+    files = dict(FILES, **({"standin-agent": AGENT_FILE} if agent else {}))
+    for name, data in files.items():
         target = os.path.join(folder, "models", name)
         os.makedirs(target, exist_ok=True)
         with open(os.path.join(target, "weights.bin"), "wb") as handle:
             handle.write(data + (b"!" if tamper and name == "standin-reranker" else b""))
-        models.append({"name": name, "role": "rerank" if "reranker" in name else "decide",
+        extra = {"ram_gb": 1.0, "size_gb": 0.5}
+        if qualify and name == "standin-decider":
+            extra["qualify"] = list(qualify)
+        role = "rerank" if "reranker" in name else "agent" if "agent" in name else "decide"
+        models.append({"name": name, "role": role,
                        "default": True, "repository": "", "revision": "1",
                        "files": {"weights.bin": hashlib.sha256(data).hexdigest()},
-                       "dtype": "float32", "runtime": {}, "extra": {}})
+                       "dtype": "float32", "runtime": {}, "extra": extra})
     models.append({"name": "unpinned-model", "role": "rerank", "repository": "",
                    "revision": "", "files": {}})
     path = os.path.join(folder, "models.lock.json")
@@ -106,10 +133,18 @@ def write_lock(folder: str, *, tamper: bool = False) -> str:
 class Rig:
     """A model service with stand-ins, and the environment that points the engine at it."""
 
-    def __init__(self, *, reranker=None, decider=None, choose=None, tamper=False):
+    def __init__(self, *, reranker=None, decider=None, choose=None, tamper=False,
+                 settings=None, qualify=None, agent=None):
         self.folder = tempfile.mkdtemp(prefix="brain-engine-")
-        self.lock_path = write_lock(self.folder, tamper=tamper)
+        self.lock_path = write_lock(self.folder, tamper=tamper, qualify=qualify,
+                                    agent=agent is not None)
         self.lock = modellock.Lock.load(self.lock_path)
+        # This machine's settings live in the rig's own model home, never the person's.
+        self.env = mock.patch.dict(os.environ, {
+            "BRAIN_MODELS_LOCK": self.lock_path,
+            "BRAIN_MODEL_HOME": os.path.join(self.folder, "home")})
+        self.env.start()
+        machine.save(dict(WORKSTATION if settings is None else settings))
         self.reranker = reranker or TableReranker(None, "")
         self.decider = decider or TableDecider(None, "")
 
@@ -119,14 +154,15 @@ class Rig:
                 return backend
             return make
 
+        factories = {"standin-reranker": build(self.reranker),
+                     "standin-decider": build(self.decider)}
+        if agent is not None:
+            factories["standin-agent"] = build(agent)
         service = modelservice.ModelService(
             lock=self.lock, models_dir=os.path.join(self.folder, "models"),
-            factories={"standin-reranker": build(self.reranker),
-                       "standin-decider": build(self.decider)}, choose=choose)
+            factories=factories, choose=choose)
         self.running = modelservice.start(service, 0, announce=False)
-        self.env = mock.patch.dict(os.environ, {"BRAIN_MODEL_SERVICE": self.running.url,
-                                                "BRAIN_MODELS_LOCK": self.lock_path})
-        self.env.start()
+        os.environ["BRAIN_MODEL_SERVICE"] = self.running.url  # undone with the patch
         models_client.forget()
 
     def stop(self):
@@ -499,7 +535,10 @@ class SetupTests(unittest.TestCase):
         brain = Brain(self.vault, embeddings=False)
         try:
             res = brain.context("How should headlines be written?")
-            self.assertEqual(res.data["engine"]["gate"], None)
+            # Without the decision model's gate, the reranker's best score against the cut
+            # decides whether the request gets anything.
+            self.assertEqual(res.data["engine"]["gate"]["by"], "reranker")
+            self.assertEqual(res.data["engine"]["gate"]["yes"], 0.95)
             self.assertEqual(decider.asked, [])  # no gate, no second pass
             self.assertIn("rules-style-002", res.data["note_ids"])
         finally:
@@ -518,6 +557,254 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(res.data["mode"], "nothing")  # every note scored 0.1 < 0.5
         finally:
             brain.close()
+            rig.stop()
+
+
+class MachineTests(unittest.TestCase):
+    """Machine setups and the model settings (5.11.15, 5.11.16), on the shipped lock."""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="brain-home-")
+        self.env = mock.patch.dict(os.environ, {"BRAIN_MODEL_HOME": self.home})
+        self.env.start()
+        self.lock = modellock.Lock.load()
+
+    def tearDown(self):
+        self.env.stop()
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def test_each_machine_gets_the_setup_that_fits(self):
+        cases = [(machine.Machine(ram_gb=15.8), "laptop"),
+                 (machine.Machine(ram_gb=8.0), "small"),
+                 (machine.Machine(ram_gb=16.0, apple_silicon=True), "laptop"),
+                 (machine.Machine(ram_gb=32.0, gpu="g", gpu_gb=12.0), "workstation"),
+                 (machine.Machine(ram_gb=32.0, apple_silicon=True), "workstation"),
+                 (machine.Machine(ram_gb=64.0, apple_silicon=True), "large"),
+                 (machine.Machine(ram_gb=32.0, gpu="g", gpu_gb=24.0), "large")]
+        for found, setup in cases:
+            self.assertEqual(found.setup, setup, found)
+        self.assertEqual(machine.check(machine.Machine(ram_gb=15.8))["setup"], "laptop")
+        self.assertEqual(machine.chosen("decide"), "kev-0.8b")
+        self.assertEqual(machine.chosen("agent"), "qwen3.5-4b")
+        self.assertEqual(machine.ceiling(), 100)
+        machine.check(machine.Machine(ram_gb=8.0))
+        self.assertIsNone(machine.chosen("decide"))  # code alone, bge-small and MiniLM
+        self.assertEqual(machine.chosen("rerank"), "ms-marco-minilm-l-6-v2")
+
+    def test_no_default_is_offered_that_will_not_fit(self):
+        # A 16 GB machine that reports 15.0 GB has room for about 5.5 GB of models; the laptop
+        # defaults need 5.6, so the small reranker gives way first.
+        machine.check(machine.Machine(ram_gb=15.0))
+        self.assertEqual(machine.chosen("rerank", lock=self.lock), "ms-marco-minilm-l-6-v2")
+        self.assertEqual(machine.chosen("agent", lock=self.lock), "qwen3.5-4b")
+        found = machine.overview(self.lock)
+        self.assertEqual(found["ram_in_use_gb"], 4.5)
+        self.assertIn("qwen3-reranker-0.6b does not fit beside the other defaults here",
+                      found["fallbacks"][0])
+        # Choosing it back is refused while the other defaults stay.
+        with self.assertRaises(ValueError):
+            machine.choose("rerank", "qwen3-reranker-0.6b", lock=self.lock)
+
+    def test_a_choice_the_ram_check_says_will_not_fit_is_refused(self):
+        machine.check(machine.Machine(ram_gb=15.8))  # 16 GB, no GPU
+        with self.assertRaises(ValueError) as caught:
+            machine.choose("agent", "qwen3.5-9b", lock=self.lock)
+        self.assertIn("will not fit: these models need about 8.9 GB and this computer has "
+                      "room for about 6.3 GB", str(caught.exception))
+        with self.assertRaises(ValueError) as caught:
+            machine.choose("decide", "qwen3.5-4b", lock=self.lock)
+        self.assertIn("a knowledge agent model, not a decisions model", str(caught.exception))
+        with self.assertRaises(modellock.Refused):
+            machine.choose("agent", "a-model-nobody-pinned", lock=self.lock)
+        machine.choose("rerank", "ms-marco-minilm-l-6-v2", lock=self.lock)
+        self.assertEqual(machine.chosen("rerank"), "ms-marco-minilm-l-6-v2")
+        # A GPU makes room; checking the machine again keeps the person's choices.
+        machine.check(machine.Machine(ram_gb=32.0, gpu="g", gpu_gb=12.0))
+        machine.choose("agent", "qwen3.5-9b", lock=self.lock)
+        self.assertEqual(machine.chosen("rerank"), "ms-marco-minilm-l-6-v2")
+        self.assertEqual(machine.chosen("agent"), "qwen3.5-9b")
+
+    def test_settings_show_each_role_its_options_and_each_fallback(self):
+        machine.check(machine.Machine(ram_gb=15.8))
+        found = machine.overview(self.lock)
+        self.assertEqual((found["setup"], found["setup_label"]), ("laptop", "Laptop"))
+        roles = {r["role"]: r for r in found["roles"]}
+        self.assertEqual(roles["decide"]["model"], "kev-0.8b")
+        options = {o["name"]: o for o in roles["agent"]["options"]}
+        self.assertTrue(options["qwen3.5-4b"]["in_use"])
+        self.assertTrue(options["qwen3.5-4b"]["fits"])
+        self.assertFalse(options["qwen3.6-35b-a3b"]["fits"])
+        self.assertIn("need about", options["qwen3.6-35b-a3b"]["fit_reason"])
+        self.assertFalse(options["qwen3.5-4b"]["downloaded"])  # nothing downloaded here
+        self.assertEqual(found["ram_in_use_gb"], 5.6)
+        self.assertFalse(found["engine"]["ready"])
+        # Kev-0.8B has qualified for neither step on this machine yet: both fall back.
+        self.assertEqual(len(found["fallbacks"]), 2)
+        machine.record("kev-0.8b", speed_ms=180, quality=0.91, steps={"gate": True})
+        found = machine.overview(self.lock)
+        self.assertEqual(found["fallbacks"], ["kev-0.8b has not qualified for the second pass "
+                                              "here: it is skipped"])
+        roles = {r["role"]: r for r in found["roles"]}
+        decide = {o["name"]: o for o in roles["decide"]["options"]}
+        self.assertEqual(decide["kev-0.8b"]["measured"]["speed_ms"], 180.0)
+        # Kev-4B and Kev-9B run every step from the start.
+        self.assertTrue(machine.qualified("kev-4b", "gate", {}, self.lock))
+        self.assertFalse(machine.qualified(None, "gate", {}, self.lock))
+
+
+class QualifyTests(unittest.TestCase):
+    """A decision model the lock says must qualify runs a Kev step only once it has, on this
+    machine; until then the gate goes to the reranker and the second pass is skipped."""
+
+    def setUp(self):
+        self.vault = fixture.build()
+
+    def tearDown(self):
+        fixture.remove(self.vault)
+
+    def test_an_unqualified_decision_model_hands_the_gate_to_the_reranker(self):
+        decider = TableDecider(None, "", gate=0.05)  # it would say no
+        rig = Rig(reranker=TableReranker(None, "", {"rules-style-002": 0.95}), decider=decider,
+                  qualify=["gate", "second_pass"])
+        brain = Brain(self.vault, embeddings=False)
+        try:
+            self.assertEqual(rig.running.service.health()["qualified"],
+                             {"gate": False, "second_pass": False})
+            res = brain.context("How should headlines be written?")
+            engine = res.data["engine"]
+            self.assertEqual(engine["mode"], "on")
+            self.assertEqual(engine["gate"]["by"], "reranker")
+            self.assertEqual(decider.asked, [])  # neither the gate nor the second pass ran
+            self.assertIn("rules-style-002", res.data["note_ids"])
+            self.assertEqual(engine["notes"], [
+                "standin-decider has not qualified for the gate here: the reranker's best "
+                "score against the cut decides instead",
+                "standin-decider has not qualified for the second pass here: it is skipped"])
+            # Once it qualifies for the gate on this machine, the gate is its own again.
+            machine.record("standin-decider", steps={"gate": True})
+            models_client.reload()
+            res = brain.context("What is the capital of Portugal?")
+            self.assertEqual(res.data["mode"], "nothing")
+            self.assertEqual(res.data["engine"]["gate"]["yes"], 0.05)
+            self.assertEqual(len(decider.asked), 1)
+            self.assertEqual(list(decider.asked[0][1]), ["gate"])  # no second-pass questions
+        finally:
+            brain.close()
+            rig.stop()
+
+    def test_a_small_machine_runs_no_decision_model_so_retrieval_falls_back(self):
+        rig = Rig(settings={"machine": {"ram_gb": 8.0}, "setup": "small"})
+        brain = Brain(self.vault, embeddings=False)
+        try:
+            found = models_client.status(refresh=True)
+            self.assertFalse(found.ready)
+            self.assertIn("this computer's setup (small) runs no decide model", found.reason)
+            res = brain.context("How should headlines be written?")
+            self.assertEqual(res.data["engine"]["mode"], "fallback")
+        finally:
+            brain.close()
+            rig.stop()
+
+    def test_the_setup_sets_the_ceiling_unless_the_brain_names_one(self):
+        brain = Brain(self.vault, embeddings=False)
+        laptop = models_client.Status(ready=True, setup="laptop", ceiling=100)
+        try:
+            st = brain.state()
+            found = engine_mod.Engine(st, engine_mod.Settings.of(st.config), None, None, "",
+                                      laptop)
+            self.assertEqual(found.settings.ceiling, 100)
+        finally:
+            brain.close()
+        set_engine(self.vault, ceiling=250)
+        brain = Brain(self.vault, embeddings=False)
+        try:
+            st = brain.state()
+            found = engine_mod.Engine(st, engine_mod.Settings.of(st.config), None, None, "",
+                                      laptop)
+            self.assertEqual(found.settings.ceiling, 250)
+        finally:
+            brain.close()
+
+    def test_cuts_fitted_for_other_models_give_way_to_the_defaults(self):
+        set_engine(self.vault, cuts={"relevance": 0.8},
+                   fitted={"date": "2026-10-01", "eval_run": "run-1",
+                           "models": {"rerank": "another-reranker",
+                                      "decide": "standin-decider"}})
+        brain = Brain(self.vault, embeddings=False)
+
+        def running(reranker):
+            return models_client.Status(ready=True, roles={
+                "rerank": {"model": reranker}, "decide": {"model": "standin-decider"}})
+
+        try:
+            st = brain.state()
+            found = engine_mod.Engine(st, engine_mod.Settings.of(st.config), None, None, "",
+                                      running("standin-reranker"))
+            self.assertTrue(found.refit)
+            self.assertEqual(found.settings.cuts["relevance"], engine_mod.CUTS["relevance"])
+            self.assertIn("a refit on this Brain's labels is suggested", found.notes[0])
+            found = engine_mod.Engine(st, engine_mod.Settings.of(st.config), None, None, "",
+                                      running("another-reranker"))
+            self.assertFalse(found.refit)
+            self.assertEqual(found.settings.cuts["relevance"], 0.8)
+        finally:
+            brain.close()
+
+    def test_a_new_default_takes_effect_on_reload_and_the_lock_still_decides(self):
+        rig = Rig()
+        try:
+            self.assertTrue(models_client.status(refresh=True).ready)
+            settings = machine.load()
+            settings["models"] = {"rerank": "unpinned-model"}
+            machine.save(settings)
+            health = models_client.reload()
+            self.assertEqual(health["roles"]["rerank"]["model"], "unpinned-model")
+            self.assertFalse(health["roles"]["rerank"]["verified"])  # no files pinned
+            self.assertFalse(models_client.status(refresh=True).ready)
+        finally:
+            rig.stop()
+
+
+class AgentTests(unittest.TestCase):
+    """The knowledge agent's local model behind the service (brain-logic plan 17), stood in."""
+
+    SCHEMA = {"type": "object", "required": ["verdict", "why"],
+              "properties": {"verdict": {"type": "string", "enum": ["keep", "change"]},
+                             "why": {"type": "string"}}}
+
+    def test_the_agent_answers_through_the_service_bound_to_a_schema(self):
+        agent = StandinAgent(None, "", text='{"verdict": "keep", "why": "it still holds"}')
+        rig = Rig(agent=agent)
+        try:
+            found = models_client.status(refresh=True)
+            self.assertEqual(found.agent, "standin-agent")
+            answer = models_client.Agent(found).generate(
+                "Does the note still hold?", system="You check notes.", schema=self.SCHEMA)
+            self.assertEqual(answer["json"], {"verdict": "keep", "why": "it still holds"})
+            self.assertEqual(answer["problems"], [])
+            self.assertEqual(answer["model"], "standin-agent")
+            self.assertEqual(agent.asked[0][:3], ("You check notes.", "Does the note still hold?",
+                                                  self.SCHEMA))
+            agent.text = '{"verdict": "maybe"}'
+            answer = models_client.Agent(found).generate("Again?", schema=self.SCHEMA)
+            self.assertEqual(answer["problems"], ["it has no why",
+                                                  "verdict is not one of keep, change"])
+            agent.text = "not JSON at all"
+            answer = models_client.Agent(found).generate("Again?", schema=self.SCHEMA)
+            self.assertIsNone(answer["json"])
+            self.assertEqual(answer["problems"], ["the answer is not an object"])
+        finally:
+            rig.stop()
+
+    def test_without_an_agent_model_the_service_says_so(self):
+        rig = Rig()
+        try:
+            found = models_client.status(refresh=True)
+            self.assertTrue(found.ready)  # the engine needs no agent
+            self.assertEqual(found.agent, "")
+            with self.assertRaises(models_client.ServiceError):
+                models_client.Agent(found).generate("Anything?")
+        finally:
             rig.stop()
 
 
