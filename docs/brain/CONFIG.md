@@ -50,6 +50,10 @@ Everything below lives in the vault. The engine supplies a default for every key
              "files": ["CLAUDE.md", "AGENTS.md"],
              "budgets": {"company": 150, "role": 150, "person": 100, "total": 500}},
   "hooks": {"push": "words"},
+  "engine": {"cuts": {"gate": 0.5, "relevance": 0.5, "adds": 0.5, "contradicts": 0.7,
+                      "current": 0.5, "domain": 0.5},
+             "fitted": {"date": null, "eval_run": null, "models": {}},
+             "floor": 0.15, "ceiling": 300, "rounds": 3},
   "sessions": {"retention_days": 90},
   "git": {"auto_commit": true}
 }
@@ -69,6 +73,12 @@ Everything below lives in the vault. The engine supplies a default for every key
   stays the hard ceiling). `files` are written with the shared part only: AGENTS.md in full
   and CLAUDE.md as a stub that imports it (`@AGENTS.md`). The person's layer never goes in a
   file: Claude Code's session-start hook prints it, and otherwise the first brief carries it.
+- **The retrieval engine** (`engine`): the cuts its gate, reranker and decision model's
+  answers are held to, with the date, eval run and models they were fitted on (until then the
+  values above are starting points; cuts fitted for other models give way to these defaults); the loose meaning floor of its find step; the ceiling that only
+  protects speed; the link loop's rounds (three at most). `enabled: false` keeps a Brain on the
+  fallback even with a model service; `layers` and `scorer` are how the comparison of setups
+  runs. It runs only with a verified local model service (ROUTING.md).
 - **Hooks**: `push` is how Claude Code's prompt hook sends a brief before the model asks:
   `words` (the default, about a second), `meaning` (the router exactly as `get_task_context`
   runs it, a few seconds while the model loads) or `off`.
@@ -171,6 +181,13 @@ they describe this brain, so they live in the vault. See [Routing](ROUTING.md).
 | `BRAIN_RERANK=0` | never load the reranker, even when `policy.rerank_weight` is set |
 | `BRAIN_MCP_PROFILE=full` | add read-only inspection tools to MCP |
 | `BRAIN_REPO_ROOT` | where CLAUDE.md and AGENTS.md are written (default: the vault's parent) |
+| `BRAIN_MODEL_HOME` | this machine's model home (default `~/.brainkit`): the downloaded local models, `settings.json` (the setup, the person's model choices, what was measured, which Kev steps qualified) and the model service's address |
+| `BRAIN_MODELS_LOCK` | another lock file in place of the shipped `models.lock.json` |
+| `BRAIN_MODEL_SERVICE=off` | never use a local model service (or a `http://127.0.0.1:<port>` to use that one) |
 
 `brain models` shows the local models; `--download` fetches the optional reranker
-into `vault/.brain/models`. Nothing downloads on its own.
+into `vault/.brain/models`. Nothing downloads on its own. For the retrieval engine:
+`brain models machine` reads this computer and shows its setup, `use <name>` makes a pinned model
+the default for its role, `download <name>` and `remove <name>` fetch or drop one (verified
+against the lock), `speed` times the models the service runs, `lock` lists every pin and
+`serve` runs the service.

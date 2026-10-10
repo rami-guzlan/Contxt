@@ -714,6 +714,13 @@ class Route:
     must_holds: list = field(default_factory=list)    # [MustHold] in play, shown in full
     must_overflow: list = field(default_factory=list)  # [MustHold] past the cap: listed
     older: list = field(default_factory=list)         # [(older note, newer note)]: listed
+    # Every on-demand note scored for the request, best first: what the engine's fallback
+    # audit writes down. Routing never reads it.
+    ranked: list = field(default_factory=list)
+    # Set only by the local retrieval engine (engine.py): {item id: "body" | "pointer"} for
+    # what survived its cut, and {note id: the note it is disputed with}.
+    engine_fit: dict | None = None
+    engine_disputed: dict = field(default_factory=dict)
 
     def log(self, message):
         self.notes_log.append(message)
@@ -1522,6 +1529,7 @@ class Router:
                       and (only is None or n.route_key in only)]
         ranked_on_demand = self._rerank(route, sig.request,
                                         self.score_notes(sig.request, candidates, context))
+        route.ranked = ranked_on_demand
         ranked_standing = self.score_notes(sig.request, standing)
         forced = domains
 

@@ -38,6 +38,8 @@ def overview(request: Request, who: Who, ws: WS) -> dict[str, Any]:
     its last runs."""
     out = ws.agent.overview(who)
     out["models"] = [m.to_dict() for m in models(request).list()]
+    if ws.agent.chosen_model() is None:
+        out["model"] = models(request).default()  # a local model when one is here
     out["working"] = [
         j.to_dict()
         for j in work(request).recent(who)

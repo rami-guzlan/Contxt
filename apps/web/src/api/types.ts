@@ -1543,11 +1543,58 @@ export interface AiRequestFull extends AiRequest {
   startup: { fingerprint: string; text: string | null } | null;
   /** Its place in your private eval set, with your labels, when you labeled it. */
   eval?: EvalCase | null;
+  /** Why each candidate went in or stayed out, as the ledger kept it. */
+  why?: RequestWhy | null;
+}
+
+/** One candidate a brief's retrieval looked at: its scores, what became of it and why. */
+export interface WhyRow {
+  kind: "note" | "section";
+  item: string;
+  title: string;
+  path?: string | null;
+  /** The keyword part of its match, 0 to 1. */
+  keyword: number | null;
+  /** Its meaning score, 0 to 1 (none without the local meaning model). */
+  meaning: number | null;
+  /** The local reranker's relevance score, 0 to 1 (none without the local engine). */
+  rerank: number | null;
+  /** The decision model's answers: question to probability, or option probabilities. */
+  kev: Record<string, unknown>;
+  outcome: "body" | "pointer" | "listed" | "held" | "out";
+  reason: string;
+  found_by: string;
+  round: number;
+}
+
+/** Why each candidate went in or stayed out of one brief: the local engine's record, or what
+ * retrieval scored without it (fallback). */
+export interface RequestWhy {
+  mode: "on" | "fallback" | null;
+  reason: string;
+  lock: string;
+  /** The gate: the decision model's yes against its cut, or, where that model has not
+   * qualified on this computer, the reranker's best score against the relevance cut. */
+  gate: { yes: number; cut: number; passed: boolean; by?: "reranker" } | null;
+  cuts: Record<string, number>;
+  fitted: { date?: string | null; eval_run?: string | null };
+  timings: Record<string, number>;
+  rounds: number;
+  ceiling_hit: boolean;
+  /** What this computer's setup ran instead of a step, in words. */
+  notes?: string[];
+  /** The cuts were fitted for other models: the defaults stood in. */
+  refit?: boolean;
+  in: WhyRow[];
+  out: WhyRow[];
+  out_count: number;
 }
 
 /** One of your real requests in the private eval set: the notes it needed, the ones that
  * helped, the ones that were noise, and the ones it should have had. */
 export interface EvalCase {
+  /** You marked it as a request that should get nothing from the Brain. */
+  nothing?: boolean;
   id: string;
   packet_id: string | null;
   request: string;
@@ -1749,6 +1796,57 @@ export interface LocalModels {
   };
 }
 
+/** One pinned option for a role on this computer (Settings, On this computer, Local models). */
+export interface LocalModelOption {
+  name: string;
+  repository: string;
+  revision: string | null;
+  pinned: boolean;
+  size_gb: number | null;
+  ram_gb: number | null;
+  license: string | null;
+  downloaded: boolean;
+  why_not: string;
+  fits: boolean;
+  fit_reason: string;
+  measured: { speed_ms?: number; quality?: number; at?: string } | null;
+  slow: string;
+  in_use: boolean;
+  setup_default: boolean;
+  /** The meaning index's model: kept with the Brain, downloaded under Matching by meaning. */
+  with_brain?: boolean;
+}
+
+export interface LocalModelRole {
+  role: "embed" | "rerank" | "decide" | "agent";
+  label: string;
+  model: string | null;
+  options: LocalModelOption[];
+}
+
+/** This computer's local models: the machine, its setup, each role, and the engine's mode. */
+export interface LocalModelsOverview {
+  enabled: boolean;
+  machine?: { ram_gb: number; gpu: string; gpu_gb: number; apple_silicon: boolean; system: string };
+  setup?: "laptop" | "workstation" | "large" | "small";
+  setup_label?: string;
+  checked_at?: string | null;
+  roles?: LocalModelRole[];
+  ram_in_use_gb?: number;
+  budget_ms?: Record<string, number>;
+  fallbacks?: string[];
+  engine?: { ready: boolean; reason: string; lock: string; agent: string };
+  /** Claude Code for the knowledge agent, as it stands (the person's choice, or on until a
+   * local agent model is here). */
+  agent_claude_code?: boolean;
+  agent_claude_code_set?: boolean;
+  lock?: string;
+  downloading?: string[];
+  errors?: Record<string, string>;
+  /** A warning that did not refuse the change (a model slower than this machine's budget). */
+  notice?: string;
+}
+
 export interface BackupFile {
   name: string;
   size: number;
@@ -1770,7 +1868,8 @@ export interface BackupMade {
 export interface AgentModel {
   id: string;
   label: string;
-  kind: "cli" | "local";
+  /** cli: Claude Code; local: through Ollama; pinned: the app's own model service. */
+  kind: "cli" | "local" | "pinned";
   available: boolean;
   detail: string;
   /** A small model: it gets the short map and fewer candidates. */

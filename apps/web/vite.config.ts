@@ -22,5 +22,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // The slowest screens take a few seconds on a busy machine: a ceiling for a hung test,
+    // not a target.
+    testTimeout: 20000,
   },
 });

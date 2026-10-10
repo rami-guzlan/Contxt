@@ -646,6 +646,84 @@ describe("activity", () => {
     });
   });
 
+  it("labels a request that should get nothing from the Brain", async () => {
+    const calls = mockApi({
+      "GET /api/brain/weekly": [],
+      "GET /api/brain/requests": { requests: [request], brain_tokens: 6400, apps: ["Claude Code"], engine: "new" },
+      "GET /api/brain/requests/pkt-1": { ...request, text: "## Task", startup: null, eval: null },
+      "GET /api/brain/catalog": { areas: [], entries: [] },
+      "PUT /api/brain/requests/pkt-1/labels": { id: "real-pkt-1", labeled: true, nothing: true },
+    });
+    const user = userEvent.setup();
+    renderAt(<AiActivityPage />, { path: "/activity", route: "/activity" });
+    await user.click(await screen.findByRole("button", { name: /Write a LinkedIn post announcing the Q4 webinars/ }));
+    await user.click(screen.getByRole("button", { name: "Label it for your eval" }));
+    const group = screen.getByRole("group", { name: "Label LinkedIn posting rules" });
+    await user.click(within(group).getByRole("button", { name: "Noise" }));
+    await user.click(screen.getByLabelText(/It should get nothing from the Brain/));
+    await user.click(screen.getByRole("button", { name: "Save labels" }));
+    expect(await screen.findByText(/It counts in your private eval set/)).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+      needed: [],
+      useful: [],
+      noise: ["linkedin-rules"],
+      missing: [],
+      nothing: true,
+    });
+  });
+
+  it("says why each note went in and why others stayed out", async () => {
+    const row = (item: string, title: string, outcome: string, reason: string, rerank: number | null) => ({
+      kind: "note",
+      item,
+      title,
+      keyword: 0.4,
+      meaning: 0.62,
+      rerank,
+      kev: rerank === null ? {} : { current: 0.93 },
+      outcome,
+      reason,
+      found_by: "above the meaning floor",
+      round: 0,
+    });
+    mockApi({
+      "GET /api/brain/weekly": [],
+      "GET /api/brain/requests": { requests: [request], brain_tokens: 6400, apps: ["Claude Code"], engine: "new" },
+      "GET /api/brain/requests/pkt-1": {
+        ...request,
+        text: "## Task",
+        startup: null,
+        why: {
+          mode: "on",
+          reason: "",
+          lock: "fe3b2fc1fb35",
+          gate: { yes: 0.97, cut: 0.5, passed: true },
+          cuts: { relevance: 0.5 },
+          fitted: {},
+          timings: { gate: 40, find: 12, cut: 210 },
+          rounds: 1,
+          ceiling_hit: false,
+          in: [row("linkedin-rules", "LinkedIn posting rules", "body", "", 0.91)],
+          out: [row("podcast-format", "Podcast format", "out", "below the relevance cut (0.12 < 0.5)", 0.12)],
+          out_count: 3,
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderAt(<AiActivityPage />, { path: "/activity", route: "/activity" });
+    await user.click(await screen.findByRole("button", { name: /Write a LinkedIn post announcing the Q4 webinars/ }));
+    await user.click(await screen.findByText("Why these, and not others"));
+    expect(
+      screen.getByText(/The local engine chose these \(lock fe3b2fc1fb35; the gate said 0.97 against 0.5; 1 link round\)/),
+    ).toBeInTheDocument();
+    const inside = screen.getByRole("list", { name: "Why this" });
+    expect(within(inside).getByRole("link", { name: "LinkedIn posting rules" })).toBeInTheDocument();
+    expect(within(inside).getByText(/relevance 0.91/)).toBeInTheDocument();
+    const outside = screen.getByRole("list", { name: "Why not that one" });
+    expect(within(outside).getByText(/below the relevance cut \(0.12 < 0.5\)/)).toBeInTheDocument();
+    expect(screen.getByText(/and 2 more out, kept in the ledger/)).toBeInTheDocument();
+  });
+
   it("shows what context cost by line, and how good briefs are", async () => {
     const day = (usd: number) => ({ tokens: Math.round(usd * 100000), usd });
     const calls = mockApi({
@@ -860,6 +938,71 @@ describe("settings", () => {
     expect(await screen.findByText(/matches requests by words until its local model is here/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Download the model" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/models/download")).toBe(true));
+  });
+
+  it("shows this computer's setup and local models, and refuses what will not fit", async () => {
+    const option = (name: string, extra: Record<string, unknown> = {}) => ({
+      name,
+      repository: "",
+      revision: null,
+      pinned: false,
+      size_gb: 1.2,
+      ram_gb: 1.2,
+      license: "Apache-2.0",
+      downloaded: false,
+      why_not: "not here",
+      fits: true,
+      fit_reason: "",
+      measured: null,
+      slow: "",
+      in_use: false,
+      setup_default: false,
+      ...extra,
+    });
+    const overview = {
+      enabled: true,
+      machine: { ram_gb: 15.8, gpu: "", gpu_gb: 0, apple_silicon: false, system: "Windows" },
+      setup: "laptop",
+      setup_label: "Laptop",
+      ram_in_use_gb: 5.6,
+      fallbacks: ["kev-0.8b has not qualified for the second pass here: it is skipped"],
+      engine: { ready: false, reason: "no model service is running", lock: "", agent: "" },
+      agent_claude_code: true,
+      roles: [
+        {
+          role: "agent",
+          label: "knowledge agent",
+          model: "qwen3.5-4b",
+          options: [
+            option("qwen3.5-4b", { in_use: true, setup_default: true }),
+            option("qwen3.6-35b-a3b", { pinned: true, fits: false, fit_reason: "these models need about 23.4 GB and this computer has room for about 6.3 GB" }),
+            option("qwen3.5-9b", { pinned: true, downloaded: true, why_not: "" }),
+          ],
+        },
+      ],
+      downloading: [],
+      errors: {},
+    };
+    const calls = mockApi({
+      "GET /api/brain/models": { matching: { enabled: false, present: false, downloading: false } },
+      "GET /api/brain/local-models": overview,
+      "POST /api/brain/local-models": { ...overview, notice: "" },
+      "GET /api/actors": [],
+      "GET /api/runners": [],
+    });
+    const user = userEvent.setup();
+    renderAt(<SettingsPage />, { path: "/settings", route: "/settings?tab=computer" });
+    expect(await screen.findByText(/Setup:/)).toBeInTheDocument();
+    expect(screen.getByText(/runs in fallback, on words and meaning: no model service is running/)).toBeInTheDocument();
+    expect(screen.getByText(/has not qualified for the second pass here/)).toBeInTheDocument();
+    expect(screen.getByText(/Will not fit here: these models need about 23.4 GB/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Make qwen3.6-35b-a3b the default" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Make qwen3.5-9b the default" }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === "POST" && c.path === "/api/brain/local-models" && JSON.stringify(c.body).includes("qwen3.5-9b"))).toBe(true),
+    );
+    await user.click(screen.getByRole("checkbox", { name: /Let the knowledge agent use Claude Code/ }));
+    await waitFor(() => expect(calls.some((c) => JSON.stringify(c.body ?? {}).includes("claude_code"))).toBe(true));
   });
 
   it("shows the goals and what they steer, with earlier versions", async () => {

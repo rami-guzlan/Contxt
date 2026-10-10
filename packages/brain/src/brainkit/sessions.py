@@ -21,6 +21,12 @@ never pruned, so an entry's use is known for good. The detail behind it (each de
 the version and why routing picked it, and each packet's request) is kept for
 `sessions.retention_days` (90 by default), then pruned.
 
+BRIEF DECISIONS. For every brief, every candidate the retrieval engine looked at (or, in
+fallback, what routing scored): its keyword, meaning and reranker scores, the decision model's
+answers, the outcome (body, pointer, listed, held, out) and its reason, with the engine's mode,
+the lock's fingerprint, the cuts and each layer's time in the packet's data. Pruned with the
+detail above. An audit reads these, never recomputes them.
+
 MODEL CALLS. Background work that pays a model (a check, the knowledge agent, a run) records
 its tokens and cost in `model_calls`, pruned like the detail above, and by day in
 `model_daily`, kept for good: the fourth line of what context costs (costs.py).
@@ -60,6 +66,11 @@ CREATE TABLE IF NOT EXISTS dismissed (key TEXT PRIMARY KEY, at TEXT);
 CREATE TABLE IF NOT EXISTS verdicts (
     key TEXT PRIMARY KEY, relation TEXT, detail TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS kernels (fingerprint TEXT PRIMARY KEY, at TEXT, text TEXT);
+CREATE TABLE IF NOT EXISTS brief_decisions (
+    packet_id TEXT, session_id TEXT, at TEXT, kind TEXT, item TEXT, keyword REAL,
+    meaning REAL, rerank REAL, kev TEXT, outcome TEXT, reason TEXT, found_by TEXT,
+    round INTEGER);
+CREATE INDEX IF NOT EXISTS brief_decisions_packet ON brief_decisions(packet_id);
 CREATE TABLE IF NOT EXISTS model_calls (
     at TEXT, job TEXT, model TEXT, tokens_in INTEGER, tokens_out INTEGER, cache_read INTEGER,
     cache_write INTEGER, cost REAL, ms INTEGER, ref TEXT, measured INTEGER);
@@ -293,6 +304,37 @@ class Ledger:
                 f"conversations = conversations + excluded.conversations, "
                 f"{column} = {column} + 1, tokens = tokens + excluded.tokens",
                 (day, kind, item, 1 if first else 0, int(tokens or 0)))
+
+    def record_decisions(self, packet_id: str, session_id: str, rows) -> None:
+        """Every candidate's scores and outcome for one brief (engine.Audit.rows)."""
+        now = util.now_iso()
+        with self._connect() as conn:
+            conn.executemany(
+                "INSERT INTO brief_decisions (packet_id, session_id, at, kind, item, keyword, "
+                "meaning, rerank, kev, outcome, reason, found_by, round) VALUES "
+                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [(packet_id, session_id, now, r.get("kind"), r.get("item"), r.get("keyword"),
+                  r.get("meaning"), r.get("rerank"),
+                  json.dumps(r.get("kev") or {}, ensure_ascii=False), r.get("outcome"),
+                  r.get("reason"), r.get("found_by"), int(r.get("round") or 0))
+                 for r in rows])
+
+    def decisions(self, packet_id: str) -> list[dict]:
+        """What `record_decisions` kept for one brief, in the order it was written."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT kind, item, keyword, meaning, rerank, kev, outcome, reason, found_by, "
+                "round FROM brief_decisions WHERE packet_id = ? ORDER BY rowid",
+                (packet_id,)).fetchall()
+        out = []
+        for row in rows:
+            found = dict(row)
+            try:
+                found["kev"] = json.loads(found.get("kev") or "{}")
+            except ValueError:
+                found["kev"] = {}
+            out.append(found)
+        return out
 
     def packet(self, packet_id: str) -> dict | None:
         with self._connect() as conn:
@@ -776,6 +818,7 @@ class Ledger:
         with self._connect() as conn:
             conn.execute("DELETE FROM deliveries WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM packets WHERE at < ?", (cutoff,))
+            conn.execute("DELETE FROM brief_decisions WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM sessions WHERE seen < ?", (cutoff,))
             conn.execute("DELETE FROM model_calls WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM kernels WHERE at < ? AND fingerprint NOT IN "

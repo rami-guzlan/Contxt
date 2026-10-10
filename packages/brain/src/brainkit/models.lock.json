@@ -1,0 +1,246 @@
+{
+  "about": "The local models the retrieval engine may run, pinned (brain-logic plan 5.11.8). A model this file does not list is refused, and a listed one loads only when every file matches its checksum here. An entry with no revision or no checksums is not pinned yet: pin a downloaded copy with `brain models pin <name> <folder>` on a machine that runs it. Changing a pin is a code change, reviewed with the replay harness.",
+  "version": 1,
+  "models": [
+    {
+      "name": "qwen3-reranker-0.6b",
+      "role": "rerank",
+      "default": true,
+      "repository": "Qwen/Qwen3-Reranker-0.6B",
+      "revision": "",
+      "files": {},
+      "dtype": "bfloat16",
+      "runtime": {
+        "torch": ">=2.4",
+        "transformers": ">=4.51"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "max_length": 8192,
+        "instruction": "Judge whether this note would help an AI do this task",
+        "ram_gb": 1.2,
+        "size_gb": 1.2
+      }
+    },
+    {
+      "name": "ms-marco-minilm-l-6-v2",
+      "role": "rerank",
+      "default": false,
+      "repository": "Xenova/ms-marco-MiniLM-L-6-v2",
+      "revision": "a09144355adeed5f58c8ed011d209bf8ee5a1fec",
+      "files": {
+        "config.json": "d827779a72d27ae68cf878a6fc2e954542663fe21ca515d9f4783fc96be2d37e",
+        "onnx/model.onnx": "c623d0bcb99f4622beb413eaef00cfbe5db20df9f1dd982da4b4f26022881870",
+        "special_tokens_map.json": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3",
+        "tokenizer.json": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+        "tokenizer_config.json": "0b29c7bfc889e53b36d9dd3e686dd4300f6525110eaa98c76a5dafceb2029f53"
+      },
+      "dtype": "float32",
+      "runtime": {
+        "onnxruntime": ">=1.17"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "note": "the fallback reranker, when Qwen3-Reranker misses the speed budget on a machine without a GPU; off in fallback retrieval",
+        "ram_gb": 0.1,
+        "size_gb": 0.1
+      }
+    },
+    {
+      "name": "kev-4b",
+      "role": "decide",
+      "default": false,
+      "repository": "jaredpalmer/kev-4b",
+      "revision": "139fdd94",
+      "files": {},
+      "dtype": "bfloat16",
+      "runtime": {
+        "kev": "1.0"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "release": "kev-1.0",
+        "base": "Qwen3.5-4B-Base",
+        "temperature": 2.41,
+        "validated_state_tokens": 8192,
+        "max_options": 255,
+        "format": "System One (POST /v1/systemone)",
+        "ram_gb": 9.0,
+        "size_gb": 8.5,
+        "new_sources": 0.838,
+        "needs": "a GPU with 12 GB or more, or a Mac with 32 GB or more"
+      }
+    },
+    {
+      "name": "kev-9b",
+      "role": "decide",
+      "default": false,
+      "repository": "jaredpalmer/kev-9b",
+      "revision": "b5d8c18e",
+      "files": {},
+      "dtype": "bfloat16",
+      "runtime": {
+        "kev": "1.0"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "temperature": 2.19,
+        "validated_state_tokens": 8192,
+        "max_options": 255,
+        "min_gpu_gb": 24,
+        "ram_gb": 17.0,
+        "size_gb": 17.0,
+        "needs": "a GPU with 24 GB or more"
+      }
+    },
+    {
+      "name": "bge-small-en-v1.5",
+      "role": "embed",
+      "default": true,
+      "repository": "Qdrant/bge-small-en-v1.5-onnx-Q",
+      "revision": "aa8f8b060edb00e03bfdd08813a2949946c8ba55",
+      "files": {
+        "config.json": "13582bcf2effc85b7bf3d3f5532e686bc1c9ce86bb009d10f0ec33cbe92299dd",
+        "model_optimized.onnx": "51f1bd0addd6e859e42c2c8021a5e5461385bb676a649f4b269aa445449f2431",
+        "special_tokens_map.json": "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a",
+        "tokenizer.json": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+        "tokenizer_config.json": "0b29c7bfc889e53b36d9dd3e686dd4300f6525110eaa98c76a5dafceb2029f53"
+      },
+      "dtype": "int8",
+      "runtime": {
+        "fastembed": ">=0.4"
+      },
+      "extra": {
+        "license": "MIT",
+        "note": "the meaning index today",
+        "ram_gb": 0.2,
+        "size_gb": 0.1
+      }
+    },
+    {
+      "name": "qwen3-embedding-0.6b",
+      "role": "embed",
+      "default": false,
+      "repository": "Qwen/Qwen3-Embedding-0.6B",
+      "revision": "",
+      "files": {},
+      "dtype": "bfloat16",
+      "runtime": {
+        "torch": ">=2.4",
+        "transformers": ">=4.51"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "note": "compared with bge-small (5.11.11)",
+        "ram_gb": 1.2,
+        "size_gb": 1.2
+      }
+    },
+    {
+      "name": "kev-0.8b",
+      "role": "decide",
+      "default": true,
+      "repository": "jaredpalmer/kev-0.8b",
+      "revision": "9a45d25e",
+      "files": {},
+      "dtype": "bfloat16",
+      "runtime": {
+        "kev": "1.0"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "release": "kev-1.0",
+        "base": "Qwen3.5-0.8B-Base",
+        "temperature": 2.35,
+        "validated_state_tokens": 8192,
+        "max_options": 255,
+        "ram_gb": 2.0,
+        "size_gb": 1.8,
+        "new_sources": 0.697,
+        "qualify": [
+          "gate",
+          "second_pass"
+        ],
+        "note": "the laptop's decision model; each Kev step runs only once it qualified"
+      }
+    },
+    {
+      "name": "qwen3.5-4b",
+      "role": "agent",
+      "default": true,
+      "repository": "Qwen/Qwen3.5-4B",
+      "revision": "",
+      "files": {},
+      "dtype": "q4",
+      "runtime": {
+        "llama.cpp": "any",
+        "mlx": "any"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "ram_gb": 2.2,
+        "size_gb": 2.6,
+        "thinking": false,
+        "build": "4-bit, text-only: an official build or a community build verified by checksum (GGUF for llama.cpp, MLX on a Mac)"
+      }
+    },
+    {
+      "name": "qwen3.5-9b",
+      "role": "agent",
+      "default": false,
+      "repository": "Qwen/Qwen3.5-9B",
+      "revision": "",
+      "files": {},
+      "dtype": "q4",
+      "runtime": {
+        "llama.cpp": "any",
+        "mlx": "any"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "ram_gb": 5.5,
+        "size_gb": 5.8,
+        "thinking": false
+      }
+    },
+    {
+      "name": "qwen3.8-27b",
+      "role": "agent",
+      "default": false,
+      "repository": "Qwen/Qwen3.8-27B",
+      "revision": "",
+      "files": {},
+      "dtype": "q4",
+      "runtime": {
+        "llama.cpp": "any",
+        "mlx": "any"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "ram_gb": 16.5,
+        "size_gb": 16.5,
+        "thinking": false
+      }
+    },
+    {
+      "name": "qwen3.6-35b-a3b",
+      "role": "agent",
+      "default": false,
+      "repository": "Qwen/Qwen3.6-35B-A3B",
+      "revision": "",
+      "files": {},
+      "dtype": "q4",
+      "runtime": {
+        "llama.cpp": "any",
+        "mlx": "any"
+      },
+      "extra": {
+        "license": "Apache-2.0",
+        "ram_gb": 20.0,
+        "size_gb": 20.0,
+        "thinking": false,
+        "note": "mixture of experts, fast for its size"
+      }
+    }
+  ]
+}

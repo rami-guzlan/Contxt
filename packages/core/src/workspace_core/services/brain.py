@@ -31,6 +31,9 @@ from workspace_core.ports import (
 from .distill import RECONCILE
 from .runtime import Runtime, recall, remember
 
+# What the owner can do with this computer's local models (Settings, On this computer).
+LOCAL_ACTIONS = ("check", "default", "download", "remove", "speed", "claude_code")
+
 KINDS = ("fact", "rule", "preference", "decision", "procedure", "identity", "state")
 MAX_FILE = 10 * 1024 * 1024  # the Brain's own ceiling for one document or asset
 ACTIONS = (
@@ -505,6 +508,29 @@ class Brain:
             raise PermissionDenied("Only a person downloads a model.")
         return self.rt.brain.download_models()
 
+    def local_models(self, who: Principal) -> dict[str, Any]:
+        """This computer's local models: the machine, its setup, each role's model and the
+        pinned options, and whether the retrieval engine runs in full or in fallback."""
+        who.require("brain.read")
+        return self.rt.brain.local_models()
+
+    def act_local_models(
+        self, who: Principal, action: str, name: str = "", on: bool | None = None
+    ) -> dict[str, Any]:
+        """Check this computer again, make a pinned model the default for its role, download,
+        remove or time one, or turn Claude Code on or off for the knowledge agent: the owner's
+        call, never automatic."""
+        who.require("workspace.admin")
+        if not who.is_human:
+            raise PermissionDenied("Only a person changes this computer's models.")
+        if action not in LOCAL_ACTIONS:
+            raise ValidationFailed(
+                f"An action is one of {', '.join(LOCAL_ACTIONS)}.", field="action"
+            )
+        if action in ("default", "download", "remove") and not name:
+            raise ValidationFailed("Say which model.", field="name")
+        return self.rt.brain.act_local_models(action, name, on)
+
     def set_policies(self, who: Principal, changes: dict[str, Any]) -> dict[str, Any]:
         """The owner changes how the Brain is governed: one undo point, one event."""
         who.require("brain.govern")
@@ -638,17 +664,25 @@ class Brain:
         )
 
     def label_request(
-        self, who: Principal, packet_id: str, labels: dict[str, list[str]]
+        self, who: Principal, packet_id: str, labels: dict[str, Any]
     ) -> dict[str, Any]:
-        """The owner's labels for a logged request (needed, useful, noise, missing notes): it
-        joins the private eval set kept beside the Brain, never shared."""
+        """The owner's labels for a logged request (needed, useful, noise, missing notes, or
+        that it should get nothing): it joins the private eval set kept beside the Brain,
+        never shared."""
         who.require("brain.govern")
-        clean = {
+        clean: dict[str, Any] = {
             key: [str(i).strip() for i in labels.get(key) or [] if str(i).strip()][:40]
             for key in ("needed", "useful", "noise", "missing")
         }
-        if not any(clean.values()):
+        nothing = bool(labels.get("nothing"))
+        if nothing and (clean["needed"] or clean["useful"] or clean["missing"]):
+            raise ValidationFailed(
+                "A request that should get nothing has no needed or helpful notes.",
+                field="labels",
+            )
+        if not nothing and not any(clean.values()):
             raise ValidationFailed("Mark at least one note.", field="labels")
+        clean["nothing"] = nothing
         return self.rt.brain.eval_label(str(packet_id or "").strip(), clean)
 
     def eval_status(self, who: Principal) -> dict[str, Any]:

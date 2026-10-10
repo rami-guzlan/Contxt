@@ -281,13 +281,34 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         record = delivered.get(("note", note.id))
         return bool(record and record.get("hash") == note.body_hash)
 
-    def place(note, reason, mandatory=False):
+    def place(note, reason, mandatory=False, fit=None):
         nonlocal budget, bodies
         if any(n.id == note.id for n in chosen) or any(n.id == note.id for n in held):
             return
         if already_held(note):
             held.append(note)
             decisions.append(f"{note.id}: already delivered in this session")
+            return
+        if fit is not None:
+            # The local engine's fit (engine.py): everything above its cut goes in, best
+            # first; what does not fit the budget becomes a pointer, never a drop.
+            from .engine import pointer
+            text = None
+            cost = note.tokens + 8
+            if tools and (fit == "pointer" or cost > budget):
+                record = delivered.get(("note", note.id))
+                if record and record.get("hash") == "pointer:" + note.body_hash:
+                    held.append(note)
+                    decisions.append(f"{note.id}: already given in short in this session")
+                    return
+                text = pointer(note)
+                cost = util.tokens(text) + 2
+            chosen.append(note)
+            if text is not None:
+                shorts[note.id] = text
+            budget -= cost
+            decisions.append(f"{note.id}: {reason}" + (" (a pointer)" if text else ""))
+            why[note.id] = reason
             return
         # Rules, what a request names or pins, and the first few notes come whole; the rest in
         # short, which a model that can open notes asks for when it needs more.
@@ -329,13 +350,20 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                         and note.scope in route.chain:
                     place(note, "pinned by the Focus")
 
+    engine_fit = getattr(route, "engine_fit", None)
     if route.mode in ("standard", "exact-skill", "orientation"):
-        _place_notes(route, place, note_budget(config, route), already_held)
+        if engine_fit is not None:
+            for scored in route.notes:
+                place(scored.item, f"above the engine's cut ({scored.score:.2f})",
+                      fit=engine_fit.get(scored.item.id, "body"))
+        else:
+            _place_notes(route, place, note_budget(config, route), already_held)
 
     # Sections of filed documents: their own allowance, quoted, never sent twice to one
     # conversation while unchanged.
     quoted = []            # (section, text, clipped, reason)
     held_sections = []
+    section_pointers = []  # the engine's document parts past the allowance: listed, not quoted
     policy = route.policy
     room = int({"micro": getattr(policy, "section_tokens_micro", 600),
                 "deep": getattr(policy, "section_tokens_deep", 1400)}.get(
@@ -348,6 +376,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             decisions.append(f"{section.id}: already delivered in this session")
             continue
         if room < 120 and quoted:
+            if engine_fit is not None:
+                section_pointers.append(section)
+                decisions.append(f"{section.id}: past the file allowance, a pointer")
+                continue
             decisions.append(f"{section.id}: skipped, the file allowance is used")
             continue
         text, clipped = _quote(section.text, max(120, room - 30))
@@ -471,6 +503,12 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
     if knowledge or in_short:
         lines += ["## Notes", "", "Approved knowledge: it informs the work; the rules above "
                   "outrank it.", ""]
+        disputed = getattr(route, "engine_disputed", None) or {}
+        sent = {n.id for n in chosen}
+        pairs = sorted({tuple(sorted((a, b))) for a, b in disputed.items()
+                        if a in sent and b in sent})
+        for a, b in pairs:
+            lines += [f"`{a}` and `{b}` disagree: weigh both, and say which you followed.", ""]
         for note in knowledge:
             lines += [heading(note), ""] + body(note)
         if in_short:
@@ -515,6 +553,12 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                 ref = index.references.get(path)
                 size = f", about {ref.tokens:,} tokens" if ref is not None else ""
                 lines += [f'Whole file: get_reference(path="{path}"){size}.', ""]
+    if section_pointers:
+        lines += ["## Also in your files", "",
+                  "Relevant too, past this brief's allowance: open the file with get_reference.",
+                  ""]
+        lines += [f"- {index.file_title(s.path)}: {s.label} (`{s.path}`)"
+                  for s in section_pointers] + [""]
     if route.system_docs:
         lines += ["## Brain system", ""]
         for scored in route.system_docs:
@@ -636,6 +680,17 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         # a long context still sees them (the middle of a long context is read worst).
         lines += ["## Before you reply", "", "Check it against what must hold:", ""]
         lines += [f"- {m.note.must_text.rstrip(' .')}." for m in must] + [""]
+    if route.mode == "nothing":
+        # The local engine's gate or relevance cut found nothing for this request: one line,
+        # and the must-holds whose domain is in play, which relevance never removes.
+        from .engine import NOTHING
+        lines = [NOTHING, ""]
+        if must:
+            lines += ["## Must hold", ""]
+            lines += [f"- {m.note.must_text.rstrip(' .')} (`{m.note.id}`)." for m in must]
+            lines.append("")
+        chosen, shorts, quoted, held, held_sections = [], {}, [], [], []
+        focus = None
     text = "\n".join(lines).rstrip() + "\n"
 
     # A note sent in short is recorded with a hash of its own: a later packet that needs the
@@ -683,6 +738,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         "standing_ids": [s.item.id for s in route.standing_answer],
         "reference_paths": list(route.references),
         "section_ids": [section.id for section, *_rest in quoted],
+        # The engine's document parts past the allowance, listed for the model to open.
+        "section_pointer_ids": [section.id for section in section_pointers],
         "held_section_ids": [s.id for s in held_sections],
         "file_paths": list(dict.fromkeys(section.path for section, *_rest in quoted)),
         "system_ids": [s.item.id for s in route.system_docs],

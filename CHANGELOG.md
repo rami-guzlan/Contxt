@@ -176,6 +176,24 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   message when the Brain holds something the conversation was not given, under a session id
   the hooks share with the model's own calls, so nothing comes twice (`hooks.push`: words by
   default, meaning, or off). After a compaction the conversation is given what it lost.
+- The local retrieval engine, for machines that run small models (a PC with an NVIDIA GPU or an
+  Apple Silicon Mac): a gate that lets a request get nothing, a wide find with no count cap, a
+  relevance cut by a local reranker, a second pass by a decision model (adds anything,
+  contradicts, current, must-hold domains), a link loop, and pointers instead of drops.
+  Must-holds bypass it. Every decision's scores are kept, and Activity shows why each note went
+  in and why others stayed out. Models are pinned in a lock file with checksums and served by
+  one local service on 127.0.0.1; anything unlisted is refused. Without verified models,
+  retrieval runs exactly as before (checked byte for byte on the eval sets) and health says so.
+  Label a request as one that should get nothing; the eval counts correct nothing and false
+  nothing. `scripts/engine_compare.py` compares setups A to E.
+- Machine setups and model settings: the app reads the computer and picks a setup (laptop,
+  workstation, large, or under 16 GB) with a default model per role. Settings, On this computer,
+  Local models shows each role's pinned options with their size, RAM and speed here; download
+  one (verified against the lock), make it the default (refused with the reason when it will
+  not fit in RAM), remove it, or check the computer again. Kev-0.8B runs a step only once it
+  qualified on the machine; until then Settings and Activity name each fallback. The knowledge
+  agent gets a local option (Qwen3.5-4B through the same model service, its answers bound to a
+  schema), and Claude Code becomes its opt-in once a local agent model is here.
 - Moving in takes files of any kind, zips included: documents, instruction files, any text,
   and ChatGPT's and Claude's data exports (their conversations as your own words); what cannot
   be read is named with why.

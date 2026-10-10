@@ -23,6 +23,11 @@ scopes.py       scope chains and sealed partitions; admission
 index.py        in-memory BM25 over notes, skills and topic descriptions; cached embeddings
 router.py       request signals, intents, Focus naming, note-first selection, skills -> Route
 packets.py      budgets, session deduplication, rendering -> Packet
+engine.py       the local retrieval engine: gate, wide find, relevance cut, second pass, link
+                loop, fit; the audit of every decision; fallback
+modellock.py    the pinned local models (models.lock.json), verified file by file
+modelservice.py the local model service on 127.0.0.1: each model loaded once, shared
+models_client.py finding and trusting the service; the rerank and System One adapters
 kernel.py       standing context compiled per principal in layers; AGENTS.md, CLAUDE.md stub
 sessions.py     SQLite session ledger: packets and deliveries per conversation; daily use
                 counts kept for good; gaps (requests served poorly)

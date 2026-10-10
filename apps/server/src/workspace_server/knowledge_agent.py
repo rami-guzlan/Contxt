@@ -56,7 +56,9 @@ class AgentWork:
         self._turn = threading.Lock()  # one model call at a time
 
     def _model(self, wanted: str | None) -> ModelChoice:
-        return self.models.choose(str(wanted or self.ws.agent.model()))
+        return self.models.choose(
+            str(wanted or self.ws.agent.chosen_model() or self.models.default())
+        )
 
     def _keep(self, job: AgentJob) -> None:
         with self._lock:

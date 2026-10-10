@@ -214,6 +214,12 @@ class KnowledgeAgent:
     def model(self) -> str:
         return str(self._state().get("model") or DEFAULT_MODEL)
 
+    def chosen_model(self) -> str | None:
+        """The model the owner chose, or None: then the app picks (a local model when one is
+        here, brain-logic plan 17)."""
+        found = self._state().get("model")
+        return str(found) if found else None
+
     # ---------------------------------------------------------------- suggestions, no model
 
     def suggestions(self, who: Principal, *, every: bool = False) -> list[dict[str, Any]]:

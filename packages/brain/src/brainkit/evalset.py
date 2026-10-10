@@ -88,9 +88,12 @@ def case_for(brain, packet_id: str) -> dict | None:
     return next((c for c in load(brain)["cases"] if c.get("packet_id") == packet_id), None)
 
 
-def label(brain, case_id: str, *, needed=(), useful=(), noise=(), missing=()) -> dict:
+def label(brain, case_id: str, *, needed=(), useful=(), noise=(), missing=(),
+          nothing=False) -> dict:
     """The owner's labels for one case: needed notes (each a must), useful ones, noise, and
-    notes the brief should have carried (also musts)."""
+    notes the brief should have carried (also musts). `nothing`: the request should get
+    nothing from the Brain (a general question, coding elsewhere, someone else's work); a
+    brief that brings anything for it is noise, and one line is right."""
     data = load(brain)
     case = next((c for c in data["cases"] if c["id"] == case_id or
                  c.get("packet_id") == case_id), None)
@@ -100,10 +103,13 @@ def label(brain, case_id: str, *, needed=(), useful=(), noise=(), missing=()) ->
     unknown = [i for i in [*needed, *useful, *noise, *missing] if st.index.note(i) is None]
     if unknown:
         raise ValueError(f"No such note: {', '.join(sorted(set(unknown)))}")
+    if nothing and (needed or useful or missing):
+        raise ValueError("A request that should get nothing has no needed or helpful notes.")
     case["must"] = [[i] for i in dict.fromkeys([*needed, *missing])]
     case["useful"] = list(dict.fromkeys(useful))
     case["noise"] = list(dict.fromkeys(noise))
     case["missing"] = list(dict.fromkeys(missing))
+    case["nothing"] = bool(nothing)
     case["labeled"] = True
     case["holdout"] = _held_out(case["id"])
     case["labeled_at"] = util.now_iso()
