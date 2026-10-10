@@ -237,11 +237,41 @@ def record_output(brain, path, *, title="", session_id=None, project="", for_row
     brain.ledger.record_output(normal_path(text), session, title=" ".join(
         str(title or "").split())[:200], client=brain.client, project=project_id,
         row_ref=row_ref, maker=" ".join(str(maker or "").split())[:80])
+    # Checked against the must-holds (BL 9): a violation flags the output, never changes it.
+    violations = _check_file(brain, text)
+    if violations:
+        brain.ledger.flag_output(normal_path(text), violations)
+        lines = "; ".join(f"{v['found']!r} ({v['rule']})" for v in violations[:3])
+        return _result(f"Noted, and flagged: it breaks a must-hold: {lines}. Fix the file and "
+                       "record it again.", {"status": "flagged", "path": normal_path(text),
+                                            "violations": violations,
+                                            "session_id": session or None})
     return _result("Noted: the person can now see what this conversation was given when the "
                    "file was made." if session else
                    "Noted. Pass your session_id next time, so the file shows what it was made "
                    "from.", {"status": "recorded", "path": normal_path(text),
                              "session_id": session or None})
+
+
+TEXT_FILES = (".md", ".txt", ".html", ".htm", ".csv", ".json", ".eml")
+MAX_CHECKED = 400_000
+
+
+def _check_file(brain, path: str) -> list[dict]:
+    """A recorded text file's must-hold violations (other files are not read)."""
+    from . import outputcheck
+    full = normal_path(path)
+    if not full.lower().endswith(TEXT_FILES) or not os.path.isfile(full):
+        return []
+    try:
+        if os.path.getsize(full) > MAX_CHECKED:
+            return []
+        with open(full, encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        return []
+    found = outputcheck.check(text, outputcheck.must_holds_for(brain, text))
+    return [v.to_dict() for v in found]
 
 
 def made_from(brain, path):

@@ -40,6 +40,7 @@ from workspace_core.domain.policy import Principal
 from workspace_core.errors import Conflict, NotFound, ValidationFailed
 from workspace_core.ids import new_id
 
+from . import agent_loop
 from .brain import Brain
 from .runtime import Runtime
 
@@ -78,6 +79,10 @@ ACTIONS: dict[str, dict[str, str]] = {
         "label": "Fill gaps",
         "blurb": "What your AIs asked that the Brain could not answer.",
     },
+    "verify-sources": {
+        "label": "Verify with sources",
+        "blurb": "Your most used, single-source and stale notes, checked against the web.",
+    },
 }
 # What each action's procedure lets the model answer; anything else is skipped.
 VERDICTS: dict[str, tuple[str, ...]] = {
@@ -88,8 +93,10 @@ VERDICTS: dict[str, tuple[str, ...]] = {
     "tidy-projects": ("next-steps", "close", "ask"),
     "tidy-skills": ("triggers", "retire", "fine"),
     "fill-gaps": ("teach", "route", "ignore"),
+    "verify-sources": ("confirmed", "challenge", "ask"),
 }
-FINE = ("different", "fine", "keep", "lasting", "ignore")
+FINE = ("different", "fine", "keep", "lasting", "ignore", "confirmed")
+MAX_SOURCES = 5
 DEFAULT_MODEL = "claude"
 MODEL = re.compile(r"^[a-z][a-z0-9-]{0,30}(:[A-Za-z0-9._:/-]{1,100})?$")
 KEY = re.compile(r"^[a-z0-9:_|.@/-]{1,300}$")
@@ -143,6 +150,17 @@ def _text(value: Any, limit: int = 4000) -> str:
 
 def _key(*parts: str) -> str:
     return "|".join(p for p in parts if p)[:300]
+
+
+def _sources(finding: dict[str, Any]) -> list[str]:
+    """The web sources a verification finding cites: links only, at most MAX_SOURCES."""
+    found = finding.get("sources")
+    items = found if isinstance(found, list) else []
+    return [
+        str(s).strip()[:500]
+        for s in items
+        if isinstance(s, str) and re.match(r"^https?://\S+$", s.strip())
+    ][:MAX_SOURCES]
 
 
 def _phrases(value: Any) -> list[str]:
@@ -421,12 +439,18 @@ class KnowledgeAgent:
             return "", gathered
         procedure = self.rt.brain.agent_skill(action)
         outline = self.rt.brain.agent_outline(brief=brief).get("text") or ""
-        parts = [PREAMBLE, "# The procedure\n\n" + procedure.strip()]
-        if not brief:
-            kernel = (self.rt.brain.kernel(tools=False) or {}).get("text") or ""
-            if kernel.strip():
-                parts.append("# The person's startup context (their rules)\n\n" + kernel.strip())
+        menu = self.rt.brain.agent_menu()
+        # The core prompt (BL 17.2), then the job's procedure; the person's rules and the
+        # must-holds in play with every job.
+        parts = [agent_loop.core(menu) if menu else PREAMBLE]
+        parts.append("# The procedure\n\n" + procedure.strip())
+        kernel = (self.rt.brain.kernel(tools=False) or {}).get("text") or ""
+        if kernel.strip():
+            parts.append("# The person's startup context (their rules)\n\n" + kernel.strip())
         parts.append(outline.strip())
+        digest = self.rt.brain.changes_digest()
+        if digest:
+            parts.append("# What changed lately\n\n" + digest)
         parts.append(
             "# The candidates\n\n"
             + "\n\n".join(f"## {c['ref']}\n\n{c['text']}" for c in gathered["candidates"])
@@ -482,6 +506,10 @@ class KnowledgeAgent:
             candidate = candidates.get(str(finding.get("ref") or "").strip())
             verdict = str(finding.get("verdict") or "").strip().lower()
             if candidate is None or verdict not in VERDICTS[action]:
+                record["skipped"] += 1
+                continue
+            if action == "verify-sources" and not _sources(finding):
+                # A finding without a source is never kept (BL 9's gate).
                 record["skipped"] += 1
                 continue
             if verdict in FINE:
@@ -547,6 +575,31 @@ class KnowledgeAgent:
         origin = f"agent:{action}"
         ids = [str(i) for i in candidate.get("ids") or []]
         kind = candidate.get("kind")
+        if action == "verify-sources":
+            sources = _sources(finding)
+            cited = "Sources: " + "; ".join(sources)
+            target = self._which(candidate, finding, "which")
+            if verdict == "challenge":
+                claim = _text(finding.get("text"), 1000)
+                if not claim:
+                    return None
+                made = self.brain.challenge(
+                    who,
+                    note_id=target,
+                    claim=claim,
+                    evidence=f"{why} {cited}".strip(),
+                    source=sources[0],
+                )
+                return {"proposal_id": made.proposal_id} if made.proposal_id else None
+            return {
+                "action": action,
+                "verdict": verdict,
+                "why": f"{why} {cited}".strip(),
+                "text": _text(finding.get("text"), 1000),
+                "ask": _text(finding.get("text"), 300) or "Is this still true?",
+                "sources": sources,
+                "target": {"type": "note", "id": target, "title": candidate["title"]},
+            }
         if verdict == "merge":
             keep = self._which(candidate, finding, "keep")
             text = _text(finding.get("text"))
@@ -718,6 +771,16 @@ class KnowledgeAgent:
                     q["closed_at"] = tx.now
 
         self._update(change)
+        # Its memory (BL 17.6): the suggestion, the person's decision and why, by topic.
+        self.rt.brain.record_episode(
+            action=str(question.get("action") or ""),
+            area=str(target.get("type") or ""),
+            topic=str(target.get("title") or target.get("id") or ""),
+            text=str(question.get("ask") or question.get("text") or ""),
+            decision="declined" if do in ("dismiss", "verify") else "kept",
+            reason=_words(text, 300) if do == "answer" else "",
+            ref=str(target.get("id") or ""),
+        )
         return outcome
 
     # ---------------------------------------------------------------- a conversation

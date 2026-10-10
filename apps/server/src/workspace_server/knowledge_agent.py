@@ -9,6 +9,7 @@ made (its record, its suggestions in Catch up and its questions) is kept by the 
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -19,10 +20,12 @@ from workspace_core.clock import iso
 from workspace_core.domain.policy import Principal
 from workspace_core.errors import NotFound, ValidationFailed, WorkspaceError
 from workspace_core.ids import new_id
+from workspace_core.services import agent_loop
 from workspace_core.services.agent import ACTIONS, MAX_MESSAGE
 from workspace_core.workspace import Workspace
 
 from .models import ModelChoice, Models
+from .runners import mask
 
 log = logging.getLogger(__name__)
 
@@ -197,15 +200,35 @@ class AgentWork:
         try:
             prompt, gathered = self.ws.agent.action_prompt(who, job.action, brief=choice.brief)
             answer, seconds = "", None
+            run = None
             if prompt:
                 with self._turn:
                     job.status = "running"
                     began = time.monotonic()
-                    answer = self.models.ask(who, choice, prompt, json_only=True)
+                    # The code-run loop (BL 17.3): one bounded question a step, code checks
+                    # each answer and runs the tool it names; findings end the job.
+                    run = agent_loop.run(
+                        prompt,
+                        lambda text: self.models.ask(who, choice, text, json_only=True),
+                        self.ws.rt.brain.agent_tool,
+                        action=job.action,
+                        mask=mask,
+                    )
                     seconds = time.monotonic() - began
+                answer = json.dumps(run.findings) if run.findings is not None else ""
             job.result = self.ws.agent.apply_action(
                 who, job.action, gathered, answer, model=choice.id, seconds=seconds
             )
+            if run is not None:
+                record = dict(run.record(), model=choice.id, seconds=seconds)
+                self.ws.rt.brain.record_agent_run(job.id, job.action, run.ending, record)
+                job.result["steps"] = len(run.steps)
+                job.result["ending"] = run.ending
+                if run.ending == "hand-up":
+                    job.result.setdefault("notes", []).append(
+                        f"The agent handed this job up: {run.why}. Run it with a larger model "
+                        "or Claude Code, or look at the candidates yourself."
+                    )
             job.status = "done"
         except WorkspaceError as exc:
             job.status, job.error = "failed", str(exc)

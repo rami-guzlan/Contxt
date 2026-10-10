@@ -28,6 +28,8 @@ words to ask for it, or unused lately) or a pair asked for with the same words (
 
 ## Answer with one JSON object only
 
+EXAMPLE, made up for the shape only; never copy its text:
+
 ```json
 {"summary": "2 skills need better phrases; 1 overlap.",
  "findings": [

@@ -83,6 +83,16 @@ CREATE TABLE IF NOT EXISTS contexts (
     principal TEXT, name TEXT, kind TEXT, label TEXT, last_used TEXT, closed TEXT,
     PRIMARY KEY (principal, name));
 CREATE TABLE IF NOT EXISTS session_contexts (session_id TEXT PRIMARY KEY, name TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS corrections (
+    at TEXT, session_id TEXT, packet_id TEXT, text TEXT, suspect TEXT, score REAL, by TEXT,
+    status TEXT DEFAULT 'open');
+CREATE TABLE IF NOT EXISTS exceptions (
+    at TEXT, rule TEXT, proposal TEXT, relation TEXT, by TEXT);
+CREATE TABLE IF NOT EXISTS episodes (
+    at TEXT, action TEXT, area TEXT, topic TEXT, text TEXT, decision TEXT, reason TEXT,
+    ref TEXT);
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY, at TEXT, action TEXT, ending TEXT, record TEXT);
 CREATE TABLE IF NOT EXISTS model_daily (
     day TEXT NOT NULL, job TEXT NOT NULL, model TEXT NOT NULL,
     calls INTEGER NOT NULL DEFAULT 0, tokens_in INTEGER NOT NULL DEFAULT 0,
@@ -132,7 +142,7 @@ class Ledger:
                 conn.execute("ALTER TABLE deliveries ADD COLUMN epoch INTEGER")
         # Outputs say what they are for (BL 16.5): the project, the State row, who made it.
         kept = {row[1] for row in conn.execute("PRAGMA table_info(outputs)")}
-        for column in ("project", "row_ref", "maker", "made_with"):
+        for column in ("project", "row_ref", "maker", "made_with", "violations"):
             if column not in kept:
                 with contextlib.suppress(sqlite3.OperationalError):
                     conn.execute(f"ALTER TABLE outputs ADD COLUMN {column} TEXT")
@@ -612,6 +622,12 @@ class Ledger:
                 (path, session_id, util.now_iso(), title, client, project, row_ref, maker,
                  made_with))
 
+    def flag_output(self, path: str, violations: list[dict]) -> None:
+        """A recorded output that breaks a must-hold."""
+        with self._connect() as conn:
+            conn.execute("UPDATE outputs SET violations = ? WHERE path = ?",
+                         (json.dumps(violations), path))
+
     def link_output(self, path: str, *, project: str | None = None,
                     row_ref: str | None = None) -> None:
         """The person says what a file is for (a project, a State row)."""
@@ -634,6 +650,79 @@ class Ledger:
                                         chunk):
                     out[row["path"]] = dict(row)
         return out
+
+    # ------------------------------------------------------------------ the updating loop
+    def add_correction(self, text: str, *, session_id: str = "", packet_id: str = "",
+                       suspect: str = "", score: float = 0.0, by: str = "") -> None:
+        """A correction the owner made, and the note most likely behind it (BL 9)."""
+        with self._connect() as conn:
+            conn.execute("INSERT INTO corrections (at, session_id, packet_id, text, suspect, "
+                         "score, by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (util.now_iso(), session_id, packet_id, text[:1000], suspect, score,
+                          by))
+
+    def corrections(self, *, status: str | None = "open", since: str = "") -> list[dict]:
+        query = "SELECT rowid AS id, * FROM corrections WHERE at >= ?"
+        args: list = [since]
+        if status:
+            query += " AND status = ?"
+            args.append(status)
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(query + " ORDER BY at DESC", args)]
+
+    def close_correction(self, correction_id: int, status: str) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE corrections SET status = ? WHERE rowid = ?",
+                         (status, int(correction_id)))
+
+    def add_exception(self, rule: str, proposal: str, relation: str, *, by: str = "") -> None:
+        """An approval that bent a rule (BL 9, the exceptions ledger)."""
+        with self._connect() as conn:
+            conn.execute("INSERT INTO exceptions (at, rule, proposal, relation, by) VALUES "
+                         "(?, ?, ?, ?, ?)", (util.now_iso(), rule, proposal, relation, by))
+
+    def exceptions(self, rule: str | None = None) -> list[dict]:
+        with self._connect() as conn:
+            if rule:
+                rows = conn.execute("SELECT * FROM exceptions WHERE rule = ? ORDER BY at",
+                                    (rule,))
+            else:
+                rows = conn.execute("SELECT * FROM exceptions ORDER BY at")
+            return [dict(r) for r in rows]
+
+    def add_episode(self, *, action: str, area: str, topic: str, text: str, decision: str,
+                    reason: str = "", ref: str = "") -> None:
+        """One of the knowledge agent's suggestions and the person's decision (BL 17.6)."""
+        with self._connect() as conn:
+            conn.execute("INSERT INTO episodes (at, action, area, topic, text, decision, reason, "
+                         "ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                         (util.now_iso(), action, area, topic[:300], text[:1000], decision,
+                          reason[:500], ref))
+
+    def episodes(self) -> list[dict]:
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute("SELECT * FROM episodes ORDER BY at")]
+
+    def add_agent_run(self, run_id: str, action: str, ending: str, record: dict) -> None:
+        """The run record of one knowledge agent job (BL 17.8)."""
+        with self._connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO agent_runs (id, at, action, ending, record) "
+                         "VALUES (?, ?, ?, ?, ?)",
+                         (run_id, util.now_iso(), action, ending, json.dumps(record)))
+
+    def agent_runs(self, *, limit: int = 20) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM agent_runs ORDER BY at DESC LIMIT ?",
+                                (max(1, int(limit)),))
+            out = []
+            for row in rows:
+                item = dict(row)
+                try:
+                    item["record"] = json.loads(item.get("record") or "{}")
+                except ValueError:
+                    item["record"] = {}
+                out.append(item)
+            return out
 
     # ------------------------------------------------------------------ working contexts
     def use_context(self, session_id: str, principal: str, name: str, *, kind: str,

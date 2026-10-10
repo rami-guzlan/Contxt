@@ -31,6 +31,8 @@ Read both in full before deciding. Two notes about different things that share w
 
 ## Answer with one JSON object only
 
+EXAMPLE, made up for the shape only; never copy its text:
+
 ```json
 {"summary": "2 of 3 pairs say the same thing.",
  "findings": [

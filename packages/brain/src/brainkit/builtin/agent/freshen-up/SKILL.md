@@ -32,6 +32,8 @@ or a plan.
 
 ## Answer with one JSON object only
 
+EXAMPLE, made up for the shape only; never copy its text:
+
 ```json
 {"summary": "3 to confirm, 1 over, 2 lasting.",
  "findings": [

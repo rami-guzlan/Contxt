@@ -714,6 +714,49 @@ class BrainPort(Protocol):
         the State row, who made it, the conversation."""
         ...
 
+    # ---- the updating loop (BL 9) and the local knowledge agent (BL 17)
+
+    def agent_tool(self, name: str, args: Any) -> tuple[Any, list[str]]:
+        """Run one of the knowledge agent's tools: (its result, the problems that refused
+        it)."""
+        ...
+
+    def agent_menu(self) -> str:
+        """The agent's tools, one line each, for its core prompt."""
+        ...
+
+    def changes_digest(self) -> str:
+        """What changed lately, by area, in a line (the map carries it)."""
+        ...
+
+    def record_agent_run(
+        self, run_id: str, action: str, ending: str, record: dict[str, Any]
+    ) -> None:
+        """Keep a job's run record (BL 17.8), credentials masked."""
+        ...
+
+    def record_episode(self, **fields: Any) -> None:
+        """One agent suggestion and the person's decision (BL 17.6)."""
+        ...
+
+    def loop_status(self) -> dict[str, Any]:
+        """What the updating loop asks of the owner now (brainkit/loop.py)."""
+        ...
+
+    def correction(self, text: str, *, session_id: str = "", packet_id: str = "") -> dict[str, Any]:
+        """The owner corrected an AI's output: its suspects and the "Still true?" card."""
+        ...
+
+    def close_correction(self, correction_id: int, status: str) -> None: ...
+
+    def check_output(self, text: str) -> list[dict[str, Any]]:
+        """The must-hold violations in an output's text."""
+        ...
+
+    def blast_radius(self, proposal_id: str) -> dict[str, Any]:
+        """What a waiting proposal would change in recent briefs (the replay harness)."""
+        ...
+
     def link_output(self, path: str, *, project: str | None = None, row: str | None = None) -> None:
         """The person says what an output is for."""
         ...
@@ -1106,6 +1149,45 @@ class NoBrain:
 
     def outputs_for(self, paths: list[str]) -> dict[str, dict[str, Any]]:
         return {}
+
+    def agent_tool(self, name: str, args: Any) -> tuple[Any, list[str]]:
+        return None, ["This workspace has no Brain."]
+
+    def agent_menu(self) -> str:
+        return ""
+
+    def changes_digest(self) -> str:
+        return ""
+
+    def record_agent_run(
+        self, run_id: str, action: str, ending: str, record: dict[str, Any]
+    ) -> None:
+        return None
+
+    def record_episode(self, **fields: Any) -> None:
+        return None
+
+    def loop_status(self) -> dict[str, Any]:
+        return {
+            "corrections": [],
+            "bent_rules": [],
+            "approval_health": {},
+            "single_source": [],
+            "review_due": False,
+            "lessons": [],
+        }
+
+    def correction(self, text: str, *, session_id: str = "", packet_id: str = "") -> dict[str, Any]:
+        return {"suspects": [], "card": None}
+
+    def close_correction(self, correction_id: int, status: str) -> None:
+        return None
+
+    def check_output(self, text: str) -> list[dict[str, Any]]:
+        return []
+
+    def blast_radius(self, proposal_id: str) -> dict[str, Any]:
+        return {"briefs": 0, "changed": 0, "rows": [], "seconds": 0.0}
 
     def link_output(self, path: str, *, project: str | None = None, row: str | None = None) -> None:
         return None

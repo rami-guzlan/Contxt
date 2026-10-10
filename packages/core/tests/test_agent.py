@@ -63,7 +63,8 @@ def test_the_prompt_carries_the_procedure_the_rules_the_map_and_the_candidates(w
     assert "`voice-guide` Voice guide" in prompt  # the map
     assert "## c1" in prompt and "Note B: `voice-short`" in prompt
     brief, _ = ws.agent.action_prompt(owner, "tidy-repeats", brief=True)
-    assert "# Startup" not in brief  # a small model gets no startup context
+    # The person's rules come with every job, a small model's included (BL 17.2).
+    assert "Write plainly." in brief
 
 
 def test_answers_become_suggestions_in_catch_up_and_questions(ws, owner, brain):

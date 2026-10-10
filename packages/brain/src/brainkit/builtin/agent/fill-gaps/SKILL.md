@@ -28,6 +28,8 @@ made, what happened (nothing fit, or the AI searched and found a note), and the 
 
 ## Answer with one JSON object only
 
+EXAMPLE, made up for the shape only; never copy its text:
+
 ```json
 {"summary": "2 things to teach, 1 note to find better.",
  "findings": [

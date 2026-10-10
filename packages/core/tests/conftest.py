@@ -969,6 +969,39 @@ class FakeBrain:
     def outputs_for(self, paths):
         return {}
 
+    # The updating loop and the local agent: nothing recorded, no tools.
+    def agent_tool(self, name, args):
+        return None, [f"no tool {name!r}"]
+
+    def agent_menu(self):
+        return ""
+
+    def changes_digest(self):
+        return ""
+
+    def record_agent_run(self, run_id, action, ending, record):
+        self.agent_runs = [*getattr(self, "agent_runs", []), (run_id, action, ending, record)]
+
+    def record_episode(self, **fields):
+        self.episodes = [*getattr(self, "episodes", []), fields]
+
+    def loop_status(self):
+        from workspace_core.ports import NoBrain
+
+        return NoBrain().loop_status()
+
+    def correction(self, text, *, session_id="", packet_id=""):
+        return {"suspects": [], "card": None}
+
+    def close_correction(self, correction_id, status):
+        return None
+
+    def check_output(self, text):
+        return []
+
+    def blast_radius(self, proposal_id):
+        return {"briefs": 0, "changed": 0, "rows": [], "seconds": 0.0}
+
     def link_output(self, path, *, project=None, row=None):
         return None
 

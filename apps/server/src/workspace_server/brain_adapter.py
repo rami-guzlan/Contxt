@@ -1790,6 +1790,48 @@ class BrainKitAdapter:
         found = self.brain.ledger.outputs_for(list(wanted))
         return {wanted[k]: v for k, v in found.items() if k in wanted}
 
+    # ---------------------------------------------------------------- the updating loop
+
+    def agent_tool(self, name: str, args: Any) -> tuple[Any, list[str]]:
+        result = self.brain.agent_tool(name, args)
+        if result.is_error:
+            return None, list(result.data.get("problems") or [result.text])
+        return result.data.get("result"), []
+
+    def agent_menu(self) -> str:
+        return self.brain.agent_menu().text
+
+    def changes_digest(self) -> str:
+        return self.brain.changes_digest().text
+
+    def record_agent_run(
+        self, run_id: str, action: str, ending: str, record: dict[str, Any]
+    ) -> None:
+        self.brain.record_agent_run(run_id, action, ending, record)
+
+    def record_episode(self, **fields: Any) -> None:
+        self.brain.record_episode(**fields)
+
+    def loop_status(self) -> dict[str, Any]:
+        return dict(self.brain.loop_status().data)
+
+    def correction(self, text: str, *, session_id: str = "", packet_id: str = "") -> dict[str, Any]:
+        return dict(self.brain.correction(text, session_id=session_id, packet_id=packet_id).data)
+
+    def close_correction(self, correction_id: int, status: str) -> None:
+        result = self.brain.close_correction(correction_id, status)
+        if result.is_error:
+            raise ValidationFailed(result.text, field="status")
+
+    def check_output(self, text: str) -> list[dict[str, Any]]:
+        return list(self.brain.check_output(text).data.get("violations") or [])
+
+    def blast_radius(self, proposal_id: str) -> dict[str, Any]:
+        result = self.brain.blast_radius(proposal_id)
+        if result.is_error:
+            raise NotFound(result.text)
+        return dict(result.data)
+
     def link_output(self, path: str, *, project: str | None = None, row: str | None = None) -> None:
         from brainkit.activity import normal_path
 
