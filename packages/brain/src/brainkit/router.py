@@ -45,6 +45,12 @@ class Policy:
     semantic_floor: float = 0.34          # cosine at which semantic evidence starts to count
     semantic_span: float = 0.42           # cosine span mapped onto 0..1
     semantic_weight: float = 0.5          # meaning's share of a note's relevance; words the rest
+    # A strong match by meaning stands on its own: a note scores at least this share of its
+    # meaning score, even when it shares no word with the request ("monthly recurring
+    # revenue" and a note that says "MRR"). The meaning score is already capped by how far
+    # the note stands out from the rest of the Brain for this request, so a Brain where
+    # everything sounds alike does not flood briefs. 0 turns it off.
+    semantic_alone: float = 0.7
     lean_floor: float = 0.46              # below this best relevance, deliver nothing
     # note selection (note-first)
     note_abs_floor: float = 0.42          # a note needs at least this ranking score
@@ -90,6 +96,9 @@ class Policy:
     house_style_share: float = 0.45       # of the note budget, for the house-style rules
     standing_floor: float = 0.50
     standing_margin: float = 0.03
+    standing_coverage: float = 0.5        # share of the request's words a standing answer uses,
+                                          # unless no on-demand note comes near
+    projects_compete: bool = True         # projects not named still compete on relevance
     # skills
     skill_floor: float = 0.55
     skill_window: float = 0.30            # candidates within this of the best are listed
@@ -828,6 +837,8 @@ class Router:
                 semantic = min(semantic, max(0.0, min(1.0, standout)))
             weight = self.policy.semantic_weight
             hybrid = lexical if semantic is None else weight * semantic + (1 - weight) * lexical
+            if semantic is not None and self.policy.semantic_alone > 0:
+                hybrid = max(hybrid, self.policy.semantic_alone * semantic)
             out[key] = (round(min(1.0, hybrid), 4), {
                 "coverage": round(coverage, 3), "bm25": round(raw.get(key, 0.0), 3),
                 "semantic": None if semantic is None else round(semantic, 3)})
@@ -1262,7 +1273,11 @@ class Router:
                 route.mode, route.focus_mode = "focus-update", "focus-update"
                 route.task_type, route.scale = "workflow", "micro"
                 return route
-            if route.task_type == "knowledge" and (not sig.artifacts or sig.status_cue):
+            # A question about where the project stands gets the project alone; a plan or a
+            # draft for it ("plan the guest list for next season") needs the notes too.
+            from .request_type import classify
+            if route.task_type == "knowledge" and (not sig.artifacts or sig.status_cue) \
+                    and classify(route) not in ("planning", "writing", "code"):
                 route.mode, route.focus_mode = "focus-only", "focus-only"
                 route.scale = "micro" if route.scale != "deep" else route.scale
                 if not sig.status_cue:
@@ -1421,7 +1436,12 @@ class Router:
     def _standard(self, route: Route, notes, skills, focuses, prerequisites_from=None):
         sig = route.signals
         p = self.policy
-        on_demand = [n for n in notes if not n.standing and not self.config.is_focus(n)]
+        # A project a request does not name still competes on relevance like any note ("a
+        # LinkedIn post inviting supervisors to our next webinar" needs the webinar series);
+        # the project a request names comes as the Focus instead.
+        named = route.focus.id if route.focus is not None else None
+        on_demand = [n for n in notes if not n.standing
+                     and (not self.config.is_focus(n) or (p.projects_compete and n.id != named))]
         standing = [n for n in notes if n.standing]
 
         # Skills first: the procedure that fits the task declares what knowledge it needs.
@@ -1523,9 +1543,14 @@ class Router:
         if (route.task_type == "knowledge" and route.scale == "micro" and ranked_standing
                 and not forced and route.focus is None):
             top_standing = ranked_standing[0]
+            # Standing context answers a lookup only when it matches the request in words,
+            # not only in tone: a rule about how to write to plant managers does not answer
+            # "what keeps plant managers up at night?" because both name them.
+            worded = (top_standing.detail.get("coverage") or 0.0) >= p.standing_coverage
             if (top_standing.score >= p.standing_floor
                     and top_standing.score >= best_on_demand + p.standing_margin
-                    and best_on_demand < p.note_abs_floor + 0.1):
+                    and best_on_demand < p.note_abs_floor + 0.1
+                    and (worded or best_on_demand < p.near_floor)):
                 route.mode = "standing"
                 route.standing_answer = [top_standing]
                 route.confidence = top_standing.score

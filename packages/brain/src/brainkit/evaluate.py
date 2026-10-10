@@ -72,10 +72,15 @@ def _cases(brain, st, spec, holdout, verbose, aliases, style_topics, style_notes
         chain = data.get("scope_chain") or []
         standing = {n.id for n in st.index.notes.values() if n.standing and n.scope in chain}
         delivered = set(data.get("note_ids") or [])
-        seen = delivered | set(data.get("held_ids") or []) | set(
+        # A must-hold in the brief's "Must hold" section was delivered: its one line is the
+        # point of the note, and the model can open the rest.
+        must_held = set(data.get("must_hold_ids") or []) | set(data.get("must_hold_listed") or [])
+        seen = delivered | must_held | set(data.get("held_ids") or []) | set(
             data.get("standing_ids") or []) | standing
         groups = [_resolve(g, aliases) for g in case.get("must") or []]
         hits = sum(1 for g in groups if seen & set(g))
+        whole = seen - set(data.get("pointer_ids") or [])
+        body_hits = sum(1 for g in groups if whole & set(g))
         must_ids = {i for g in groups for i in g}
         useful = must_ids | set(_resolve(case.get("useful") or [], aliases))
         if case.get("style_ok"):
@@ -99,7 +104,8 @@ def _cases(brain, st, spec, holdout, verbose, aliases, style_topics, style_notes
         sizes = data.get("note_tokens") or {}
         rows.append({
             "id": case["id"], "holdout": bool(case.get("holdout")), "request": case["request"],
-            "must": len(groups), "hits": hits, "reach": reach, "delivered": len(delivered),
+            "must": len(groups), "hits": hits, "body_hits": body_hits, "reach": reach,
+            "delivered": len(delivered),
             "good": good,
             "noise": sorted(noise), "missed": missed, "problems": problems,
             "tokens": data.get("token_count"), "ms": round(ms, 1), "mode": data.get("mode"),
@@ -119,9 +125,12 @@ def summarize(rows, thresholds):
         good = sum(r["good"] for r in subset)
         reach = sum(r.get("reach", r["hits"]) for r in subset)
         tokens = sum(r["tokens"] or 0 for r in subset)
+        whole = sum(r.get("body_hits", r["hits"]) for r in subset)
         return {
             "cases": len(subset),
             "must_recall": round(hits / must, 3) if must else 1.0,
+            # Needed notes the brief carried whole (not only in short).
+            "body_recall": round(whole / must, 3) if must else 1.0,
             "reachable": round(reach / must, 3) if must else 1.0,
             "precision": round(good / delivered, 3) if delivered else 1.0,
             "noise_hits": sum(len(r["noise"]) for r in subset),

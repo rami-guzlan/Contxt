@@ -31,11 +31,12 @@ def report(result: dict, *, models: bool) -> str:
     lines = ["# Retrieval on the demo Brains", "",
              f"Matching: {'words and meaning' if models else 'words only'}. "
              f"Request type read right: {result['type_accuracy']:.0%}.", "",
-             "| Set | Cases | Needed-note recall | Listed too | Precision | Noise (tokens) "
-             "| Avg tokens |", "| --- | --- | --- | --- | --- | --- | --- |"]
+             "| Set | Cases | Needed-note recall | Whole | Listed too | Precision | Noise (tokens) "
+             "| Avg tokens |", "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for name in ("tuning", "holdout", "all"):
         m = result[name]
-        lines.append(f"| {name} | {m['cases']} | {m['must_recall']:.0%} | {m['reachable']:.0%} "
+        lines.append(f"| {name} | {m['cases']} | {m['must_recall']:.0%} | {m['body_recall']:.0%} "
+                     f"| {m['reachable']:.0%} "
                      f"| {m['precision']:.0%} | {m['noise_share']:.0%} | {m['avg_tokens']} |")
     lines += ["", "| Brain | Cases | Recall | Precision | Noise | Avg tokens |",
               "| --- | --- | --- | --- | --- | --- |"]
@@ -59,12 +60,15 @@ def report(result: dict, *, models: bool) -> str:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     parser.add_argument("--models", help="a folder holding a downloaded embedding model")
+    parser.add_argument("--rerank", action="store_true",
+                        help="let the local cross-encoder rescore (needs it in --models)")
     parser.add_argument("--markdown", help="write the report to this file too")
     parser.add_argument("--json", action="store_true", help="print the full result as JSON")
     args = parser.parse_args(argv)
     with open(CASES, encoding="utf-8") as handle:
         spec = json.load(handle)
-    result = safeguards_eval.run_retrieval(BRAINS, spec, models_dir=args.models)
+    result = safeguards_eval.run_retrieval(BRAINS, spec, models_dir=args.models,
+                                           rerank=args.rerank)
     if args.json:
         print(json.dumps(result, indent=1, default=str))
         return 0

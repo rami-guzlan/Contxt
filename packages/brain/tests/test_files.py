@@ -375,7 +375,7 @@ class ProjectReadTests(ProjectFilesBase):
 class RoutingTests(ProjectFilesBase):
     def test_the_part_a_request_is_about_is_quoted_with_its_version(self):
         res = self.ctx("Tighten the LinkedIn section of the spring launch proposal")
-        self.assertIn("## From your files", res.text)
+        self.assertIn("## Evidence from your files", res.text)
         self.assertIn("Budget: 600 dollars", res.text)
         self.assertNotIn("Local Eats", res.text)
         self.assertIn("version 2", res.text)
@@ -394,7 +394,7 @@ class RoutingTests(ProjectFilesBase):
                          record=True)
         again = self.ctx("What budget did we propose for the podcast sponsorship?",
                          record=True, session_id=first.data["session_id"])
-        self.assertNotIn("## From your files", again.text)
+        self.assertNotIn("## Evidence from your files", again.text)
         self.assertIn("Podcast sponsorship", again.text.split("## Already in this "
                                                               "conversation", 1)[1])
         self.assertEqual(again.data["held_section_ids"], [f"{self.path}#3"])
@@ -404,13 +404,13 @@ class RoutingTests(ProjectFilesBase):
                         "Write an Instagram caption about our sourdough loaves",
                         "Make the opening line punchier"):
             with self.subTest(request=request):
-                self.assertNotIn("## From your files", self.ctx(request).text)
+                self.assertNotIn("## Evidence from your files", self.ctx(request).text)
 
     def test_a_writing_task_quotes_only_the_files_it_names(self):
         # The post shares its subject with the proposal's LinkedIn part, but it is not written
         # from the proposal: the proposal is pointed to, not quoted.
         loose = self.ctx("Write a LinkedIn post about our bakers at work")
-        self.assertNotIn("## From your files", loose.text)
+        self.assertNotIn("## Evidence from your files", loose.text)
         self.assertIn(self.card().id, loose.data["note_ids"] + loose.data["related_ids"])
         # Naming its project makes the proposal the material the post is written from.
         named = self.ctx("Write a LinkedIn post for the spring launch about our bakers at work")
@@ -441,7 +441,7 @@ class RoutingTests(ProjectFilesBase):
         meta = dict(card.meta, file_status="superseded")
         util.atomic_write(os.path.join(self.vault, card.path), fm.dump(meta, card.body + "\n"))
         res = self.ctx("What budget did we propose for the podcast sponsorship?")
-        self.assertNotIn("## From your files", res.text)
+        self.assertNotIn("## Evidence from your files", res.text)
 
     def test_a_guide_kept_whole_is_quoted_when_named_not_on_a_loose_match(self):
         # A reference filed the older way: a pointer note, no `type: file` on it.
@@ -460,9 +460,9 @@ class RoutingTests(ProjectFilesBase):
             fm.dump(meta, "Pointer: the bakery brand guide is filed whole at "
                           "references/bakery-brand-guide.md.\n"))
         loose = self.ctx("Write an Instagram caption about our morning loaves")
-        self.assertNotIn("## From your files", loose.text)
+        self.assertNotIn("## Evidence from your files", loose.text)
         named = self.ctx("What does the bakery brand guide say about captions?")
-        self.assertIn("## From your files", named.text)
+        self.assertIn("## Evidence from your files", named.text)
         self.assertIn("one emoji at most", named.text)
 
     def test_preview_says_what_an_ai_gets_and_why_without_recording_it(self):
@@ -472,7 +472,7 @@ class RoutingTests(ProjectFilesBase):
         self.assertEqual(res.data["project"]["id"], self.project)
         self.assertEqual(res.data["sections"][0]["label"], "LinkedIn video")
         self.assertEqual(res.data["sections"][0]["why"], "in the project it names")
-        self.assertIn("## From your files", res.text)
+        self.assertIn("## Evidence from your files", res.text)
         self.assertNotIn("Startup context", res.text)
         self.assertNotIn("session_id", res.text)
         import sqlite3
