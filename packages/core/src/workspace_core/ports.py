@@ -725,6 +725,10 @@ class BrainPort(Protocol):
         """The agent's tools, one line each, for its core prompt."""
         ...
 
+    def sweep(self) -> dict[str, Any]:
+        """File what is new in the watched folders (an ingestion step): {"text", ...}."""
+        ...
+
     def changes_digest(self) -> str:
         """What changed lately, by area, in a line (the map carries it)."""
         ...
@@ -1155,6 +1159,9 @@ class NoBrain:
 
     def agent_menu(self) -> str:
         return ""
+
+    def sweep(self) -> dict[str, Any]:
+        return {"text": "This workspace has no Brain to file into."}
 
     def changes_digest(self) -> str:
         return ""

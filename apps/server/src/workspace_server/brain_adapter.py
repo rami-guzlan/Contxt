@@ -1801,6 +1801,11 @@ class BrainKitAdapter:
     def agent_menu(self) -> str:
         return self.brain.agent_menu().text
 
+    def sweep(self) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.sync()
+        return dict(result.data, text=result.text)
+
     def changes_digest(self) -> str:
         return self.brain.changes_digest().text
 

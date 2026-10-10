@@ -36,6 +36,13 @@ def templates(who: Who, ws: WS) -> list[dict[str, Any]]:
     return ws.workflows.templates()
 
 
+@router.get("/library")
+def node_library(who: Who, ws: WS) -> dict[str, Any]:
+    """The canvas's node library: kinds of step with what each takes and gives."""
+    who.require("tasks.read")
+    return ws.workflows.library()
+
+
 @router.get("/connectors")
 def connector_list(request: Request, who: Who) -> dict[str, Any]:
     """The MCP servers Claude Code on this computer connects to (`claude mcp list`), to name

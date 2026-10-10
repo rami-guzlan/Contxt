@@ -250,3 +250,61 @@ def test_a_connector_steps_run_loads_the_owners_servers_with_only_its_tools(owne
         ):
             break
         time.sleep(0.2)
+
+
+def test_the_canvas_library_names_each_kind_with_what_it_takes_and_gives(owner):
+    found = owner.ok(owner.get("/api/workflows/library"))
+    kinds = {k["kind"]: k for k in found["kinds"]}
+    assert kinds["handoff"]["takes"] == ["task"] and kinds["task"]["gives"] == ["task"]
+    assert any(a["id"] == "verify-sources" for a in found["actions"])
+    assert any(t.get("later") for t in found["triggers"])
+    templates = {t["id"] for t in owner.ok(owner.get("/api/workflows/templates"))}
+    assert {"verify-monthly", "refresh-library", "accounts-from-meetings"} <= templates
+
+
+def test_steps_that_do_not_fit_are_refused(owner):
+    refused = owner.post(
+        "/api/workflows",
+        json={"name": "Backwards", "steps": [{"kind": "handoff", "to": "Claude Code",
+                                               "done_when": "x", "next_step": "y"}]},
+    )
+    assert refused.status_code == 422 and "needs task" in refused.text
+
+
+def test_open_a_task_then_hand_it_off_runs_at_once(owner, runtime):
+    made = owner.ok(
+        owner.post(
+            "/api/workflows",
+            json={
+                "name": "Open and pass",
+                "steps": [
+                    {"kind": "task", "ask": "Refresh the pricing skill"},
+                    {"kind": "handoff", "to": "Claude Code", "done_when": "The skill is fixed",
+                     "next_step": "Update the figure"},
+                ],
+            },
+        ),
+        201,
+    )
+    run = owner.ok(owner.post(f"/api/workflows/{made['id']}/run", json={}), 201)
+    done = runtime.ws.workflows.run_of(runtime.ws.owner(), run["id"])
+    assert done.status == "done", done
+    assert done.steps[0]["result"]["task"] == "T-1"
+    task = owner.ok(owner.get("/api/work/handoffs/T-1"))
+    assert (task["owner"], task["status"]) == ("Claude Code", "handed_off")
+
+
+def test_an_ingestion_step_sweeps_the_folders(runtime, owner):
+    ws = runtime.ws
+    made = owner.ok(
+        owner.post(
+            "/api/workflows",
+            json={"name": "Sweep", "steps": [{"kind": "ingest", "source": "folder"}]},
+        ),
+        201,
+    )
+    run = owner.ok(owner.post(f"/api/workflows/{made['id']}/run", json={}), 201)
+    worker = WorkflowWorker(ws, StubRunners(), StubAgent())
+    worker.tick()
+    moved = ws.workflows.run_of(ws.owner(), run["id"])
+    assert moved.status == "done" and moved.steps[0]["status"] == "done"
