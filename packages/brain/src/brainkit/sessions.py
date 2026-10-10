@@ -16,6 +16,10 @@ item, and how: in a packet, opened afterwards, or in AI work the workspace ran),
 never pruned, so an entry's use is known for good. The detail behind it (each delivery, with
 the version and why routing picked it, and each packet's request) is kept for
 `sessions.retention_days` (90 by default), then pruned.
+
+MODEL CALLS. Background work that pays a model (a check, the knowledge agent, a run) records
+its tokens and cost in `model_calls`, pruned like the detail above, and by day in
+`model_daily`, kept for good: the fourth line of what context costs (costs.py).
 """
 from __future__ import annotations
 
@@ -52,6 +56,16 @@ CREATE TABLE IF NOT EXISTS dismissed (key TEXT PRIMARY KEY, at TEXT);
 CREATE TABLE IF NOT EXISTS verdicts (
     key TEXT PRIMARY KEY, relation TEXT, detail TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS kernels (fingerprint TEXT PRIMARY KEY, at TEXT, text TEXT);
+CREATE TABLE IF NOT EXISTS model_calls (
+    at TEXT, job TEXT, model TEXT, tokens_in INTEGER, tokens_out INTEGER, cache_read INTEGER,
+    cache_write INTEGER, cost REAL, ms INTEGER, ref TEXT, measured INTEGER);
+CREATE INDEX IF NOT EXISTS model_calls_at ON model_calls(at);
+CREATE TABLE IF NOT EXISTS model_daily (
+    day TEXT NOT NULL, job TEXT NOT NULL, model TEXT NOT NULL,
+    calls INTEGER NOT NULL DEFAULT 0, tokens_in INTEGER NOT NULL DEFAULT 0,
+    tokens_out INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0,
+    cache_write INTEGER NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, job, model));
 """
 
 # How an item reached a conversation: the usage_daily column each way counts in.
@@ -634,6 +648,76 @@ class Ledger:
         with self._connect() as conn:
             return {row["key"] for row in conn.execute("SELECT key FROM dismissed")}
 
+    # ------------------------------------------------------------------ model calls
+    def record_model_call(self, job: str, model: str, *, tokens_in: int = 0,
+                          tokens_out: int = 0, cache_read: int = 0, cache_write: int = 0,
+                          cost: float | None = None, ms: int | None = None, ref: str = "",
+                          measured: bool = True) -> None:
+        """One background call to a model: what it was for (`job`), which model, its tokens
+        (`measured` when the model reported them, else estimated from the text) and what it
+        cost (from the price table when the caller does not know)."""
+        from . import costs
+        now = util.now_iso()
+        if cost is None:
+            cost = costs.call_cost(model, tokens_in, tokens_out, cache_read, cache_write)
+        row = (str(job or "other")[:60], str(model or "unknown")[:80], int(tokens_in or 0),
+               int(tokens_out or 0), int(cache_read or 0), int(cache_write or 0),
+               float(cost or 0.0))
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO model_calls (at, job, model, tokens_in, tokens_out, cache_read, "
+                "cache_write, cost, ms, ref, measured) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (now, *row, int(ms) if ms is not None else None, str(ref or "")[:120],
+                 1 if measured else 0))
+            conn.execute(
+                "INSERT INTO model_daily (day, job, model, calls, tokens_in, tokens_out, "
+                "cache_read, cache_write, cost) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(day, job, model) DO UPDATE SET calls = calls + 1, "
+                "tokens_in = tokens_in + excluded.tokens_in, "
+                "tokens_out = tokens_out + excluded.tokens_out, "
+                "cache_read = cache_read + excluded.cache_read, "
+                "cache_write = cache_write + excluded.cache_write, cost = cost + excluded.cost",
+                (now[:10], *row))
+
+    def model_usage(self, since_day: str) -> list[dict]:
+        """Background model calls by day, job and model since a day (YYYY-MM-DD)."""
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM model_daily WHERE day >= ? ORDER BY day, job, model",
+                (str(since_day)[:10],))]
+
+    def packet_rows(self, since: str) -> list[dict]:
+        """Every packet since an ISO moment, oldest first: its session, request, tokens and
+        data (the request type, the notes it carried), for the cost and quality report."""
+        with self._connect() as conn:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT p.id, p.session_id, p.at, p.request, p.mode, p.tokens, p.data, "
+                "s.label AS client FROM packets p LEFT JOIN sessions s ON s.id = p.session_id "
+                "WHERE p.at >= ? ORDER BY p.at, p.rowid", (since,))]
+            kernels = {}
+            for d in conn.execute(
+                    "SELECT packet_id, tokens FROM deliveries WHERE kind = 'kernel' AND at >= ?",
+                    (since,)):
+                kernels[d["packet_id"]] = kernels.get(d["packet_id"], 0) + int(d["tokens"] or 0)
+        for row in rows:
+            try:
+                row["data"] = json.loads(row.get("data") or "{}")
+            except ValueError:
+                row["data"] = {}
+            row["kernel_tokens"] = kernels.get(row["id"], 0)
+        return rows
+
+    def meta(self, key: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT value FROM ledger_meta WHERE key = ?",
+                               (str(key),)).fetchone()
+        return row["value"] if row is not None else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self._connect() as conn:
+            conn.execute("INSERT INTO ledger_meta (key, value) VALUES (?, ?) ON CONFLICT(key) "
+                         "DO UPDATE SET value = excluded.value", (str(key), str(value)))
+
     # ------------------------------------------------------------------ housekeeping
     def recent_sessions(self, limit: int = 20) -> list[dict]:
         with self._connect() as conn:
@@ -653,5 +737,6 @@ class Ledger:
             conn.execute("DELETE FROM deliveries WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM packets WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM sessions WHERE seen < ?", (cutoff,))
+            conn.execute("DELETE FROM model_calls WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM kernels WHERE at < ? AND fingerprint NOT IN "
                          "(SELECT item FROM deliveries WHERE kind = 'kernel')", (cutoff,))

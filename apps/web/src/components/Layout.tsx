@@ -29,16 +29,16 @@ import { TourProvider } from "./tour/Tour";
 import { ErrorNote } from "./ui";
 
 // Places named for the person's questions: how am I doing (Home), what did I bring in
-// (Capture), what is in motion (Projects), what does my AI know (Brain), how do I put it to use
-// (Work: composing, writing, skills, agents, workflows, the library and what they made), what did
-// it use and what changed (Activity). Catch up, what needs my yes, is listed only while
-// something does, calmly, with the time it takes.
+// (Capture), what is in motion (Projects), what does my AI know (Brain), how do I shape what it
+// knows and keep it current (Knowledge Work: the workspace, the library, prompts, skills, agents,
+// workflows and what was made), what did it use and what changed (Activity). Catch up, what needs
+// my yes, is listed only while something does, calmly, with the time it takes.
 const NAV: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: "/", label: "Home", icon: House, end: true },
   { to: "/capture", label: "Capture", icon: Inbox },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/brain", label: "Brain", icon: Brain },
-  { to: "/work", label: "Work", icon: BriefcaseBusiness },
+  { to: "/work", label: "Knowledge Work", icon: BriefcaseBusiness },
   { to: "/activity", label: "Activity", icon: Activity },
 ];
 

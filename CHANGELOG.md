@@ -95,14 +95,16 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   right as the Brain changes, made by code without a model.
 - Home's flashcards: what to keep an eye on, one card at a time (stale context, repeats,
   drift, gaps, quiet projects, the agent's questions and what it did), and what is coming.
-- Work, where the Brain gets put to use: Overview, Compose, Workspace, Skills, Agents,
-  Workflows, Library and Outputs, in one tab. Everything in it reads from the Brain, and what it
-  makes waits for your yes: drafts, outputs and suggestions, never anything sent or published.
-  - Overview: your team of agents, each with its heartbeat (working, waiting for you, idle, its
-    next run); each workflow as a strip of boxes and arrows colored by its last run; what waits
-    for you; skills worth writing down, skills gone stale and agents whose pointers broke; and
-    the recent runs. An empty Work starts with the ladder: ask once in Compose, write it down as
-    a skill, give it a role, give it a schedule.
+- Knowledge Work (first called Work), where you shape what your Brain knows and keep it
+  current: Overview, Workspace, Library, Compose, Skills, Agents, Workflows and Outputs, in one
+  tab (the addresses stay `/work/...`). Everything in it reads from the Brain, and what it makes
+  waits for your yes: drafts, outputs and suggestions, never anything sent or published. Every
+  item says whose it is ("Yours" in this app; scopes for teams come later).
+  - Overview, governance first: what changed in your Brain since you last looked and who changed
+    it (you, your AI, a workflow); what waits for you (Catch up, checks in workflows, new skills);
+    how healthy the context is (notes to recheck or flagged, possible duplicates, clashes, skills
+    that may be out of date, agents whose pointers broke); then each workflow as a strip of boxes
+    and arrows and your agents with their heartbeats; and last, small, the recent runs.
   - Compose: a request and what goes with it (skills in order, one agent, your notes and docs,
     documents to read whole, a project), with the whole prompt a model gets beside it and its
     size in tokens, or a short version for any AI connected to the Brain. Improve has your AI
@@ -125,9 +127,11 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
     upkeep job or your check, where the run waits for a yes, your edit or a stop. Each step reads
     what the one before made; a run missed while the app was off runs once, and says so. Four
     templates; a workflow goes out and comes back as a file. Checks count in Catch up.
-  - Library: guides to follow, references to read whole and influences to borrow from, from an
+  - Library: everything kept whole, in one place: guides to follow, references to read whole,
+    influences to borrow from and assets (images, fonts, sheets, kept byte for byte), from an
     upload, a page fetched by its address or a GitHub repository's snapshot, refreshed by hand,
-    weekly or monthly.
+    weekly or monthly. Each item has one page, which Brain > Files opens too, saying where it
+    came from.
   - Skills: bring one in from a zip, a folder or GitHub; take it out as a zip; copy it into
     Claude Code with a stamp of the version, and see how far behind the copy is. Each skill says
     when it was edited and used, what uses it and what it loads that changed since; asks your AIs
@@ -135,6 +139,22 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
     write.
 - Activity: each request opens to every piece it got and what it opened after, and to the
   exact text it was handed and the startup context when that went with it.
+- Where each file came from: every document and asset filed says so on its card (a capture
+  such as a recording or a transcript, the Library, a project, a run, Moving in, your upload,
+  an AI in a conversation, a swept folder). Brain > Files groups files by it; a file filed
+  before reads "Origin unknown" until you set one on its page.
+- Measuring the Brain: what context costs each day on five lines (fixed overhead, briefs, the
+  re-reads of briefs on later turns, rewrites after pauses, background jobs), in tokens and
+  dollars at list prices, exact for Claude Code sessions when you let it read the token counts
+  in Claude Code's transcripts, and estimated elsewhere; background calls the app makes record
+  what they used; `contxt tokens calibrate` measures the Brain's token estimates against
+  Claude's own counts. Every brief records its kind of request (lookup, writing, planning,
+  code, status, edit, standard). Label your real requests from Activity (needed, helped, noise,
+  should have had) into a private eval set kept beside your Brain, with a quarter held out;
+  the report card (`contxt report`, `brain report`, Activity's Cost and quality tab) shows the
+  cost by line, brief sizes by kind and how well briefs carry what a task needs. `brain replay`
+  rebuilds logged briefs against the Brain now, at a git commit, or with a waiting proposal
+  applied in a copy, and shows what would enter, leave or move.
 - Moving in takes files of any kind, zips included: documents, instruction files, any text,
   and ChatGPT's and Claude's data exports (their conversations as your own words); what cannot
   be read is named with why.

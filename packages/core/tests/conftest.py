@@ -438,7 +438,9 @@ class FakeBrain:
         wait=False,
         library=None,
         replaces=None,
+        came_from=None,
     ):
+        self.came_from = [*getattr(self, "came_from", []), came_from]
         self.uploaded.append(
             {
                 "filename": filename,
@@ -674,6 +676,30 @@ class FakeBrain:
 
     def kernel(self, *, tools=True):
         return {"text": "# Startup\nWrite plainly.", "tokens": 6}
+
+    def record_model_call(self, job, model, **figures):
+        self.model_calls = [*getattr(self, "model_calls", []), (job, model, figures)]
+
+    def report(self, *, days=7, claude_code=False, quality=True):
+        return {"days": days, "spend": {"days": []}, "per_day_usd": 0.0, "text": "No use."}
+
+    def replay(self, packet_ids, *, at=None, proposal=None):
+        return {"against": "now", "replayed": len(packet_ids), "changed": 0, "rows": []}
+
+    def eval_case(self, packet_id):
+        return None
+
+    def eval_label(self, packet_id, labels):
+        return {"id": packet_id, "labeled": True, **labels}
+
+    def eval_status(self):
+        return {"cases": 0, "labeled": 0, "held_out": 0, "by_type": {}}
+
+    def calibration_samples(self):
+        return [{"label": "kernel", "text": "# Startup\nWrite plainly.", "estimated": 6}]
+
+    def set_calibration(self, pairs, *, method):
+        return {"factor": 1.0, "method": method, "samples": len(pairs)}
 
     def agent_outline(self, *, brief=False):
         return {

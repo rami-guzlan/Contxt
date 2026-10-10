@@ -42,7 +42,7 @@ class StubModels(Models):
     def list(self):
         return [ModelChoice("claude", "Claude Code (your CLI)", "cli", True, "here", False)]
 
-    def ask(self, who, choice, prompt, *, json_only=False, timeout=240.0):
+    def ask(self, who, choice, prompt, *, json_only=False, timeout=240.0, job="agent"):
         self.asked.append({"model": choice.id, "prompt": prompt, "json": json_only})
         return self.answers.pop(0)
 

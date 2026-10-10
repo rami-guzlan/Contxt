@@ -14,6 +14,7 @@ import { bytes, plural, when } from "../../lib/format";
 import { skillUrl } from "../../lib/links";
 import { RequestRow } from "../Activity";
 import { entryUrl } from "../brain/shared";
+import { ScopeChip } from "../../components/work/Scope";
 
 const KIND_WORDS: Record<string, string> = {
   document: "Document",
@@ -110,6 +111,7 @@ function FileRow({ file, folders, open, onOpen }: { file: OutputFile; folders: s
         <button type="button" className="link file-title" aria-expanded={open} onClick={onOpen}>
           {file.name}
         </button>
+        <ScopeChip />
         <span className="muted small">
           {KIND_WORDS[file.kind] ?? "File"} · {bytes(file.size)} · {when(file.modified)}
           {file.folder ? ` · ${file.folder}` : ""}

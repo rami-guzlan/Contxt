@@ -496,29 +496,40 @@ describe("brain entry", () => {
 });
 
 describe("brain files", () => {
-  it("lists references and assets, each one downloadable", async () => {
-    mockApi({ "GET /api/brain/files": files, "GET /api/brain/catalog": catalog });
+  it("groups every file by where it came from, each opening its Library page", async () => {
+    mockApi({
+      "GET /api/brain/files": {
+        ...files,
+        references: [{ ...files.references[0], origin: "capture:recording", scope: "company" }],
+      },
+      "GET /api/brain/catalog": catalog,
+    });
     const user = userEvent.setup();
     renderAt(<FilesPage />, { path: "/brain/files", route: "/brain/files" });
-    expect(await screen.findByRole("link", { name: "Style guide" })).toHaveAttribute(
+    const capture = await screen.findByRole("region", { name: "Capture" });
+    expect(within(capture).getByRole("link", { name: "Style guide" })).toHaveAttribute(
       "href",
-      "/brain/files/view?path=references%2Fstyle-guide.md",
+      "/work/library/view?path=references%2Fstyle-guide.md",
     );
+    expect(within(capture).getByText(/Capture: a recording/)).toBeInTheDocument();
+    expect(within(capture).getByText("Yours")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download Style guide" })).toHaveAttribute(
       "href",
       "/api/brain/files/content?path=references%2Fstyle-guide.md",
     );
     expect(screen.getByRole("link", { name: /original/i })).toHaveAttribute("href", expect.stringContaining("original=true"));
-
-    await user.click(screen.getByRole("tab", { name: "Assets (2)" }));
-    expect(screen.getByRole("img", { name: "Logo" })).toHaveAttribute(
-      "src",
-      "/api/brain/files/content?path=assets%2Fbrand%2Flogo.png",
+    // Filed before origins were kept: it waits under "Origin unknown" for one to be set.
+    const unknown = screen.getByRole("region", { name: "Origin unknown" });
+    expect(within(unknown).getByRole("link", { name: "Open Logo" })).toHaveAttribute(
+      "href",
+      "/work/library/view?path=assets%2Fbrand%2Flogo.png",
     );
-    // a skill's own logos and fonts are assets too, shown with the skill that keeps them
+    // a skill's own logos and fonts show with the skill that keeps them
     expect(screen.getByRole("heading", { name: "Kept with /brand-sheet" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "wordmark.png" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: /Skills/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Documents" }));
+    expect(screen.queryByRole("region", { name: "Origin unknown" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Kept with /brand-sheet" })).not.toBeInTheDocument();
   });
 
   it("gives skills their own place, by kind, each opening to its procedure", async () => {
@@ -666,6 +677,8 @@ describe("brain files", () => {
             dated: "2026-10-03",
             sections: 10,
             work: true,
+            origin: "project",
+            origin_inferred: true,
           },
         ],
       },
@@ -675,7 +688,8 @@ describe("brain files", () => {
     const group = await screen.findByRole("region", { name: "Q4 campaign proposals" });
     expect(within(group).getByText("version 2 · sent · 2026-10-03")).toBeInTheDocument();
     expect(within(group).getByText(/10 parts your AI can quote/)).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Guides and other documents" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Projects" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Origin unknown" })).toBeInTheDocument();
   });
 });
 

@@ -10,6 +10,7 @@ import type { Workflow, WorkflowRunSummary, WorkflowStep } from "../../api/types
 import { when } from "../../lib/format";
 import { ErrorNote, Pill } from "../ui";
 import { STEP_NAMES, stepWords } from "./WorkflowEditor";
+import { ScopeChip } from "./Scope";
 
 export const workflowUrl = (id: string, run?: string) => `/work/workflows/${encodeURIComponent(id)}${run ? `?run=${encodeURIComponent(run)}` : ""}`;
 
@@ -23,6 +24,7 @@ export function FlowCard({ workflow }: { workflow: Workflow }) {
         <h3>
           <Link to={workflowUrl(workflow.id)}>{workflow.name}</Link>
         </h3>
+        <ScopeChip />
         {workflow.enabled ? null : <span className="muted small">Off</span>}
         {last ? <Pill status={last.status} /> : null}
         {workflow.running && last ? (

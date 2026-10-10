@@ -63,12 +63,39 @@ SKILL_KEY_ORDER = ("name", "description", "index_line", "when_to_use", "scope", 
 SKILL_LIST_FIELDS = ("triggers", "aliases", "cue_terms", "artifacts", "loads", "depends_on",
                      "quality_gates")
 UPLOAD_KINDS = ("skill.create", "skill.update", "file.add")
-# The Library: a document kept whole can say what kind of item it is (a guide to follow, a
-# reference to read whole, an influence whose taste to borrow), where it was fetched from, when,
-# and how often to fetch it again. These live on the document's card.
-LIBRARY_KINDS = ("guide", "reference", "influence")
+# The Library: an item kept whole can say what kind of item it is (a guide to follow, a
+# reference to read whole, an influence whose taste to borrow, or an asset: an image, a font, a
+# sheet, kept byte for byte), where it was fetched from, when, and how often to fetch it again.
+# These live on the item's card. Only an asset is an asset; a document is any of the others.
+LIBRARY_KINDS = ("guide", "reference", "influence", "asset")
+DOCUMENT_KINDS = ("guide", "reference", "influence")
 LIBRARY_REFRESH = ("never", "weekly", "monthly")
 LIBRARY_KEYS = ("library", "source_url", "source_repo", "source_paths", "fetched_at", "refresh")
+# Where a filed item came from, on its card as `origin`, `<kind>` or `<kind>:<which one>` like a
+# note's: a capture (capture:recording, capture:transcript, capture:upload, capture:export),
+# the Library, a project, a skill, a run's output (run:<id>), Moving in, a person in the app, an
+# AI in a conversation, or a swept folder. Items filed before origins were kept have none: the
+# app infers one where it can and lets the owner set it.
+ORIGINS = ("capture", "library", "project", "skill", "run", "movein", "upload", "chat", "folder")
+CHANNEL_ORIGINS = {"app": "upload", "chat": "chat", "folder": "folder"}
+
+
+def origin_kind(value) -> str:
+    return str(value or "").partition(":")[0].strip().lower()
+
+
+def origin_meta(came_from, *, channel=None, library=None, project=None) -> dict:
+    """The card's `origin` for a filing: what the caller says (`capture:recording`, `run:<id>`,
+    `library`), else the Library or the project it goes to, else the channel it came through
+    (a person in the app, an AI in a conversation, a swept folder)."""
+    text = " ".join(str(came_from or "").split())[:160]
+    kind = origin_kind(text)
+    if kind and kind not in ORIGINS:
+        raise Refused(f"origin is one of {', '.join(ORIGINS)}")
+    if not kind:
+        text = ("library" if library else "project" if project else
+                CHANNEL_ORIGINS.get(str(channel or "chat"), "chat"))
+    return {"origin": text}
 
 
 class Refused(Exception):
@@ -90,7 +117,7 @@ def library_meta(fields) -> dict:
             continue
         text = str(value).strip()
         if key == "library" and text not in LIBRARY_KINDS:
-            raise Refused("a Library item is a guide, a reference or an influence")
+            raise Refused("a Library item is a guide, a reference, an influence or an asset")
         if key == "refresh" and text not in LIBRARY_REFRESH:
             raise Refused("refresh is never, weekly or monthly")
         if key in ("source_url", "source_repo") and not text.lower().startswith("https://"):
@@ -411,11 +438,13 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
              title=None, description="", purpose=None, topic=None, scope=None, principal=None,
              evidence="", source="", reason="", session_id=None, replaces=None, project=None,
              status=None, version=None, dated=None, origin=None, wait=False, library=None,
-             **_ignored):
+             came_from=None, **_ignored):
     """File a document (a reference) or an asset with its card, or a new version of one
     already filed: `replaces` names it (references/brand-voice.md), or, in a project, a file
     named like one already there is its new version. `library` puts the Library's fields
-    on a document's card (LIBRARY_KEYS: its kind, source, when it was fetched, its refresh).
+    on its card (LIBRARY_KEYS: its kind, source, when it was fetched, its refresh); an asset's
+    only kind is `asset`. `came_from` says where it came from (ORIGINS, optionally with which
+    one: `capture:recording`, `run:<id>`); the card keeps it as `origin`.
 
     `project` files it in a project's folder (a Focus, by id or name); `status` (draft,
     sent, final, ...), `version` and `dated` say which copy this is. `origin` is where it
@@ -462,8 +491,14 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
             raise Refused(f"{filename}: unsupported type {ext or '(none)'}")
         purpose = wanted or ("reference" if ext in DOC_EXT else "asset")
         extra = library_meta(library)
-        if extra and purpose != "reference":
-            raise Refused(f"{filename}: only a document kept whole goes in the Library")
+        kind = extra.get("library")
+        if purpose == "asset" and kind not in (None, "asset"):
+            raise Refused(f"{filename}: an asset is kept byte for byte, so its kind is asset; "
+                          "only a document kept whole is a guide, a reference or an influence")
+        if purpose == "reference" and kind == "asset":
+            raise Refused(f"{filename}: a document kept whole is a guide, a reference or an "
+                          "influence, not an asset")
+        came = origin_meta(came_from, channel=origin, library=bool(extra), project=project)
         if not replaces and home is not None and purpose == "reference":
             replaces = _same_document(st, home, filename)
         replacing = _replaceable(brain, replaces, purpose) if replaces else None
@@ -557,6 +592,8 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
         meta.setdefault("file", replacing)
         meta.setdefault("type", "file")
         meta.update(extra)
+        for key, value in came.items():  # a new version keeps where the item came from
+            meta.setdefault(key, value)
         card_update = {"id": card.id, "meta": meta,
                        "body": (_card_body(card.title, replacing, about, outline)
                                 if purpose == "reference" else card.body)}
@@ -589,6 +626,7 @@ def add_file(brain, *, source_path=None, content=None, content_base64=None, file
     if home is not None:
         note_meta["project_id"] = home.id
     note_meta.update(extra)
+    note_meta.update(came)
     if stated or purpose == "reference":
         note_meta["version"] = stated or 1
     if status:

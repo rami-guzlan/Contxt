@@ -522,16 +522,21 @@ class BrainKitAdapter:
                     source_paths=tuple(str(p) for p in (meta.get("source_paths") or [])),
                     fetched_at=str(meta.get("fetched_at") or "") or None,
                     refresh=str(meta.get("refresh") or "") or None,
+                    **_origin(meta, project=home is not None),
+                    scope=card.scope if card is not None else None,
                 )
             )
         assets = []
         for full in _walk(vault.path("assets")):
             path = brain_util.rel(full, vault.root)
-            pointer = pointers.get(path)
+            card = st.index.asset_cards.get(path)
+            pointer = card if card is not None else pointers.get(path)
+            meta = card.meta if card is not None else {}
             title = pointer.meta.get("title") if pointer else None
             if pointer and not title:
                 found = ASSET_TITLE.match(pointer.body.strip())
                 title = found.group(1) if found else None
+            home = st.index.focuses.get(str(meta.get("project_id") or "")) if meta else None
             assets.append(
                 BrainFile(
                     path=path,
@@ -542,6 +547,11 @@ class BrainKitAdapter:
                     updated=modified(full),
                     description=pointer.summary if pointer else "",
                     entry_id=pointer.id if pointer else None,
+                    project=home.id if home is not None else None,
+                    project_title=home.title if home is not None else None,
+                    library=str(meta.get("library") or "") or None,
+                    **_origin(meta, project=home is not None),
+                    scope=card.scope if card is not None else None,
                 )
             )
         skills = []
@@ -1014,6 +1024,7 @@ class BrainKitAdapter:
         wait: bool = False,
         library: dict[str, Any] | None = None,
         replaces: str | None = None,
+        came_from: str | None = None,
     ) -> BrainProposal:
         with self._lock:
             result = self.brain.add_file(
@@ -1029,6 +1040,7 @@ class BrainKitAdapter:
                 source=f"{WORKSPACE_SOURCE}{proposer}",
                 library=library or None,
                 replaces=replaces or None,
+                came_from=came_from or None,
             )
         found = result.data
         outcome = str(found.get("status") or ("refused" if result.is_error else "pending"))
@@ -1286,6 +1298,89 @@ class BrainKitAdapter:
         found = self.brain.kernel(tools=tools)
         return {"text": found.text, "tokens": int(found.data.get("tokens") or 0)}
 
+    # ---------------------------------------------------------------- measuring
+
+    def record_model_call(self, job: str, model: str, **figures: Any) -> None:
+        """A background call the app made to a model, for the jobs line of the cost report.
+        Never raises: a call that ran is not undone by a ledger that could not count it."""
+        try:
+            self.brain.ledger.record_model_call(job, model, **figures)
+        except Exception:
+            log.warning("Could not record a model call for %s", job, exc_info=True)
+
+    def report(
+        self, *, days: int = 7, claude_code: bool = False, quality: bool = True
+    ) -> dict[str, Any]:
+        """The report card: cost by day and line, brief sizes by type and, with `quality`,
+        the eval results. Evals route on a second instance of the Brain, so the app's own
+        ledger and its conversations are never touched."""
+        from brainkit import costs, report
+
+        folder = costs.default_transcripts() if claude_code else None
+        found = report.card(self.brain, days=days, transcripts=folder, quality=False)
+        if quality:
+            other = Brain(self.vault, embeddings=self.brain.embedder is not None, local_models=True)
+            try:
+                scored = report.card(other, days=1, quality=True)
+            finally:
+                other.close()
+            for key in ("eval", "private_eval"):
+                if key in scored:
+                    found[key] = scored[key]
+        found["text"] = report.render(found)
+        return dict(found)
+
+    def replay(
+        self, packet_ids: list[str], *, at: str | None = None, proposal: str | None = None
+    ) -> dict[str, Any]:
+        from brainkit import replay
+
+        try:
+            return dict(replay.replay(self.brain, packet_ids, at=at, proposal=proposal))
+        except ValueError as exc:
+            raise ValidationFailed(str(exc)) from exc
+
+    def eval_case(self, packet_id: str) -> dict[str, Any] | None:
+        from brainkit import evalset
+
+        found = evalset.case_for(self.brain, packet_id)
+        return dict(found) if found else None
+
+    def eval_label(self, packet_id: str, labels: dict[str, list[str]]) -> dict[str, Any]:
+        """The owner's labels for one logged request: it joins the private eval set first if
+        it is not in it yet."""
+        from brainkit import evalset
+
+        found = self.brain.ledger.packet(packet_id)
+        if found is None:
+            raise NotFound(f"No logged request {packet_id}.")
+        evalset.add(self.brain, str(found.get("request") or ""), packet_id)
+        try:
+            return dict(evalset.label(self.brain, packet_id, **labels))
+        except (KeyError, ValueError) as exc:
+            raise ValidationFailed(str(exc)) from exc
+
+    def eval_status(self) -> dict[str, Any]:
+        from brainkit import evalset
+
+        return dict(evalset.status(self.brain))
+
+    def calibration_samples(self) -> list[dict[str, Any]]:
+        from brainkit import costs
+
+        return [
+            dict(s, estimated=brain_util.tokens(s["text"]))
+            for s in costs.calibration_samples(self.brain)
+        ]
+
+    def set_calibration(self, pairs: list[tuple[int, int]], *, method: str) -> dict[str, Any]:
+        from brainkit import costs
+
+        try:
+            return dict(costs.set_factor(self.brain.ledger, pairs, method=method))
+        except ValueError as exc:
+            raise ValidationFailed(str(exc)) from exc
+
     # ---------------------------------------------------------------- the knowledge agent
 
     def agent_outline(self, *, brief: bool = False) -> dict[str, Any]:
@@ -1508,6 +1603,19 @@ def _revision(meta: dict[str, Any]) -> str | None:
         if meta.get(key):
             return str(meta[key])
     return None
+
+
+def _origin(meta: dict[str, Any], *, project: bool) -> dict[str, Any]:
+    """Where a filed item came from: what its card says, else what its card shows (fetched
+    for the Library, filed in a project), marked as inferred; else nobody knows (None)."""
+    said = str(meta.get("origin") or "").strip()
+    if said:
+        return {"origin": said, "origin_inferred": False}
+    if meta.get("source_url") or meta.get("source_repo") or meta.get("library"):
+        return {"origin": "library", "origin_inferred": True}
+    if project:
+        return {"origin": "project", "origin_inferred": True}
+    return {"origin": None, "origin_inferred": False}
 
 
 def _number(value: Any) -> int | None:

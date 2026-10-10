@@ -219,6 +219,22 @@ class MarkIn(Body):
     reason: str
 
 
+class RequestLabelsIn(Body):
+    """The owner's labels for one logged request, for the private eval set: notes it needed,
+    notes that helped, notes that were noise, and notes it should have had."""
+
+    needed: list[str] = Field(default_factory=list, max_length=40)
+    useful: list[str] = Field(default_factory=list, max_length=40)
+    noise: list[str] = Field(default_factory=list, max_length=40)
+    missing: list[str] = Field(default_factory=list, max_length=40)
+
+
+class ReplayIn(Body):
+    packets: list[str] = Field(default_factory=list, max_length=50)
+    at: str | None = None
+    proposal: str | None = None
+
+
 class DistillRequestIn(Body):
     """Pull what matters out of these notes and captures, or documents filed in the Brain."""
 
@@ -412,11 +428,13 @@ class LibraryRepoIn(Body):
 
 
 class LibraryItemIn(Body):
-    """Change what kind of item a document is, or how often it is fetched again."""
+    """Change what kind of item it is, how often it is fetched again, or where it came from
+    (capture:recording, library, upload, ...)."""
 
     path: str = Field(min_length=1, max_length=500)
-    kind: str | None = Field(default=None, pattern=LIBRARY_KIND)
+    kind: str | None = Field(default=None, pattern="^(guide|reference|influence|asset)$")
     refresh: str | None = Field(default=None, pattern=LIBRARY_REFRESH)
+    origin: str | None = Field(default=None, max_length=160)
 
 
 class LibraryRefreshIn(Body):

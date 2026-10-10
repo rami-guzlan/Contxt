@@ -558,6 +558,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         "skill_included": included.name if included is not None else None,
         "topics": list(route.topics),
         "note_ids": [n.id for n in chosen],
+        # Each note's share of the brief, so noise can be measured in tokens, not only hits.
+        "note_tokens": {n.id: n.tokens for n in chosen},
         "must_hold_ids": [m.note.id for m in must],
         "older_ids": [o.id for o, _n in older],
         "must_hold_listed": [m.note.id for m in overflow],

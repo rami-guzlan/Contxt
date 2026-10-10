@@ -15,7 +15,7 @@ import { day, entryUrl, originText, ownerName, repeats, unusedLabel } from "./sh
 
 const DAY = 86_400_000;
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString().slice(0, 10);
-const AI_ORIGINS = new Set(["conversation", "workspace", "work"]);
+const AI_ORIGINS = new Set(["conversation", "workspace", "work", "chat", "run"]);
 
 interface View {
   key: string;

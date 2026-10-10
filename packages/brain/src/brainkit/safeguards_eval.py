@@ -376,6 +376,39 @@ def cross_check_noise(brains_root: str, names=DEMO_BRAINS) -> dict:
     return out
 
 
+def run_retrieval(brains_root: str, spec: dict, *, models_dir: str | None = None) -> dict:
+    """Needed-note recall, precision, noise and tokens on the demo Brains' labeled requests
+    (tests/evals/retrieval.json), tuning and held out apart, with how often the request type
+    read from a request matches the one its case expects."""
+    from . import evaluate
+    by_brain: dict[str, list] = {}
+    for case in spec.get("cases") or []:
+        by_brain.setdefault(case["brain"], []).append(case)
+    rows: list = []
+    for name, cases in sorted(by_brain.items()):
+        vault = copy_vault(os.path.join(brains_root, name, "vault"), models_dir)
+        try:
+            path = os.path.join(os.path.dirname(vault), "eval.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump({"cases": cases}, handle)
+            brain = open_brain(vault, semantic=bool(models_dir))
+            try:
+                found = evaluate.run(brain, path)
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+        rows += [dict(r, brain=name) for r in found["rows"]]
+    result = evaluate.summarize(rows, spec.get("thresholds") or {})
+    typed = [r for r in rows if r.get("expected_type")]
+    result["type_accuracy"] = (round(sum(r["request_type"] == r["expected_type"] for r in typed)
+                                     / len(typed), 3) if typed else None)
+    result["by_brain"] = {
+        name: evaluate.summarize([r for r in rows if r["brain"] == name], {})["all"]
+        for name in sorted(by_brain)}
+    return result
+
+
 def load_spec(path: str) -> dict:
     with open(path, encoding="utf-8") as handle:
         return json.load(handle)

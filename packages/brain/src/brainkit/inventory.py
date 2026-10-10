@@ -24,6 +24,16 @@ ORIGIN_KINDS = {
     "doc": "A doc",
     "you": "You",
     "import": "Imported",
+    # Where a filed item (a document or an asset) came from (uploads.ORIGINS).
+    "capture": "A capture",
+    "library": "The Library",
+    "project": "A project",
+    "skill": "A skill",
+    "run": "A run",
+    "movein": "Moving in",
+    "upload": "An upload in the app",
+    "chat": "An AI conversation",
+    "folder": "A swept folder",
     "unknown": "Not recorded",
 }
 

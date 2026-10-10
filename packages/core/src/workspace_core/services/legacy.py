@@ -458,6 +458,7 @@ class Legacy:
                 project=home.id if home is not None else None,
                 origin="app",
                 wait=wait,
+                came_from="movein",
             )
             if made.status in ("applied", "pending", "duplicate"):
                 if made.status == "applied":

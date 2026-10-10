@@ -178,6 +178,27 @@ def build_parser():
     p = sub.add_parser("sync", help="propose what is new in the drop and skill folders")
     p.add_argument("--dry-run", action="store_true")
 
+    p = sub.add_parser("report", help="what context cost by day and line, and brief quality")
+    p.add_argument("--days", type=int, default=7)
+    p.add_argument("--claude-code", nargs="?", const="", default=None, metavar="FOLDER",
+                   help="read Claude Code's transcripts for exact figures (token counts only)")
+    p.add_argument("--model", help="price estimated figures at this model's rates")
+    p.add_argument("--no-quality", action="store_true", help="skip the eval runs")
+    p = sub.add_parser("replay", help="rebuild logged briefs and show what changed")
+    p.add_argument("packets", nargs="*", help="packet ids (default: the newest --recent)")
+    p.add_argument("--recent", type=int, default=20)
+    p.add_argument("--note", help="the newest packets that carried this note")
+    p.add_argument("--at", help="against the vault at a git commit or ref")
+    p.add_argument("--with", dest="proposal", help="against the vault with a proposal applied")
+    p = sub.add_parser("eval", help="your labeled real requests (kept in .brain/eval)")
+    p.add_argument("action", choices=["status", "sample", "run", "label"])
+    p.add_argument("case", nargs="?")
+    p.add_argument("--n", type=int, default=80)
+    p.add_argument("--days", type=int, default=60)
+    p.add_argument("--holdout", action="store_true")
+    for name in ("needed", "useful", "noise", "missing"):
+        p.add_argument(f"--{name}", default="", help="note ids, comma-separated")
+
     return parser
 
 
@@ -398,6 +419,76 @@ def main(argv=None) -> int:
         return _emit(brain.verify(args.note, confidence=args.confidence), args.json)
     if command == "mark":
         return _emit(brain.mark(args.note, args.state, reason=args.reason), args.json)
+    if command == "report":
+        from brainkit import costs, report
+        folder = args.claude_code
+        if folder == "":
+            folder = costs.default_transcripts()
+        found = report.card(brain, days=args.days, transcripts=folder or None, model=args.model,
+                            quality=not args.no_quality)
+        if args.json:
+            print(json.dumps(found, indent=1, ensure_ascii=False, default=str))
+        else:
+            print(report.render(found).rstrip())
+        return 0
+    if command == "replay":
+        from brainkit import replay
+        packets = args.packets or replay.recent_packets(brain, item=args.note,
+                                                        limit=args.recent)
+        try:
+            found = replay.replay(brain, packets, at=args.at, proposal=args.proposal)
+        except ValueError as exc:
+            print(str(exc))
+            return 1
+        if args.json:
+            print(json.dumps(found, indent=1, ensure_ascii=False, default=str))
+            return 0
+        print(f"Replayed {found['replayed']} brief(s) {found['against']} in "
+              f"{found['seconds']} s: {found['changed']} changed.")
+        for row in found["rows"]:
+            if row.get("error"):
+                print(f"- {row['packet_id']}: {row['error']}")
+                continue
+            d = row["diff"]
+            if d["same"]:
+                continue
+            print(f"- {row['packet_id']} {row['request'][:70]!r}")
+            for key in ("notes", "must_holds", "sections"):
+                if d[key]["entered"]:
+                    print(f"    + {key}: {', '.join(d[key]['entered'])}")
+                if d[key]["left"]:
+                    print(f"    - {key}: {', '.join(d[key]['left'])}")
+            if d["notes"]["moved"]:
+                print(f"    ~ moved: {', '.join(d['notes']['moved'])}")
+            print(f"    tokens {d['tokens']['before']} -> {d['tokens']['after']}")
+        return 0
+    if command == "eval":
+        from brainkit import evalset
+        if args.action == "status":
+            print(json.dumps(evalset.status(brain), indent=1))
+            return 0
+        if args.action == "sample":
+            print(json.dumps(evalset.sample(brain, args.n, days=args.days), indent=1))
+            return 0
+        if args.action == "label":
+            if not args.case:
+                parser.error("eval label needs a case id or packet id")
+            ids = {name: [i.strip() for i in getattr(args, name).split(",") if i.strip()]
+                   for name in ("needed", "useful", "noise", "missing")}
+            try:
+                case = evalset.label(brain, args.case, **ids)
+            except (KeyError, ValueError) as exc:
+                print(f"Not labeled: {exc}")
+                return 1
+            print(json.dumps(case, indent=1, ensure_ascii=False))
+            return 0
+        from brainkit import evaluate
+        result = evalset.run(brain, holdout=True if args.holdout else None)
+        if not result.get("cases") and "all" not in result:
+            print("No labeled cases yet: `brain eval sample`, then label them.")
+            return 1
+        print(evaluate.report(result))
+        return 0
     parser.print_help()
     return 2
 

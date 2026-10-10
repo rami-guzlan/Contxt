@@ -176,6 +176,11 @@ class BrainFile:
     source_paths: tuple[str, ...] = ()
     fetched_at: str | None = None
     refresh: str | None = None
+    # Where it came from, as its card says (`capture:recording`, `library`, `run:<id>`), or as
+    # inferred for a file filed before cards kept it (`inferred`); None when nobody knows.
+    origin: str | None = None
+    origin_inferred: bool = False
+    scope: str | None = None
 
 
 @dataclass(frozen=True)
@@ -347,12 +352,14 @@ class BrainPort(Protocol):
         wait: bool = False,
         library: dict[str, Any] | None = None,
         replaces: str | None = None,
+        came_from: str | None = None,
     ) -> BrainProposal:
         """File a document or asset (in a project, as a new version of one already there
         when its name says so, or of the one `replaces` names). The Brain's capture policy
         decides whether it is filed at once, with an undo point (`status` applied), or waits
-        for review (pending); `wait` makes it wait whatever the policy says. `library` gives a
-        document its Library fields on its card."""
+        for review (pending); `wait` makes it wait whatever the policy says. `library` gives
+        it its Library fields on its card; `came_from` says where it came from
+        (`capture:recording`, `movein`, `run:<id>`), kept on its card as its origin."""
         ...
 
     def projects(self) -> list[BrainProject]:
@@ -461,6 +468,48 @@ class BrainPort(Protocol):
     def kernel(self, *, tools: bool = True) -> dict[str, Any]:
         """The startup context every conversation gets once: {"text", "tokens"}. Without
         `tools`, as a model that cannot call the Brain needs it: nothing asks for a tool."""
+        ...
+
+    # ---- measuring: what context costs and how good briefs are
+
+    def record_model_call(self, job: str, model: str, **figures: Any) -> None:
+        """A background call the app made to a model (tokens_in, tokens_out, cache_read,
+        cache_write, cost, ms, ref, measured), for the cost report. Never raises."""
+        ...
+
+    def report(
+        self, *, days: int = 7, claude_code: bool = False, quality: bool = True
+    ) -> dict[str, Any]:
+        """The report card: cost by day and line, brief sizes by request type, eval results
+        and the private eval set's status; `text` is it in words."""
+        ...
+
+    def replay(
+        self, packet_ids: list[str], *, at: str | None = None, proposal: str | None = None
+    ) -> dict[str, Any]:
+        """Logged briefs rebuilt against the Brain now, at a git ref, or with a proposal
+        applied in a copy, each with what entered, left or moved."""
+        ...
+
+    def eval_case(self, packet_id: str) -> dict[str, Any] | None:
+        """A logged request's place in the private eval set, with its labels; None if absent."""
+        ...
+
+    def eval_label(self, packet_id: str, labels: dict[str, list[str]]) -> dict[str, Any]:
+        """Label a logged request (needed, useful, noise, missing note ids) for the eval set."""
+        ...
+
+    def eval_status(self) -> dict[str, Any]:
+        """How many requests the private eval set holds and how many are labeled."""
+        ...
+
+    def calibration_samples(self) -> list[dict[str, Any]]:
+        """Texts the Brain really sends (the kernel, recent briefs), with their estimated
+        token counts, to measure against the model's own tokenizer."""
+        ...
+
+    def set_calibration(self, pairs: list[tuple[int, int]], *, method: str) -> dict[str, Any]:
+        """Store the factor from (estimated, measured) token counts of the same texts."""
         ...
 
     def agent_outline(self, *, brief: bool = False) -> dict[str, Any]:
@@ -776,6 +825,34 @@ class NoBrain:
 
     def kernel(self, *, tools: bool = True) -> dict[str, Any]:
         return {"text": "", "tokens": 0}
+
+    def record_model_call(self, job: str, model: str, **figures: Any) -> None:
+        return None
+
+    def report(
+        self, *, days: int = 7, claude_code: bool = False, quality: bool = True
+    ) -> dict[str, Any]:
+        return {"days": days, "spend": {"days": []}, "per_day_usd": 0.0, "text": ""}
+
+    def replay(
+        self, packet_ids: list[str], *, at: str | None = None, proposal: str | None = None
+    ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to replay.")
+
+    def eval_case(self, packet_id: str) -> dict[str, Any] | None:
+        return None
+
+    def eval_label(self, packet_id: str, labels: dict[str, list[str]]) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to evaluate.")
+
+    def eval_status(self) -> dict[str, Any]:
+        return {"cases": 0, "labeled": 0, "held_out": 0, "by_type": {}}
+
+    def calibration_samples(self) -> list[dict[str, Any]]:
+        return []
+
+    def set_calibration(self, pairs: list[tuple[int, int]], *, method: str) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to calibrate.")
 
     def agent_outline(self, *, brief: bool = False) -> dict[str, Any]:
         return {"counts": {}, "goals": "", "areas": [], "projects": [], "skills": [], "text": ""}

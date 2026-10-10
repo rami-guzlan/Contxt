@@ -61,7 +61,7 @@ class LibraryTests(unittest.TestCase):
 
     def test_the_fields_are_checked_before_anything_is_filed(self):
         for library, why in (
-            ({"library": "manual"}, "guide, a reference or an influence"),
+            ({"library": "manual"}, "guide, a reference, an influence or an asset"),
             ({"library": "guide", "source_url": "http://example.org"}, "https://"),
             ({"refresh": "daily"}, "never, weekly or monthly"),
             ({"owner": "person:ana"}, "not a Library field"),
@@ -110,6 +110,43 @@ class LibraryTests(unittest.TestCase):
                                     "fields": {"library": "guide"}}])
         self.assertTrue(plain.is_error)
         self.assertIn("only a document's card", plain.data["results"][0]["message"])
+
+    def test_every_filing_says_where_it_came_from(self):
+        page = self.file(PAGE, "sourdough.md", {"library": "reference",
+                                                "source_url": "https://example.org/sourdough"})
+        self.assertEqual(self.card(page.data["path"]).meta["origin"], "library")
+        upload = self.brain.add_file(content=GUIDE, filename="notes.md", principal="person:ana",
+                                     origin="app")
+        self.assertEqual(self.card(upload.data["path"]).meta["origin"], "upload")
+        recording = self.brain.add_file(content=GUIDE.replace("release", "launch"),
+                                        filename="call.md", principal="person:ana",
+                                        origin="app", came_from="capture:recording")
+        self.assertEqual(self.card(recording.data["path"]).meta["origin"], "capture:recording")
+        wrong = self.brain.add_file(content="x", filename="x.md", principal="person:ana",
+                                    came_from="somewhere")
+        self.assertTrue(wrong.is_error)
+        self.assertIn("origin is one of", wrong.text)
+        # The owner sets an older file's origin, or corrects one, as a decision.
+        card = self.card(upload.data["path"])
+        res = self.brain.decide([{"id": card.id, "action": "update",
+                                  "fields": {"origin": "capture:export"}}])
+        self.assertFalse(res.is_error, res.text)
+        self.assertEqual(self.card(upload.data["path"]).meta["origin"], "capture:export")
+
+    def test_an_asset_joins_the_library_as_an_asset(self):
+        asset = self.brain.add_file(content="a,b\n1,2\n", filename="prices.csv",
+                                    principal="person:ana", origin="app",
+                                    library={"library": "asset"})
+        self.assertEqual(asset.data.get("status"), "applied", asset.text)
+        card = self.brain.state().index.asset_cards[asset.data["path"]]
+        self.assertEqual((card.meta["library"], card.meta["origin"]), ("asset", "library"))
+        document = self.file(GUIDE, "guide.md", {"library": "asset"})
+        self.assertTrue(document.is_error)
+        self.assertIn("not an asset", document.text)
+        res = self.brain.decide([{"id": card.id, "action": "update",
+                                  "fields": {"library": "guide"}}])
+        self.assertTrue(res.is_error)
+        self.assertIn("an asset's kind is asset", res.data["results"][0]["message"])
 
     def test_library_meta_drops_empty_fields_and_keeps_picked_paths(self):
         self.assertEqual(uploads.library_meta({"library": "influence", "source_url": "",

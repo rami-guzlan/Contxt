@@ -614,6 +614,85 @@ describe("activity", () => {
       evidence: "Missing when Claude Code was asked: “Write a LinkedIn post announcing the Q4 webinars”",
     });
   });
+
+  it("labels a request for your private eval set: needed, helped, noise and what it lacked", async () => {
+    const calls = mockApi({
+      "GET /api/brain/weekly": [],
+      "GET /api/brain/requests": { requests: [request], brain_tokens: 6400, apps: ["Claude Code"], engine: "new" },
+      "GET /api/brain/requests/pkt-1": { ...request, text: "## Task", startup: null, eval: null },
+      "GET /api/brain/catalog": {
+        areas: [],
+        entries: [
+          { id: "linkedin-rules", title: "LinkedIn posting rules", summary: "", area: "marketing", topic: "social", kind: "rule" },
+          { id: "webinar-dates", title: "Webinar dates", summary: "", area: "marketing", topic: "events", kind: "fact" },
+        ],
+      },
+      "PUT /api/brain/requests/pkt-1/labels": { id: "real-pkt-1", labeled: true },
+    });
+    const user = userEvent.setup();
+    renderAt(<AiActivityPage />, { path: "/activity", route: "/activity" });
+    await user.click(await screen.findByRole("button", { name: /Write a LinkedIn post announcing the Q4 webinars/ }));
+    await user.click(screen.getByRole("button", { name: "Label it for your eval" }));
+    const group = screen.getByRole("group", { name: "Label LinkedIn posting rules" });
+    await user.click(within(group).getByRole("button", { name: "Needed" }));
+    await user.type(screen.getByLabelText("It should have had"), "Webinar dates");
+    await user.click(screen.getByRole("button", { name: "Save labels" }));
+    expect(await screen.findByText(/It counts in your private eval set/)).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+      needed: ["linkedin-rules"],
+      useful: [],
+      noise: [],
+      missing: ["webinar-dates"],
+    });
+  });
+
+  it("shows what context cost by line, and how good briefs are", async () => {
+    const day = (usd: number) => ({ tokens: Math.round(usd * 100000), usd });
+    const calls = mockApi({
+      "GET /api/brain/report": {
+        days: 7,
+        per_day_usd: 0.42,
+        spend: {
+          days: [
+            {
+              day: "2026-10-09",
+              lines: { fixed: day(0.01), briefs: day(0.05), rereads: day(0.3), rewrites: day(0.04), jobs: day(0.02) },
+              total_usd: 0.42,
+              total_tokens: 42000,
+              sources: { rereads: "claude code" },
+              packets: 12,
+              brief_tokens: 9000,
+              median_brief_by_type: { writing: 900 },
+            },
+          ],
+          factor: { factor: 1.18, measured: true, samples: 6, method: "claude code" },
+          overhead: { per_call_claude_code: 180, per_call_other: 2400, kernel: 1300, tools: 15 },
+          model: "claude-opus-5-5",
+          later_calls: 24,
+          later_calls_source: "claude code",
+          transcripts: true,
+          sessions_read: 5,
+        },
+        brief_tokens_by_type: { writing: 900, lookup: 300 },
+        eval_set: { cases: 80, labeled: 20, held_out: 6 },
+        private_eval: {
+          tuning: { cases: 14, must_recall: 0.86, precision: 0.7, noise_share: 0.12, avg_tokens: 1100 },
+          holdout: { cases: 6, must_recall: 0.83, precision: 0.66, noise_share: 0.15, avg_tokens: 1200 },
+          all: { cases: 20, must_recall: 0.85, precision: 0.69, noise_share: 0.13, avg_tokens: 1130 },
+        },
+        text: "",
+      },
+    });
+    const user = userEvent.setup();
+    renderAt(<AiActivityPage />, { path: "/activity", route: "/activity?tab=report" });
+    expect(await screen.findByText("Briefs, read again")).toBeInTheDocument();
+    expect(screen.getByText("$0.30")).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.42 a day on average/)).toBeInTheDocument();
+    expect(screen.getByText(/measured against Claude \(×1.18, 6 samples\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Held out: 6 requests, needed notes found 83%/)).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /Use Claude Code's own figures/ }));
+    await waitFor(() => expect(calls.some((c) => c.path.includes("claude_code=true"))).toBe(true));
+  });
 });
 
 describe("outputs", () => {

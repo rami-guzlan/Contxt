@@ -39,7 +39,7 @@ def ready(runtime, monkeypatch, reply):
     monkeypatch.setattr(runtime.runners, "status", lambda spec, refresh=False: status)
     asked: list[str] = []
 
-    def ask(who, prompt, timeout=180.0):
+    def ask(who, prompt, timeout=180.0, job="ask"):
         asked.append(prompt)
         return reply(prompt)
 

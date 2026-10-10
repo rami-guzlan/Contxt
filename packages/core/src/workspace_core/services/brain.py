@@ -68,10 +68,11 @@ ENTRY_FIELDS = (
     "baseline",  # the owner marks it a baseline: a change to it waits, with a reason
     "as_of",  # the day a changing value was true (YYYY-MM-DD)
     "valid_until",  # the last day it holds
-    "library",  # a document's kind in the Library: guide, reference or influence
+    "library",  # an item's kind in the Library: guide, reference, influence or asset
     "refresh",  # how often the Library fetches it again: never, weekly or monthly
+    "origin",  # where a filed item came from: capture:recording, library, run:<id>, ...
 )
-LIBRARY_KINDS = ("guide", "reference", "influence")
+LIBRARY_KINDS = ("guide", "reference", "influence", "asset")
 LIBRARY_REFRESH = ("never", "weekly", "monthly")
 FIELD_LIMITS = {"triggers": 1200, "applies_to": 600}  # characters; other fields take 200
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,80}$")  # a version: a commit, or "current"
@@ -581,12 +582,63 @@ class Brain:
         packet_id = str(packet_id or "").strip()
         if not packet_id:
             raise ValidationFailed("Name the request.", field="packet_id")
-        return self.rt.brain.request(packet_id)
+        found = dict(self.rt.brain.request(packet_id))
+        found["eval"] = self.rt.brain.eval_case(packet_id)
+        return found
 
     def weekly(self, who: Principal, *, weeks: int = 8) -> list[dict[str, Any]]:
         """Conversations the Brain served in each of the last weeks, oldest first."""
         who.require("brain.read")
         return self.rt.brain.weekly(max(1, min(int(weeks), 26)))
+
+    # ---- measuring: the report card, replays and the owner's labeled requests
+
+    def report(
+        self, who: Principal, *, days: int = 7, claude_code: bool = False, quality: bool = True
+    ) -> dict[str, Any]:
+        """What context cost by day and line, brief sizes by request type and how well briefs
+        carry what a task needs. `claude_code` reads Claude Code's transcripts on this
+        computer for exact figures (token counts only)."""
+        who.require("brain.read")
+        return self.rt.brain.report(
+            days=max(1, min(int(days), 90)), claude_code=claude_code, quality=quality
+        )
+
+    def replay(
+        self,
+        who: Principal,
+        packet_ids: list[str],
+        *,
+        at: str | None = None,
+        proposal: str | None = None,
+    ) -> dict[str, Any]:
+        """Logged briefs rebuilt against the Brain now, at a git ref or with a proposal
+        applied in a copy, each with what would enter, leave or move. Changes nothing."""
+        who.require("brain.read")
+        ids = [str(p).strip() for p in packet_ids if str(p).strip()][:50]
+        if not ids:
+            raise ValidationFailed("Name at least one request to replay.", field="packets")
+        return self.rt.brain.replay(
+            ids, at=str(at or "").strip() or None, proposal=str(proposal or "").strip() or None
+        )
+
+    def label_request(
+        self, who: Principal, packet_id: str, labels: dict[str, list[str]]
+    ) -> dict[str, Any]:
+        """The owner's labels for a logged request (needed, useful, noise, missing notes): it
+        joins the private eval set kept beside the Brain, never shared."""
+        who.require("brain.govern")
+        clean = {
+            key: [str(i).strip() for i in labels.get(key) or [] if str(i).strip()][:40]
+            for key in ("needed", "useful", "noise", "missing")
+        }
+        if not any(clean.values()):
+            raise ValidationFailed("Mark at least one note.", field="labels")
+        return self.rt.brain.eval_label(str(packet_id or "").strip(), clean)
+
+    def eval_status(self, who: Principal) -> dict[str, Any]:
+        who.require("brain.read")
+        return self.rt.brain.eval_status()
 
     def search(self, who: Principal, query: str, limit: int = 10) -> list[BrainHit]:
         who.require("brain.read")
@@ -901,13 +953,14 @@ class Brain:
         library: dict[str, Any] | None = None,
         replaces: str | None = None,
         wait: bool = False,
+        came_from: str | None = None,
     ) -> BrainProposal:
         """File a document or asset in the Brain, in a project when one is named (a file
         named like one already there is its new version). The Brain's capture policy decides
         whether it is filed at once, with an undo point, or waits for a person's review;
-        `wait` makes it wait either way. `library` gives a document its Library fields (its
-        kind, source, when it was fetched, its refresh); `replaces` names the document this is
-        a new version of."""
+        `wait` makes it wait either way. `library` gives it its Library fields (its kind,
+        source, when it was fetched, its refresh); `replaces` names the document this is a new
+        version of; `came_from` says where it came from (its origin on its card)."""
         who.require("brain.propose")
         name = os.path.basename(str(filename or "").replace("\\", "/")).strip()
         if not name:
@@ -936,6 +989,7 @@ class Brain:
             wait=wait,
             library=library or None,
             replaces=str(replaces or "").strip() or None,
+            came_from=came_from or None,
         )
         if result.status == "refused":
             raise ValidationFailed(result.message, field="file")
@@ -974,40 +1028,46 @@ class Brain:
                 )
         return result
 
-    # ---- the Library: documents kept whole, by what they are for
+    # ---- the Library: every item kept whole, by what it is for
 
     def library(self, who: Principal) -> list[dict[str, Any]]:
-        """Every document kept whole that this person may see, as Library items: its kind
-        (guide, reference or influence; a document filed before the Library is a reference),
-        where it came from and how often it is fetched again, and the skills that load it."""
+        """Every item kept whole that this person may see, as Library items: documents (a
+        guide, a reference or an influence; one filed before the Library is a reference) and
+        assets (images, fonts, sheets, kept byte for byte), each with where it came from, how
+        often it is fetched again, its scope and the skills that load it. Brain > Files shows
+        the same items grouped by where they came from."""
         who.require("brain.read")
         files = self.rt.brain.files()
-        items = []
-        for ref in files.references:
-            items.append(
-                {
-                    "path": ref.path,
-                    "title": ref.title,
-                    "kind": ref.library or "reference",
-                    "summary": ref.description,
-                    "entry_id": ref.entry_id,
-                    "source_url": ref.source_url,
-                    "source_repo": ref.source_repo,
-                    "source_paths": list(ref.source_paths),
-                    "fetched_at": ref.fetched_at,
-                    "refresh": ref.refresh or "never",
-                    "updated": ref.updated,
-                    "dated": ref.dated,
-                    "version": ref.version,
-                    "size": ref.size,
-                    "original": ref.original,
-                    "project": ref.project,
-                    "project_title": ref.project_title,
-                    "used_by": {
-                        "skills": [s.name for s in files.skills if ref.path in s.loads],
-                    },
-                }
-            )
+        items = [
+            {
+                "path": item.path,
+                "title": item.title,
+                "kind": item.library or ("asset" if item.kind == "asset" else "reference"),
+                "file_kind": item.kind,
+                "mime": item.mime,
+                "summary": item.description,
+                "entry_id": item.entry_id,
+                "source_url": item.source_url,
+                "source_repo": item.source_repo,
+                "source_paths": list(item.source_paths),
+                "fetched_at": item.fetched_at,
+                "refresh": item.refresh or "never",
+                "updated": item.updated,
+                "dated": item.dated,
+                "version": item.version,
+                "size": item.size,
+                "original": item.original,
+                "project": item.project,
+                "project_title": item.project_title,
+                "origin": item.origin,
+                "origin_inferred": item.origin_inferred,
+                "scope": item.scope,
+                "used_by": {
+                    "skills": [s.name for s in files.skills if item.path in s.loads],
+                },
+            }
+            for item in [*files.references, *files.assets]
+        ]
         items.sort(key=lambda i: (str(i["updated"] or ""), i["title"]), reverse=True)
         return items
 
@@ -1015,14 +1075,20 @@ class Brain:
         """One Library item, as the list gives it."""
         found = next((i for i in self.library(who) if i["path"] == path), None)
         if found is None:
-            raise NotFound(f"No document {path!r} in the Library.")
+            raise NotFound(f"Nothing at {path!r} in the Library.")
         return found
 
     def library_update(
-        self, who: Principal, path: str, *, kind: str | None = None, refresh: str | None = None
+        self,
+        who: Principal,
+        path: str,
+        *,
+        kind: str | None = None,
+        refresh: str | None = None,
+        origin: str | None = None,
     ) -> dict[str, Any]:
-        """Say what kind of item a document is, or how often it is fetched again: a change to
-        its card, as one undo point."""
+        """Say what kind of item it is, how often it is fetched again, or where it came from
+        (for an item filed before origins were kept): a change to its card, one undo point."""
         fields: dict[str, Any] = {}
         if kind is not None:
             if kind not in LIBRARY_KINDS:
@@ -1036,8 +1102,10 @@ class Brain:
                     f"Refresh is one of {', '.join(LIBRARY_REFRESH)}.", field="refresh"
                 )
             fields["refresh"] = refresh
+        if origin is not None:
+            fields["origin"] = " ".join(str(origin).split())[:160]
         if not fields:
-            raise ValidationFailed("Say what to change: its kind or its refresh.")
+            raise ValidationFailed("Say what to change: its kind, its refresh or its origin.")
         item = self.library_item(who, path)
         if not item["entry_id"]:
             raise Conflict(

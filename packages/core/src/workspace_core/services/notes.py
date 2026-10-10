@@ -490,6 +490,11 @@ class Notes:
             project=str(project or "").strip() or None,
             status=copy,
             origin="app",
+            # What came in through Capture says how (capture:recording, capture:transcript,
+            # capture:document, capture:talk); a doc written here is the person's own upload.
+            came_from=f"capture:{note.capture}"
+            if note.capture and note.capture != "note"
+            else "upload",
         )
         if filed.status == "refused":
             raise ValidationFailed(filed.message)

@@ -171,6 +171,34 @@ def test_one_answer_is_asked_for_with_no_tools_and_says_so(client, runtime):
     assert not os.path.exists(seen["cwd"])  # its empty folder is gone
 
 
+def test_what_claude_code_used_is_counted_in_the_cost_report(owner, model, ready_task, runtime):
+    runtime.runners.ask(runtime.ws.owner(), "Is this note still true?", job="check")
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    finish(owner, run["id"])
+    found = owner.ok(owner.get("/api/brain/report?days=1&quality=false"))
+    today = found["spend"]["days"][-1]
+    jobs = {j["job"]: j for j in today["jobs"]}
+    assert jobs["check"]["calls"] == 1 and jobs["run"]["calls"] == 1
+    assert jobs["run"]["model"] == "claude-opus-5-5"
+    # Claude Code's own cost is kept as it reported it.
+    assert abs(today["lines"]["jobs"]["usd"] - 2 * 0.0123) < 1e-6
+    assert "jobs" in found["text"]
+
+
+def test_calibration_measures_the_brain_text_with_claudes_counts(owner, runtime, capsys):
+    from workspace_server import cli
+
+    owner.ok(owner.get("/api/brain/status"))
+    runtime.ws.rt.brain.brain.context("What is the studio's voice?")
+    assert cli._tokens(runtime, "calibrate") == 0
+    out = capsys.readouterr().out
+    assert "kernel: estimated" in out and "Claude tokens" in out
+    factor = owner.ok(owner.get("/api/brain/report?days=1&quality=false"))["spend"]["factor"]
+    # The fake CLI counts a character as a quarter token, as the estimate does.
+    assert factor["measured"] and 0.9 <= factor["factor"] <= 1.1
+    assert factor["method"] == "claude code"
+
+
 def test_any_shape_of_output_is_read_without_error():
     """Claude Code says some things as plain text, and a tool's result can hold an image it
     looked at (a preview it rendered): each reads, nothing raises."""

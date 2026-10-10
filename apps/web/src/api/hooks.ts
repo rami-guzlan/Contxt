@@ -23,6 +23,8 @@ import type {
   AiApp,
   AiRequestFull,
   AiRequests,
+  EvalCase,
+  ReportCard,
   BuiltinSkills,
   CatchUpPlan,
   Comparison,
@@ -859,6 +861,26 @@ export const useAiRequest = (id: string, enabled = true) =>
 export const useWeekly = (weeks = 8) =>
   useQuery({ queryKey: [...keys.brain, "weekly", weeks], queryFn: () => get<WeekOfUse[]>(`/api/brain/weekly${query({ weeks })}`) });
 
+/** The report card: cost by day and line, brief sizes and eval results. Reading Claude Code's
+ * transcripts (token counts only) is the person's choice each time. */
+export const useReport = (days: number, claudeCode: boolean, enabled = true) =>
+  useQuery({
+    queryKey: [...keys.brain, "report", days, claudeCode],
+    queryFn: () => get<ReportCard>(`/api/brain/report${query({ days, claude_code: claudeCode ? "true" : undefined })}`),
+    enabled,
+    staleTime: 60_000,
+  });
+
+/** Label a logged request for your private eval set. */
+export function useLabelRequest(id: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { needed: string[]; useful: string[]; noise: string[]; missing: string[] }) =>
+      put<EvalCase>(`/api/brain/requests/${encodeURIComponent(id)}/labels`, body),
+    onSettled: () => invalidate([...keys.brain, "request", id], [...keys.brain, "report"]),
+  });
+}
+
 /** The AI apps on this computer: found, connected, and their last request. */
 export const useAiApps = (watch = false) =>
   useQuery({
@@ -1126,9 +1148,9 @@ export const useLinkRepo = () =>
     post<LibraryFiled>("/api/library/repo", input),
   );
 
-/** Change an item's kind or how often it is fetched again. */
+/** Change an item's kind, how often it is fetched again, or where it came from. */
 export const useUpdateLibraryItem = () =>
-  useLibraryMutation((input: { path: string; kind?: LibraryKind; refresh?: LibraryRefresh }) =>
+  useLibraryMutation((input: { path: string; kind?: LibraryKind; refresh?: LibraryRefresh; origin?: string }) =>
     put<LibraryItem>("/api/library/item", input),
   );
 

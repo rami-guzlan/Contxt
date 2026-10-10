@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from . import config as config_mod
 from . import kernel as kernel_mod
 from . import packets as packets_mod
+from . import request_type as request_type_mod
 from . import runtime as runtime_mod
 from . import systemdocs, util
 from .index import Embedder, Index, Reranker, configured_model
@@ -334,7 +335,8 @@ class Brain:
                 f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n")
         data = dict(packet.data)
         data.update({"kernel_fingerprint": kernel_fp, "kernel_included": not kernel_held,
-                     "session_status": status, "vault_fingerprint": st.fingerprint[:12]})
+                     "session_status": status, "vault_fingerprint": st.fingerprint[:12],
+                     "request_type": request_type_mod.classify(route)})
         if record and tools:
             items = list(packet.items)
             if ("kernel", kernel_fp) not in delivered:

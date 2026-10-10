@@ -30,6 +30,7 @@ import { CopyBlock, Empty, ErrorNote, Field, Loading, Section, Tabs } from "../.
 import { PickMany } from "../../components/work/PickMany";
 import { plural, when } from "../../lib/format";
 import { SKILLS } from "../../lib/links";
+import { ScopeChip } from "../../components/work/Scope";
 
 const SETTLE_MS = 500; // a pause this long in typing or picking refreshes the whole prompt
 const NONE: ComposePicks = { skills: [], agent: null, docs: [], library: [], project: null };
@@ -426,6 +427,7 @@ function SavedPrompts({ onLoad }: { onLoad: (saved: SavedPrompt) => void }) {
                 <button type="button" className="link workspace-row-title" onClick={() => onLoad(saved)}>
                   {saved.title}
                 </button>
+                <ScopeChip />
                 <p className="muted small">{saved.body.length > 160 ? `${saved.body.slice(0, 159)}…` : saved.body}</p>
                 <p className="muted small">
                   {saved.uses ? `Ran ${plural(saved.uses, "time")}, last ${when(saved.last_used)}` : `Saved ${when(saved.updated_at)}`}

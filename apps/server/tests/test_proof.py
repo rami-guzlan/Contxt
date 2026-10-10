@@ -25,7 +25,7 @@ def wait_for(owner, path, done=("done", "failed"), seconds=10.0):
 def test_a_comparison_answers_twice_and_names_what_changed(owner, model, runtime, monkeypatch):
     asked = []
 
-    def ask(who, prompt, timeout=180.0):
+    def ask(who, prompt, timeout=180.0, job="ask"):
         asked.append(prompt)
         if len(asked) == 1:
             return "Exciting news! Join our webinar!"
@@ -67,7 +67,7 @@ def test_the_answer_with_the_brain_gets_the_procedure_and_no_tool_to_call(
     # to comes in full instead.
     asked = []
 
-    def ask(who, prompt, timeout=180.0):
+    def ask(who, prompt, timeout=180.0, job="ask"):
         asked.append(prompt)
         return '{"differences": []}' if len(asked) == 3 else "A draft."
 
@@ -98,7 +98,7 @@ def test_the_answer_with_the_brain_gets_the_procedure_and_no_tool_to_call(
 
 
 def test_a_comparison_that_cannot_run_says_why(owner, runtime, monkeypatch):
-    def ask(who, prompt, timeout=180.0):
+    def ask(who, prompt, timeout=180.0, job="ask"):
         raise Conflict("Claude Code is not installed on this computer: npm install")
 
     monkeypatch.setattr(runtime.runners, "ask", ask)
@@ -128,7 +128,9 @@ def test_a_demo_keeps_its_examples_beside_its_vault(owner, runtime):
 
 def test_a_follow_up_question_only_when_an_answer_is_vague(owner, runtime, monkeypatch):
     replies = iter(["Where do follow-ups usually start: meetings, email or calls?", "NONE"])
-    monkeypatch.setattr(runtime.runners, "ask", lambda who, prompt, timeout=90: next(replies))
+    monkeypatch.setattr(
+        runtime.runners, "ask", lambda who, prompt, timeout=90, job="ask": next(replies)
+    )
     body = {"question": "Where do things slip today?", "answer": "Follow-ups."}
     first = owner.ok(owner.post("/api/brain/goals/followup", json=body))
     assert first["followup"].startswith("Where do follow-ups")
@@ -230,6 +232,36 @@ def test_what_each_ai_asked_over_rest(owner, runtime):
     assert full["id"] == request["id"] and full["text"]
     assert full["startup"]["text"].startswith("# Startup context")
     assert owner.get("/api/brain/requests/pkt-none").status_code == 404
+    assert full["eval"] is None  # not labeled yet
+
+
+def test_a_request_is_labeled_for_the_private_eval_set_and_replayed(owner, runtime):
+    engine = runtime.ws.rt.brain.brain
+    engine.context("How long do web projects take?")
+    (request,) = owner.ok(owner.get("/api/brain/requests"))["requests"]
+    got = [p["id"] for p in request["got"] if p["kind"] == "note"]
+    assert got, request
+    labeled = owner.ok(
+        owner.put(f"/api/brain/requests/{request['id']}/labels", json={"needed": got[:1]})
+    )
+    assert labeled["labeled"] is True and labeled["must"] == [got[:1]]
+    full = owner.ok(owner.get(f"/api/brain/requests/{request['id']}"))
+    assert full["eval"]["labeled"] is True
+    assert owner.ok(owner.get("/api/brain/eval"))["labeled"] == 1
+    empty = owner.put(f"/api/brain/requests/{request['id']}/labels", json={})
+    assert empty.status_code == 422
+    unknown = owner.put(
+        f"/api/brain/requests/{request['id']}/labels", json={"needed": ["no-such-note"]}
+    )
+    assert unknown.status_code == 422 and "No such note" in unknown.text
+    # The same request rebuilt against the Brain as it is: nothing changed, nothing recorded.
+    replayed = owner.ok(owner.post("/api/brain/replay", json={"packets": [request["id"]]}))
+    assert (replayed["replayed"], replayed["changed"]) == (1, 0)
+    assert len(owner.ok(owner.get("/api/brain/requests"))["requests"]) == 1
+    # The report card scores the labeled request without touching the app's ledger.
+    card = owner.ok(owner.get("/api/brain/report?days=1"))
+    assert card["private_eval"]["all"]["cases"] == 1
+    assert card["spend"]["days"][-1]["packets"] == 1
 
 
 def test_serve_and_demo_both_take_the_browser_flags():

@@ -68,11 +68,11 @@ export const STEPS: TourStep[] = [
     chapter: "basics",
     route: "/work",
     target: "work-tabs",
-    title: "Work: putting your Brain to use",
+    title: "Knowledge Work: shaping what your Brain knows",
     body: (
       <p>
-        Ask with your skills and references at hand, write and plan by project, and hand work to agents and workflows. Skills, the procedures
-        your AI follows to make things, live here too.
+        What changed, what waits for you and how healthy your context is; your docs, the Library, your prompts, the skills the Brain hands
+        to your AIs, agents, and the workflows that keep it all current.
       </p>
     ),
   },

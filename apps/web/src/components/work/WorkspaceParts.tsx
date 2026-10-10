@@ -13,6 +13,7 @@ import { when } from "../../lib/format";
 import { agentUrl, docUrl, workspaceFor } from "../../lib/links";
 import { CAPTURE_NAMES } from "../CaptureParts";
 import { ErrorNote, Field, Loading } from "../ui";
+import { ScopeChip } from "./Scope";
 
 export const TEMPLATES: { id: DocTemplate; label: string; hint: string }[] = [
   { id: "blank", label: "Blank", hint: "A page" },
@@ -48,6 +49,7 @@ export function WorkspaceRow({ item, compact = false }: { item: WorkspaceItem; c
             {item.title}
           </Link>
         )}
+        <ScopeChip />
         {!compact && item.excerpt ? <p className="muted small">{item.excerpt}</p> : null}
         <p className="muted small">
           {when(item.updated_at)}

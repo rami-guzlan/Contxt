@@ -444,6 +444,12 @@ class Index:
         # own (sections.py). A file whose card was archived is out of the Brain: its sections
         # are not offered.
         self.cards = file_cards(self.notes, self.references)
+        # An asset's card names it in `file` too: its kind, where it came from, its project.
+        self.asset_cards = {}
+        for note in sorted(self.notes.values(), key=lambda n: n.id):
+            path = str(note.meta.get("file") or "").strip()
+            if path.startswith("assets/"):
+                self.asset_cards.setdefault(path, note)
         retired = set(file_cards(self.archived, self.references)) - set(self.cards)
         self.sections = {}
         for path, ref in sorted(self.references.items()):

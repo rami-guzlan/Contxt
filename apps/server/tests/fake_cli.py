@@ -26,9 +26,28 @@ mode = os.environ.get("FAKE_CLI_MODE", "ok")
 prompt = sys.stdin.read()
 with open(args[args.index("--mcp-config") + 1], encoding="utf-8") as handle:
     config = json.load(handle)
+# What Claude Code reports a call used: a fixed system prompt plus the prompt, about four
+# characters a token, so a longer prompt reads as more input.
+USAGE = {
+    "input_tokens": 5,
+    "cache_read_input_tokens": 1000,
+    "cache_creation_input_tokens": len(prompt) // 4,
+    "output_tokens": 7,
+}
+SPENT = {"total_cost_usd": 0.0123, "modelUsage": {"claude-opus-5-5": {"costUSD": 0.0123}}}
 if args[args.index("--output-format") + 1] == "json":
     started = {"argv": args, "cwd": os.getcwd(), "prompt": prompt, "config": config}
-    print(json.dumps({"type": "result", "is_error": False, "result": json.dumps(started)}))
+    print(
+        json.dumps(
+            {
+                "type": "result",
+                "is_error": False,
+                "result": json.dumps(started),
+                "usage": USAGE,
+                **SPENT,
+            }
+        )
+    )
     sys.exit(0)
 
 
@@ -145,5 +164,7 @@ emit(
         "is_error": False,
         "result": "Done: two proposals.",
         "num_turns": 3,
+        "usage": USAGE,
+        **SPENT,
     }
 )
