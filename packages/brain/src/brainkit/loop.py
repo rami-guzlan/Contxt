@@ -181,6 +181,8 @@ def independent(brain, paths: list[str]) -> dict:
 
 
 # ---------------------------------------------------------------------- quarterly review
-def review_due(last_run: str, *, today: dt.date | None = None) -> bool:
-    found = util.parse_date(str(last_run or "")[:10])
-    return found is None or ((today or util.today_date()) - found).days >= REVIEW_DAYS
+def review_due(last_run: str, *, since: str = "", today: dt.date | None = None) -> bool:
+    """A quarter since the last alignment review; never reviewed, a quarter since `since`
+    (the Brain's first decision), so a new Brain is not asked on its first day."""
+    found = util.parse_date(str(last_run or since or "")[:10])
+    return found is not None and ((today or util.today_date()) - found).days >= REVIEW_DAYS

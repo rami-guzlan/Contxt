@@ -40,6 +40,7 @@ from .routes import (
     legacy,
     library,
     live,
+    loop,
     mcp,
     notes,
     outputs,
@@ -202,6 +203,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         work,
         goals,
         live,
+        loop,
         mcp,
     )
     for module in routers:

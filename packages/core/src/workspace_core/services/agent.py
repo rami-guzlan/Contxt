@@ -591,14 +591,16 @@ class KnowledgeAgent:
                     source=sources[0],
                 )
                 return {"proposal_id": made.proposal_id} if made.proposal_id else None
+            ask = _text(finding.get("text"), 300) or "Is this still true?"
             return {
                 "action": action,
                 "verdict": verdict,
                 "why": f"{why} {cited}".strip(),
                 "text": _text(finding.get("text"), 1000),
-                "ask": _text(finding.get("text"), 300) or "Is this still true?",
+                "ask": ask,
                 "sources": sources,
                 "target": {"type": "note", "id": target, "title": candidate["title"]},
+                "key": _key(action, verdict, "note", target, ask[:60]),
             }
         if verdict == "merge":
             keep = self._which(candidate, finding, "keep")

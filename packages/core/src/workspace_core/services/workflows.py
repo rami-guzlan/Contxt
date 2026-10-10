@@ -92,7 +92,13 @@ STEP_TYPES: dict[str, dict[str, Any]] = {
         "takes": ["text", "document"],
         "gives": ["suggestions"],
     },
-    "state": {"group": "State", "label": "Update a sheet", "takes": ["text"], "gives": ["state"]},
+    # It passes on the value it wrote, so a later step can read it.
+    "state": {
+        "group": "State",
+        "label": "Update a sheet",
+        "takes": ["text"],
+        "gives": ["state", "text"],
+    },
     "task": {
         "group": "Tasks",
         "label": "Open a task",
@@ -264,7 +270,8 @@ def fit_problems(steps: list[dict[str, Any]]) -> list[str]:
     for index, step in enumerate(steps):
         kind = STEP_TYPES.get(step["kind"]) or {}
         takes = kind.get("takes") or ["any"]
-        if "any" not in takes and not set(takes) & set(gives):
+        # A step that takes nothing reads nothing before it, so it follows anything.
+        if not {"any", "none"} & set(takes) and not set(takes) & set(gives):
             problems.append(
                 f"Step {index + 1} ({kind.get('label', step['kind'])}) needs "
                 f"{' or '.join(takes)}; the step before gives {' and '.join(gives)}."
@@ -1184,7 +1191,7 @@ class Workflows:
                 ],
                 evidence=f"the workflow run {run.id}",
             )
-            return {"text": str(done.get("text") or "Written.")}
+            return {"text": said[:500], "note": str(done.get("text") or "Written.")}
         if spec["kind"] == "task":
             fields: dict[str, Any] = {
                 "new_task": {

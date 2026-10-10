@@ -6,8 +6,9 @@
   beside the purpose: a goal steers what is kept and what agents do, never what a request
   receives. Their fields: `level` (yours, agent), `kept_by` (the agent keeping an agent goal),
   `serves` (goal ids, or the purpose), `measure` (measures.py, as JSON), `due`, `cadence`,
-  `goal_status` (active, paused, met, missed, dropped, retired), `why` (the owner's words) and
-  `started`.
+  `goal_status` (active, paused, met, missed, dropped, retired), `why` (the owner's words),
+  `started`, and `owners` (teammates who keep a shared goal with you: the team edition's
+  scaffold, refused in a solo Brain, which names no teammates).
 - Each goal has an append-only journal (`journal/goals/<id>.jsonl`): your check-ins, agents'
   progress notes and the decisions recorded on it. A journal line never changes a computed
   status or the goal itself, and is never evidence for a note.
@@ -200,6 +201,8 @@ def view(brain, note, *, st=None, full: bool = False, today: dt.date | None = No
     out = {
         "id": note.id, "title": note.title, "level": level,
         "kept_by": str(note.meta.get("kept_by") or "") or None,
+        "owners": fm.as_list(note.meta.get("owners")),
+        "admins": sorted(governance.admins_of(st, note.area)),
         "why": str(note.meta.get("why") or ""), "serves": list(serves),
         "measure": measure or None, "measure_words": describe_measure(measure),
         "due": str(note.meta.get("due") or "") or None,
@@ -287,8 +290,24 @@ def _body(title: str, why: str) -> str:
     return f"{title.rstrip('.')}.\n\nWhy: {why}" if why else f"{title.rstrip('.')}."
 
 
-def _problems(st, *, title, why, level, kept_by, measure, due, cadence, serves) -> list[str]:
+def teammates(st) -> set[str]:
+    """Who can share a goal (G3's scaffold): brain.json's `people` and the admins it names.
+    A solo Brain names none, so its goals stay the owner's."""
+    named = {str(p) for p in st.config.data.get("people") or []}
+    for people in (st.config.data.get("admins") or {}).values():
+        named.update(str(p) for p in people or [])
+    return named
+
+
+def _problems(st, *, title, why, level, kept_by, measure, due, cadence, serves,
+              owners=()) -> list[str]:
     problems = []
+    if owners:
+        known = teammates(st)
+        if not known:
+            problems.append("teammates share goals in the team edition")
+        elif set(owners) - known:
+            problems.append(f"{', '.join(sorted(set(owners) - known))} is not a teammate")
     if not title:
         problems.append("say the goal in a sentence")
     if level not in ("yours", "agent"):
@@ -310,7 +329,7 @@ def _problems(st, *, title, why, level, kept_by, measure, due, cadence, serves) 
 
 
 def set_goal(brain, *, title, why="", level="yours", kept_by="", measure=None, due="",
-             cadence="weekly", serves=(), goal_id=None, actor=None, apply=True):
+             cadence="weekly", serves=(), goal_id=None, actor=None, apply=True, owners=()):
     """Set a goal. The owner's own act applies as one undo point; with `apply` false (an AI
     proposing it from a chat) it waits for the owner."""
     from . import checkpoints
@@ -322,9 +341,10 @@ def set_goal(brain, *, title, why="", level="yours", kept_by="", measure=None, d
     title, why = _clean(title, MAX_TITLE), _clean(why, MAX_WHY)
     measure = measures.parse(measure) if measure else {}
     serves = [str(s).strip() for s in (serves or []) if str(s).strip()]
+    owners = [str(o).strip() for o in (owners or []) if str(o).strip()]
     problems = _problems(st, title=title, why=why, level=level, kept_by=kept_by,
                          measure=measure, due=str(due or "").strip(), cadence=cadence,
-                         serves=serves)
+                         serves=serves, owners=owners)
     if problems:
         return _result("Not set: " + "; ".join(problems) + ".",
                        {"status": "invalid", "problems": problems}, True)
@@ -344,6 +364,8 @@ def set_goal(brain, *, title, why="", level="yours", kept_by="", measure=None, d
         extra["due"] = util.parse_date(due).isoformat()
     if serves:
         extra["serves"] = serves
+    if owners:
+        extra["owners"] = owners
     made_by = "set by the owner" if apply else "proposed in a conversation"
     with checkpoints.batch(brain, actor=who, label=f"Goal: {title}") as batch:
         made = governance.propose_note(

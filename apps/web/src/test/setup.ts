@@ -10,3 +10,13 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+
+// React Flow (the workflow canvas) measures its nodes; jsdom has no ResizeObserver.
+if (!("ResizeObserver" in globalThis)) {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+}

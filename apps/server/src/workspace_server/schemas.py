@@ -723,6 +723,24 @@ class LiveActIn(Body):
     fields: dict[str, Any] = Field(default_factory=dict)
 
 
+class CorrectionIn(Body):
+    text: str = Field(min_length=1, max_length=1000)
+    session_id: str | None = Field(default=None, max_length=80)
+    packet_id: str | None = Field(default=None, max_length=80)
+
+
+class CorrectionAnswerIn(Body):
+    status: Literal["still_true", "fixed", "dismissed"]
+
+
+class LessonIn(Body):
+    key: str = Field(min_length=1, max_length=300)
+
+
+class CheckOutputIn(Body):
+    text: str = Field(min_length=1, max_length=200_000)
+
+
 class HandOffIn(Body):
     task: str | None = Field(default=None, max_length=20)
     new_task: dict[str, Any] | None = None

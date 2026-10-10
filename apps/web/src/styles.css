@@ -6238,3 +6238,76 @@ dl.differ dd {
 .project-tasks p {
   margin: 0.2rem 0;
 }
+
+/* The workflow canvas (UX 4.7): the node library beside React Flow, boxes in a line. */
+.workflow-canvas-wrap {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.workflow-canvas-wrap > ul.warning {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.workflow-canvas {
+  height: 260px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.workflow-canvas .react-flow__edge.misfit path {
+  stroke: var(--danger);
+}
+.workflow-canvas .react-flow__controls button {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+.node-library {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.node-library section {
+  display: grid;
+  gap: 4px;
+}
+.node-library .small-head {
+  margin: 0;
+}
+.node-library-item {
+  text-align: left;
+  font-size: 0.85rem;
+  padding: 4px 8px;
+}
+.flow-box {
+  display: grid;
+  gap: 2px;
+  width: 190px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.flow-box.picked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.flow-box.misfit {
+  border-color: var(--danger);
+}
+.flow-box-name {
+  font-size: 0.9rem;
+}
+@media (max-width: 720px) {
+  .workflow-canvas-wrap {
+    grid-template-columns: 1fr;
+  }
+  .node-library {
+    max-height: none;
+  }
+}

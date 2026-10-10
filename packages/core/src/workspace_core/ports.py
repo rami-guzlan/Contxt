@@ -753,8 +753,13 @@ class BrainPort(Protocol):
 
     def close_correction(self, correction_id: int, status: str) -> None: ...
 
-    def check_output(self, text: str) -> list[dict[str, Any]]:
-        """The must-hold violations in an output's text."""
+    def check_output(self, text: str, *, sent_back: str = "") -> list[dict[str, Any]]:
+        """The must-hold violations in an output's text; `sent_back` names a draft sent
+        back for them, so the measure counts it."""
+        ...
+
+    def agent_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        """The knowledge agent's runs, newest first, each with its steps."""
         ...
 
     def blast_radius(self, proposal_id: str) -> dict[str, Any]:
@@ -1182,6 +1187,7 @@ class NoBrain:
             "single_source": [],
             "review_due": False,
             "lessons": [],
+            "hand_ups": [],
         }
 
     def correction(self, text: str, *, session_id: str = "", packet_id: str = "") -> dict[str, Any]:
@@ -1190,7 +1196,10 @@ class NoBrain:
     def close_correction(self, correction_id: int, status: str) -> None:
         return None
 
-    def check_output(self, text: str) -> list[dict[str, Any]]:
+    def check_output(self, text: str, *, sent_back: str = "") -> list[dict[str, Any]]:
+        return []
+
+    def agent_runs(self, limit: int = 20) -> list[dict[str, Any]]:
         return []
 
     def blast_radius(self, proposal_id: str) -> dict[str, Any]:

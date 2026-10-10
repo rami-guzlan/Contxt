@@ -6,8 +6,8 @@
 import { Bot } from "lucide-react";
 import { Link } from "react-router";
 
-import { useAgent, useAgentMap, useAgentSettings, useAgentSkills, useAgentSuggestions, useRunAgentAction } from "../../api/hooks";
-import type { AgentAction, AgentModel, AgentOverview, AgentRun } from "../../api/types";
+import { useAgent, useAgentMap, useAgentSettings, useAgentSkills, useAgentSuggestions, useLoopRuns, useRunAgentAction } from "../../api/hooks";
+import type { AgentAction, AgentModel, AgentOverview, AgentRun, LoopRun } from "../../api/types";
 import { useAgentPanel } from "../../components/agent/AgentContext";
 import { ActionTurn } from "../../components/agent/AgentPanel";
 import { AgentQuestions } from "../../components/agent/AgentQuestions";
@@ -50,6 +50,7 @@ export function AgentPage() {
       <Suggestions />
       <Section title="What it did">
         <Runs runs={agent.runs} />
+        <RunSteps />
       </Section>
       <Section title="How it works">
         <MapView />
@@ -207,6 +208,43 @@ function Runs({ runs }: { runs: AgentRun[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** How each run went, step by step (BL 17.8): the tool it called, what came back, what code
+ * refused, and how it ended. */
+function RunSteps() {
+  const { data: runs } = useLoopRuns();
+  if (!runs?.length) return null;
+  return (
+    <details className="sent-text">
+      <summary>How each run went, step by step</summary>
+      <ol className="agent-runs">
+        {runs.map((run: LoopRun) => (
+          <li key={run.id}>
+            <span className="small">
+              <strong>{run.action}</strong> · {when(run.at)} · {run.ending === "hand-up" ? `handed up: ${run.record.why ?? ""}` : "findings"}
+              {run.record.model ? <span className="muted"> · {run.record.model}</span> : null}
+            </span>
+            <ol className="small">
+              {(run.record.steps ?? []).map((step, index) => (
+                <li key={index}>
+                  {step.tool ? (
+                    <>
+                      Looked with <code>{step.tool}</code>
+                      {step.result ? <span className="muted">: {step.result.slice(0, 160)}</span> : null}
+                    </>
+                  ) : (
+                    <>Answered</>
+                  )}
+                  {step.problems.length ? <span className="warning"> Refused: {step.problems.join("; ")}</span> : null}
+                </li>
+              ))}
+            </ol>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 

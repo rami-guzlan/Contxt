@@ -49,6 +49,7 @@ from workspace_core.errors import ValidationFailed
 
 from .brain import Brain, display_name
 from .legacy import Legacy
+from .loop import cards as loop_cards
 from .onboarding import GOALS_ID
 from .runtime import Runtime
 
@@ -399,8 +400,12 @@ class CatchUp:
             for w in port.state_act("waiting").get("waiting") or []
             if f"state:{w['event']}" not in hidden
         ]
+        # The updating loop's asks (BL 9): "Still true?", bent rules, approval health,
+        # corroboration, the quarterly review, lessons and the agent's hand-ups.
+        looped = loop_cards(port, iso(now), hidden)
         seconds = (
-            SECONDS["goal"] * len(slipped)
+            SECONDS["quick"] * len(looped)
+            + SECONDS["goal"] * len(slipped)
             + SECONDS["judgment"] * len(handed)
             + SECONDS["quick"] * (len(unclaimed) + len(state_waiting))
             + SECONDS["quick"] * len(steps)
@@ -430,6 +435,7 @@ class CatchUp:
                 or handed
                 or unclaimed
                 or state_waiting
+                or looped
             ),
             "counts": {
                 "judgment": len(judgment),
@@ -446,7 +452,9 @@ class CatchUp:
                 "handed": len(handed),
                 "unclaimed": len(unclaimed),
                 "state_waiting": len(state_waiting),
+                "loop": len(looped),
             },
+            "loop": looped,
             "handed": handed,
             "unclaimed": unclaimed,
             "state_waiting": state_waiting,

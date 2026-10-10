@@ -1828,8 +1828,12 @@ class BrainKitAdapter:
         if result.is_error:
             raise ValidationFailed(result.text, field="status")
 
-    def check_output(self, text: str) -> list[dict[str, Any]]:
-        return list(self.brain.check_output(text).data.get("violations") or [])
+    def check_output(self, text: str, *, sent_back: str = "") -> list[dict[str, Any]]:
+        found = self.brain.check_output(text, sent_back=sent_back)
+        return list(found.data.get("violations") or [])
+
+    def agent_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        return list(self.brain.agent_runs(limit=limit).data.get("runs") or [])
 
     def blast_radius(self, proposal_id: str) -> dict[str, Any]:
         result = self.brain.blast_radius(proposal_id)

@@ -9,7 +9,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { useAiRequest, useAiRequests, useBrainCatalog, useLabelRequest, useProposeEntry, useReport, useWeekly } from "../api/hooks";
+import { useAiRequest, useAiRequests, useBrainCatalog, useCorrect, useLabelRequest, useProposeEntry, useReport, useWeekly } from "../api/hooks";
 import type { AiRequest, CostLineName, EvalCase, ReportCard, RequestPiece, RequestWhy, WhyRow } from "../api/types";
 import { Markdown } from "../components/Markdown";
 import { TasksTab } from "../components/tasks/Tasks";
@@ -303,6 +303,7 @@ export function RequestRow({ request, brainTokens }: { request: AiRequest; brain
   const [open, setOpen] = useState(false);
   const [teaching, setTeaching] = useState(false);
   const [labeling, setLabeling] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
   const got = request.got.filter((p) => p.kind !== "focus" || !request.project);
   const share = request.share ?? (brainTokens ? request.tokens / brainTokens : 0);
   return (
@@ -350,10 +351,15 @@ export function RequestRow({ request, brainTokens }: { request: AiRequest; brain
           ) : null}
           {teaching ? (
             <Teach request={request} onClose={() => setTeaching(false)} />
+          ) : correcting ? (
+            <Wrong request={request} onClose={() => setCorrecting(false)} />
           ) : labeling ? (
             <Label request={request} onClose={() => setLabeling(false)} />
           ) : (
             <div className="row">
+              <button type="button" className="link small" onClick={() => setCorrecting(true)}>
+                That's wrong
+              </button>
               <button type="button" className="link small" onClick={() => setTeaching(true)}>
                 Something was missing? Teach it
               </button>
@@ -646,6 +652,52 @@ function Label({ request, onClose }: { request: AiRequest; onClose: () => void }
 }
 
 /** What it should have known, in the person's words: a suggestion that waits in Catch up. */
+/** "That's wrong": what the AI made from this request was wrong. The notes it was handed become
+ * suspects, and the likeliest gets a "Still true?" card in Catch up; nothing changes on its own. */
+function Wrong({ request, onClose }: { request: AiRequest; onClose: () => void }) {
+  const correct = useCorrect();
+  const [text, setText] = useState("");
+  if (correct.isSuccess) {
+    const card = correct.data.card;
+    return (
+      <p className="small" role="status">
+        {card ? (
+          <>
+            Most likely behind it: <Link to={entryUrl(card.id)}>{card.title}</Link>. It asks "Still true?" in{" "}
+            <Link to="/catch-up">Catch up</Link>.
+          </>
+        ) : (
+          <>Kept. No note it was handed looks behind it: teach it what it should have known instead.</>
+        )}
+      </p>
+    );
+  }
+  return (
+    <form
+      className="stack-tight"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!text.trim()) return;
+        correct.mutate({ text: text.trim(), packet_id: request.id, session_id: request.session_id });
+      }}
+    >
+      <label className="field">
+        <span className="field-label">What was wrong?</span>
+        <textarea rows={2} value={text} onChange={(event) => setText(event.target.value)} />
+      </label>
+      <div className="row">
+        <button type="submit" className="primary" disabled={!text.trim() || correct.isPending}>
+          Find the note behind it
+        </button>
+        <button type="button" className="link" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+      <ErrorNote error={correct.error} />
+    </form>
+  );
+}
+
 function Teach({ request, onClose }: { request: AiRequest; onClose: () => void }) {
   const propose = useProposeEntry();
   const [text, setText] = useState("");

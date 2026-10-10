@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS episodes (
     ref TEXT);
 CREATE TABLE IF NOT EXISTS agent_runs (
     id TEXT PRIMARY KEY, at TEXT, action TEXT, ending TEXT, record TEXT);
+CREATE TABLE IF NOT EXISTS sent_back (at TEXT, ref TEXT, violations TEXT);
 CREATE TABLE IF NOT EXISTS model_daily (
     day TEXT NOT NULL, job TEXT NOT NULL, model TEXT NOT NULL,
     calls INTEGER NOT NULL DEFAULT 0, tokens_in INTEGER NOT NULL DEFAULT 0,
@@ -669,6 +670,22 @@ class Ledger:
             args.append(status)
         with self._connect() as conn:
             return [dict(r) for r in conn.execute(query + " ORDER BY at DESC", args)]
+
+    def add_sent_back(self, ref: str, violations: list[dict]) -> None:
+        """A draft sent back once because it broke a must-hold (BL 9's output check)."""
+        with self._connect() as conn:
+            conn.execute("INSERT INTO sent_back (at, ref, violations) VALUES (?, ?, ?)",
+                         (util.now_iso(), ref[:200], json.dumps(violations)))
+
+    def sent_back_count(self, since: str = "") -> int:
+        """Drafts sent back, and recorded outputs flagged, since then."""
+        with self._connect() as conn:
+            back = conn.execute("SELECT COUNT(*) FROM sent_back WHERE at >= ?",
+                                (since,)).fetchone()[0]
+            flagged = conn.execute(
+                "SELECT COUNT(*) FROM outputs WHERE at >= ? AND violations IS NOT NULL "
+                "AND violations NOT IN ('', '[]')", (since,)).fetchone()[0]
+        return int(back) + int(flagged)
 
     def close_correction(self, correction_id: int, status: str) -> None:
         with self._connect() as conn:

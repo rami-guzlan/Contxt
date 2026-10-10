@@ -258,15 +258,25 @@ def test_the_canvas_library_names_each_kind_with_what_it_takes_and_gives(owner):
     assert kinds["handoff"]["takes"] == ["task"] and kinds["task"]["gives"] == ["task"]
     assert any(a["id"] == "verify-sources" for a in found["actions"])
     assert any(t.get("later") for t in found["triggers"])
-    templates = {t["id"] for t in owner.ok(owner.get("/api/workflows/templates"))}
-    assert {"verify-monthly", "refresh-library", "accounts-from-meetings"} <= templates
+    templates = owner.ok(owner.get("/api/workflows/templates"))
+    assert {"verify-monthly", "refresh-library", "accounts-from-meetings"} <= {
+        t["id"] for t in templates
+    }
+    from workspace_core.services.workflows import fit_problems
+
+    # Every template's steps fit one another, as the canvas checks them.
+    assert {t["id"]: fit_problems(t["steps"]) for t in templates} == {
+        t["id"]: [] for t in templates
+    }
 
 
 def test_steps_that_do_not_fit_are_refused(owner):
     refused = owner.post(
         "/api/workflows",
-        json={"name": "Backwards", "steps": [{"kind": "handoff", "to": "Claude Code",
-                                               "done_when": "x", "next_step": "y"}]},
+        json={
+            "name": "Backwards",
+            "steps": [{"kind": "handoff", "to": "Claude Code", "done_when": "x", "next_step": "y"}],
+        },
     )
     assert refused.status_code == 422 and "needs task" in refused.text
 
@@ -279,8 +289,12 @@ def test_open_a_task_then_hand_it_off_runs_at_once(owner, runtime):
                 "name": "Open and pass",
                 "steps": [
                     {"kind": "task", "ask": "Refresh the pricing skill"},
-                    {"kind": "handoff", "to": "Claude Code", "done_when": "The skill is fixed",
-                     "next_step": "Update the figure"},
+                    {
+                        "kind": "handoff",
+                        "to": "Claude Code",
+                        "done_when": "The skill is fixed",
+                        "next_step": "Update the figure",
+                    },
                 ],
             },
         ),

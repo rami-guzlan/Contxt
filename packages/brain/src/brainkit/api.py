@@ -1215,13 +1215,16 @@ class Brain:
                                       project=project, for_row=for_row, maker=maker)
 
     # ------------------------------------------------------------------ the updating loop
-    def check_output(self, text, *, domains=None) -> Result:
+    def check_output(self, text, *, domains=None, sent_back="") -> Result:
         """An output's text against the must-holds in play (BL 9): every deterministic
-        violation, each with the rule and what was found."""
+        violation, each with the rule and what was found. `sent_back` names the draft when the
+        caller sends it back for them (counted by the `sent_back` measure)."""
         from . import outputcheck
         found = outputcheck.check(text, outputcheck.must_holds_for(self, text, domains=domains))
-        return Result(f"{len(found)} must-hold violation(s).",
-                      {"violations": [v.to_dict() for v in found]})
+        violations = [v.to_dict() for v in found]
+        if violations and sent_back:
+            self.ledger.add_sent_back(str(sent_back), violations)
+        return Result(f"{len(found)} must-hold violation(s).", {"violations": violations})
 
     def correction(self, text, *, session_id="", packet_id="", principal=None) -> Result:
         """The owner corrected an AI's output: the notes in the brief before it become
@@ -1246,14 +1249,25 @@ class Brain:
                 open_ones.append({"id": row["id"], "at": row["at"], "text": row["text"],
                                   "note": note.id, "title": note.title,
                                   "salience": note.kind == "rule" and not note.must_hold})
-        runs = [r for r in self.ledger.agent_runs(limit=200) if r["action"] ==
-                "check-alignment"]
+        all_runs = self.ledger.agent_runs(limit=200)
+        runs = [r for r in all_runs if r["action"] == "check-alignment"]
+        import datetime as dt
+        # The agent's hand-ups of the last two weeks, for Catch up.
+        since = (util.today_date() - dt.timedelta(days=14)).isoformat()
+        hand_ups = [{"id": r["id"], "action": r["action"], "at": r["at"],
+                     "why": str((r.get("record") or {}).get("why") or "")}
+                    for r in all_runs if r["ending"] == "hand-up" and r["at"] >= since][:5]
         return Result("The updating loop.", {
+            "hand_ups": hand_ups,
             "corrections": open_ones,
             "bent_rules": loop.bent_rules(self),
             "approval_health": loop.approval_health(self),
             "single_source": loop.single_source(self),
-            "review_due": loop.review_due(runs[0]["at"] if runs else ""),
+            "review_due": loop.review_due(
+                runs[0]["at"] if runs else "",
+                since=min((str(r.get("at") or "") for r in self.vault.decisions()
+                           if r.get("at")), default="")),
+            "last_review": runs[0]["at"] if runs else "",
             "lessons": agent_tools.lessons(self)})
 
     def close_correction(self, correction_id, status) -> Result:
@@ -1286,6 +1300,11 @@ class Brain:
         clean = _json.loads(mask(_json.dumps(record, default=str)))
         self.ledger.add_agent_run(str(run_id), str(action), str(ending), clean)
         return Result("Recorded.", {"id": run_id})
+
+    def agent_runs(self, *, limit=20) -> Result:
+        """The knowledge agent's runs, newest first, each with its steps (BL 17.8)."""
+        rows = self.ledger.agent_runs(limit=limit)
+        return Result(f"{len(rows)} run(s).", {"runs": rows})
 
     def record_episode(self, *, action, area, topic, text, decision, reason="", ref="") -> Result:
         self.ledger.add_episode(action=action, area=area, topic=topic, text=text,

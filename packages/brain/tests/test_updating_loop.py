@@ -11,7 +11,7 @@ import tempfile
 import time
 import unittest
 
-from brainkit import agent, governance, loop, outputcheck
+from brainkit import agent, governance, loop, measures, outputcheck
 from brainkit import safeguards_eval as se
 from brainkit.api import Brain
 
@@ -125,6 +125,16 @@ class LoopTest(unittest.TestCase):
             self.assertIn("25+ years", recorded.text)
         finally:
             shutil.rmtree(folder, ignore_errors=True)
+        # G3's signals: the flagged output and a draft sent back both count, as does a
+        # correction.
+        back = self.brain.check_output("Copy with 25+ years.", domains=["marketing"],
+                                       sent_back="run:1")
+        self.assertTrue(back.data["violations"])
+        self.brain.correction("No, it is 40+ years.")
+        self.assertEqual(measures.value(self.brain, {"kind": "at_most", "signal": "sent_back"}),
+                         2.0)
+        self.assertEqual(measures.value(self.brain, {"kind": "at_most",
+                                                     "signal": "corrections"}), 1.0)
 
     def test_independent_evidence_counts_a_lineage_once(self):
         folder = tempfile.mkdtemp()
@@ -203,6 +213,18 @@ class LoopTest(unittest.TestCase):
                     governance.archive(self.brain, old, reason="A newer value replaced it.",
                                        actor=self.owner)
         self.assertEqual(sum(1 for o in olds if o in found), 8)
+
+
+class ReviewDueTest(unittest.TestCase):
+    def test_the_quarterly_review_waits_a_quarter_even_for_a_new_brain(self):
+        import datetime as dt
+        today = dt.date(2026, 10, 10)
+        self.assertFalse(loop.review_due("", today=today))
+        self.assertFalse(loop.review_due("", since="2026-09-30T10:00:00Z", today=today))
+        self.assertTrue(loop.review_due("", since="2026-06-01T10:00:00Z", today=today))
+        self.assertFalse(loop.review_due("2026-09-01T10:00:00Z", since="2026-01-01",
+                                         today=today))
+        self.assertTrue(loop.review_due("2026-07-01T10:00:00Z", today=today))
 
 
 if __name__ == "__main__":
