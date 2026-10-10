@@ -1,4 +1,4 @@
-"""Markdown a model reads: task packets and short tool results."""
+"""Markdown a model reads: run packets and short tool results."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ from typing import Any
 
 
 def packet(p: dict[str, Any]) -> str:
-    """A task packet as a model-readable brief, with the exact calls to finish the run."""
+    """A run's packet as a model-readable brief, with the exact calls to finish it."""
     task, run = p.get("task") or {}, p.get("run")
     purpose = p.get("purpose") or {}
-    lines = [f"# Task: {task.get('title')}", ""]
+    lines = [f"# Run: {task.get('title')}", ""]
     ids = f"task_id: {task.get('id')} (revision {task.get('revision')})"
     if run:
         ids += (
@@ -107,7 +107,7 @@ def packet(p: dict[str, Any]) -> str:
 def due(tasks: list[dict[str, Any]], runs: list[dict[str, Any]]) -> str:
     lines = []
     if tasks:
-        lines.append(f"{len(tasks)} task(s) due for you, most overdue first:")
+        lines.append(f"{len(tasks)} run(s) due for you, most overdue first:")
         for t in tasks:
             due_at = t.get("next_due_at") or "now"
             lines.append(
@@ -122,6 +122,6 @@ def due(tasks: list[dict[str, Any]], runs: list[dict[str, Any]]) -> str:
         lines.append("You still hold these runs (finish or they expire):")
         for r in runs:
             lines.append(
-                f"- run_id {r['id']} for task {r['task_id']}, lease until {r['lease_expires_at']}"
+                f"- run_id {r['id']} (task_id {r['task_id']}), lease until {r['lease_expires_at']}"
             )
     return "\n".join(lines)

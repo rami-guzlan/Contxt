@@ -92,9 +92,17 @@ def recent(request: Request, who: Who, ws: WS) -> list[dict[str, Any]]:
 
 
 @router.get("/api/runners/runs/{run_id}")
-def follow(run_id: str, request: Request, who: Who, after: int = 0) -> dict[str, Any]:
-    """The run so far; `after` returns only the events past that sequence number."""
-    return runners(request).get(who, run_id).to_dict(after=after)
+def follow(run_id: str, request: Request, who: Who, ws: WS, after: int = 0) -> dict[str, Any]:
+    """The run so far; `after` returns only the events past that sequence number. A finished
+    run comes back whole, from disk after a restart, with the page its work belongs to."""
+    run = runners(request).get(who, run_id)
+    return dict(run.to_dict(after=after), link=place(ws, who, run.task_id))
+
+
+@router.get("/api/runners/runs/{run_id}/packet")
+def packet(run_id: str, request: Request, who: Who) -> dict[str, Any]:
+    """The brief the run was given (its packet), its credentials masked."""
+    return runners(request).packet(who, run_id)
 
 
 @router.post("/api/runners/runs/{run_id}/cancel")

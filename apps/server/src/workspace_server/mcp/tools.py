@@ -111,7 +111,7 @@ def append_task_event(
     if event.type == "run.heartbeat":
         text = f"Lease renewed until {event.data.get('lease_expires_at')}."
     elif event.type == "task.blocked":
-        text = "The task is blocked; a person will see your reason. Move to other work."
+        text = "The run is blocked; a person will see your reason. Move to other work."
     return text, {"event": event.to_dict()}
 
 
@@ -129,12 +129,12 @@ def complete_task(
     task = ws.tasks.get(who, run.task_id)
     after = {
         "review": "It is waiting for a person's review.",
-        "done": "The task is done.",
-        "failed": "The task is marked failed.",
+        "done": "The run is done.",
+        "failed": "The run is marked failed.",
     }
     return (
         f"Run {run.id} closed and the lease released. "
-        f"{after.get(task.status, f'The task is {task.status}.')}",
+        f"{after.get(task.status, f'The run is {task.status}.')}",
         {"run": run.to_dict(), "task_status": task.status},
     )
 
@@ -304,7 +304,7 @@ def save_digest(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[st
     )
     return (
         f"Saved the digest ({len(digest['points'])} key points). It is shown beside the item; "
-        "now complete the task.",
+        "now complete the run.",
         {"digest": digest},
     )
 
@@ -320,7 +320,7 @@ def save_skill_result(
     )
     return (
         f"Saved \u201c{saved['title']}\u201d (version {saved['version']}). It shows on the "
-        "skill's page; now complete the task.",
+        "skill's page; now complete the run.",
         {"result": saved},
     )
 
@@ -348,7 +348,7 @@ def propose_brain_skill(
     )
     text = result.message
     if result.status == "pending":
-        text += " Now complete the task."
+        text += " Now complete the run."
     return text, {"proposal": asdict(result)}, result.status == "refused"
 
 
@@ -436,7 +436,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "claim_task",
-            "Claim one due task for a bounded lease. Returns the run_id and the full task "
+            "Claim one due run for a bounded lease. Returns the run_id and the full run "
             "packet: purpose, instructions, pinned inputs, Brain context, output contract. "
             "A refused claim means someone else has it or it is not due: skip it.",
             _obj(
@@ -452,7 +452,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "get_task_packet",
-            "The packet of your run (exactly as it was at claim time), or the packet a task "
+            "The packet of your run (exactly as it was at claim time), or the packet a run "
             "would get now.",
             _obj({"run_id": RUN, "task_id": {"type": "string"}}),
             get_task_packet,
@@ -489,7 +489,7 @@ TOOLS: dict[str, Tool] = {
         Tool(
             "complete_task",
             "Close your run and release the lease. outcome is succeeded (default) or failed. "
-            "The task then waits for review, is done, or is marked failed.",
+            "The run then waits for review, is done, or is marked failed.",
             _obj(
                 {
                     "run_id": RUN,
@@ -497,7 +497,7 @@ TOOLS: dict[str, Tool] = {
                     "outcome": {"type": "string", "enum": ["succeeded", "failed"]},
                     "left_out": {
                         "type": "array",
-                        "description": "When the task pulls context: what you considered and "
+                        "description": "When the run pulls context: what you considered and "
                         "did not propose, each with why, so the person can still pull it.",
                         "items": {
                             "type": "object",
@@ -518,7 +518,7 @@ TOOLS: dict[str, Tool] = {
         Tool(
             "search_context",
             "Search the Brain's long-term entries, and working material you can see, in your "
-            "own words. A person's notes are not searchable: they reach you pinned to a task.",
+            "own words. A person's notes are not searchable: they reach you pinned to a run.",
             _obj(
                 {
                     "query": {"type": "string"},
@@ -555,7 +555,7 @@ TOOLS: dict[str, Tool] = {
         Tool(
             "get_brain_skill",
             "Read one of the Brain's procedures (skills) in full, with what it loads. Packets "
-            "list the candidates for a task under 'Skill candidates'.",
+            "list the candidates for a run under 'Skill candidates'.",
             _obj({"name": {"type": "string"}}, ["name"]),
             get_brain_skill,
             "brain.read",
@@ -574,8 +574,8 @@ TOOLS: dict[str, Tool] = {
             "will still matter next month). It waits for a person's approval. Quote the "
             "evidence and name the sources (refs). Check the Brain first (search_context): "
             "when it replaces an entry, say so with replaces; when it contradicts one and you "
-            "cannot tell which is current, say so with contradicts. During a task, pass its "
-            "run_id so the proposal is credited to that task (a distillation request asks for "
+            "cannot tell which is current, say so with contradicts. During a run, pass its "
+            "run_id so the proposal is credited to that run (a distillation request asks for "
             "exactly this).",
             _obj(
                 {
@@ -675,7 +675,7 @@ TOOLS: dict[str, Tool] = {
                     "run_id": {
                         "type": "string",
                         "description": "The run_id from claim_task, when proposing as part of "
-                        "a task.",
+                        "a run.",
                     },
                     "idempotency_key": KEY,
                 },
@@ -705,7 +705,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "save_digest",
-            "Save the digest of the item a digest task reads (its template is digest): a short "
+            "Save the digest of the item a digest run reads (its template is digest): a short "
             "summary, its key points each marked by how it fits what the Brain holds now, and "
             "the decisions, actions, open questions and people in it. It is shown beside the "
             "item; nothing reaches the Brain from it.",
@@ -760,7 +760,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "save_skill_result",
-            "Save what a skill run made (a task whose template is skill): a short title and "
+            "Save what a skill run made (a run whose template is skill): a short title and "
             "the whole result as Markdown, ready to use. It is shown on the skill's page; "
             "saved again in the same run, it becomes a new version of the same result.",
             _obj(
@@ -780,7 +780,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "propose_brain_skill",
-            "Propose a skill from a task whose template is skill-draft: a new version of one "
+            "Propose a skill from a run whose template is skill-draft: a new version of one "
             "(target: its name, the change as edits) or a new skill (name, category, "
             "description and body). It waits in Review for a person; nothing changes until "
             "they approve it.",

@@ -235,7 +235,7 @@ export function RunConsole({ runId }: { runId: string }) {
       <ol className="console-lines" role="log" aria-live="polite">
         {run.events.map((event, index) => (
           <li key={event.seq} className={`line line-${event.kind}`} ref={index === run.events.length - 1 ? end : undefined}>
-            <Line event={event} />
+            <RunLine event={event} />
           </li>
         ))}
       </ol>
@@ -243,7 +243,8 @@ export function RunConsole({ runId }: { runId: string }) {
   );
 }
 
-function Line({ event }: { event: RunEvent }) {
+/** One step of a run, as the console shows it. */
+export function RunLine({ event }: { event: RunEvent }) {
   switch (event.kind) {
     case "tool":
       return (

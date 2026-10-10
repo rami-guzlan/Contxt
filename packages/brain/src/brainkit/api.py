@@ -232,8 +232,8 @@ class Brain:
     @property
     def ledger(self) -> Ledger:
         if self._ledger is None:
-            days = int((self.state().config.data.get("sessions") or {}).get("retention_days")
-                       or 90)
+            from . import governance
+            days = governance.retention_days(self.state().config)
             self._ledger = Ledger(os.path.join(self.vault.runtime_dir, "sessions.sqlite"), days)
         return self._ledger
 

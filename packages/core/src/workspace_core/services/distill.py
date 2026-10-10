@@ -20,6 +20,7 @@ import sqlalchemy as sa
 
 from workspace_core.db import schema
 from workspace_core.db.tx import Tx
+from workspace_core.domain import statements
 from workspace_core.domain.policy import Principal
 from workspace_core.domain.records import Task
 from workspace_core.errors import NotFound, ValidationFailed
@@ -60,8 +61,8 @@ For each statement you propose, call propose_brain_entry once with: a title of a
 words naming what it is about, as someone would search for it (no internal jargon or slide \
 headings); a summary, one line of plain words (at most 200 characters) saying what it holds, \
 written for someone scanning a list and never the statement's first sentence cut short; the \
-statement in plain language, able to stand on its own; its kind (fact, rule, preference, \
-decision or procedure); evidence that quotes the item it came from; sources naming the \
+statement in plain language, able to stand on its own; its kind ({kinds}); evidence \
+that quotes the item it came from; sources naming the \
 context_item refs (or brain_file refs), and brain:<entry id> for the entries you checked it \
 against; topic, the area/topic it belongs in, taken from where related entries live; goal, \
 the goal it serves in a few words, from the pinned goals; project, the id of the active \
@@ -84,7 +85,7 @@ as a disagreement.
 Then call complete_task with a one-line summary (how many proposals you made, how many replace \
 or contradict an entry) and left_out: every statement you considered and did not propose, \
 each with why in a few words (small talk, already in the Brain, serves no goal or project), \
-so the person can still pull it."""
+so the person can still pull it.""".replace("{kinds}", statements.words(statements.DISTILL_KINDS))
 
 CONTRACT = {
     "artifacts": [],
@@ -121,7 +122,7 @@ def merge_instructions(keep_id: str, keep_title: str, other_id: str, other_title
         "first entry's title unless it no longer fits.\n\n"
         f"The entry to keep: “{keep_title}” (id {keep_id}).\n"
         f"The entry to fold into it: “{other_title}” (id {other_id}).\n"
-        "Both are pinned in this task's inputs with their full text.\n\n"
+        "Both are pinned in this run's inputs with their full text.\n\n"
         f'Call propose_brain_entry exactly once with revises="{keep_id}", '
         f'replaces=["{other_id}"], the whole new text as the statement (not a list of '
         "changes), a title, its kind, evidence that names both entries, and this run's run_id. "
@@ -138,7 +139,7 @@ def reconcile_instructions(
     is not current, so the two can stand together."""
     proposal = f"A proposal waiting for review, “{title}”:\n\n{_quoted(body)}"
     entry = (
-        f"The entry “{entry_title}” (id {entry_id}), pinned in this task's inputs with its "
+        f"The entry “{entry_title}” (id {entry_id}), pinned in this run's inputs with its "
         "full text."
     )
     head = (

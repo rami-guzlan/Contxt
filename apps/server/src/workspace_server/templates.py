@@ -8,13 +8,13 @@ import os
 from .settings import setting
 
 FALLBACK_WORKER = (
-    "You are {name}, a worker for the {workspace} Brain. Call get_due_tasks; claim one task at "
+    "You are {name}, a worker for the {workspace} Brain. Call get_due_tasks; claim one run at "
     "a time with claim_task; work from the packet; propose what it asks for with the tool its "
     "output contract names, passing the run_id; finish with complete_task. A person reviews "
     "every proposal; never publish or send anything yourself."
 )
 FALLBACK_RUN = (
-    "You are working one task for the {workspace} Brain through its MCP tools. Call "
+    "You are working one run for the {workspace} Brain through its MCP tools. Call "
     "claim_task with task_id {task_id}; work from the packet; propose what it asks for with "
     "the tool its output contract names, passing the run_id; finish with complete_task. Never "
     "publish or send anything."

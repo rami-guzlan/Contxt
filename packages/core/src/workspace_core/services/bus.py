@@ -49,14 +49,14 @@ def active_run(tx: Tx, who: Principal, run_id: str) -> dict[str, Any]:
         raise PermissionDenied("This run belongs to another actor.", run_id=run_id)
     if not RUN.is_active(run["status"]):
         raise LeaseLost(
-            f"This run has ended ({run['status']}). Claim the task again to continue.",
+            f"This run has ended ({run['status']}). Claim the run again to continue.",
             run_id=run_id,
             status=run["status"],
         )
     if run["lease_expires_at"] <= tx.now:
         raise LeaseLost(
             f"The lease on this run expired at {run['lease_expires_at']}. Claim "
-            "the task again to continue.",
+            "the run again to continue.",
             run_id=run_id,
         )
     return run
@@ -146,22 +146,22 @@ class Bus:
             who.require("tasks.claim", task["project_id"])
             if task["assignee_id"] != who.actor_id:
                 raise PermissionDenied(
-                    "This task is assigned to someone else; it is not in your queue.",
+                    "This run is assigned to someone else; it is not in your queue.",
                     task_id=task_id,
                 )
             if task["status"] != "ready":
                 raise Conflict(
-                    f"This task is not available to claim: it is "
+                    f"This run is not available to claim: it is "
                     f"{task['status'].replace('_', ' ')}.",
                     status=task["status"],
                 )
             if task["next_due_at"] and task["next_due_at"] > tx.now:
                 raise Conflict(
-                    f"This task is not due until {task['next_due_at']}.", due_at=task["next_due_at"]
+                    f"This run is not due until {task['next_due_at']}.", due_at=task["next_due_at"]
                 )
             if not self._dependency_met(tx, task):
                 raise Conflict(
-                    "This task waits for another task to finish first.",
+                    "This run waits for another run to finish first.",
                     depends_on=task["depends_on"],
                 )
             seconds = max(

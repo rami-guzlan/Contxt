@@ -290,6 +290,18 @@ def push(ws: Workspace, who: Any, name: str, *, project_dir: str | None = None) 
     return {"place": place, **stamp, "behind": 0}
 
 
+def user_copy(name: str, hashes: list[Any]) -> dict[str, Any] | None:
+    """The person's own Claude Code copy of a skill, and how many versions behind the Brain's
+    it is (`hashes` newest first); None when there is no copy."""
+    try:
+        with open(os.path.join(claude_code_place(name), STAMP), encoding="utf-8") as handle:
+            stamp = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    behind = hashes.index(stamp.get("hash")) if stamp.get("hash") in hashes else None
+    return {"behind": behind, "pushed_at": stamp.get("pushed_at")}
+
+
 def pushed(ws: Workspace, who: Any, name: str) -> list[dict[str, Any]]:
     """Each copy in Claude Code, and how many versions behind the Brain's it is."""
     skill = ws.skills.find(who, name)

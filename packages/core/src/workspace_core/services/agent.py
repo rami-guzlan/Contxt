@@ -35,6 +35,7 @@ from typing import Any
 
 from workspace_core.clock import iso
 from workspace_core.db import schema
+from workspace_core.domain import statements
 from workspace_core.domain.policy import Principal
 from workspace_core.errors import Conflict, NotFound, ValidationFailed
 from workspace_core.ids import new_id
@@ -96,7 +97,7 @@ BRIEF_CANDIDATES = 5  # for a small local one
 UNUSED_DAYS = 90
 QUIET_DAYS = 14
 IDLE_SKILL_DAYS = 60
-NOTE_KINDS = ("fact", "rule", "decision", "preference")
+NOTE_KINDS = statements.AGENT_KINDS  # one vocabulary (domain/statements.py)
 
 PREAMBLE = """\
 You are the knowledge agent of a person's Brain: what every AI they use can know. Code made the \
