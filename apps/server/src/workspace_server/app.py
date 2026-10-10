@@ -19,6 +19,7 @@ from workspace_core.workspace import Workspace
 
 from . import web, webapp
 from .brain_adapter import BrainKitAdapter
+from .brain_testing import TestTheBrain
 from .deps import error_response
 from .difference import Differences
 from .extractor import DocumentExtractor
@@ -45,6 +46,7 @@ from .routes import (
     runners,
     skills,
     system,
+    test_the_brain,
     work,
     workflows,
     workspace,
@@ -69,12 +71,14 @@ class Runtime:
     models: Models
     agent: AgentWork
     library: Library
+    testing: TestTheBrain
     closed: bool = False
 
     def close(self) -> None:
         if self.closed:
             return
         self.closed = True
+        self.testing.close()
         self.runners.close()
         self.ws.close()
         if self.brain is not None:
@@ -135,6 +139,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         models=models,
         agent=AgentWork(ws, models),
         library=Library(ws, settings.data_dir),
+        testing=TestTheBrain(settings, ws),
     )
 
 
@@ -185,6 +190,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         compose,
         workflows,
         work,
+        test_the_brain,
         mcp,
     )
     for module in routers:
