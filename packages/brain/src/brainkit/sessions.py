@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS goal_checks (
     goal_id TEXT, at TEXT, value REAL, status TEXT, source TEXT, note TEXT,
     card INTEGER DEFAULT 0);
 CREATE INDEX IF NOT EXISTS goal_checks_goal ON goal_checks(goal_id, at);
+CREATE TABLE IF NOT EXISTS contexts (
+    principal TEXT, name TEXT, kind TEXT, label TEXT, last_used TEXT, closed TEXT,
+    PRIMARY KEY (principal, name));
+CREATE TABLE IF NOT EXISTS session_contexts (session_id TEXT PRIMARY KEY, name TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS model_daily (
     day TEXT NOT NULL, job TEXT NOT NULL, model TEXT NOT NULL,
     calls INTEGER NOT NULL DEFAULT 0, tokens_in INTEGER NOT NULL DEFAULT 0,
@@ -126,6 +130,12 @@ class Ledger:
         if "epoch" not in columns:
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE deliveries ADD COLUMN epoch INTEGER")
+        # Outputs say what they are for (BL 16.5): the project, the State row, who made it.
+        kept = {row[1] for row in conn.execute("PRAGMA table_info(outputs)")}
+        for column in ("project", "row_ref", "maker", "made_with"):
+            if column not in kept:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute(f"ALTER TABLE outputs ADD COLUMN {column} TEXT")
         claimed = conn.execute("INSERT OR IGNORE INTO ledger_meta (key, value) VALUES "
                                "('usage_backfill', ?)", (util.now_iso(),)).rowcount
         if claimed:
@@ -372,7 +382,7 @@ class Ledger:
         """The most recent packet in this session, for follow-up continuity: its data, plus
         the request it answered (`request`)."""
         with self._connect() as conn:
-            row = conn.execute("SELECT request, data FROM packets WHERE session_id = ? "
+            row = conn.execute("SELECT request, data, at FROM packets WHERE session_id = ? "
                                "ORDER BY at DESC, rowid DESC LIMIT 1", (session_id,)).fetchone()
         if row is None:
             return None
@@ -381,6 +391,7 @@ class Ledger:
         except ValueError:
             return None
         data.setdefault("request", row["request"] or "")
+        data.setdefault("at", row["at"] or "")
         return data
 
     def session_summary(self, session_id: str) -> dict:
@@ -583,15 +594,88 @@ class Ledger:
 
     # ------------------------------------------------------------------ outputs
     def record_output(self, path: str, session_id: str, *, title: str = "",
-                      client: str = "") -> None:
-        """A file an AI saved for the person, and the conversation it was made in."""
+                      client: str = "", project: str = "", row_ref: str = "",
+                      maker: str = "", made_with: str = "") -> None:
+        """A file an AI saved for the person, the conversation it was made in, and what it
+        is for: the project, the State row (`sheet/row`), who made it and with what."""
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO outputs (path, session_id, at, title, client) VALUES (?, ?, ?, ?, ?) "
+                "INSERT INTO outputs (path, session_id, at, title, client, project, row_ref, "
+                "maker, made_with) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(path) DO UPDATE SET session_id = excluded.session_id, "
                 "at = excluded.at, title = excluded.title, "
-                "client = COALESCE(NULLIF(excluded.client, ''), outputs.client)",
-                (path, session_id, util.now_iso(), title, client))
+                "client = COALESCE(NULLIF(excluded.client, ''), outputs.client), "
+                "project = COALESCE(NULLIF(excluded.project, ''), outputs.project), "
+                "row_ref = COALESCE(NULLIF(excluded.row_ref, ''), outputs.row_ref), "
+                "maker = COALESCE(NULLIF(excluded.maker, ''), outputs.maker), "
+                "made_with = COALESCE(NULLIF(excluded.made_with, ''), outputs.made_with)",
+                (path, session_id, util.now_iso(), title, client, project, row_ref, maker,
+                 made_with))
+
+    def link_output(self, path: str, *, project: str | None = None,
+                    row_ref: str | None = None) -> None:
+        """The person says what a file is for (a project, a State row)."""
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO outputs (path, session_id, at, title, client) "
+                         "VALUES (?, '', ?, '', '')", (path, util.now_iso()))
+            if project is not None:
+                conn.execute("UPDATE outputs SET project = ? WHERE path = ?", (project, path))
+            if row_ref is not None:
+                conn.execute("UPDATE outputs SET row_ref = ? WHERE path = ?", (row_ref, path))
+
+    def outputs_for(self, paths: list[str]) -> dict[str, dict]:
+        """What the ledger knows of these files, by path."""
+        out: dict[str, dict] = {}
+        with self._connect() as conn:
+            for start in range(0, len(paths), 400):
+                chunk = paths[start:start + 400]
+                marks = ",".join("?" for _ in chunk)
+                for row in conn.execute(f"SELECT * FROM outputs WHERE path IN ({marks})",
+                                        chunk):
+                    out[row["path"]] = dict(row)
+        return out
+
+    # ------------------------------------------------------------------ working contexts
+    def use_context(self, session_id: str, principal: str, name: str, *, kind: str,
+                    label: str) -> int | None:
+        """Make `name` this conversation's working context (BL 8.3). Returns how many days it
+        sat idle before, when it was used at all."""
+        now = util.now_iso()
+        with self._connect() as conn:
+            row = conn.execute("SELECT last_used FROM contexts WHERE principal = ? AND "
+                               "name = ?", (principal, name)).fetchone()
+            conn.execute(
+                "INSERT INTO contexts (principal, name, kind, label, last_used, closed) "
+                "VALUES (?, ?, ?, ?, ?, NULL) ON CONFLICT(principal, name) DO UPDATE SET "
+                "last_used = excluded.last_used, label = excluded.label, closed = NULL",
+                (principal, name, kind, label, now))
+            if session_id:
+                conn.execute("INSERT INTO session_contexts (session_id, name, at) VALUES "
+                             "(?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET "
+                             "name = excluded.name, at = excluded.at",
+                             (session_id, name, now))
+        if row is None or not row["last_used"]:
+            return None
+        before = util.parse_date(str(row["last_used"])[:10])
+        return None if before is None else (util.today_date() - before).days
+
+    def session_context(self, session_id: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT name FROM session_contexts WHERE session_id = ?",
+                               (session_id,)).fetchone()
+        return str(row["name"]) if row and row["name"] else None
+
+    def contexts(self, principal: str) -> list[dict]:
+        """A person's working contexts, most recent first."""
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM contexts WHERE principal = ? ORDER BY last_used DESC",
+                (principal,))]
+
+    def close_context(self, principal: str, name: str) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE contexts SET closed = ? WHERE principal = ? AND name = ?",
+                         (util.now_iso(), principal, name))
 
     def output(self, path: str) -> dict | None:
         with self._connect() as conn:

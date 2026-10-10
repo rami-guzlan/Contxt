@@ -547,8 +547,13 @@ def run_checks(brain, *, force=False, only=None, today: dt.date | None = None) -
                    "It turned off track.")
         brain.ledger.add_goal_check(note.id, status=found, value=value, source="code",
                                     note=why, card=card)
+        task = None
+        if card:
+            # Its agent opens a task for it (one open per goal, five per agent).
+            from . import handoff
+            task = handoff.open_for_slipped_goal(brain, note.id)
         out.append({"goal": note.id, "status": found, "value": value, "was": was or None,
-                    "card": card, "why": why or None})
+                    "card": card, "why": why or None, "task": task})
     return out
 
 

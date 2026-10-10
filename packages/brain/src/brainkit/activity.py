@@ -206,9 +206,11 @@ def normal_path(path: str) -> str:
     return os.path.normcase(os.path.abspath(str(path or "").strip()))
 
 
-def record_output(brain, path, *, title="", session_id=None):
+def record_output(brain, path, *, title="", session_id=None, project="", for_row="",
+                  maker=""):
     """Note a file an AI saved for the person, with the conversation it was made in, so the
-    person can see what that conversation was given."""
+    person can see what that conversation was given; and what it is for (BL 16.5): the
+    project, the State row (`sheet/row`, or a row's name) and who made it."""
     text = str(path or "").strip()
     if not text or len(text) > 500:
         return _result("Give the saved file's full path.", {"status": "invalid"}, True)
@@ -216,8 +218,25 @@ def record_output(brain, path, *, title="", session_id=None):
     if session and not Ledger.valid(session):
         return _result("That is not a session id from get_task_context.",
                        {"status": "invalid"}, True)
+    st = brain.state()
+    project_id = str(project or "").strip()
+    if project_id and project_id not in st.index.focuses:
+        match = next((f for f in st.index.focuses.values()
+                      if f.title.lower() == project_id.lower()), None)
+        project_id = match.id if match else ""
+    row_ref = ""
+    if str(for_row or "").strip():
+        from . import state as state_mod
+        sheet_id, _, row_name = str(for_row).partition("/")
+        pairs = ([(state_mod.sheet(brain, sheet_id),
+                   state_mod.find_row(brain, sheet_id, row_name))] if row_name else
+                 state_mod.named_rows(brain, str(for_row), limit=1))
+        pairs = [(s, r) for s, r in pairs if s is not None and r is not None]
+        if pairs:
+            row_ref = f"{pairs[0][0].id}/{pairs[0][1].key}"
     brain.ledger.record_output(normal_path(text), session, title=" ".join(
-        str(title or "").split())[:200], client=brain.client)
+        str(title or "").split())[:200], client=brain.client, project=project_id,
+        row_ref=row_ref, maker=" ".join(str(maker or "").split())[:80])
     return _result("Noted: the person can now see what this conversation was given when the "
                    "file was made." if session else
                    "Noted. Pass your session_id next time, so the file shows what it was made "
