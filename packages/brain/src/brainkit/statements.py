@@ -70,7 +70,7 @@ GOAL_LEVELS = ("purpose", "yours", "agent")
 GOAL_STATUSES = ("active", "paused", "met", "missed", "dropped", "retired")
 # `kept_by` names the agent keeping an agent goal; your goals are kept by you.
 GOAL_FIELDS = ("kept_by", "level", "serves", "progress", "measure", "due", "cadence",
-               "goal_status", "why", "started", "review_by")
+               "goal_status", "why", "started", "review_by", "owners")
 CADENCES = {"daily": 1, "weekly": 7, "monthly": 30}
 OBJECTIVE_WORDS = 60  # a project's objective: a sentence or two
 

@@ -63,7 +63,8 @@ def test_the_prompt_carries_the_procedure_the_rules_the_map_and_the_candidates(w
     assert "`voice-guide` Voice guide" in prompt  # the map
     assert "## c1" in prompt and "Note B: `voice-short`" in prompt
     brief, _ = ws.agent.action_prompt(owner, "tidy-repeats", brief=True)
-    assert "# Startup" not in brief  # a small model gets no startup context
+    # The person's rules come with every job, a small model's included (BL 17.2).
+    assert "Write plainly." in brief
 
 
 def test_answers_become_suggestions_in_catch_up_and_questions(ws, owner, brain):
@@ -202,3 +203,42 @@ def test_words_to_ask_for_a_skill_are_real_phrases_once_each(ws, owner, brain):
     (question,) = ws.agent.overview(owner)["questions"]
     assert question["triggers"] == ["draft the week's posts"]
     assert question["target"] == {"type": "skill", "id": "weekly-posts", "title": "/weekly-posts"}
+
+
+def test_verification_findings_arrive_only_as_cards_with_their_citations(ws, owner, brain):
+    """BL 9's gate: each finding is a challenge or a "Still true?" card with its sources; a
+    finding without a source is never kept, and nothing changes a note on its own."""
+    brain.gathered["verify-sources"] = [NOTE, {**NOTE, "ids": ["other"], "title": "Other"}]
+    before = {k: v.text for k, v in brain.entries.items()}
+    _, gathered = ws.agent.action_prompt(owner, "verify-sources")
+    run = ws.agent.apply_action(
+        owner,
+        "verify-sources",
+        gathered,
+        answer(
+            {
+                "ref": "c1",
+                "verdict": "challenge",
+                "text": "It changed in 2026.",
+                "why": "Rule",
+                "sources": ["https://example.org/rule"],
+            },
+            {
+                "ref": "c2",
+                "verdict": "ask",
+                "text": "Still current?",
+                "why": "Two pages differ",
+                "sources": ["https://example.org/a", "https://example.org/b"],
+            },
+            {"ref": "c1", "verdict": "challenge", "text": "Wrong, trust me.", "why": "None"},
+        ),
+        model="stand-in",
+    )
+    assert (run["proposed"], run["questions"], run["skipped"]) == (1, 1, 1)
+    (challenge,) = brain.challenged
+    assert challenge["source"] == "https://example.org/rule"
+    assert "https://example.org/rule" in challenge["evidence"]
+    (question,) = ws.agent.overview(owner)["questions"]
+    assert question["sources"] == ["https://example.org/a", "https://example.org/b"]
+    assert {k: v.text for k, v in brain.entries.items()} == before
+    assert brain.proposed == []

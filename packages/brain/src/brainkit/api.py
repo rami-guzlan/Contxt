@@ -1214,6 +1214,121 @@ class Brain:
         return activity.record_output(self, path, title=title, session_id=session_id,
                                       project=project, for_row=for_row, maker=maker)
 
+    # ------------------------------------------------------------------ the updating loop
+    def check_output(self, text, *, domains=None, sent_back="") -> Result:
+        """An output's text against the must-holds in play (BL 9): every deterministic
+        violation, each with the rule and what was found. `sent_back` names the draft when the
+        caller sends it back for them (counted by the `sent_back` measure)."""
+        from . import outputcheck
+        found = outputcheck.check(text, outputcheck.must_holds_for(self, text, domains=domains))
+        violations = [v.to_dict() for v in found]
+        if violations and sent_back:
+            self.ledger.add_sent_back(str(sent_back), violations)
+        return Result(f"{len(found)} must-hold violation(s).", {"violations": violations})
+
+    def correction(self, text, *, session_id="", packet_id="", principal=None) -> Result:
+        """The owner corrected an AI's output: the notes in the brief before it become
+        suspects, and the most likely one gets a "Still true?" card (loop.py)."""
+        from . import loop
+        found = loop.record_correction(self, str(text or ""), session_id=str(session_id or ""),
+                                       packet_id=str(packet_id or ""),
+                                       by=self.principal(principal))
+        card = found["card"]
+        return Result(f"Most likely behind it: {card['title']}." if card else
+                      "No note in that brief looks behind it.", found)
+
+    def loop_status(self) -> Result:
+        """What the updating loop asks of the owner now: open corrections, bent rules,
+        approval health, single-source notes, the quarterly review, lessons."""
+        from . import agent_tools, loop
+        open_ones = []
+        st = self.state()
+        for row in self.ledger.corrections():
+            note = st.index.note(row["suspect"]) if row["suspect"] else None
+            if note is not None:
+                open_ones.append({"id": row["id"], "at": row["at"], "text": row["text"],
+                                  "note": note.id, "title": note.title,
+                                  "salience": note.kind == "rule" and not note.must_hold})
+        all_runs = self.ledger.agent_runs(limit=200)
+        runs = [r for r in all_runs if r["action"] == "check-alignment"]
+        import datetime as dt
+        # The agent's hand-ups of the last two weeks, for Catch up.
+        since = (util.today_date() - dt.timedelta(days=14)).isoformat()
+        hand_ups = [{"id": r["id"], "action": r["action"], "at": r["at"],
+                     "why": str((r.get("record") or {}).get("why") or "")}
+                    for r in all_runs if r["ending"] == "hand-up" and r["at"] >= since][:5]
+        return Result("The updating loop.", {
+            "hand_ups": hand_ups,
+            "corrections": open_ones,
+            "bent_rules": loop.bent_rules(self),
+            "approval_health": loop.approval_health(self),
+            "single_source": loop.single_source(self),
+            "review_due": loop.review_due(
+                runs[0]["at"] if runs else "",
+                since=min((str(r.get("at") or "") for r in self.vault.decisions()
+                           if r.get("at")), default="")),
+            "last_review": runs[0]["at"] if runs else "",
+            "lessons": agent_tools.lessons(self)})
+
+    def close_correction(self, correction_id, status) -> Result:
+        if status not in ("still_true", "fixed", "dismissed"):
+            return error("status is still_true, fixed or dismissed.", status="invalid")
+        self.ledger.close_correction(int(correction_id), status)
+        return Result("Closed.", {"status": status})
+
+    def agent_tool(self, name, args) -> Result:
+        """One of the knowledge agent's tools (agent_tools.py), checked by code: a look
+        returns data, a suggestion returns the suggestion and writes nothing."""
+        from . import agent_tools
+        result, problems = agent_tools.call(self, name, args)
+        if problems:
+            return Result("; ".join(problems), {"problems": problems}, is_error=True)
+        return Result("ok", {"result": result})
+
+    def agent_menu(self) -> Result:
+        from . import agent_tools
+        return Result(agent_tools.menu(), {"tools": list(agent_tools.TOOLS)})
+
+    def changes_digest(self, since="") -> Result:
+        from . import agent_tools
+        found = agent_tools.changes_since(self, since)
+        return Result(found["line"], found)
+
+    def record_agent_run(self, run_id, action, ending, record) -> Result:
+        from .handoff import mask
+        import json as _json
+        clean = _json.loads(mask(_json.dumps(record, default=str)))
+        self.ledger.add_agent_run(str(run_id), str(action), str(ending), clean)
+        return Result("Recorded.", {"id": run_id})
+
+    def agent_runs(self, *, limit=20) -> Result:
+        """The knowledge agent's runs, newest first, each with its steps (BL 17.8)."""
+        rows = self.ledger.agent_runs(limit=limit)
+        return Result(f"{len(rows)} run(s).", {"runs": rows})
+
+    def record_episode(self, *, action, area, topic, text, decision, reason="", ref="") -> Result:
+        self.ledger.add_episode(action=action, area=area, topic=topic, text=text,
+                                decision=decision, reason=reason, ref=ref)
+        return Result("Kept.", {})
+
+    def blast_radius(self, proposal_id, *, limit=20) -> Result:
+        """What a waiting proposal would change in the last briefs that used its note: the
+        replay harness against the proposed brain (BL 9)."""
+        from . import replay
+        st = self.state()
+        proposal = st.snapshot.proposals.get(str(proposal_id))
+        if proposal is None:
+            return error(f"No pending proposal {proposal_id!r}.", status="missing")
+        item = str((proposal.target or {}).get("id") or "")
+        packets = replay.recent_packets(self, item=item, limit=limit) if item else []
+        if not packets:
+            return Result("No recent brief used it.", {"briefs": 0, "changed": 0, "rows": [],
+                                                      "seconds": 0.0})
+        found = replay.replay(self, packets, proposal=str(proposal_id))
+        return Result(f"{found['changed']} of {found['replayed']} briefs would change.",
+                      {"briefs": found["replayed"], "changed": found["changed"],
+                       "rows": found["rows"], "seconds": found["seconds"]})
+
     # ------------------------------------------------------------------ State and tasks
     def get_state(self, *, sheet="", row="", query="", principal=None, partition=None,
                   session_id=None) -> Result:

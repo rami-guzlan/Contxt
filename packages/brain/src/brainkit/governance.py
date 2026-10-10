@@ -761,26 +761,40 @@ def inbox(brain, **_ignored):
     return _result(f"{len(rows)} pending proposal(s):\n{text}", {"proposals": rows})
 
 
-def _require_approver(brain, actor):
+def _require_approver(brain, actor, scope=None):
     config = brain.state().config
     approver = config.governance.get("approver") or config.owner
     approvers = {approver} | set(config.governance.get("approvers") or [])
     who = brain.principal(actor)
-    if who not in approvers:
+    if who not in approvers and not (scope and who in admins_of(brain.state(), scope)):
         return None, _result(f"{who} cannot decide proposals; approver is {approver}.",
                              {"status": "forbidden"}, True)
     return who, None
 
 
+def admins_of(st, scope: str) -> set[str]:
+    """Who administers a scope (BL 9, scaffolded for the team edition): brain.json's
+    `admins` for the scope and every scope above it. In the solo Brain the owner is the
+    approver of every scope, so this is empty."""
+    named = st.config.data.get("admins") or {}
+    chain = st.scopes.chain(scope) or [scope]
+    found: set[str] = set()
+    for level in chain:
+        found.update(str(p) for p in (named.get(level) or []))
+    return found
+
+
 def approve(brain, proposal_id, *, actor=None, edits=None, body=None, reason=""):
     """The owner keeps a proposal. One that revises or retires a baseline needs a `reason`
     (baseline.reason_problem), and with `revision_delay` on, a revision of a rule, a standing
-    note or a must-hold is scheduled for DELAY_HOURS later instead of applied now."""
-    who, refusal = _require_approver(brain, actor)
-    if refusal:
-        return refusal
+    note or a must-hold is scheduled for DELAY_HOURS later instead of applied now. An admin of
+    the proposal's scope may decide it too (team edition)."""
     st = brain.state()
     proposal = st.snapshot.proposals.get(str(proposal_id))
+    who, refusal = _require_approver(
+        brain, actor, scope=str((proposal.target or {}).get("scope") or "") if proposal else None)
+    if refusal:
+        return refusal
     if proposal is None:
         return _result(f"No pending proposal {proposal_id!r}.", {"status": "missing"}, True)
     if proposal.kind == "note.challenge":
@@ -927,7 +941,8 @@ def reject(brain, proposal_id, reason="", *, actor=None):
     record = {"at": util.now_iso(), "action": "rejected", "by": who, "proposal": proposal.id,
               "kind": proposal.kind, "reason": str(reason or ""), "target": proposal.target,
               "body": proposal.body, "proposer": proposal.proposer,
-              "session": str(proposal.meta.get("session") or "")}
+              "session": str(proposal.meta.get("session") or ""),
+              "created": str(proposal.created or "")}
     if proposal.meta.get("capture"):
         record["capture"] = str(proposal.meta["capture"])
     decisions = brain.vault.append_decision(record)
@@ -999,7 +1014,8 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
               "scope": meta.get("scope"), "superseded": superseded,
               "proposer": header.get("proposer") or actor,
               "session": str(header.get("session") or ""), "hash": util.sha256(body.strip()),
-              "file_hash": brain.vault.file_hash(relpath)}
+              "file_hash": brain.vault.file_hash(relpath),
+              "created": str(header.get("created") or "")}
     if header.get("capture"):
         record["capture"] = str(header["capture"])
     if kind in ("note.update", "note.archive"):
@@ -1011,6 +1027,11 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
         record["baseline_revised"] = dict(revision)
     decisions = brain.vault.append_decision(record)
     touched.append(brain.vault.path(decisions))
+    if not auto and kind in ("note.create", "note.update"):
+        # The exceptions ledger (BL 9): an approval that bends a rule counts against it.
+        from . import loop
+        for rule, relation in bent_rules(st, header, body, note_id, meta):
+            loop.note_exception(brain, rule, proposal_id, relation, by=actor)
     if proposal_path:
         brain.vault.remove_file(proposal_path)
         touched.append(brain.vault.path(proposal_path))
@@ -1024,6 +1045,29 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
         {"status": "applied" if auto else "approved", "id": note_id, "path": relpath,
          "superseded": superseded, "commit": outcome.get("commit"),
          "kernel": outcome.get("kernel")})
+
+
+def bent_rules(st, header, text, note_id, meta) -> list[tuple[str, str]]:
+    """The rules a statement bends: ones its proposal names as conflicting, and rules or
+    must-holds in its own topic it contradicts by words, figures or polarity."""
+    from . import review
+    out: dict[str, str] = {}
+    for rule_id in re.split(r"[,\s]+", str(header.get("conflicts") or "")):
+        note = st.index.note(rule_id) if rule_id else None
+        if note is not None and (note.kind in ("rule", "procedure") or note.must_hold):
+            out[note.id] = "contradicts"
+    area = str(meta.get("area") or meta.get("layer") or "")
+    topic = str(meta.get("topic") or "")
+    for note in st.index.notes.values():
+        if note.id == note_id or note.id in out or not note.live:
+            continue
+        if not (note.kind in ("rule", "procedure") or note.must_hold):
+            continue
+        if (note.area, note.topic) != (area, topic) and not note.must_hold:
+            continue
+        if review.contradiction(text, note.body):
+            out[note.id] = "contradicts"
+    return list(out.items())
 
 
 def decide(brain, decisions, *, actor=None, label=None, source=None):

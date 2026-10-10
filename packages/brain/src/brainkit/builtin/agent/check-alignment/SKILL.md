@@ -39,6 +39,8 @@ You get the map of the Brain and candidates, each with a reference (`c1`, ...):
 
 ## Answer with one JSON object only
 
+EXAMPLE, made up for the shape only; never copy its text:
+
 ```json
 {"summary": "2 gaps for the Q4 goal; 1 note off the goals.",
  "findings": [

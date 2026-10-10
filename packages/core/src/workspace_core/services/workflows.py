@@ -46,8 +46,78 @@ from .prompts import Prompts
 from .runtime import Runtime
 from .skills import Skills
 
-STEP_KINDS = ("skill", "agent", "prompt", "connector", "upkeep", "check")
-TASK_KINDS = ("skill", "agent", "prompt", "connector")
+STEP_KINDS = (
+    "skill",
+    "agent",
+    "prompt",
+    "connector",
+    "upkeep",
+    "check",
+    "ingest",
+    "distill",
+    "state",
+    "task",
+    "handoff",
+)
+TASK_KINDS = ("skill", "agent", "prompt", "connector", "distill")
+SERVER_KINDS = ("upkeep", "ingest")  # the server runs them (the knowledge agent, the Library)
+LOCAL_KINDS = ("state", "task", "handoff")  # code runs them at once, no model
+INGEST_SOURCES = ("library", "url", "folder")
+# What each kind of step takes and gives (BL 16.6), so the canvas can say two steps fit.
+STEP_TYPES: dict[str, dict[str, Any]] = {
+    "skill": {"group": "Work", "label": "A skill", "takes": ["any"], "gives": ["text"]},
+    "agent": {"group": "Work", "label": "An agent", "takes": ["any"], "gives": ["text"]},
+    "prompt": {"group": "Work", "label": "A prompt", "takes": ["any"], "gives": ["text"]},
+    "connector": {
+        "group": "Connectors",
+        "label": "Your connected tools",
+        "takes": ["any"],
+        "gives": ["text"],
+    },
+    "upkeep": {
+        "group": "Brain upkeep",
+        "label": "An upkeep action",
+        "takes": ["none"],
+        "gives": ["suggestions"],
+    },
+    "ingest": {
+        "group": "Ingestion",
+        "label": "Refresh, fetch or sweep",
+        "takes": ["none"],
+        "gives": ["document"],
+    },
+    "distill": {
+        "group": "Distillation",
+        "label": "Find what to remember",
+        "takes": ["text", "document"],
+        "gives": ["suggestions"],
+    },
+    # It passes on the value it wrote, so a later step can read it.
+    "state": {
+        "group": "State",
+        "label": "Update a sheet",
+        "takes": ["text"],
+        "gives": ["state", "text"],
+    },
+    "task": {
+        "group": "Tasks",
+        "label": "Open a task",
+        "takes": ["none", "text"],
+        "gives": ["task"],
+    },
+    "handoff": {"group": "Tasks", "label": "Hand off", "takes": ["task"], "gives": ["task"]},
+    "check": {
+        "group": "Human check",
+        "label": "Wait for your yes",
+        "takes": ["any"],
+        "gives": ["text"],
+    },
+}
+DISTILL = (
+    "Read what the step before made. Find what should last (a rule, a decision, a changed "
+    "fact, a preference) and propose each with propose_brain_entry, quoting the source. Keep "
+    "nothing else. Then complete the run."
+)
 RUNNERS = ("claude", "any")  # Claude Code on this computer, or any connected AI
 TRIGGERS = ("now", "schedule", "ai")
 ACTIVE = ("running", "waiting")
@@ -159,9 +229,56 @@ def clean_step(step: Any, index: int) -> dict[str, Any]:
             raise ValidationFailed(
                 f"{where}: an upkeep step is one of {', '.join(ACTIONS)}.", field="steps"
             )
+    if kind == "ingest":
+        out["source"] = _words(step.get("source"), 20)
+        out["target"] = _words(step.get("target"), 500)
+        if out["source"] not in INGEST_SOURCES:
+            raise ValidationFailed(
+                f"{where}: an ingestion step refreshes a Library item, fetches a URL or sweeps "
+                "a folder.",
+                field="steps",
+            )
+        if out["source"] != "folder" and not out["target"]:
+            raise ValidationFailed(f"{where}: name the item or the address.", field="steps")
+    if kind == "state":
+        for name in ("sheet", "row", "column"):
+            out[name] = _words(step.get(name), 200)
+            if not out[name]:
+                raise ValidationFailed(f"{where}: name the {name} it updates.", field="steps")
+    if kind in ("task", "handoff"):
+        out["to"] = _words(step.get("to"), 120) or "you"
+        out["goal"] = _words(step.get("goal"), 200) or None
+        if kind == "task" and not ask:
+            raise ValidationFailed(f"{where}: say what the task is.", field="steps")
+        if kind == "handoff":
+            out["done_when"] = _words(step.get("done_when"), 300)
+            out["next_step"] = _words(step.get("next_step"), 300)
+            if not out["done_when"] or not out["next_step"]:
+                raise ValidationFailed(
+                    f"{where}: a hand-off says when it is done and the next step.",
+                    field="steps",
+                )
     if kind != "upkeep":
         out["ask"] = ask
     return out
+
+
+def fit_problems(steps: list[dict[str, Any]]) -> list[str]:
+    """Steps that do not fit the one before (what it takes against what that gives)."""
+    problems = []
+    gives: list[str] = ["none"]
+    for index, step in enumerate(steps):
+        kind = STEP_TYPES.get(step["kind"]) or {}
+        takes = kind.get("takes") or ["any"]
+        # A step that takes nothing reads nothing before it, so it follows anything.
+        if not {"any", "none"} & set(takes) and not set(takes) & set(gives):
+            problems.append(
+                f"Step {index + 1} ({kind.get('label', step['kind'])}) needs "
+                f"{' or '.join(takes)}; the step before gives {' and '.join(gives)}."
+            )
+        made = kind.get("gives") or ["text"]
+        gives = made if step["kind"] != "check" else gives
+    return problems
 
 
 def clean_output(output: Any) -> dict[str, Any]:
@@ -482,6 +599,9 @@ class Workflows:
         if len(steps) > MAX_STEPS:
             raise ValidationFailed(f"A workflow has at most {MAX_STEPS} steps.", field="steps")
         cleaned = [clean_step(step, n) for n, step in enumerate(steps)]
+        misfits = fit_problems(cleaned)
+        if misfits:
+            raise ValidationFailed(misfits[0], field="steps")
         if cleaned[0]["kind"] == "check":
             raise ValidationFailed(
                 "A check reads what a step before it made: start with another step.",
@@ -700,6 +820,7 @@ class Workflows:
         start: builtins.list[dict[str, Any]] = []
         upkeep: builtins.list[dict[str, Any]] = []
         watch: builtins.list[dict[str, Any]] = []
+        ingest: builtins.list[dict[str, Any]] = []
         for item in going:
             try:
                 self._advance_one(who, item["id"])
@@ -709,7 +830,18 @@ class Workflows:
             if run.status not in ACTIVE:
                 continue
             step = run.steps[run.step]
-            if step["kind"] == "upkeep" and step["status"] == "pending":
+            if step["kind"] == "ingest" and step["status"] == "pending":
+                wf = self._workflow_row(run.workflow_id)
+                spec = wf["steps"][run.step]
+                ingest.append(
+                    {
+                        "run_id": run.id,
+                        "index": run.step,
+                        "source": spec["source"],
+                        "target": spec.get("target") or "",
+                    }
+                )
+            elif step["kind"] == "upkeep" and step["status"] == "pending":
                 wf = self._workflow_row(run.workflow_id)
                 upkeep.append(
                     {"run_id": run.id, "index": run.step, "action": wf["steps"][run.step]["action"]}
@@ -722,7 +854,7 @@ class Workflows:
                     task = tx.get(schema.tasks, step["task_id"])
                 if task and task["status"] in ("draft", "ready") and wf["runner"] == "claude":
                     start.append({"run_id": run.id, "index": run.step, "task_id": task["id"]})
-        return {"start": start, "upkeep": upkeep, "watch": watch}
+        return {"start": start, "upkeep": upkeep, "watch": watch, "ingest": ingest}
 
     def decide(
         self, who: Principal, run_id: str, *, go: bool, edit: str | None = None, note: str = ""
@@ -899,7 +1031,64 @@ class Workflows:
                 ],
                 "output": {"kind": "workspace", "doc_id": None},
             },
+            {
+                "id": "verify-monthly",
+                "name": "Verify my most-used notes each month",
+                "description": "Once a month the knowledge agent checks your most used, "
+                "single-source and stale notes against the web; each finding waits in Catch up "
+                "with its sources, and nothing changes on its own.",
+                "schedule": {"kind": "monthly", "day": 1, "time": "09:00"},
+                "steps": [{"kind": "upkeep", "action": "verify-sources"}],
+                "output": {"kind": "outputs"},
+            },
+            {
+                "id": "refresh-library",
+                "name": "Refresh my Library",
+                "description": "Fetch a Library item again and sweep your watched folders; "
+                "what changed waits for review.",
+                "schedule": {"kind": "weekly", "days": ["mon"], "time": "07:00"},
+                "steps": [
+                    {"kind": "ingest", "source": "library", "target": ""},
+                    {"kind": "ingest", "source": "folder", "target": ""},
+                ],
+                "output": {"kind": "outputs"},
+            },
+            {
+                "id": "accounts-from-meetings",
+                "name": "Keep the Accounts sheet current from meeting digests",
+                "description": "Read the week's meetings, note what changed for an account, "
+                "write it to the Accounts sheet under each column's rule, and find what should "
+                "last in the Brain.",
+                "schedule": {"kind": "weekly", "days": ["fri"], "time": "16:00"},
+                "steps": [
+                    {
+                        "kind": "prompt",
+                        "text": "From the week's meetings, say for one account what changed: "
+                        "its health, its next step, its renewal.",
+                        "meetings": 7,
+                    },
+                    {"kind": "state", "sheet": "accounts", "row": "", "column": "Next step"},
+                    {"kind": "distill"},
+                ],
+                "output": {"kind": "outputs"},
+            },
         ]
+
+    @staticmethod
+    def library() -> dict[str, Any]:
+        """The canvas's node library (UX 4.7): each kind of step, its group, what it takes
+        and gives, and the upkeep actions; connectors show as coming later."""
+        return {
+            "kinds": [{"kind": k, **v} for k, v in STEP_TYPES.items()],
+            "actions": [{"id": k, **v} for k, v in ACTIONS.items()],
+            "ingest_sources": list(INGEST_SOURCES),
+            "triggers": [
+                {"id": "schedule", "label": "A schedule"},
+                {"id": "now", "label": "Run now"},
+                {"id": "ai", "label": "From any AI you allow"},
+                {"id": "events", "label": "When something happens", "later": True},
+            ],
+        }
 
     # ---------------------------------------------------------------- inside: steps
 
@@ -917,11 +1106,24 @@ class Workflows:
             step["ask"] = spec.get("ask") or "Read what the step before made."
             self._save_run(run, steps=steps, status="waiting")
             return
-        if spec["kind"] == "upkeep":
+        if spec["kind"] in SERVER_KINDS:
             step["status"] = "pending"
             self._save_run(run, steps=steps, status="running")
             return
         before = next((s.get("result") for s in reversed(steps[:index]) if s.get("result")), None)
+        if spec["kind"] in LOCAL_KINDS:
+            try:
+                result = self._local(who, run, spec, steps, index, before)
+            except WorkspaceError as exc:
+                step.update(status="failed", finished_at=self._now(), note=_words(str(exc), 500))
+                self._save_run(
+                    run, steps=steps, status="failed", finished=True, note=_words(str(exc), 500)
+                )
+                return
+            step.update(status="done", finished_at=self._now(), result=result)
+            self._save_run(run, steps=steps, status="running")
+            self._next(who, run.id, index)
+            return
         try:
             plan = self._plan(who, wf, spec, run.request)
             pins = list(plan.get("pins") or [])
@@ -963,12 +1165,77 @@ class Workflows:
         )
         self._save_run(run, steps=steps, status="running")
 
+    def _local(
+        self,
+        who: Principal,
+        run: WorkflowRun,
+        spec: dict[str, Any],
+        steps: builtins.list[dict[str, Any]],
+        index: int,
+        before: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """A step code runs at once: a State update from the step before, a task opened, or a
+        task handed off (the same `hand_off` every AI uses; G3)."""
+        said = cut(str((before or {}).get("text") or (before or {}).get("excerpt") or ""), 1500)
+        if spec["kind"] == "state":
+            if not said:
+                raise ValidationFailed("The step before made nothing to write.")
+            done = self.rt.brain.update_state(
+                [
+                    {
+                        "sheet": spec["sheet"],
+                        "row": spec["row"],
+                        "column": spec["column"],
+                        "value": said[:500],
+                    }
+                ],
+                evidence=f"the workflow run {run.id}",
+            )
+            return {"text": said[:500], "note": str(done.get("text") or "Written.")}
+        if spec["kind"] == "task":
+            fields: dict[str, Any] = {
+                "new_task": {
+                    "title": spec["ask"] + (f": {cut(said, 120)}" if said else ""),
+                    **({"goal": spec["goal"]} if spec.get("goal") else {}),
+                }
+            }
+            made = self.rt.brain.hand_off(**fields)
+            task_id = str((made.get("task") or {}).get("id") or "")
+            if spec.get("to") and spec["to"] != "you":
+                self.rt.brain.hand_off(
+                    task=task_id,
+                    to=spec["to"],
+                    done_when=spec.get("ask") or "As the task says",
+                    next_step=spec.get("ask") or "Start it",
+                )
+            return {"text": f"Opened {task_id}.", "task": task_id}
+        task_id = next(
+            (
+                str(s.get("result", {}).get("task"))
+                for s in reversed(steps[:index])
+                if (s.get("result") or {}).get("task")
+            ),
+            "",
+        )
+        if not task_id:
+            raise ValidationFailed("No task to hand off: put an Open a task step before it.")
+        self.rt.brain.hand_off(
+            task=task_id,
+            to=spec["to"],
+            done_when=spec["done_when"],
+            next_step=spec["next_step"],
+            done_so_far=said[:500],
+        )
+        return {"text": f"Handed {task_id} to {spec['to']}.", "task": task_id}
+
     def _plan(
         self, who: Principal, wf: dict[str, Any], spec: dict[str, Any], request: str
     ) -> dict[str, Any]:
         """The step's run, planned as Compose plans one."""
         project = wf["project"]
         extra = f"\n\nThis run: {request}" if request else ""
+        if spec["kind"] == "distill":
+            return self.compose.plan(who, request=DISTILL + extra, project=project)
         if spec["kind"] == "skill":
             return self.compose.plan(
                 who,

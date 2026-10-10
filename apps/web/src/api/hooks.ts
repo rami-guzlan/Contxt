@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, del, get, post, put, query } from "./client";
 import type {
+  LoopRun,
+  NodeLibrary,
   SkillAbout,
   SkillBroughtIn,
   SkillCopy,
@@ -1741,6 +1743,45 @@ export function useTakeBack() {
     onSettled: () => {
       void invalidate(tasksKey, keys.catchUp);
     },
+  });
+}
+
+/** The canvas's node library: kinds of step, what each takes and gives. */
+export function useNodeLibrary() {
+  return useQuery({ queryKey: ["workflows", "library"], queryFn: () => get<NodeLibrary>("/api/workflows/library"), staleTime: 300_000 });
+}
+
+/** The knowledge agent's runs, each with its steps (BL 17.8). */
+export function useLoopRuns() {
+  return useQuery({ queryKey: ["loop", "runs"], queryFn: () => get<LoopRun[]>("/api/loop/runs") });
+}
+
+/** "That's wrong" on a request: the notes it was handed become suspects. */
+export function useCorrect() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { text: string; packet_id?: string; session_id?: string }) =>
+      post<{ card: { id: string; title: string } | null; suspects: { id: string; title: string; score: number }[] }>("/api/loop/corrections", body),
+    onSettled: () => invalidate(keys.catchUp),
+  });
+}
+
+/** Answer a "Still true?" card: still true, fixed, or set aside. */
+export function useAnswerCorrection() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: "still_true" | "fixed" | "dismissed" }) =>
+      post<{ id: number; status: string }>(`/api/loop/corrections/${id}`, { status }),
+    onSettled: () => invalidate(keys.catchUp, keys.brain),
+  });
+}
+
+/** Keep a lesson the agent learned from your decisions as a suggested note. */
+export function useKeepLesson() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (key: string) => post<{ proposal_id: string | null; status: string }>("/api/loop/lessons", { key }),
+    onSettled: () => invalidate(keys.catchUp, keys.brain),
   });
 }
 

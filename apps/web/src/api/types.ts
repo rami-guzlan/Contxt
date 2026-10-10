@@ -1429,6 +1429,46 @@ export interface CatchUpPlan {
   state_waiting?: StateWaiting[];
   /** Suggested next steps for your goals, a quick yes grouped by goal. */
   goal_steps?: { goal: string; title: string; steps: GoalSuggestion[] }[];
+  /** What the updating loop asks of you (BL 9). */
+  loop?: LoopCard[];
+}
+
+/** One ask of the updating loop in Catch up. */
+export interface LoopCard {
+  key: string;
+  type: "still_true" | "bent_rule" | "approval_health" | "corroborate" | "quarterly_review" | "lesson" | "hand_up";
+  ask: string;
+  note?: string;
+  title?: string;
+  text?: string;
+  correction?: number;
+  salience?: boolean;
+  count?: number;
+  uses?: number;
+  source?: string;
+  action?: string;
+  area?: string;
+  cases?: number;
+  why?: string;
+  at?: string;
+}
+
+/** A step of a knowledge agent run: what it answered, the tool it called and what came back. */
+export interface LoopRunStep {
+  answer: string;
+  tool: string | null;
+  args: Record<string, unknown> | null;
+  result: string | null;
+  problems: string[];
+}
+
+/** A knowledge agent run as the Brain keeps it (BL 17.8). */
+export interface LoopRun {
+  id: string;
+  at: string;
+  action: string;
+  ending: string;
+  record: { why?: string; model?: string; seconds?: number | null; prompt_version?: string; steps?: LoopRunStep[] };
 }
 
 // ---------------------------------------------------------------- goals and built-in skills
@@ -2241,7 +2281,26 @@ export interface SavedPrompt {
 
 // ------------------------------------------------------------------ Work: Workflows
 
-export type StepKind = "skill" | "agent" | "prompt" | "connector" | "upkeep" | "check";
+export type StepKind =
+  | "skill"
+  | "agent"
+  | "prompt"
+  | "connector"
+  | "upkeep"
+  | "ingest"
+  | "distill"
+  | "state"
+  | "task"
+  | "handoff"
+  | "check";
+
+/** The canvas's node library: each kind of step, what it takes and gives (BL 16.6). */
+export interface NodeLibrary {
+  kinds: { kind: StepKind; group: string; label: string; takes: string[]; gives: string[] }[];
+  actions: { id: string; label: string; blurb?: string }[];
+  ingest_sources: string[];
+  triggers: { id: string; label: string; later?: boolean }[];
+}
 
 /** One box of a workflow: what it runs, and what it is given. */
 export interface WorkflowStep {
@@ -2259,6 +2318,18 @@ export interface WorkflowStep {
   tools?: string[];
   writes?: boolean;
   action?: string;
+  /** An ingestion step: library, url or folder, and the item or address. */
+  source?: string;
+  target?: string;
+  /** A State step: the sheet, row and column it writes. */
+  sheet?: string;
+  row?: string;
+  column?: string;
+  /** A task or hand-off step. */
+  to?: string;
+  goal?: string | null;
+  done_when?: string;
+  next_step?: string;
 }
 
 /** When a workflow runs by itself, in the workspace's time zone. */

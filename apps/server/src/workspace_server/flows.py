@@ -20,6 +20,7 @@ from workspace_core.errors import WorkspaceError
 from workspace_core.workspace import Workspace
 
 from .knowledge_agent import AgentWork
+from .library import FetchError
 from .runners import ACTIVE, RUNNERS, Runners, _call
 
 log = logging.getLogger("workspace.flows")
@@ -67,11 +68,17 @@ def connectors(runners: Runners) -> dict[str, Any]:
 
 class WorkflowWorker:
     def __init__(
-        self, ws: Workspace, runners: Runners, agent: AgentWork, interval: float = 15.0
+        self,
+        ws: Workspace,
+        runners: Runners,
+        agent: AgentWork,
+        interval: float = 15.0,
+        library: Any = None,
     ) -> None:
         self.ws = ws
         self.runners = runners
         self.agent = agent
+        self.library = library  # the Library (library.py): refresh an item, fetch a page
         self.interval = max(1.0, float(interval))
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -91,10 +98,42 @@ class WorkflowWorker:
                 self.ws.workflows.upkeep_finished(
                     owner, item["run_id"], item["index"], ok=False, summary=str(exc)
                 )
+        for item in todo.get("ingest") or []:
+            self._ingest(owner, item)
         ran = self._start_one(owner, todo["start"])
         if started:
             log.info("%d workflow run(s) started", len(started))
         return {"started": len(started), "ran": ran, "upkeep": len(todo["upkeep"])}
+
+    def _ingest(self, owner: Any, item: dict[str, Any]) -> None:
+        """An ingestion step (UX 4.7): refresh a Library item, fetch a page into the Library,
+        or sweep the watched folders. What it brings in follows the capture policy."""
+        run_id, index = item["run_id"], item["index"]
+        try:
+            if item["source"] == "folder":
+                found = self.ws.rt.brain.sweep()
+                summary = str(found.get("text") or "Swept the folders.")
+            elif self.library is None:
+                raise WorkspaceError("The Library is not running here.")
+            elif item["source"] == "library":
+                found = self.library.refresh(owner, item["target"], wait=True)
+                summary = str(found.get("message") or found.get("status") or "Refreshed.")
+            else:
+                source = self.library.fetch(url=item["target"])
+                filed = self.ws.brain.add_file(
+                    owner,
+                    filename=re.sub(r"[^a-z0-9]+", "-", source.title.lower()).strip("-")[:60]
+                    + ".md",
+                    data=source.markdown.encode("utf-8"),
+                    title=source.title,
+                    wait=True,
+                    library={"library": "reference", "source_url": source.url},
+                )
+                summary = f"Fetched {source.title}: {filed.message}"
+        except (WorkspaceError, FetchError, OSError, ValueError) as exc:  # the step fails
+            self.ws.workflows.upkeep_finished(owner, run_id, index, ok=False, summary=str(exc))
+            return
+        self.ws.workflows.upkeep_finished(owner, run_id, index, ok=True, summary=summary)
 
     def _look_in(self, owner: Any, item: dict[str, Any]) -> None:
         job = self.agent.jobs.get(str(item.get("job_id") or ""))

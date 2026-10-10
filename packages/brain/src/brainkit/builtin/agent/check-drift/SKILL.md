@@ -32,6 +32,8 @@ only from the texts given and the map.
 
 ## Answer with one JSON object only
 
+EXAMPLE, made up for the shape only; never copy its text:
+
 ```json
 {"summary": "1 value changed, 1 real disagreement, 2 fine.",
  "findings": [

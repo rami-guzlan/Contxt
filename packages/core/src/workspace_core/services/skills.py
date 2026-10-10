@@ -721,6 +721,7 @@ class Skills:
         if len(text) > MAX_RESULT:
             raise ValidationFailed(f"A result is at most {MAX_RESULT:,} characters.", field="text")
         title = " ".join(str(title or "").split())[:200] or task["title"]
+        flagged = self._send_back(run_id, text)
         arts = schema.artifacts
         with self.rt.read() as tx:
             earlier = tx.first(
@@ -743,7 +744,30 @@ class Skills:
             "artifact_id": made.artifact.id,
             "version": made.version.number,
             "title": made.artifact.title,
+            **({"violations": flagged} if flagged else {}),
         }
+
+    def _send_back(self, run_id: str, text: str) -> list[dict[str, Any]]:
+        """BL 9's output check: a result that breaks a must-hold is sent back once with what
+        broke; saved again, it is kept and flagged. Returns the violations it is kept with."""
+        with self.rt.read() as tx:
+            run = tx.one(schema.task_runs, run_id, "run")
+        first = not (run["outcome"] or {}).get("sent_back")
+        found = self.rt.brain.check_output(text, sent_back=f"run:{run_id}")
+        if not found:
+            return []
+        if first:
+            with self.rt.write() as tx:
+                run = tx.one(schema.task_runs, run_id, "run")
+                outcome = dict(run["outcome"] or {}, sent_back=len(found))
+                tx.update(schema.task_runs, run, {"outcome": outcome})
+            lines = "; ".join(f'"{v["found"]}" breaks "{v["rule"]}"' for v in found[:5])
+            raise ValidationFailed(
+                f"Not saved: {lines}. Fix it and save again; a second save is kept and flagged.",
+                field="text",
+                violations=found,
+            )
+        return found
 
     def propose(
         self,

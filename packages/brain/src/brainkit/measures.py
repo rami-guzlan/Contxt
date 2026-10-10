@@ -123,6 +123,21 @@ def _unclaimed(brain, st, params) -> float:
                      if _older_than(t.get("updated") or "", days - 1)))
 
 
+def _since(days: int) -> str:
+    return (util.today_date() - dt.timedelta(days=int(days))).isoformat()
+
+
+def _corrections(brain, st, params) -> float:
+    """Corrections the owner made to an AI's output (G3)."""
+    return float(len(brain.ledger.corrections(status=None,
+                                              since=_since(params.get("days", 7)))))
+
+
+def _sent_back(brain, st, params) -> float:
+    """Drafts sent back once, and recorded outputs flagged, for breaking a must-hold (G3)."""
+    return float(brain.ledger.sent_back_count(_since(params.get("days", 7))))
+
+
 SIGNALS: dict[str, Signal] = {s.name: s for s in (
     Signal("notes_overdue", "Much-used notes past their review date, or unchecked for 180 days",
            _notes_overdue),
@@ -138,6 +153,10 @@ SIGNALS: dict[str, Signal] = {s.name: s for s in (
            {"sheet": "", "column": "", "agg": "latest"}),
     Signal("unclaimed", "Handoffs nobody claimed within {days} days", _unclaimed,
            {"days": 1}),
+    Signal("corrections", "Corrections you made to an AI's work in the last {days} days",
+           _corrections, {"days": 7}),
+    Signal("sent_back", "Drafts sent back or flagged for breaking a must-hold in the last "
+           "{days} days", _sent_back, {"days": 7}),
 )}
 
 

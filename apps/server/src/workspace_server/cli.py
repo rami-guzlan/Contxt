@@ -338,7 +338,13 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     flows = (
         None
         if args.no_worker
-        else WorkflowWorker(runtime.ws, runtime.runners, runtime.agent, settings.worker_interval)
+        else WorkflowWorker(
+            runtime.ws,
+            runtime.runners,
+            runtime.agent,
+            settings.worker_interval,
+            library=runtime.library,
+        )
     )
     if worker:
         worker.start()

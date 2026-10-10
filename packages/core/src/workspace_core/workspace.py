@@ -43,6 +43,7 @@ from .services.goals import Goals
 from .services.handoffs import Handoffs
 from .services.legacy import Legacy
 from .services.live import LiveContext
+from .services.loop import Loop
 from .services.movein import MovingIn
 from .services.notes import Note, Notes
 from .services.onboarding import Onboarding
@@ -100,6 +101,7 @@ class Workspace:
         self.live = LiveContext(rt)
         self.handoffs = Handoffs(rt)
         self.handoffs.agents = self.agents
+        self.loop = Loop(rt, self.brain)
 
     # ---------------------------------------------------------------- lifecycle
 

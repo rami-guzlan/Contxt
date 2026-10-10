@@ -3,6 +3,7 @@ with one card per slip, the knowledge agent's starter goals, and the shared plan
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import shutil
 import unittest
@@ -72,6 +73,30 @@ class LadderTest(unittest.TestCase):
                               actor=self.owner())
         self.assertTrue(bad.is_error)
         self.assertIn("no signal 'nope'", bad.text)
+
+    def test_teammates_keep_a_shared_goal_only_in_a_brain_that_names_them(self):
+        """G3's scaffold: a solo Brain refuses owners; one whose brain.json names teammates
+        keeps them on the goal, with the admins of its scope."""
+        refused = ladder.set_goal(self.brain, title="Grow the list", owners=["person:sam"],
+                                  actor=self.owner())
+        self.assertTrue(refused.is_error)
+        self.assertIn("team edition", refused.text)
+        config = os.path.join(self.vault, "brain.json")
+        with open(config, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["people"] = ["person:sam"]
+        with open(config, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2)
+        self.brain.close()
+        self.brain = Brain(self.vault, embeddings=False)
+        stranger = ladder.set_goal(self.brain, title="Grow the list", owners=["person:lee"],
+                                   actor=self.owner())
+        self.assertIn("person:lee is not a teammate", stranger.text)
+        made = ladder.set_goal(self.brain, title="Grow the list", owners=["person:sam"],
+                               actor=self.owner())
+        self.assertFalse(made.is_error, made.text)
+        self.assertEqual(made.data["goal"]["owners"], ["person:sam"])
+        self.assertEqual(made.data["goal"]["admins"], [])
 
     def test_a_check_in_sets_your_status_for_a_cadence_and_then_goes_stale(self):
         goal = self.webinar()

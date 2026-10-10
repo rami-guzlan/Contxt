@@ -19,6 +19,7 @@ import type { StepKind, Workflow, WorkflowForm, WorkflowSchedule, WorkflowStep }
 import { CAPTURE_NAMES } from "../CaptureParts";
 import { ErrorNote, Field } from "../ui";
 import { linesOf, PickMany, textOf } from "./PickMany";
+import { WorkflowCanvas } from "./WorkflowCanvas";
 
 export const STEP_NAMES: Record<StepKind, string> = {
   skill: "Skill",
@@ -26,14 +27,24 @@ export const STEP_NAMES: Record<StepKind, string> = {
   prompt: "Prompt",
   connector: "Connector",
   upkeep: "Brain upkeep",
+  ingest: "Bring in",
+  distill: "Find what to remember",
+  state: "Update a sheet",
+  task: "Open a task",
+  handoff: "Hand off",
   check: "Your check",
 };
-const STEP_HINTS: Record<StepKind, string> = {
+export const STEP_HINTS: Record<StepKind, string> = {
   skill: "Follows one of your skills.",
   agent: "One of your agents does it, with its role and what it points to.",
   prompt: "A saved prompt, or one written here, with its picks.",
   connector: "Reads from a tool you connected to Claude Code (HubSpot, Gmail), with the tools you name.",
   upkeep: "One of the knowledge agent's upkeep jobs; what it suggests waits in Catch up.",
+  ingest: "Refreshes a Library item, fetches a page into the Library, or sweeps your watched folders.",
+  distill: "Reads what the step before made and suggests what should last in the Brain; it waits in Catch up.",
+  state: "Writes what the step before made into one cell of a State sheet, under the column's rule.",
+  task: "Opens a task in the Tasks sheet, for you or an AI.",
+  handoff: "Hands the task the step before opened to an AI or a person, with when it is done.",
   check: "The run waits for you: go on, edit what came before, or stop.",
 };
 const DAYS = [
@@ -76,6 +87,16 @@ export function stepWords(step: WorkflowStep, actions?: Map<string, string>): st
       return `Connector${step.tools?.length ? `: ${step.tools.length} tool${step.tools.length === 1 ? "" : "s"}` : ""}`;
     case "upkeep":
       return actions?.get(step.action ?? "") ?? step.action ?? "Brain upkeep";
+    case "ingest":
+      return step.source === "folder" ? "Sweep the folders" : step.source === "url" ? `Fetch ${short(step.target, 24) || "a page"}` : `Refresh ${short(step.target, 24) || "an item"}`;
+    case "distill":
+      return "Find what to remember";
+    case "state":
+      return step.sheet ? `${step.sheet}: ${step.row || "a row"}, ${step.column || "a column"}` : "Update a sheet";
+    case "task":
+      return short(step.ask) || "Open a task";
+    case "handoff":
+      return step.to ? `Hand to ${step.to}` : "Hand off";
     case "check":
       return short(step.ask) || "Your check";
   }
@@ -93,6 +114,16 @@ function newStep(kind: StepKind): WorkflowStep {
       return { kind, ask: "", tools: [], writes: false };
     case "upkeep":
       return { kind, action: "tidy-repeats" };
+    case "ingest":
+      return { kind, source: "folder", target: "" };
+    case "distill":
+      return { kind, ask: "" };
+    case "state":
+      return { kind, sheet: "", row: "", column: "" };
+    case "task":
+      return { kind, ask: "", to: "you" };
+    case "handoff":
+      return { kind, to: "Claude Code", done_when: "", next_step: "" };
     case "check":
       return { kind, ask: "Read what the step before made." };
   }
@@ -134,6 +165,19 @@ export function WorkflowEditor({
     set({ steps: next });
   };
   const written = (docs ?? []).filter((n) => (n.capture ?? "note") === "note");
+  const [view, setView] = useState<"canvas" | "list">("canvas");
+  const [picked, setPicked] = useState<number | null>(null);
+  const add = (kind: StepKind) => {
+    set({ steps: [...form.steps, newStep(kind)] });
+    setPicked(form.steps.length);
+  };
+  const pickedStep = picked != null ? form.steps[picked] : undefined;
+  const outputWords =
+    form.output.kind === "outputs"
+      ? "Outputs"
+      : form.output.doc_id
+        ? `The next version of ${written.find((d) => d.id === (form.output as { doc_id: string | null }).doc_id)?.title ?? "a doc"}`
+        : "A new Workspace doc";
   return (
     <form
       className="stack workflow-editor"
@@ -174,8 +218,56 @@ export function WorkflowEditor({
         </label>
       </fieldset>
       <section aria-label="Steps" className="stack">
-        <h3>Steps, in order</h3>
-        {form.steps.length ? (
+        <div className="row">
+          <h3>Steps, in order</h3>
+          <span className="row small" role="group" aria-label="How to show the steps">
+            <button type="button" className={view === "canvas" ? "pill active" : "link small"} aria-pressed={view === "canvas"} onClick={() => setView("canvas")}>
+              Canvas
+            </button>
+            <button type="button" className={view === "list" ? "pill active" : "link small"} aria-pressed={view === "list"} onClick={() => setView("list")}>
+              List
+            </button>
+          </span>
+        </div>
+        {view === "canvas" ? (
+          <>
+            <WorkflowCanvas
+              steps={form.steps}
+              when={workflow?.when ?? (form.schedule.kind === "manual" ? "When you run it" : "On its schedule")}
+              output={outputWords}
+              picked={picked}
+              statuses={workflow?.last_run?.steps}
+              onPick={setPicked}
+              onAdd={add}
+            />
+            {pickedStep && picked != null ? (
+              <div className="workflow-step-box" aria-label="The picked step">
+                <StepEditor
+                  step={pickedStep}
+                  index={picked}
+                  count={form.steps.length}
+                  onChange={(next) => setStep(picked, next)}
+                  onMove={(by) => {
+                    move(picked, by);
+                    setPicked(picked + by);
+                  }}
+                  onRemove={() => {
+                    set({ steps: form.steps.filter((_, n) => n !== picked) });
+                    setPicked(null);
+                  }}
+                />
+                {workflow?.last_run?.steps[picked] ? (
+                  <p className="muted small">
+                    Last run: {workflow.last_run.steps[picked]}
+                    {workflow.last_run.note ? ` (${workflow.last_run.note})` : ""}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="muted small">{form.steps.length ? "Pick a box to set it up." : "Add the first step from the library."}</p>
+            )}
+          </>
+        ) : form.steps.length ? (
           <ol className="workflow-steps">
             {form.steps.map((step, index) => (
               <li key={index} className="workflow-step-box">
@@ -193,13 +285,15 @@ export function WorkflowEditor({
         ) : (
           <p className="muted small">No steps yet. Add the first: a skill, an agent or a prompt.</p>
         )}
-        <div className="row workflow-add" role="group" aria-label="Add a step">
-          {(Object.keys(STEP_NAMES) as StepKind[]).map((kind) => (
-            <button key={kind} type="button" title={STEP_HINTS[kind]} onClick={() => set({ steps: [...form.steps, newStep(kind)] })}>
-              <Plus className="button-icon" aria-hidden="true" /> {STEP_NAMES[kind]}
-            </button>
-          ))}
-        </div>
+        {view === "list" ? (
+          <div className="row workflow-add" role="group" aria-label="Add a step">
+            {(Object.keys(STEP_NAMES) as StepKind[]).map((kind) => (
+              <button key={kind} type="button" title={STEP_HINTS[kind]} onClick={() => set({ steps: [...form.steps, newStep(kind)] })}>
+                <Plus className="button-icon" aria-hidden="true" /> {STEP_NAMES[kind]}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </section>
       <div className="grid-2">
         <Field label="Where it runs">
@@ -337,6 +431,10 @@ function StepEditor({
       {step.kind === "prompt" ? <PromptStep step={step} set={set} /> : null}
       {step.kind === "connector" ? <ConnectorStep step={step} set={set} /> : null}
       {step.kind === "upkeep" ? <UpkeepStep step={step} set={set} /> : null}
+      {step.kind === "ingest" ? <IngestStep step={step} set={set} /> : null}
+      {step.kind === "state" ? <StateStep step={step} set={set} /> : null}
+      {step.kind === "task" ? <TaskStep step={step} set={set} /> : null}
+      {step.kind === "handoff" ? <HandoffStep step={step} set={set} /> : null}
       {step.kind === "check" ? (
         <Field label="What to look at">
           <input value={step.ask ?? ""} onChange={(event) => set({ ask: event.target.value })} />
@@ -511,6 +609,68 @@ function ConnectorStep({ step, set }: StepProps) {
         <p className="muted small">It runs on Claude Code here with your own connectors, using only these tools. Contxt never sees their sign-ins.</p>
       )}
     </>
+  );
+}
+
+function IngestStep({ step, set }: StepProps) {
+  return (
+    <div className="grid-2">
+      <Field label="What it brings in">
+        <select value={step.source ?? "folder"} onChange={(event) => set({ source: event.target.value })}>
+          <option value="folder">Sweep my watched folders</option>
+          <option value="library">Refresh a Library item</option>
+          <option value="url">Fetch a page into the Library</option>
+        </select>
+      </Field>
+      {step.source && step.source !== "folder" ? (
+        <Field label={step.source === "url" ? "The address" : "The Library item"}>
+          <input value={step.target ?? ""} onChange={(event) => set({ target: event.target.value })} />
+        </Field>
+      ) : null}
+    </div>
+  );
+}
+
+function StateStep({ step, set }: StepProps) {
+  return (
+    <div className="grid-2">
+      <Field label="The sheet">
+        <input value={step.sheet ?? ""} placeholder="accounts" onChange={(event) => set({ sheet: event.target.value })} />
+      </Field>
+      <Field label="The row">
+        <input value={step.row ?? ""} placeholder="Northwind" onChange={(event) => set({ row: event.target.value })} />
+      </Field>
+      <Field label="The column">
+        <input value={step.column ?? ""} placeholder="Next step" onChange={(event) => set({ column: event.target.value })} />
+      </Field>
+    </div>
+  );
+}
+
+function TaskStep({ step, set }: StepProps) {
+  return (
+    <div className="grid-2">
+      <Ask step={step} set={set} label="The task" />
+      <Field label="For" hint="you, or an AI or person to hand it to at once">
+        <input value={step.to ?? "you"} onChange={(event) => set({ to: event.target.value })} />
+      </Field>
+    </div>
+  );
+}
+
+function HandoffStep({ step, set }: StepProps) {
+  return (
+    <div className="grid-2">
+      <Field label="To">
+        <input value={step.to ?? ""} onChange={(event) => set({ to: event.target.value })} />
+      </Field>
+      <Field label="Done when">
+        <input value={step.done_when ?? ""} onChange={(event) => set({ done_when: event.target.value })} />
+      </Field>
+      <Field label="The next step">
+        <input value={step.next_step ?? ""} onChange={(event) => set({ next_step: event.target.value })} />
+      </Field>
+    </div>
   );
 }
 
