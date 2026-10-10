@@ -76,12 +76,12 @@ def briefs() -> dict[str, str]:
 
 
 def compare(now: dict[str, str], kept: dict[str, str]) -> list[str]:
-    """One line per difference, with a short diff for a brief that changed."""
+    """One line per difference, with a short diff for a brief that changed. A request added to
+    the eval sets after the briefs were kept has nothing to compare with: it is not a
+    difference (`main` names it)."""
     problems = []
     for name in sorted(set(kept) - set(now)):
         problems.append(f"missing now: {name}")
-    for name in sorted(set(now) - set(kept)):
-        problems.append(f"new request, not kept: {name}")
     for name in sorted(set(now) & set(kept)):
         if now[name] != kept[name]:
             diff = "\n".join(list(difflib.unified_diff(
@@ -108,6 +108,8 @@ def main(argv=None) -> int:
     problems = compare(now, kept)
     for line in problems:
         print(line)
+    for name in sorted(set(now) - set(kept)):
+        print(f"added since the briefs were kept: {name}")
     print(f"{len(now)} briefs: " + ("the same, byte for byte" if not problems
                                      else f"{len(problems)} differ"))
     return 1 if problems else 0

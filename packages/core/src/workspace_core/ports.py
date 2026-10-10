@@ -508,8 +508,9 @@ class BrainPort(Protocol):
         """A logged request's place in the private eval set, with its labels; None if absent."""
         ...
 
-    def eval_label(self, packet_id: str, labels: dict[str, list[str]]) -> dict[str, Any]:
-        """Label a logged request (needed, useful, noise, missing note ids) for the eval set."""
+    def eval_label(self, packet_id: str, labels: dict[str, Any]) -> dict[str, Any]:
+        """Label a logged request (needed, useful, noise, missing note ids, and `nothing`: it
+        should get nothing) for the eval set."""
         ...
 
     def eval_status(self) -> dict[str, Any]:

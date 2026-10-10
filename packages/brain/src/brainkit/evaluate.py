@@ -112,6 +112,12 @@ def _cases(brain, st, spec, holdout, verbose, aliases, style_topics, style_notes
             "request_type": data.get("request_type"), "expected_type": case.get("type"),
             "noise_tokens": sum(int(sizes.get(i) or 0) for i in noise),
             "notes": data.get("note_ids"), "extra": sorted(delivered - useful),
+            # Labeled "should get nothing", and whether the brief brought nothing (one line).
+            "nothing_expected": bool(case.get("nothing")),
+            # The local engine's mode and each layer's time, for the comparison of setups.
+            "engine": {k: (data.get("engine") or {}).get(k)
+                       for k in ("mode", "timings", "ceiling_hit")},
+            "got_nothing": not delivered and not data.get("section_ids"),
             "trace": data.get("trace") if verbose else None,
         })
     return rows
@@ -126,6 +132,8 @@ def summarize(rows, thresholds):
         reach = sum(r.get("reach", r["hits"]) for r in subset)
         tokens = sum(r["tokens"] or 0 for r in subset)
         whole = sum(r.get("body_hits", r["hits"]) for r in subset)
+        nothing = [r for r in subset if r.get("nothing_expected")]
+        needed = [r for r in subset if r["must"]]
         return {
             "cases": len(subset),
             "must_recall": round(hits / must, 3) if must else 1.0,
@@ -139,6 +147,13 @@ def summarize(rows, thresholds):
             if tokens else 0.0,
             "problems": sum(len(r["problems"]) for r in subset),
             "avg_tokens": round(tokens / len(subset)) if subset else 0,
+            # Requests that should get nothing and got one line (target 95% or more), and
+            # requests that needed something but got nothing (target 2% or less).
+            "nothing_cases": len(nothing),
+            "correct_nothing": round(sum(bool(r.get("got_nothing")) for r in nothing)
+                                     / len(nothing), 3) if nothing else None,
+            "false_nothing": round(sum(bool(r.get("got_nothing")) for r in needed)
+                                   / len(needed), 3) if needed else 0.0,
         }
     tuning = [r for r in rows if not r["holdout"]]
     held = [r for r in rows if r["holdout"]]

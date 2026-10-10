@@ -227,6 +227,7 @@ class RequestLabelsIn(Body):
     useful: list[str] = Field(default_factory=list, max_length=40)
     noise: list[str] = Field(default_factory=list, max_length=40)
     missing: list[str] = Field(default_factory=list, max_length=40)
+    nothing: bool = False  # it should get nothing from the Brain
 
 
 class ReplayIn(Body):

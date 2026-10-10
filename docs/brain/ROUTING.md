@@ -183,6 +183,56 @@ or `off`; `BRAIN_HOOK_PUSH=0` turns it off for a process.
 The task section of every brief opens with the project's objective when the request works in
 one (its summary until it has an objective), then the request, then that the rules outrank it.
 
+## The local retrieval engine (brain-logic plan 5.11)
+
+When a verified local model service runs (a PC with an NVIDIA GPU or an Apple Silicon Mac, with
+the pinned models), `engine.py` decides what goes into a brief:
+
+1. **Gate**: a decision model (Kev) answers one yes/no question over the request and a short
+   map of the Brain's areas: should this request get anything at all? No means one line (the
+   must-holds whose domain is in play still go).
+2. **Find**: every note and document part above a loose meaning floor (`engine.floor`), what
+   the request names, the router's own picks and the house style for writing. No count cap; a
+   ceiling (`engine.ceiling`, 300) only protects speed, and the ledger counts a request that
+   hits it.
+3. **Relevance cut**: a reranker (Qwen3-Reranker by default) scores every candidate against an
+   instruction ("would this note help an AI do this task?"); what clears `cuts.relevance`
+   survives. If nothing does, the brief is one line.
+4. **Second pass**: on the survivors only, the decision model asks whether each adds anything a
+   better one does not cover (out when it does not), whether it contradicts one (both then
+   travel, and the brief says they disagree), whether it is current (flagged when not), and
+   which must-hold domains the request touches (their must-holds attach, never detach).
+5. **Link loop**: what the survivors name (notes in backticks, their files' parts) goes
+   through 3 and 4; it stops when a round adds nothing above the cut, three rounds at most.
+6. **Fit**: everything that survived, best first; what does not fit the budget becomes a
+   pointer (a title and a line), never a drop.
+
+Without a verified service, retrieval runs exactly as without the engine: the parity test
+(`scripts/parity_briefs.py`, `tests/test_parity.py`) checks every eval request's brief byte for
+byte. The fallback still writes down what exists: each candidate's keyword and meaning scores,
+the outcome and its reason, marked fallback. `brain_health` and `brain models` say which mode
+runs.
+
+**Models and the lock.** `models.lock.json` pins each model: repository, revision, the checksum
+of every file, dtype and runtime. The model service (`brain models serve`, started by the app)
+binds to 127.0.0.1, verifies each model against the lock and loads it once for every process;
+it refuses a model the lock does not list or whose files differ, and the engine refuses a
+service whose lock differs from its own. Decisions go through System One (Jev's request format,
+which Kev and Laya speak); relevance through a rerank interface, so models change without code
+changes. `brain models pin <name> <folder>` records a downloaded copy's checksums.
+
+**The audit trail.** For every brief the ledger keeps each candidate's keyword, meaning and
+reranker scores, the decision model's answers with their probabilities, the outcome (whole, a
+pointer, listed, already held, out) and its reason (below the cut, adds nothing beyond a named
+note, disputed with one, past the ceiling, over budget), and in the brief's data the mode, the
+lock's fingerprint, the gate's answer, the cuts and each layer's time. Activity's request view
+shows "why this note" and "why not that one", read back, never recomputed.
+
+**Choosing the setup.** `scripts/engine_compare.py` runs setups A (today) to E (Kev as the
+relevance scorer) on the labeled requests, with requests that should get nothing, and the
+must-hold decoys. The cuts are fitted on the tuning part of the labeled set and kept in
+brain.json with the date and eval run; until then they are starting points.
+
 ## Measuring it
 
 `brain bench` runs two things.

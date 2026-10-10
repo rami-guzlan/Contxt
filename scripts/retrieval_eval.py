@@ -38,12 +38,18 @@ def report(result: dict, *, models: bool) -> str:
         lines.append(f"| {name} | {m['cases']} | {m['must_recall']:.0%} | {m['body_recall']:.0%} "
                      f"| {m['reachable']:.0%} "
                      f"| {m['precision']:.0%} | {m['noise_share']:.0%} | {m['avg_tokens']} |")
+    every = result["all"]
+    if every.get("nothing_cases"):
+        lines += ["", f"Should get nothing: {every['nothing_cases']} requests, "
+                      f"{every['correct_nothing']:.0%} got nothing (correct nothing). Needed "
+                      f"something but got nothing: {every['false_nothing']:.0%} (false nothing)."]
     lines += ["", "| Brain | Cases | Recall | Precision | Noise | Avg tokens |",
               "| --- | --- | --- | --- | --- | --- |"]
     for name, m in result["by_brain"].items():
         lines.append(f"| {name} | {m['cases']} | {m['must_recall']:.0%} | {m['precision']:.0%} "
                      f"| {m['noise_share']:.0%} | {m['avg_tokens']} |")
-    misses = [r for r in result["rows"] if r["missed"] or r["noise"]]
+    misses = [r for r in result["rows"]
+              if r["missed"] or r["noise"] or (r.get("nothing_expected") and not r["got_nothing"])]
     if misses:
         lines += ["", "## Misses and noise", ""]
         for r in misses:
@@ -53,6 +59,9 @@ def report(result: dict, *, models: bool) -> str:
                 parts.append("missed " + "; ".join(" or ".join(g) for g in r["missed"]))
             if r["noise"]:
                 parts.append("noise " + ", ".join(r["noise"]))
+            if r.get("nothing_expected") and not r["got_nothing"]:
+                got = ", ".join(r.get("notes") or ["parts of files"])
+                parts.append(f"should get nothing, got {got}")
             lines.append(f"- {r['brain']}, {r['id']}{tag}: {'; '.join(parts)}")
     return "\n".join(lines) + "\n"
 

@@ -1351,6 +1351,13 @@ class BrainKitAdapter:
         )
         for key in ("got", "opened"):
             row[key] = [p for p in row.get(key) or [] if p["kind"] != "note" or p["id"] in seen]
+        found = row.get("why")
+        if found:
+            # Candidates the owner may not see are left out of "why", as from what it got.
+            for key in ("in", "out"):
+                found[key] = [
+                    r for r in found.get(key) or [] if r["kind"] != "note" or r["item"] in seen
+                ]
         if hidden:
             # It was handed notes the owner does not see: its text would show them.
             row["text"] = None
@@ -1436,7 +1443,7 @@ class BrainKitAdapter:
         found = evalset.case_for(self.brain, packet_id)
         return dict(found) if found else None
 
-    def eval_label(self, packet_id: str, labels: dict[str, list[str]]) -> dict[str, Any]:
+    def eval_label(self, packet_id: str, labels: dict[str, Any]) -> dict[str, Any]:
         """The owner's labels for one logged request: it joins the private eval set first if
         it is not in it yet."""
         from brainkit import evalset

@@ -646,6 +646,84 @@ describe("activity", () => {
     });
   });
 
+  it("labels a request that should get nothing from the Brain", async () => {
+    const calls = mockApi({
+      "GET /api/brain/weekly": [],
+      "GET /api/brain/requests": { requests: [request], brain_tokens: 6400, apps: ["Claude Code"], engine: "new" },
+      "GET /api/brain/requests/pkt-1": { ...request, text: "## Task", startup: null, eval: null },
+      "GET /api/brain/catalog": { areas: [], entries: [] },
+      "PUT /api/brain/requests/pkt-1/labels": { id: "real-pkt-1", labeled: true, nothing: true },
+    });
+    const user = userEvent.setup();
+    renderAt(<AiActivityPage />, { path: "/activity", route: "/activity" });
+    await user.click(await screen.findByRole("button", { name: /Write a LinkedIn post announcing the Q4 webinars/ }));
+    await user.click(screen.getByRole("button", { name: "Label it for your eval" }));
+    const group = screen.getByRole("group", { name: "Label LinkedIn posting rules" });
+    await user.click(within(group).getByRole("button", { name: "Noise" }));
+    await user.click(screen.getByLabelText(/It should get nothing from the Brain/));
+    await user.click(screen.getByRole("button", { name: "Save labels" }));
+    expect(await screen.findByText(/It counts in your private eval set/)).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+      needed: [],
+      useful: [],
+      noise: ["linkedin-rules"],
+      missing: [],
+      nothing: true,
+    });
+  });
+
+  it("says why each note went in and why others stayed out", async () => {
+    const row = (item: string, title: string, outcome: string, reason: string, rerank: number | null) => ({
+      kind: "note",
+      item,
+      title,
+      keyword: 0.4,
+      meaning: 0.62,
+      rerank,
+      kev: rerank === null ? {} : { current: 0.93 },
+      outcome,
+      reason,
+      found_by: "above the meaning floor",
+      round: 0,
+    });
+    mockApi({
+      "GET /api/brain/weekly": [],
+      "GET /api/brain/requests": { requests: [request], brain_tokens: 6400, apps: ["Claude Code"], engine: "new" },
+      "GET /api/brain/requests/pkt-1": {
+        ...request,
+        text: "## Task",
+        startup: null,
+        why: {
+          mode: "on",
+          reason: "",
+          lock: "fe3b2fc1fb35",
+          gate: { yes: 0.97, cut: 0.5, passed: true },
+          cuts: { relevance: 0.5 },
+          fitted: {},
+          timings: { gate: 40, find: 12, cut: 210 },
+          rounds: 1,
+          ceiling_hit: false,
+          in: [row("linkedin-rules", "LinkedIn posting rules", "body", "", 0.91)],
+          out: [row("podcast-format", "Podcast format", "out", "below the relevance cut (0.12 < 0.5)", 0.12)],
+          out_count: 3,
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderAt(<AiActivityPage />, { path: "/activity", route: "/activity" });
+    await user.click(await screen.findByRole("button", { name: /Write a LinkedIn post announcing the Q4 webinars/ }));
+    await user.click(await screen.findByText("Why these, and not others"));
+    expect(
+      screen.getByText(/The local engine chose these \(lock fe3b2fc1fb35; the gate said 0.97 against 0.5; 1 link round\)/),
+    ).toBeInTheDocument();
+    const inside = screen.getByRole("list", { name: "Why this" });
+    expect(within(inside).getByRole("link", { name: "LinkedIn posting rules" })).toBeInTheDocument();
+    expect(within(inside).getByText(/relevance 0.91/)).toBeInTheDocument();
+    const outside = screen.getByRole("list", { name: "Why not that one" });
+    expect(within(outside).getByText(/below the relevance cut \(0.12 < 0.5\)/)).toBeInTheDocument();
+    expect(screen.getByText(/and 2 more out, kept in the ledger/)).toBeInTheDocument();
+  });
+
   it("shows what context cost by line, and how good briefs are", async () => {
     const day = (usd: number) => ({ tokens: Math.round(usd * 100000), usd });
     const calls = mockApi({

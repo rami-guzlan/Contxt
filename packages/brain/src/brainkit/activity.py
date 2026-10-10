@@ -183,6 +183,7 @@ def request(brain, packet_id):
         own = str(data["person_fingerprint"])
         startup = {"fingerprint": own, "text": brain.ledger.kernel_text(own)}
     shaped["startup"] = startup
+    shaped["why"] = why(brain, st, row["id"], data)
     return _result(f"Request {row['id']}.", shaped)
 
 
@@ -272,3 +273,35 @@ def _saved(brain, st, sessions: set) -> dict[str, list[dict]]:
                              or proposal.id),
                 "status": "waiting", "source": "chat"})
     return out
+
+
+OUT_SHOWN = 30  # candidates that stayed out, shown at most (the ledger keeps them all)
+
+
+def why(brain, st, packet_id: str, data: dict) -> dict | None:
+    """Why each candidate went in or stayed out of one brief, as the ledger kept it: its
+    keyword, meaning and reranker scores, the decision model's answers, the outcome and the
+    reason, with the engine's mode, the lock, the gate, the cuts and each layer's time. Read
+    back, never recomputed. None for a brief from before the ledger kept these."""
+    try:
+        rows = brain.ledger.decisions(packet_id)
+    except Exception:  # an unreadable ledger has nothing to say
+        rows = []
+    engine = data.get("engine") or {}
+    if not rows and not engine:
+        return None
+    shaped = []
+    for row in rows:
+        named = _piece(st, row["kind"], row["item"], 0, "")
+        shaped.append(dict(row, title=named.get("title") or row["item"],
+                           path=named.get("path")))
+    inside = [r for r in shaped if r["outcome"] != "out"]
+    outside = sorted((r for r in shaped if r["outcome"] == "out"),
+                     key=lambda r: -max(r.get("rerank") or 0.0, r.get("keyword") or 0.0,
+                                        r.get("meaning") or 0.0))
+    return {"mode": engine.get("mode"), "reason": engine.get("reason") or "",
+            "lock": engine.get("lock") or "", "gate": engine.get("gate"),
+            "cuts": engine.get("cuts") or {}, "fitted": engine.get("fitted") or {},
+            "timings": engine.get("timings") or {}, "rounds": engine.get("rounds") or 0,
+            "ceiling_hit": bool(engine.get("ceiling_hit")), "in": inside,
+            "out": outside[:OUT_SHOWN], "out_count": len(outside)}

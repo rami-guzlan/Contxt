@@ -1543,11 +1543,52 @@ export interface AiRequestFull extends AiRequest {
   startup: { fingerprint: string; text: string | null } | null;
   /** Its place in your private eval set, with your labels, when you labeled it. */
   eval?: EvalCase | null;
+  /** Why each candidate went in or stayed out, as the ledger kept it. */
+  why?: RequestWhy | null;
+}
+
+/** One candidate a brief's retrieval looked at: its scores, what became of it and why. */
+export interface WhyRow {
+  kind: "note" | "section";
+  item: string;
+  title: string;
+  path?: string | null;
+  /** The keyword part of its match, 0 to 1. */
+  keyword: number | null;
+  /** Its meaning score, 0 to 1 (none without the local meaning model). */
+  meaning: number | null;
+  /** The local reranker's relevance score, 0 to 1 (none without the local engine). */
+  rerank: number | null;
+  /** The decision model's answers: question to probability, or option probabilities. */
+  kev: Record<string, unknown>;
+  outcome: "body" | "pointer" | "listed" | "held" | "out";
+  reason: string;
+  found_by: string;
+  round: number;
+}
+
+/** Why each candidate went in or stayed out of one brief: the local engine's record, or what
+ * retrieval scored without it (fallback). */
+export interface RequestWhy {
+  mode: "on" | "fallback" | null;
+  reason: string;
+  lock: string;
+  gate: { yes: number; cut: number; passed: boolean } | null;
+  cuts: Record<string, number>;
+  fitted: { date?: string | null; eval_run?: string | null };
+  timings: Record<string, number>;
+  rounds: number;
+  ceiling_hit: boolean;
+  in: WhyRow[];
+  out: WhyRow[];
+  out_count: number;
 }
 
 /** One of your real requests in the private eval set: the notes it needed, the ones that
  * helped, the ones that were noise, and the ones it should have had. */
 export interface EvalCase {
+  /** You marked it as a request that should get nothing from the Brain. */
+  nothing?: boolean;
   id: string;
   packet_id: string | null;
   request: string;

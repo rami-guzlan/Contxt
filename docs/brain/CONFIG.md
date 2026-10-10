@@ -50,6 +50,10 @@ Everything below lives in the vault. The engine supplies a default for every key
              "files": ["CLAUDE.md", "AGENTS.md"],
              "budgets": {"company": 150, "role": 150, "person": 100, "total": 500}},
   "hooks": {"push": "words"},
+  "engine": {"cuts": {"gate": 0.5, "relevance": 0.5, "adds": 0.5, "contradicts": 0.7,
+                      "current": 0.5, "domain": 0.5},
+             "fitted": {"date": null, "eval_run": null},
+             "floor": 0.15, "ceiling": 300, "rounds": 3},
   "sessions": {"retention_days": 90},
   "git": {"auto_commit": true}
 }
@@ -69,6 +73,12 @@ Everything below lives in the vault. The engine supplies a default for every key
   stays the hard ceiling). `files` are written with the shared part only: AGENTS.md in full
   and CLAUDE.md as a stub that imports it (`@AGENTS.md`). The person's layer never goes in a
   file: Claude Code's session-start hook prints it, and otherwise the first brief carries it.
+- **The retrieval engine** (`engine`): the cuts its gate, reranker and decision model's
+  answers are held to, with the date and eval run they were fitted on (until then the values
+  above are starting points); the loose meaning floor of its find step; the ceiling that only
+  protects speed; the link loop's rounds (three at most). `enabled: false` keeps a Brain on the
+  fallback even with a model service; `layers` and `scorer` are how the comparison of setups
+  runs. It runs only with a verified local model service (ROUTING.md).
 - **Hooks**: `push` is how Claude Code's prompt hook sends a brief before the model asks:
   `words` (the default, about a second), `meaning` (the router exactly as `get_task_context`
   runs it, a few seconds while the model loads) or `off`.

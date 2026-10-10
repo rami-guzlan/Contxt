@@ -35,9 +35,11 @@ KNOWLEDGE = "knowledge"
 
 
 # ---------------------------------------------------------------------------- scratch vaults
-def copy_vault(src: str, models_dir: str | None = None) -> str:
+def copy_vault(src: str, models_dir: str | None = None, engine: dict | None = None) -> str:
     """A scratch copy of `src` (a vault folder) without its runtime state. With `models_dir`
-    (a folder holding a downloaded embedding model), the copy can match by meaning."""
+    (a folder holding a downloaded embedding model), the copy can match by meaning; `engine`
+    sets the copy's retrieval-engine settings (brain.json `engine`), as the comparison of
+    setups does."""
     root = tempfile.mkdtemp(prefix="brain-safeguards-")
     dest = os.path.join(root, "vault")
     shutil.copytree(src, dest, ignore=shutil.ignore_patterns(".brain", ".git"))
@@ -45,6 +47,13 @@ def copy_vault(src: str, models_dir: str | None = None) -> str:
         target = os.path.join(dest, ".brain", "models")
         os.makedirs(os.path.dirname(target), exist_ok=True)
         shutil.copytree(models_dir, target)
+    if engine is not None:
+        path = os.path.join(dest, "brain.json")
+        with open(path, encoding="utf-8") as handle:
+            shape = json.load(handle)
+        shape["engine"] = dict(engine)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(shape, handle, indent=2)
     return dest
 
 
@@ -164,7 +173,7 @@ def must_hold_eval(brain, cases) -> dict:
 
 
 def run_must_holds(brains_root: str, spec: dict, *, relevance_only: bool = False,
-                   models_dir: str | None = None) -> dict:
+                   models_dir: str | None = None, engine: dict | None = None) -> dict:
     """Run the must-hold cases for every packaged Brain they name."""
     by_brain: dict[str, list] = {}
     for case in spec.get("cases") or []:
@@ -172,7 +181,7 @@ def run_must_holds(brains_root: str, spec: dict, *, relevance_only: bool = False
     results, rows, misses, decoy_hits = {}, [], [], []
     hit = total = decoy_in = decoys = held_hit = held_total = 0
     for name, cases in sorted(by_brain.items()):
-        vault = copy_vault(os.path.join(brains_root, name, "vault"), models_dir)
+        vault = copy_vault(os.path.join(brains_root, name, "vault"), models_dir, engine)
         try:
             if relevance_only:
                 set_meta(vault, [c["note"] for c in cases], load="on-demand",
@@ -377,7 +386,7 @@ def cross_check_noise(brains_root: str, names=DEMO_BRAINS) -> dict:
 
 
 def run_retrieval(brains_root: str, spec: dict, *, models_dir: str | None = None,
-                  rerank: bool = False) -> dict:
+                  rerank: bool = False, engine: dict | None = None) -> dict:
     """Needed-note recall, precision, noise and tokens on the demo Brains' labeled requests
     (tests/evals/retrieval.json), tuning and held out apart, with how often the request type
     read from a request matches the one its case expects. `rerank` lets the local
@@ -388,7 +397,7 @@ def run_retrieval(brains_root: str, spec: dict, *, models_dir: str | None = None
         by_brain.setdefault(case["brain"], []).append(case)
     rows: list = []
     for name, cases in sorted(by_brain.items()):
-        vault = copy_vault(os.path.join(brains_root, name, "vault"), models_dir)
+        vault = copy_vault(os.path.join(brains_root, name, "vault"), models_dir, engine)
         try:
             path = os.path.join(os.path.dirname(vault), "eval.json")
             with open(path, "w", encoding="utf-8") as handle:

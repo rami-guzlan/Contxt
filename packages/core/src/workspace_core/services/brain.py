@@ -638,17 +638,25 @@ class Brain:
         )
 
     def label_request(
-        self, who: Principal, packet_id: str, labels: dict[str, list[str]]
+        self, who: Principal, packet_id: str, labels: dict[str, Any]
     ) -> dict[str, Any]:
-        """The owner's labels for a logged request (needed, useful, noise, missing notes): it
-        joins the private eval set kept beside the Brain, never shared."""
+        """The owner's labels for a logged request (needed, useful, noise, missing notes, or
+        that it should get nothing): it joins the private eval set kept beside the Brain,
+        never shared."""
         who.require("brain.govern")
-        clean = {
+        clean: dict[str, Any] = {
             key: [str(i).strip() for i in labels.get(key) or [] if str(i).strip()][:40]
             for key in ("needed", "useful", "noise", "missing")
         }
-        if not any(clean.values()):
+        nothing = bool(labels.get("nothing"))
+        if nothing and (clean["needed"] or clean["useful"] or clean["missing"]):
+            raise ValidationFailed(
+                "A request that should get nothing has no needed or helpful notes.",
+                field="labels",
+            )
+        if not nothing and not any(clean.values()):
             raise ValidationFailed("Mark at least one note.", field="labels")
+        clean["nothing"] = nothing
         return self.rt.brain.eval_label(str(packet_id or "").strip(), clean)
 
     def eval_status(self, who: Principal) -> dict[str, Any]:

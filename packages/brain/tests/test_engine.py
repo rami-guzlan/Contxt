@@ -415,6 +415,112 @@ class EngineTests(unittest.TestCase):
             brain.close()
 
 
+class WhyTests(unittest.TestCase):
+    """Activity reads back why each candidate went in or stayed out; the eval scores requests
+    labeled "should get nothing"."""
+
+    def setUp(self):
+        self.vault = fixture.build()
+
+    def tearDown(self):
+        fixture.remove(self.vault)
+
+    def test_activity_reads_back_why_each_candidate_went_in_or_stayed_out(self):
+        set_engine(self.vault, floor=0.0)
+        rig = Rig(reranker=TableReranker(None, "", {"rules-style-002": 0.95}))
+        brain = Brain(self.vault, embeddings=False)
+        try:
+            res = brain.context("How should headlines be written?")
+            why = brain.request(res.data["packet_id"]).data["why"]
+            self.assertEqual((why["mode"], why["lock"]), ("on", rig.lock.fingerprint))
+            self.assertEqual([r["item"] for r in why["in"]], ["rules-style-002"])
+            self.assertTrue(why["out"])
+            self.assertTrue(all("below the relevance cut" in r["reason"] for r in why["out"]))
+            self.assertTrue(why["in"][0]["title"].startswith("Headlines use sentence case"))
+        finally:
+            brain.close()
+            rig.stop()
+
+    def test_the_eval_scores_correct_nothing_and_false_nothing(self):
+        from brainkit import evalset, evaluate
+        cases = {"cases": [
+            {"id": "n1", "request": "What is the capital of Portugal?", "nothing": True,
+             "must": []},
+            {"id": "h1", "request": "How should headlines be written?",
+             "must": [["rules-style-002"]]},
+            {"id": "h2", "request": "What is the boiling point of mercury?",
+             "must": [["facts-services-001"]]}]}
+        path = os.path.join(os.path.dirname(self.vault), "eval.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(cases, handle)
+        with mock.patch.dict(os.environ, {"BRAIN_MODEL_SERVICE": "off"}):
+            brain = Brain(self.vault, embeddings=False)
+            try:
+                result = evaluate.run(brain, path)
+                every = result["all"]
+                self.assertEqual(every["nothing_cases"], 1)
+                self.assertEqual(every["correct_nothing"], 1.0)
+                self.assertEqual(every["false_nothing"], 0.5)  # h2 needed a note, got nothing
+                packet = brain.context("What is the capital of Portugal?").data["packet_id"]
+                evalset.add(brain, "What is the capital of Portugal?", packet)
+                case = evalset.label(brain, packet, nothing=True, noise=["rules-style-002"])
+                self.assertTrue(case["nothing"])
+                with self.assertRaises(ValueError):
+                    evalset.label(brain, packet, nothing=True, needed=["rules-style-002"])
+            finally:
+                brain.close()
+
+
+class SetupTests(unittest.TestCase):
+    """The switches the comparison (5.11.11) runs setups A to E with."""
+
+    def setUp(self):
+        self.vault = fixture.build()
+
+    def tearDown(self):
+        fixture.remove(self.vault)
+
+    def test_setup_a_keeps_a_brain_on_the_fallback_even_with_a_service(self):
+        set_engine(self.vault, enabled=False)
+        rig = Rig()
+        brain = Brain(self.vault, embeddings=False)
+        try:
+            res = brain.context("How should headlines be written?")
+            self.assertEqual(res.data["engine"]["mode"], "fallback")
+            self.assertIn("off for this Brain", res.data["engine"]["reason"])
+        finally:
+            brain.close()
+            rig.stop()
+
+    def test_setup_b_is_the_reranker_alone(self):
+        set_engine(self.vault, layers={"gate": False, "second_pass": False, "loop": False})
+        decider = TableDecider(None, "")
+        rig = Rig(reranker=TableReranker(None, "", {"rules-style-002": 0.95}), decider=decider)
+        brain = Brain(self.vault, embeddings=False)
+        try:
+            res = brain.context("How should headlines be written?")
+            self.assertEqual(res.data["engine"]["gate"], None)
+            self.assertEqual(decider.asked, [])  # no gate, no second pass
+            self.assertIn("rules-style-002", res.data["note_ids"])
+        finally:
+            brain.close()
+            rig.stop()
+
+    def test_setup_e_scores_relevance_with_the_decision_model(self):
+        set_engine(self.vault, scorer="decide", floor=0.0)
+        reranker = TableReranker(None, "")
+        rig = Rig(reranker=reranker, decider=TableDecider(None, "", table={
+            f"rel.{i}": 0.1 for i in range(400)}))
+        brain = Brain(self.vault, embeddings=False)
+        try:
+            res = brain.context("How should headlines be written?")
+            self.assertEqual(reranker.calls, [])  # the reranker never ran
+            self.assertEqual(res.data["mode"], "nothing")  # every note scored 0.1 < 0.5
+        finally:
+            brain.close()
+            rig.stop()
+
+
 class MustHoldTests(unittest.TestCase):
     """Must-holds bypass relevance: a gate's no and an empty cut never remove one in play."""
 

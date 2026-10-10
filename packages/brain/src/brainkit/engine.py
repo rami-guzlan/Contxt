@@ -67,15 +67,24 @@ CODE_ROUTES = ("exact-note", "exact-skill", "focus-only", "focus-update", "portf
 _NAMED = re.compile(r"`([a-z0-9][a-z0-9-]{2,})`")
 
 
+LAYERS = {"gate": True, "second_pass": True, "loop": True}
+SCORERS = ("rerank", "decide")  # what scores relevance: the reranker, or the decision model
+
+
 @dataclass
 class Settings:
-    """A Brain's engine settings: brain.json `engine`, over the starting points."""
+    """A Brain's engine settings: brain.json `engine`, over the starting points. `enabled`
+    false keeps this Brain on the fallback even with a model service; `layers` and `scorer`
+    are how the comparison (5.11.11) runs setups B to E."""
     cuts: dict = field(default_factory=lambda: dict(CUTS))
     floor: float = FLOOR
     ceiling: int = CEILING
     rounds: int = ROUNDS
     instruction: str = INSTRUCTION
     fitted: dict = field(default_factory=dict)  # {"date", "eval_run"} the cuts came from
+    enabled: bool = True
+    layers: dict = field(default_factory=lambda: dict(LAYERS))
+    scorer: str = "rerank"
 
     @classmethod
     def of(cls, config) -> Settings:
@@ -94,11 +103,17 @@ class Settings:
             except (TypeError, ValueError):
                 return default
 
+        layers = dict(LAYERS)
+        layers.update({k: bool(v) for k, v in (data.get("layers") or {}).items()
+                       if k in LAYERS})
+        scorer = str(data.get("scorer") or "rerank")
         return cls(cuts=cuts, floor=number("floor", FLOOR),
                    ceiling=max(1, number("ceiling", CEILING, int)),
                    rounds=min(ROUNDS, max(0, number("rounds", ROUNDS, int))),
                    instruction=str(data.get("instruction") or INSTRUCTION),
-                   fitted=dict(data.get("fitted") or {}))
+                   fitted=dict(data.get("fitted") or {}),
+                   enabled=data.get("enabled", True) is not False,
+                   layers=layers, scorer=scorer if scorer in SCORERS else "rerank")
 
 
 @dataclass
@@ -243,10 +258,14 @@ class Engine:
     @classmethod
     def connect(cls, st, *, status: models_client.Status | None = None):
         """The engine when a verified model service is ready, else (None, why not)."""
+        settings = Settings.of(st.config)
+        if not settings.enabled:
+            return None, models_client.Status(reason="the engine is off for this Brain "
+                                                     "(brain.json engine.enabled)")
         found = status or models_client.status()
         if not found.ready:
             return None, found
-        return cls(st, Settings.of(st.config), models_client.Reranker(found),
+        return cls(st, settings, models_client.Reranker(found),
                    models_client.Decider(found), found.lock), found
 
     # ------------------------------------------------------------------ the pipeline
@@ -257,7 +276,7 @@ class Engine:
             audit.reason = f"routed by code ({route.mode})"
             return audit
         started = time.perf_counter()
-        gate = self._gate(route, audit)
+        gate = self._gate(route, audit) if s.layers["gate"] else True
         audit.timings["gate"] = _ms(started)
         if not gate:
             self._nothing(route, f"the gate: {audit.gate['yes']:.2f} < {s.cuts['gate']}")
@@ -270,15 +289,18 @@ class Engine:
         survivors = self._cut(route, candidates)
         audit.timings["cut"] = _ms(started)
         started = time.perf_counter()
-        survivors = self._second_pass(route, survivors, survivors)
+        if s.layers["second_pass"]:
+            survivors = self._second_pass(route, survivors, survivors)
         seen = {(c.kind, c.id) for c in candidates}
-        for number in range(1, s.rounds + 1):
+        for number in range(1, (s.rounds if s.layers["loop"] else 0) + 1):
             fresh = self._linked(route, survivors, seen, number)
             if not fresh:
                 break
             audit.rounds = number
             audit.candidates += fresh
-            kept = self._second_pass(route, self._cut(route, fresh), survivors)
+            kept = self._cut(route, fresh)
+            if s.layers["second_pass"]:
+                kept = self._second_pass(route, kept, survivors)
             if not kept:
                 break  # a round that adds nothing above the cut ends the loop
             survivors = survivors + kept
@@ -398,7 +420,10 @@ class Engine:
     def _cut(self, route, candidates: list[Candidate]) -> list[Candidate]:
         cut = self.settings.cuts["relevance"]
         texts = [self._text(c, TEXT_CHARS) for c in candidates]
-        scores = self.reranker.scores(route.request, texts, self.settings.instruction)
+        if self.settings.scorer == "decide":
+            scores = self._decide_relevance(route, texts)
+        else:
+            scores = self.reranker.scores(route.request, texts, self.settings.instruction)
         survivors = []
         for c, score in zip(candidates, scores, strict=False):
             c.rerank = float(score)
@@ -408,6 +433,18 @@ class Engine:
                 c.outcome, c.reason = "out", f"below the relevance cut ({c.rerank:.2f} < {cut})"
         survivors.sort(key=lambda c: (-(c.rerank or 0.0), c.id))
         return survivors
+
+    def _decide_relevance(self, route, texts: list[str]) -> list[float]:
+        """Setup E: the decision model scores relevance, one yes/no question per candidate,
+        each reading the request and itself."""
+        questions = {f"rel.{i}": models_client.noul(
+            f"{self.settings.instruction}? The note: {text}") for i, text in enumerate(texts)}
+        answers: dict = {}
+        names = list(questions)
+        for start in range(0, len(names), BATCH):
+            part = {k: questions[k] for k in names[start:start + BATCH]}
+            answers.update(self.decider.ask({"request": route.request}, part))
+        return [models_client.yes(answers.get(f"rel.{i}")) for i in range(len(texts))]
 
     # ------------------------------------------------------------------ 4. the second pass
     def _second_pass(self, route, fresh: list[Candidate], ranked: list[Candidate]) -> list:

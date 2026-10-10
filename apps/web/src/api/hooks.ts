@@ -875,7 +875,7 @@ export const useReport = (days: number, claudeCode: boolean, enabled = true) =>
 export function useLabelRequest(id: string) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: { needed: string[]; useful: string[]; noise: string[]; missing: string[] }) =>
+    mutationFn: (body: { needed: string[]; useful: string[]; noise: string[]; missing: string[]; nothing?: boolean }) =>
       put<EvalCase>(`/api/brain/requests/${encodeURIComponent(id)}/labels`, body),
     onSettled: () => invalidate([...keys.brain, "request", id], [...keys.brain, "report"]),
   });

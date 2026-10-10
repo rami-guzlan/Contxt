@@ -1,5 +1,5 @@
 {
-  "about": "Needed-note recall on the invented demo Brains: real-sounding requests that rarely name the note they need, each with the notes it must get (any one of a group), the ones that help, and the ones that would be noise. About a third are held out: never tune on them. Scored by scripts/retrieval_eval.py on scratch copies.",
+  "about": "Needed-note recall on the invented demo Brains: real-sounding requests that rarely name the note they need, each with the notes it must get (any one of a group), the ones that help, and the ones that would be noise. About a third are held out: never tune on them. Cases marked nothing should get nothing from the Brain (one line is right; any note is noise), and the paraphrases ask earlier cases in other words. Scored by scripts/retrieval_eval.py on scratch copies.",
   "thresholds": {"holdout_must_recall": 0.9},
   "cases": [
     {"brain": "knowledge-company", "id": "kc-linkedin-webinar", "type": "writing",
@@ -189,6 +189,35 @@
      "request": "Which nights is Jamie working this week?",
      "must": [["family-jamie"]],
      "useful": [],
-     "noise": ["money-goals"]}
+     "noise": ["money-goals"]},
+    {"brain": "knowledge-company", "id": "kc-nothing-capital", "nothing": true,
+     "request": "What is the capital of Portugal?", "must": [], "useful": [], "noise": []},
+    {"brain": "knowledge-company", "id": "kc-nothing-loop", "nothing": true, "holdout": true,
+     "request": "Fix the off-by-one error in this Python for loop",
+     "must": [], "useful": [], "noise": []},
+    {"brain": "knowledge-company", "id": "kc-nothing-hamlet", "nothing": true,
+     "request": "Summarize the plot of Hamlet in three sentences",
+     "must": [], "useful": [], "noise": []},
+    {"brain": "programmer", "id": "pg-nothing-bread", "nothing": true,
+     "request": "What's a good recipe for banana bread?", "must": [], "useful": [], "noise": []},
+    {"brain": "programmer", "id": "pg-nothing-worldcup", "nothing": true, "holdout": true,
+     "request": "Who won the 1998 World Cup?", "must": [], "useful": [], "noise": []},
+    {"brain": "personal", "id": "ps-nothing-tcp", "nothing": true,
+     "request": "Explain how a TCP handshake works", "must": [], "useful": [], "noise": []},
+    {"brain": "entrepreneur", "id": "en-nothing-japanese", "nothing": true,
+     "request": "How do you say good morning in Japanese?", "must": [], "useful": [],
+     "noise": []},
+    {"brain": "entrepreneur", "id": "en-nothing-photosynthesis", "nothing": true,
+     "holdout": true, "request": "Explain photosynthesis to a ten-year-old",
+     "must": [], "useful": [], "noise": []},
+    {"brain": "knowledge-company", "id": "kc-para-webinar-post", "type": "writing",
+     "request": "Write something for LinkedIn that gets floor supervisors to sign up for the next webinar",
+     "must": [["marketing-linkedin-rules"], ["q4-webinar-series"]], "useful": [], "noise": []},
+    {"brain": "personal", "id": "ps-para-restaurants", "holdout": true,
+     "request": "What's our eating-out allowance for this month?",
+     "must": [["money-budget"]], "useful": [], "noise": []},
+    {"brain": "programmer", "id": "pg-para-friday",
+     "request": "Is it OK to push the route planner update late on Friday?",
+     "must": [["work-deploys"]], "useful": [], "noise": []}
   ]
 }

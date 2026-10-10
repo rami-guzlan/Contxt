@@ -70,6 +70,9 @@ def no_live_configuration(monkeypatch):
     for name in list(os.environ):
         if _setting(name):
             monkeypatch.delenv(name, raising=False)
+    # No local model service: retrieval runs as it does without one, whatever this machine
+    # runs (the engine's own tests point it at a stand-in service).
+    monkeypatch.setenv("BRAIN_MODEL_SERVICE", "off")
     yield
     for name in list(os.environ):
         if _setting(name):
