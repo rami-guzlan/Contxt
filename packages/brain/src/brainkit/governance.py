@@ -42,14 +42,14 @@ import fnmatch
 import re
 
 from . import frontmatter as fm
-from . import uploads, util
+from . import statements, uploads, util
 from .model import CONFIDENCE, LEGACY_KINDS, LOADS, MAX_CRITICAL, MUST_HOLD, listish
 from .scopes import Scopes
 
 KINDS = ("note.create", "note.update", "note.archive", "focus.create")
 RESERVED = {"status", "proposal", "approved_by", "approved_at", "revised"}
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{1,120}$")
-NOTE_KINDS = ("fact", "rule", "identity", "state")
+NOTE_KINDS = statements.NOTE_KINDS  # one vocabulary (statements.py)
 RULE_START = re.compile(r"^\s*(never|always|do not|don't|avoid|must|every|only|stage|use|run|"
                         r"keep|check|verify|i prefer|i'd prefer|i want|i'd like|i would like|"
                         r"i like|i don't want|i do not want|i'd rather|i would rather|"
@@ -109,8 +109,7 @@ def auto_applies(config, principal: str, scope: str) -> bool:
 # (the owner, in the workspace or the CLI), `chat` (the owner's AI, in a conversation) or
 # `folder` (a folder the brain sweeps). Anyone else's changes to shared knowledge follow
 # scopes (auto_applies) and wait for the approver.
-CAPTURE_TYPES = ("file", "fact", "decision", "progress", "preference", "rule", "convention",
-                 "change")
+CAPTURE_TYPES = statements.CAPTURE_TYPES
 CAPTURE_ORIGINS = ("app", "chat", "folder")
 # What changes how every AI behaves, and changes to what is there, never apply from a chat or
 # a folder under any preset; a person may still let them in, one type at a time.
@@ -150,6 +149,19 @@ def preset_of(config) -> str:
     return value if value in PRESETS else DEFAULT_PRESET
 
 
+RETENTION_DAYS = {"regulated": 730}  # else 90 (brain-logic plan 6, decision 9)
+
+
+def retention_days(config) -> int:
+    """How long brief text stays in the ledger: brain.json `sessions.retention_days`, else 90
+    days under the personal and careful presets and 730 under regulated."""
+    try:
+        own = int((config.data.get("sessions") or {}).get("retention_days") or 0)
+    except (TypeError, ValueError):
+        own = 0
+    return own if own > 0 else RETENTION_DAYS.get(preset_of(config), 90)
+
+
 def capture_policy(config) -> dict:
     """{type: {origin: "apply" | "wait"}}: brain.json's `governance.capture` over the
     preset's matrix."""
@@ -164,23 +176,17 @@ def capture_policy(config) -> dict:
 
 
 def capture_type(kind: str, target: dict) -> str:
-    """What a note proposal is, as the capture policy names it: a change to an entry, a rule,
-    a convention (who you are, how you are known), progress (where things stand), a decision
-    or a fact."""
+    """What a note proposal is, as the capture policy names it: a change to an entry, a rule
+    (or the preference or convention it is), a convention (who you are, how you are known),
+    progress (where things stand), a decision or a fact (statements.capture_type)."""
     if kind in ("note.update", "note.archive"):
         return "change"
     # An older vault's layer says what its notes are (rules, facts, ...).
     note_kind = str(target.get("kind") or LEGACY_KINDS.get(str(target.get("layer") or ""))
                     or "").strip().lower()
-    if note_kind == "rule":
-        return "rule"
-    if note_kind == "identity":
-        return "convention"
-    if note_kind == "state":
-        return "progress"
-    if str(target.get("type") or "").strip().lower() == "decision":
-        return "decision"
-    return "fact"
+    return statements.capture_type(
+        note_kind, str(target.get("subtype") or ""),
+        decision=str(target.get("type") or "").strip().lower() == "decision")
 
 
 def captures_apply(brain, who, kind, origin) -> bool:
@@ -354,6 +360,10 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         problems.append("text is required")
     if load is not None and str(load).strip().lower() not in LOADS:
         problems.append("load must be standing, domain, on-demand or manual")
+    if note_kind == "goal":
+        # A goal steers what is kept and what agents do, never what a request receives.
+        problems += statements.goal_problems(extra or {})
+        load = load or "manual"
     must = must_hold_fields(st, base, load, applies_to, triggers, must_text, critical,
                             problems)
     dates = {}
@@ -1192,11 +1202,12 @@ def unarchive(brain, note_id, *, reason="", actor=None):
 FIELDS = ("owner", "review_days", "review_by", "classification", "area", "topic", "aliases",
           "load", "applies_to", "triggers", "must_text", "critical", "baseline", "as_of",
           "valid_until", "library", "refresh", "origin", "tags", "prompt_skills",
-          "prompt_agent", "prompt_docs", "prompt_reads", "title", "project_id")
+          "prompt_agent", "prompt_docs", "prompt_reads", "title", "project_id", "said_by",
+          "subtype", "objective", "goals")
 CARD_FIELDS = ("library", "refresh", "origin", "tags", "prompt_skills", "prompt_agent",
                "prompt_docs", "prompt_reads", "title", "project_id")
 # Card fields that hold a list, set as comma-separated words.
-LIST_FIELDS = ("aliases", "tags", "prompt_skills", "prompt_docs", "prompt_reads")
+LIST_FIELDS = ("aliases", "tags", "prompt_skills", "prompt_docs", "prompt_reads", "goals")
 # When a note reaches a model: in every session, whenever its domain comes up (a must-hold),
 # when relevant, or only when asked for. Set together and checked by must_hold_fields.
 MUST_FIELDS = ("load", "applies_to", "triggers", "must_text", "critical")
@@ -1224,6 +1235,17 @@ def update(brain, note_id, fields, *, reason="", actor=None):
             problems.append(f"{name} is a date (YYYY-MM-DD)")
     if wanted.get("classification") and wanted["classification"] not in CLASSIFICATIONS:
         problems.append(f"classification is one of {', '.join(CLASSIFICATIONS)}")
+    if ("objective" in wanted or "goals" in wanted) and not st.config.is_focus(note):
+        problems.append("only a project has an objective and the goals it serves")
+    if wanted.get("objective") and statements.objective_problem(wanted["objective"]):
+        problems.append(statements.objective_problem(wanted["objective"]))
+    if "objective" in wanted and not str(reason or "").strip():
+        # Like the rest of a project's baseline: a change says why, and makes an undo point.
+        problems.append("a change to a project's objective needs a reason")
+    if wanted.get("said_by") and wanted["said_by"] not in statements.SAID_BY:
+        problems.append(f"said_by is one of {', '.join(statements.SAID_BY)}")
+    if wanted.get("subtype") and wanted["subtype"] not in statements.RULE_SUBTYPES:
+        problems.append(f"subtype is one of {', '.join(statements.RULE_SUBTYPES)}")
     if any(k in wanted for k in CARD_FIELDS) and str(note.meta.get("type")) != "file":
         problems.append("only a document's card goes in the Library")
     asset = str(note.meta.get("file") or "").startswith("assets/")
@@ -1440,7 +1462,7 @@ def policies(brain) -> dict:
         "auto_apply_scopes": list(data["governance"].get("auto_apply_scopes") or []),
         "max_proposals_per_session": int(data["governance"].get("max_proposals_per_session")
                                          or DEFAULT_SESSION_BUDGET),
-        "retention_days": int((data.get("sessions") or {}).get("retention_days") or 90),
+        "retention_days": retention_days(config),
         "approver": config.approver,
         "preset": preset_of(config),
         "presets": list(PRESETS),

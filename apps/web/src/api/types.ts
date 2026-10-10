@@ -738,6 +738,19 @@ export interface SkillCard {
   use: "run" | "support" | "chat";
 }
 
+/** A skill by its purpose (UX C): when it was last used, whether it may be out of date (what
+ * it loads changed since its last edit), what uses it, its version, its Claude Code copy. */
+export interface SkillOverview {
+  name: string;
+  category: string;
+  last_used: string | null;
+  last_edited: string | null;
+  changed: { key: string; title: string; at: string | null }[];
+  version: number;
+  used_by: { skills: string[]; agents: string[]; workflows: { id: string; name: string }[] };
+  copy: { behind: number | null; pushed_at: string | null } | null;
+}
+
 export interface SkillCards {
   skills: SkillCard[];
   /** New skills a model wrote, waiting in Review. */

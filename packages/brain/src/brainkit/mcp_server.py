@@ -23,16 +23,16 @@ import sys
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from brainkit import runtime
+from brainkit import runtime, statements
 from brainkit.api import Brain, Result
 
 PROTOCOL_DEFAULT = "2024-11-05"
-INSTRUCTIONS = ("Call get_task_context first for every task, and again for every later "
+INSTRUCTIONS = ("Call get_task_context first for every request, and again for every later "
                 "message in the conversation that asks for something new: it sends only what the "
                 "conversation does not already hold, and one line for a pure edit. Pass the "
                 "user's message as they wrote it, and the session_id it returns (or the one your "
                 "session start named) on every later call. If the packet lacks something the "
-                "task needs, search_notes in your own words and open a hit with get_note. Open "
+                "work needs, search_notes in your own words and open a hit with get_note. Open "
                 "procedures and documents only when the packet points at them. Capture as you "
                 "go, without being asked: a durable rule, correction, preference, decision or "
                 "changed fact the person states goes to propose_note (quote them in evidence); "
@@ -42,7 +42,7 @@ INSTRUCTIONS = ("Call get_task_context first for every task, and again for every
 _STR = {"type": "string"}
 AGENT_TOOLS = [
     {"name": "get_task_context",
-     "description": "Call first for every task, and again with the session_id for every later "
+     "description": "Call first for every request, and again with the session_id for every later "
                     "message that asks for something new. Returns the scoped context packet: "
                     "only what the conversation does not already hold (one line for a pure "
                     "edit), and the startup kernel when yours is stale.",
@@ -72,11 +72,11 @@ AGENT_TOOLS = [
          "session_id": _STR}, "required": ["path"]}},
     {"name": "get_note",
      "description": "Read one note by id: one the packet listed under Also relevant, or a "
-                    "search_notes hit, when the task needs it.",
+                    "search_notes hit, when the work needs it.",
      "inputSchema": {"type": "object", "properties": {"id": _STR, "session_id": _STR},
                      "required": ["id"]}},
     {"name": "search_notes",
-     "description": "Find notes the packet did not bring. Use it when the task needs something "
+     "description": "Find notes the packet did not bring. Use it when the work needs something "
                     "the packet lacks: describe what you need in your own words, and if nothing "
                     "fits, try again with other words (the brain's terms, or plainer ones: "
                     "'UTM parameters' rather than 'tagging links', 'AI-sounding writing' rather "
@@ -104,7 +104,7 @@ AGENT_TOOLS = [
     {"name": "propose_note",
      "description": "Capture durable knowledge as it comes up, without being asked: a rule, "
                     "correction, preference, decision or changed fact the person states that "
-                    "will still be true next month and applies beyond this task. Quote their "
+                    "will still be true next month and applies beyond this request. Quote their "
                     "words in `evidence`. Also proposes a change to a note (target_id). File it "
                     "in an existing area/topic when one fits; the reply names the closest "
                     "topics when yours is new. Your own scope applies at once; shared knowledge "
@@ -120,7 +120,7 @@ AGENT_TOOLS = [
                    "voice. Reuse an existing one when it fits."},
          "title": {"type": "string", "description": "What the note is for, in a few words."},
          "summary": {"type": "string", "description": "One line saying what it covers."},
-         "kind": {"type": "string", "enum": ["fact", "rule", "identity", "state"]},
+         "kind": {"type": "string", "enum": list(statements.NOTE_KINDS)},
          "text": {"type": "string", "description": "One durable idea."},
          "scope": {"type": "string", "description": "company | dept:<name> | person:<name>"},
          "load": {"type": "string", "enum": ["standing", "domain", "on-demand"],
@@ -228,11 +228,12 @@ AGENT_TOOLS = [
          "required": ["focus", "summary"]}},
     {"name": "create_focus",
      "description": "Start a project (a Focus) when the person begins work that will run "
-                    "across conversations: its name, one line on what it is for, and the words "
+                    "across conversations: its name, one line on what it is for, its "
+                    "objective (the output it is chasing, a sentence or two), and the words "
                     "they will call it by (`aliases`), so later requests bring its state and "
                     "files. Applies at once inside your own scope.",
      "inputSchema": {"type": "object", "properties": {
-         "name": _STR, "summary": _STR, "status": _STR,
+         "name": _STR, "summary": _STR, "objective": _STR, "status": _STR,
          "aliases": {"type": "array", "items": _STR,
                      "description": "Other names for it: \"the campaign proposals\"."},
          "participants": {"type": "array", "items": _STR},
@@ -259,7 +260,7 @@ AGENT_TOOLS = [
     {"name": "get_agent",
      "description": "Take on one of the owner's agents: its role, its operating prompt, what "
                     "it points to as each is now (skills, documents, projects) and what it "
-                    "never does. Then get the brief for the task with get_task_context.",
+                    "never does. Then get the brief for the request with get_task_context.",
      "inputSchema": {"type": "object", "properties": {
          "name": {"type": "string", "description": "The agent's name, such as "
                                                   "content-strategist."},
@@ -330,7 +331,7 @@ HANDLERS = {
         a.get("name"), a.get("summary"), status=a.get("status") or a.get("focus_status")
         or "active", participants=a.get("participants"), pinned_notes=a.get("pinned_notes"),
         pinned_skills=a.get("pinned_skills"), aliases=a.get("aliases"),
-        session_id=a.get("session_id")),
+        objective=a.get("objective"), session_id=a.get("session_id")),
     "brain_health": lambda b, a: b.health(),
     "list_agents": lambda b, a: b.agents(),
     "get_agent": lambda b, a: b.agent_prompt(a.get("name"), session_id=a.get("session_id")),

@@ -564,7 +564,7 @@ class FakeBrain:
     def projects(self):
         return list(self.started)
 
-    def create_project(self, *, name, summary, aliases, proposer):
+    def create_project(self, *, name, summary, aliases, proposer, objective="", goals=None):
         slug = name.lower().replace(" ", "-")
         if any(p.id == slug for p in self.started):
             raise Conflict(f"A Focus {slug} already exists; record an update instead.")
@@ -753,6 +753,9 @@ class FakeBrain:
 
     def download_models(self):
         return {"matching": {"enabled": True, "present": False, "downloading": True}}
+
+    def skills_history(self, names):
+        return {n: {"hashes": [], "last_edited": None, "changed": []} for n in names}
 
     def local_models(self):
         return {"enabled": True, "setup": "laptop", "roles": []}

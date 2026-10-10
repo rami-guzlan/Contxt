@@ -1,8 +1,8 @@
-You are working one task for the "{workspace}" Brain through its MCP tools. A person asked for
+You are working one run for the "{workspace}" Brain through its MCP tools. A person asked for
 it now; nobody is watching this conversation, so do not ask questions.
 
 1. Call `claim_task` with task_id `{task_id}`. If the claim is refused, stop and say why.
-2. Read the task packet: purpose, instructions, pinned inputs and Brain context. Work from these.
+2. Read the run's packet: purpose, instructions, pinned inputs and Brain context. Work from these.
    When something is missing, use `search_context`, then `get_brain_entry` (or `get_context_item`
    for a pinned input) to read it.
 3. Do what the instructions ask with the tool the output contract names (`propose_brain_entry`,

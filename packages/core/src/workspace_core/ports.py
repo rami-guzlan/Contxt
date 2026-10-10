@@ -99,6 +99,8 @@ class BrainProject:
     files: int = 0
     updates: int = 0
     topic: str = ""  # where its notes are filed: "projects/<slug>"
+    objective: str = ""  # the output it is chasing; it opens every brief in the project
+    goals: list[str] = field(default_factory=list)  # the goals it serves
 
 
 @dataclass(frozen=True)
@@ -367,7 +369,14 @@ class BrainPort(Protocol):
         ...
 
     def create_project(
-        self, *, name: str, summary: str, aliases: list[str], proposer: str
+        self,
+        *,
+        name: str,
+        summary: str,
+        aliases: list[str],
+        proposer: str,
+        objective: str = "",
+        goals: list[str] | None = None,
     ) -> BrainProject: ...
 
     def project(self, project_id: str) -> dict[str, Any] | None:
@@ -585,6 +594,11 @@ class BrainPort(Protocol):
 
     def download_models(self) -> dict[str, Any]:
         """Fetch the matching model in the background (the owner's call, never automatic)."""
+        ...
+
+    def skills_history(self, names: list[str]) -> dict[str, dict[str, Any]]:
+        """Each skill's version hashes (newest first), last edit and what it loads that
+        changed since, for the Skills page: {name: {"hashes", "last_edited", "changed"}}."""
         ...
 
     def local_models(self) -> dict[str, Any]:
@@ -926,6 +940,9 @@ class NoBrain:
 
     def download_models(self) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to download a model for.")
+
+    def skills_history(self, names: list[str]) -> dict[str, dict[str, Any]]:
+        return {}
 
     def local_models(self) -> dict[str, Any]:
         return {"enabled": False}

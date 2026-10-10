@@ -191,6 +191,8 @@ class BrainProjectIn(Body):
     name: str = Field(max_length=200)
     summary: str = Field(max_length=1000)
     aliases: list[str] = Field(default_factory=list, max_length=24)
+    objective: str = Field(default="", max_length=1000)
+    goals: list[str] = Field(default_factory=list, max_length=12)
 
 
 class ProjectUpdateIn(Body):

@@ -21,6 +21,7 @@ import type {
   BackupMade,
   LocalModels,
   LocalModelsOverview,
+  SkillOverview,
   AiApp,
   AiRequestFull,
   AiRequests,
@@ -480,6 +481,30 @@ export function useRunSkill() {
     onSettled: () => invalidate(keys.skills, keys.tasks),
   });
 }
+
+/** Each skill's purpose card facts, in one call (UX C). */
+export const useSkillsOverview = () =>
+  useQuery({ queryKey: [...keys.skills, "overview"], queryFn: () => get<SkillOverview[]>("/api/skills/overview") });
+
+/** A run from the Skills page's run bar: the skills chosen, followed in order (none: the one
+ * that fits), with what is asked and the project. It makes the run's task; the run starts on
+ * this computer's CLI next. */
+export function useRunSkills() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { names: string[]; ask: string; project?: string | null }) => post<Task>("/api/skills/runs", body),
+    onSettled: () => invalidate(keys.skills, keys.tasks),
+  });
+}
+
+/** The brief a run was given (its packet), its credentials masked; read when asked for. */
+export const useRunPacket = (runId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: [...runnerKeys, "packet", runId],
+    queryFn: () => get<{ text: string; available: boolean }>(`/api/runners/runs/${encodeURIComponent(runId)}/packet`),
+    enabled,
+    staleTime: 60_000,
+  });
 
 /** The latest runs from the Skills page and every skill; looked at again while one goes. */
 export const useLatestSkillRuns = (limit = 5) =>

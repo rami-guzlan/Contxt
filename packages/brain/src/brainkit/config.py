@@ -66,6 +66,10 @@ DEFAULTS: dict = {
             "fact": {"label": "Fact", "order": 3, "heading": "Core facts"},
             "state": {"label": "State", "order": 4, "heading": "Current state"},
             "focus": {"label": "Focus", "order": 5, "heading": "Focus"},
+            "decision": {"label": "Decision", "order": 6, "heading": "Decisions"},
+            "procedure": {"label": "Procedure", "order": 7, "heading": "Procedures",
+                          "constraint": True},
+            "goal": {"label": "Goal", "order": 8, "heading": "Goals"},
         },
         # A Focus is a note of kind focus; new ones get a folder under this area.
         "focus": {"area": "projects"},
@@ -94,7 +98,9 @@ DEFAULTS: dict = {
         "extra": [],
         "files": ["CLAUDE.md", "AGENTS.md"],
     },
-    "sessions": {"retention_days": 90},
+    # How long brief text stays in the ledger: unless set, 90 days under the personal and
+    # careful presets and 730 under regulated (governance.retention_days).
+    "sessions": {"retention_days": None},
     "git": {"auto_commit": True},
 }
 
@@ -193,7 +199,13 @@ class Config:
 
     @property
     def kinds(self) -> dict:
-        return self.structure.get("kinds") or DEFAULTS["structure"]["kinds"]
+        """How notes are used, by kind: the vault's own, and any of the vocabulary's it
+        leaves out (statements.py)."""
+        own = self.structure.get("kinds")
+        if not own:
+            return DEFAULTS["structure"]["kinds"]
+        return {**{k: v for k, v in DEFAULTS["structure"]["kinds"].items() if k not in own},
+                **own}
 
     @property
     def focus_route(self) -> str:

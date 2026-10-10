@@ -83,13 +83,13 @@ RECENT = 500  # tasks read to find a skill's runs
 RUN_CONTRACT = {
     "artifacts": [],
     "notes": "Save what you made once with save_skill_result (this run's run_id), then "
-    "complete the task. Nothing is published or sent.",
+    "complete the run. Nothing is published or sent.",
     "tool": "save_skill_result",
 }
 DRAFT_CONTRACT = {
     "artifacts": [],
     "notes": "Propose the skill once with propose_brain_skill (this run's run_id), then "
-    "complete the task. It waits in Review for the person.",
+    "complete the run. It waits in Review for the person.",
     "tool": "propose_brain_skill",
 }
 RUN_INSTRUCTIONS = """\
@@ -104,7 +104,7 @@ context; where they cannot be answered, choose a sensible default and say which 
 {files}
 Save the result once with save_skill_result, with this run's run_id: a short title, and the \
 whole result as Markdown (the post, the outline, the email: what the person asked for, ready \
-to use, without commentary around it). Then complete the task. Never publish or send \
+to use, without commentary around it). Then complete the run. Never publish or send \
 anything."""
 FILES_PART = """
 This run makes files, in a folder of its own on this computer (your working directory). The \
@@ -131,7 +131,7 @@ where they cannot be answered, choose a sensible default and say which in the re
 {files}
 Save the result once with save_skill_result, with this run's run_id: a short title, and the \
 whole result as Markdown (what the person asked for, ready to use, without commentary around \
-it). Then complete the task. Never publish or send anything."""
+it). Then complete the run. Never publish or send anything."""
 PICK_INSTRUCTIONS = """\
 The request below names no skill. The Relevant context section holds what the Brain found \
 for it, including the skills that fit (under Procedure or Skills): read the best fit in full \
@@ -143,7 +143,7 @@ where it can make them.
 
 Save the result once with save_skill_result, with this run's run_id: a short title, and the \
 whole result as Markdown, ending with one line naming the skill you followed (or "No skill \
-fitted"). Then complete the task. Never publish or send anything."""
+fitted"). Then complete the run. Never publish or send anything."""
 FILES_PART_MANY = """
 This run makes files, in a folder of its own on this computer (your working directory). Each \
 skill's own files are in a folder named after it (./name, its scripts in ./name/scripts, its \
@@ -167,7 +167,7 @@ the line it follows and replace it with that line plus the new one. The app appl
 to the skill as it is now, so everything you do not quote stays word for word. Send the whole \
 procedure as body instead only when most of it changes. Give a description, when_to_use or \
 triggers only when the request changes what the skill is for, and in reason one or two plain \
-sentences on what changed and why. Then complete the task. It waits in Review for the person; \
+sentences on what changed and why. Then complete the run. It waits in Review for the person; \
 nothing changes until they approve it."""
 NEW_INSTRUCTIONS = """\
 Write a new skill from the person's description below{source}. A skill is a procedure an AI \
@@ -182,7 +182,7 @@ words joined by hyphens), a category{categories}, a description saying what it m
 to use it, when_to_use, three to five triggers (short phrases a person would say to ask for \
 it), artifacts (what it makes: post, email, pdf, docx, pptx), loads (the Brain topics and \
 references/ documents it should read), and the body: Markdown starting with "# /<name>". Then \
-complete the task. It waits in Review for the person."""
+complete the run. It waits in Review for the person."""
 
 
 def makes_files(skill: BrainSkill | None) -> bool:
@@ -929,6 +929,23 @@ class Skills:
             "name": existing.name if existing else wanted,
             "replaced": existing is not None,
             "decision": decided,
+        }
+
+    def last_used(self, who: Principal, names: builtins.list[str]) -> dict[str, str | None]:
+        """When each skill was last used (run here, or asked for in an AI), in one pass over
+        the runs and the requests (the Skills page's purpose cards)."""
+        here: dict[str, str] = {}
+        for task in self._tasks(who, RUN):  # newest first
+            for name in self._skills_of(task):
+                here.setdefault(name, task.created_at)
+        asked: dict[str, str] = {}
+        if who.can("brain.read"):
+            for row in self.rt.brain.requests(limit=200).get("requests") or []:
+                if row.get("skill"):
+                    asked.setdefault(str(row["skill"]), str(row.get("at")))
+        return {
+            name: max((t for t in (here.get(name), asked.get(name)) if t), default=None)
+            for name in names
         }
 
     def freshness(self, who: Principal, name: str) -> dict[str, Any]:

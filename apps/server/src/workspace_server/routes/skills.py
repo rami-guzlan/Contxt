@@ -129,6 +129,49 @@ def suggestions(who: Who, ws: WS) -> dict[str, Any]:
     return ws.suggestions.list(who)
 
 
+@router.get("/overview")
+def overview(who: Who, ws: WS) -> list[dict[str, Any]]:
+    """Your skills by purpose (UX C): for each, when it was last used, whether it may be out
+    of date (what it loads changed since its last edit), what uses it, its version and the
+    state of its Claude Code copy."""
+    cards = ws.skills.cards(who)["skills"]
+    names = [c["name"] for c in cards]
+    used = ws.skills.last_used(who, names)
+    # What could use a skill, read once for all of them.
+    skills = ws.brain.files(who).skills
+    agents = ws.agents.list(who)
+    flows = ws.workflows.list(who)
+    history = ws.rt.brain.skills_history(names)
+    out = []
+    for card in cards:
+        name = card["name"]
+        fresh = history.get(name) or {"hashes": [], "last_edited": None, "changed": []}
+        out.append(
+            {
+                "name": name,
+                "category": card["category"],
+                "last_used": used.get(name),
+                "last_edited": fresh.get("last_edited"),
+                "changed": list(fresh.get("changed") or []),
+                "version": len(fresh["hashes"]),
+                "used_by": {
+                    "skills": [s.name for s in skills if name in s.depends_on],
+                    "agents": [a["name"] for a in agents if name in (a.get("skills") or [])],
+                    "workflows": [
+                        {"id": w.id, "name": w.name}
+                        for w in flows
+                        if any(
+                            s.get("skill") == name or name in (s.get("skills") or [])
+                            for s in w.steps
+                        )
+                    ],
+                },
+                "copy": skill_files.user_copy(name, fresh["hashes"]),
+            }
+        )
+    return out
+
+
 @router.post("/suggestions/dismiss", status_code=204)
 def dismiss(body: SuggestionDismissIn, who: Who, ws: WS) -> None:
     ws.suggestions.dismiss(who, body.key)

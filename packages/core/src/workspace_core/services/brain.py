@@ -15,6 +15,7 @@ from typing import Any
 import sqlalchemy as sa
 
 from workspace_core.db import schema
+from workspace_core.domain import statements
 from workspace_core.domain.policy import Principal
 from workspace_core.errors import Conflict, NotFound, PermissionDenied, ValidationFailed
 from workspace_core.ports import (
@@ -34,7 +35,7 @@ from .runtime import Runtime, recall, remember
 # What the owner can do with this computer's local models (Settings, On this computer).
 LOCAL_ACTIONS = ("check", "default", "download", "remove", "speed", "claude_code")
 
-KINDS = ("fact", "rule", "preference", "decision", "procedure", "identity", "state")
+KINDS = statements.PROPOSAL_KINDS  # one vocabulary (domain/statements.py)
 MAX_FILE = 10 * 1024 * 1024  # the Brain's own ceiling for one document or asset
 ACTIONS = (
     "approve",
@@ -82,10 +83,17 @@ ENTRY_FIELDS = (
     "prompt_agent",
     "prompt_docs",
     "prompt_reads",
+    # The entry as a statement (brain-logic plan 6): who said it, and a rule's subtype.
+    "said_by",
+    "subtype",
+    # A project's objective (a sentence or two; a change needs a reason) and its goals.
+    "objective",
+    "goals",
 )
 LIBRARY_KINDS = ("guide", "reference", "influence", "asset")
 LIBRARY_REFRESH = ("never", "weekly", "monthly")
 FIELD_LIMITS = {  # characters; other fields take 200
+    "objective": 600,
     "triggers": 1200,
     "applies_to": 600,
     "tags": 600,
@@ -1227,10 +1235,19 @@ class Brain:
         return made
 
     def create_project(
-        self, who: Principal, *, name: str, summary: str, aliases: list[str] | None = None
+        self,
+        who: Principal,
+        *,
+        name: str,
+        summary: str,
+        aliases: list[str] | None = None,
+        objective: str | None = None,
+        goals: list[str] | None = None,
     ) -> BrainProject:
         """Start a project in the Brain: its name, one line on what it is for, and the other
-        names people will call it by, so a request that uses one brings its state and files."""
+        names people will call it by, so a request that uses one brings its state and files.
+        Its `objective`, a sentence or two on the output it is chasing, opens every brief in
+        the project; `goals` are the goals it serves (optional)."""
         who.require("brain.govern")
         name = " ".join(str(name or "").split())
         summary = " ".join(str(summary or "").split())
@@ -1247,8 +1264,19 @@ class Brain:
             raise ValidationFailed(
                 f"Up to {MAX_ALIASES} other names, each up to 80 characters.", field="aliases"
             )
+        objective = " ".join(str(objective or "").split())
+        if len(objective) > 600:
+            raise ValidationFailed(
+                "An objective is a sentence or two (about 60 words).", field="objective"
+            )
+        linked = [str(g).strip() for g in (goals or []) if str(g).strip()][:12]
         made = self.rt.brain.create_project(
-            name=name, summary=summary, aliases=names, proposer=proposer(who)
+            name=name,
+            summary=summary,
+            aliases=names,
+            proposer=proposer(who),
+            objective=objective,
+            goals=linked,
         )
         with self.rt.write() as tx:
             tx.emit(

@@ -29,6 +29,8 @@ import json
 import os
 import sys
 
+from brainkit import statements
+
 
 def _emit(result, as_json=False) -> int:
     if as_json:
@@ -118,7 +120,7 @@ def build_parser():
     p.add_argument("--topic")
     p.add_argument("--title", help="what the note is for, in a few words")
     p.add_argument("--summary", help="one line saying what it covers")
-    p.add_argument("--kind", choices=["fact", "rule", "identity", "state"])
+    p.add_argument("--kind", choices=list(statements.NOTE_KINDS))
     p.add_argument("--scope")
     p.add_argument("--load", choices=["standing", "domain", "on-demand"],
                    help="default: standing for a rule in your own scope, else on-demand; "

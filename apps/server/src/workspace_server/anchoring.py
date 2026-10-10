@@ -86,7 +86,7 @@ def build(
     """A run's contract (see the module's docstring)."""
     tool = str((task.output_contract or {}).get("tool") or "")
     checks = [
-        "Claim the task first and work from its packet.",
+        "Claim the run first and work from its packet.",
         *([f"Propose each result with {tool}, passing your run_id."] if tool else []),
         FINISH_CHECK,
         "Publish, send or export nothing yourself: a person reviews everything.",

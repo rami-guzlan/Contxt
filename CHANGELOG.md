@@ -194,6 +194,22 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   qualified on the machine; until then Settings and Activity name each fallback. The knowledge
   agent gets a local option (Qwen3.5-4B through the same model service, its answers bound to a
   schema), and Claude Code becomes its opt-in once a local agent model is here.
+- One statement model: every note is a statement of one kind (identity, rule with its
+  convention and preference subtypes, fact, decision, procedure, value, project, goal), and the
+  kind lists that used to disagree (note kinds, capture types, what the workspace, distillation
+  and the knowledge agent propose) all come from it. A preference from the workspace is now
+  kept as a rule of that subtype and waits like every rule (it was filed as a fact). Each note
+  says who said it, when the Brain learned it, when it was last confirmed, when to check it
+  again (a shelf life by kind) and its tier; no note is rewritten, and briefs are unchanged.
+- Goals and objectives: a `goal` kind (purpose, yours or an agent's; never routed into a
+  request), and a project `objective` that opens every brief in the project (a change needs a
+  reason). What models read says "run" for the app's runs, so "task" means one thing.
+- Brief text is kept 730 days under the regulated preset (90 under the others), unless set.
+- Skills: a run bar at the top (what you need, several skills in order, where it runs, the
+  project), each run reviewed as it happens and replayed when done with the brief it was
+  given, the Brain's own skills and the knowledge agent's actions one click each, your skills
+  by purpose (last used, may be out of date, what uses them, version, Claude Code copy), and a
+  quiet drawer of recent runs. Every run's stream is kept on disk with credentials masked.
 - Moving in takes files of any kind, zips included: documents, instruction files, any text,
   and ChatGPT's and Claude's data exports (their conversations as your own words); what cannot
   be read is named with why.

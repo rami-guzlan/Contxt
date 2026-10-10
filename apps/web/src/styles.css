@@ -5884,3 +5884,34 @@ li.missing {
   margin: 0.75rem 0 0.25rem;
   font-size: 0.9rem;
 }
+/* Skills (UX C): the run bar, a run's review, the quiet drawer of recent runs. */
+.run-bar textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.run-bar-row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.run-review {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.run-brief pre {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+.skills-heading {
+  margin-top: 24px;
+}
+.recent-runs {
+  margin-top: 24px;
+}
+.recent-runs > summary {
+  cursor: pointer;
+  color: var(--muted);
+}

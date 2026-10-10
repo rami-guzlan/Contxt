@@ -135,7 +135,7 @@ title: Lena's red lines
 summary: No hard sells in community content, no unapproved client claims, ...
 area: people
 topic: lena
-kind: fact                           # identity | rule | fact | state | focus
+kind: fact                           # identity | rule | fact | decision | procedure | state | goal | focus
 scope: company                       # who may see it; lives here, not in the path
 status: approved                     # approved | archived (pending notes live in inbox/)
 load: on-demand                      # standing notes go in the kernel
@@ -143,6 +143,8 @@ startup_text: One line for the kernel (standing notes).
 added: 2026-07-23
 partition: client:acme               # optional, seals the note to one client
 review_by: 2027-01-01                # optional, the health check flags it when past
+said_by: owner                       # optional: owner | owner-ai | person | document | system | agent
+subtype: preference                  # a rule's: convention | preference
 supersedes: none
 source: where it came from
 evidence: why it is true
@@ -152,9 +154,36 @@ One durable idea.
 
 Old ids keep working through `aliases.json` (`{"old-id": "new-id"}`).
 
+**One statement model** (`statements.py`, brain-logic plan 6). Every note is a statement of one
+kind: identity, rule (a convention or a preference is a rule of that subtype), fact, decision,
+procedure, value (filed as `state`), project (filed as `focus`) or goal. The note kinds, the
+capture types the presets govern, what the workspace, distillation and the knowledge agent
+propose, and the MCP and command-line choices all come from it; older words keep reading, and no
+note is rewritten. Read from what a note already records, unless it says:
+
+- **who said it** (`said_by`): from its origin (a conversation is the owner's AI, a meeting
+  another person, a file a document, a run an agent);
+- **when the Brain learned it** (its approval or `added`) and **when it was last confirmed**
+  (`verified`);
+- **when to check it again**: `review_by`, else its last check plus its kind's shelf life
+  (project 30 days, value 30, goal 90, fact and procedure 180, decision, rule and identity
+  365; `"statements": {"shelf_life": {"fact": 90}}` in brain.json changes any of them). The
+  updating loop uses it; today's review cadence (`governance.review_days`) is unchanged;
+- **its tier**: alignment (rules, identity, goals, must-holds), state (values) or knowledge.
+
+The app's entry API shows these as `statement`. A **goal** note (goals plan 3.1) is loaded
+`manual`, so it never changes what a request receives, and carries `level` (purpose, yours,
+agent), `serves`, `progress`, `measure`, `due`, `cadence`, `goal_status`, `why`, `started`.
+
+**Brief text** stays in the ledger 90 days under the personal and careful presets and 730 under
+regulated, unless `sessions.retention_days` says otherwise.
+
 A Focus is a note of kind `focus` in its own folder, `knowledge/projects/<slug>/`, with
 `project`, `project_status`, a `summary` (older ones: `index_line`) and optional
-`participants`, `pinned_notes`, `pinned_skills`, `aliases`. Its progress lives in
+`participants`, `pinned_notes`, `pinned_skills`, `aliases`, `objective` (the output it is
+chasing, a sentence or two, about 60 words at most; it opens every brief in the project, the
+summary standing in until it has one; a change needs a reason) and `goals` (the goals it
+serves). Its progress lives in
 `journal/focus/<id>.jsonl`. Notes filed beside it in the same folder (decisions, client
 guidance) count as the project's own context whenever the project is named.
 

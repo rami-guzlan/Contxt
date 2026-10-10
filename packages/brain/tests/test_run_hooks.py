@@ -90,5 +90,35 @@ class RunHookTests(unittest.TestCase):
         self.assertEqual(hooks.main(["gate", "--contract", os.path.join(self.folder, "x")]), 0)
 
 
+class ReplaceTests(unittest.TestCase):
+    def test_a_file_held_for_a_moment_is_replaced_once_it_is_free(self):
+        """Windows refuses a replace while another process (an antivirus scan) holds the file;
+        the write waits a moment and tries again instead of failing the run's hook."""
+        from unittest import mock
+
+        from brainkit import util
+
+        real = os.replace
+        refusals = [PermissionError(5, "Access is denied")] * 2
+
+        def held(src, dst):
+            if refusals:
+                raise refusals.pop()
+            real(src, dst)
+
+        folder = tempfile.mkdtemp(prefix="replace-")
+        try:
+            target = os.path.join(folder, "state.json")
+            with mock.patch.object(util.os, "replace", held):
+                util.atomic_write(target, "{}")
+            with open(target, encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "{}")
+            with mock.patch.object(util.os, "replace", side_effect=PermissionError(5, "held")):
+                with self.assertRaises(PermissionError):
+                    util.replace(target, target + ".x", tries=2, wait=0)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

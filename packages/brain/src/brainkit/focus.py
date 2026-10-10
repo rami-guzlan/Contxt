@@ -127,16 +127,22 @@ def record_update(brain, name, summary, changes=None, *, principal=None, evidenc
 
 def create_focus(brain, name, summary, *, principal=None, status="active", scope=None,
                  participants=None, pinned_notes=None, pinned_skills=None, outputs=None,
-                 aliases=None, session_id=None, **_ignored):
+                 aliases=None, session_id=None, objective=None, goals=None, **_ignored):
     """Propose a new Focus baseline. Inside your own scope it applies immediately.
 
     `aliases` are the other names people will call it by ("the campaign proposals"); a
-    request that uses one brings the project's state and files."""
-    from . import governance
+    request that uses one brings the project's state and files. `objective` is the output it
+    is chasing, a sentence or two that opens every brief in the project; `goals` the goals it
+    serves (optional)."""
+    from . import governance, statements
     name = str(name or "").strip()
     summary = str(summary or "").strip()
     if not name or not summary:
         return _result("create_focus needs a name and a summary.", {"status": "invalid"}, True)
+    objective = " ".join(str(objective or "").split())
+    if statements.objective_problem(objective):
+        return _result(f"Not started: {statements.objective_problem(objective)}.",
+                       {"status": "invalid"}, True)
     st = brain.state()
     config = st.config
     if config.uses_areas:
@@ -165,6 +171,12 @@ def create_focus(brain, name, summary, *, principal=None, status="active", scope
         extra["pinned_skills"] = list(pinned_skills)
     if outputs:
         extra["outputs"] = outputs
+    if objective:
+        extra["objective"] = objective
+    linked = [g.strip() for g in (goals if isinstance(goals, (list, tuple))
+                                  else str(goals or "").split(",")) if str(g).strip()]
+    if linked:
+        extra["goals"] = linked[:12]
     names = aliases if isinstance(aliases, (list, tuple)) else (
         [a for a in str(aliases or "").split(",")])
     names = list(dict.fromkeys(" ".join(str(a).split()) for a in names

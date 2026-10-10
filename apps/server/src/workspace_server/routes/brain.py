@@ -233,7 +233,14 @@ def projects(who: Who, ws: WS) -> list[dict[str, Any]]:
 @router.post("/projects", status_code=201)
 def create_project(body: BrainProjectIn, who: Who, ws: WS) -> dict[str, Any]:
     return asdict(
-        ws.brain.create_project(who, name=body.name, summary=body.summary, aliases=body.aliases)
+        ws.brain.create_project(
+            who,
+            name=body.name,
+            summary=body.summary,
+            aliases=body.aliases,
+            objective=body.objective,
+            goals=body.goals,
+        )
     )
 
 

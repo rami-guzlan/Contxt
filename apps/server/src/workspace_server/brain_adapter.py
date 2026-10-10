@@ -17,9 +17,11 @@ from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
 
+from brainkit import statements
 from brainkit import util as brain_util
 from brainkit.api import Brain, Result
 from brainkit.governance import summary_from
+from brainkit.model import listish
 from brainkit.scopes import Scopes
 from workspace_core.errors import Conflict, NotFound, ValidationFailed
 from workspace_core.ports import (
@@ -92,16 +94,6 @@ def _skill_hint(match: re.Match[str]) -> str:
         'get_brain_skill(name="...") when the task follows it.\n'
     )
 
-
-KIND_MAP = {
-    "fact": "fact",
-    "rule": "rule",
-    "preference": "fact",
-    "decision": "fact",
-    "procedure": "rule",
-    "identity": "identity",
-    "state": "state",
-}
 
 # The folders the workspace serves files from. Notes are read through entries; the inbox,
 # the runtime folder and the configuration are never served.
@@ -194,6 +186,8 @@ class BrainKitAdapter:
         self._lock = threading.Lock()
         self._fetching = False  # the matching model is being downloaded
         self._fetch_error: str | None = None
+        # Skills' git history for the Skills page, kept while the Brain's files are unchanged.
+        self._skills_history: tuple[str, dict[str, dict[str, Any]]] | None = None
         self._local_fetching: set[str] = set()  # local models being downloaded
         self._local_errors: dict[str, str] = {}
 
@@ -749,12 +743,42 @@ class BrainKitAdapter:
             return None
         versions = self.skill_versions(skill.name) or []
         edited = str(versions[0].get("at") or "") if versions else ""
+        return {"last_edited": edited or None, "changed": self._changed_since(st, skill, edited)}
+
+    def _changed_since(self, st: Any, skill: Any, edited: str) -> list[dict[str, Any]]:
+        """What a skill loads that changed after its last edit."""
         changed: list[dict[str, Any]] = []
         for key in skill.loads:
             when, title = self._load_changed(st, str(key))
             if when and edited and when > edited:
                 changed.append({"key": str(key), "title": title, "at": when})
-        return {"last_edited": edited or None, "changed": changed}
+        return changed
+
+    def skills_history(self, names: list[str]) -> dict[str, dict[str, Any]]:
+        """Each skill's versions (their hashes, newest first), its last edit and what it loads
+        that changed since, read from git once while the Brain's files stay as they are (git
+        is slow, and the Skills page asks for every skill at once)."""
+        st = self.brain.state()
+        chain, partitions = self._view(st)
+        with self._lock:
+            if self._skills_history is None or self._skills_history[0] != st.fingerprint:
+                self._skills_history = (st.fingerprint, {})
+            known = self._skills_history[1]
+        out: dict[str, dict[str, Any]] = {}
+        for name in names:
+            skill = st.index.skills.get(str(name or "").strip().lstrip("/"))
+            if skill is None or not Scopes.admits(skill.scope, skill.partition, chain, partitions):
+                continue
+            if skill.name not in known:
+                versions = self.skill_versions(skill.name) or []
+                edited = str(versions[0].get("at") or "") if versions else ""
+                known[skill.name] = {
+                    "hashes": [v.get("hash") for v in versions],
+                    "last_edited": edited or None,
+                    "changed": self._changed_since(st, skill, edited),
+                }
+            out[name] = known[skill.name]
+        return out
 
     def _load_changed(self, st: Any, key: str) -> tuple[str | None, str]:
         """When what a skill loads last changed on disk (a document, or the newest note on a
@@ -1271,6 +1295,8 @@ class BrainKitAdapter:
                     files=counts.get(focus.id, 0),
                     updates=len(focus.updates),
                     topic=focus.note.route_key,
+                    objective=str(focus.note.meta.get("objective") or ""),
+                    goals=listish(focus.note.meta.get("goals")),
                 )
             )
         return out
@@ -1295,10 +1321,19 @@ class BrainKitAdapter:
         return data
 
     def create_project(
-        self, *, name: str, summary: str, aliases: list[str], proposer: str
+        self,
+        *,
+        name: str,
+        summary: str,
+        aliases: list[str],
+        proposer: str,
+        objective: str = "",
+        goals: list[str] | None = None,
     ) -> BrainProject:
         with self._lock:
-            result = self.brain.focus_create(name, summary, aliases=aliases)
+            result = self.brain.focus_create(
+                name, summary, aliases=aliases, objective=objective, goals=goals or []
+            )
         if result.is_error:
             if result.data.get("status") == "exists":
                 raise Conflict(result.text)
@@ -1345,8 +1380,11 @@ class BrainKitAdapter:
             source += "; sources: " + ", ".join(sources)
         area, _, topic_name = (topic or "").partition("/")
         if kind == "decision" and not revises:
-            # A decision is a fact the capture policy knows as a decision.
+            # Older readers know a decision by its type as well as its kind.
             extra = dict(extra or {}, type="decision")
+        if statements.subtype(kind) and not revises:
+            # A preference or a convention is a rule of that subtype (one vocabulary).
+            extra = dict(extra or {}, subtype=statements.subtype(kind))
         # A must-hold the proposer suggests: the Brain checks its fields like any other.
         extra = dict(extra or {})
         must = extra.pop("must_hold", None) or {}
@@ -1369,7 +1407,7 @@ class BrainKitAdapter:
                 # Always one: a change to an entry must not keep the old text's summary.
                 summary=summary or summary_from(statement),
                 # A change to an entry keeps the entry's kind, scope and place.
-                note_kind=None if revises else KIND_MAP.get(kind, "fact"),
+                note_kind=None if revises else statements.filed(kind),
                 scope=None if revises else scope or None,
                 evidence=evidence,
                 source=source,

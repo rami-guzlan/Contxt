@@ -173,11 +173,119 @@ describe("the Skills place", () => {
     expect(screen.getByText(/Other skills build on it/)).toBeInTheDocument();
   });
 
-  it("sends running several skills to a prompt", async () => {
-    mockApi({ ...side, "GET /api/skills/runs": [] });
+  const finishedRun = {
+    id: "lrun_1",
+    runner: "claude",
+    task_id: "task_7",
+    task_title: "Run /weekly-posts, /one-pager",
+    actor_id: "act_claude",
+    started_by: "act_owner",
+    status: "succeeded",
+    started_at: "2026-10-10T10:00:00Z",
+    finished_at: "2026-10-10T10:01:00Z",
+    exit_code: 0,
+    summary: "Done: three posts and a one-pager.",
+    events: [
+      { seq: 1, at: "2026-10-10T10:00:00Z", kind: "status", text: "Starting Claude Code as Claude Code." },
+      { seq: 2, at: "2026-10-10T10:00:05Z", kind: "tool", name: "claim_task", text: "task_7" },
+      { seq: 3, at: "2026-10-10T10:00:50Z", kind: "result", ok: true, text: "Done: three posts and a one-pager." },
+      { seq: 4, at: "2026-10-10T10:01:00Z", kind: "done", ok: true, text: "Finished." },
+    ],
+    made: [],
+    link: "/work/skills/weekly-posts",
+  };
+  const runBarApi = {
+    ...side,
+    "GET /api/skills/runs": [],
+    "GET /api/runners/runs": [],
+    "GET /api/skills/overview": [
+      {
+        name: "weekly-posts",
+        category: "social",
+        last_used: "2026-10-05T10:00:00Z",
+        last_edited: "2026-09-01T10:00:00Z",
+        changed: [{ key: "brand/voice", title: "Voice", at: "2026-10-01T10:00:00Z" }],
+        version: 3,
+        used_by: { skills: [], agents: ["Writer"], workflows: [] },
+        copy: { behind: 1, pushed_at: "2026-09-02T10:00:00Z" },
+      },
+    ],
+    "GET /api/brain/builtin-skills": {
+      skills: [{ name: "knowledge-check", description: "Check what the Brain knows. Then fix it.", installed: true }],
+      missing: [],
+    },
+    "GET /api/brain/agent": {
+      model: "claude",
+      suggestions: true,
+      actions: [{ id: "repeats", label: "Find repeats", blurb: "Notes that say the same thing." }],
+      questions: [],
+      runs: [],
+      models: [],
+      working: [],
+    },
+    "POST /api/skills/runs": task("task_7"),
+    "POST /api/runners/claude/runs": { ...finishedRun, status: "running", events: [] },
+    "GET /api/runners/runs/lrun_1": finishedRun,
+    "GET /api/runners/runs/lrun_1/packet": { available: true, text: "# Run: Run /weekly-posts, /one-pager" },
+    "POST /api/brain/agent/actions/repeats": { id: "ajob_1", status: "waiting" },
+  };
+
+  it("runs two skills in order from the run bar and streams the run into its review", async () => {
+    const calls = mockApi(runBarApi);
+    const user = userEvent.setup();
     renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills" });
-    const panel = await screen.findByRole("region", { name: "Run skills" });
-    expect(within(panel).getByRole("link", { name: "Run skills with a prompt" })).toHaveAttribute("href", "/work/prompts/new?run=1");
+    const bar = await screen.findByRole("region", { name: "Run skills" });
+    await user.type(within(bar).getByRole("textbox"), "Three posts on async reviews");
+    await user.selectOptions(within(bar).getByRole("combobox", { name: "Add a skill" }), "weekly-posts");
+    await user.selectOptions(within(bar).getByRole("combobox", { name: "Add a skill" }), "one-pager");
+    const order = within(bar).getByRole("list", { name: "Skills, in order" });
+    expect(order).toHaveTextContent("1. /weekly-posts");
+    expect(order).toHaveTextContent("2. /one-pager");
+    await user.click(within(bar).getByRole("button", { name: "Run" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "POST" && c.path === "/api/skills/runs")?.body).toEqual({
+        names: ["weekly-posts", "one-pager"],
+        ask: "Three posts on async reviews",
+        project: null,
+      }),
+    );
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/runners/claude/runs")).toBe(true);
+    const review = await within(bar).findByLabelText("Review of Run /weekly-posts, /one-pager");
+    expect(await within(review).findByText("claim_task")).toBeInTheDocument();
+    expect(within(review).getAllByText("Done: three posts and a one-pager.").length).toBeGreaterThan(0);
+    // A finished run replays, and its brief opens on request.
+    await user.click(within(review).getByRole("button", { name: "Replay" }));
+    expect(await within(review).findByText("claim_task")).toBeInTheDocument();
+    await user.click(within(review).getByText("The brief it was given"));
+    expect(await within(review).findByText(/# Run: Run \/weekly-posts/)).toBeInTheDocument();
+    // Each skill says what it is for and how it stands.
+    expect(screen.getByLabelText("About /weekly-posts")).toHaveTextContent(
+      "may be out of date: 1 thing it loads changed · used by agent Writer · version 3 · Claude Code copy 1 version behind",
+    );
+    // Nothing on the page leads to Compose or Prompts.
+    expect(document.querySelector('a[href^="/work/prompts"], a[href^="/work/compose"]')).toBeNull();
+  });
+
+  it("runs each Brain skill and each of the agent's actions in one click", async () => {
+    const calls = mockApi({
+      ...runBarApi,
+      "GET /api/skills": {
+        ...cards,
+        skills: [...cards.skills, { ...cards.skills[0], name: "knowledge-check", category: "brain", last_run: null }],
+      },
+    });
+    const user = userEvent.setup();
+    renderAt(<SkillsPage />, { path: "/work/skills", route: "/work/skills" });
+    const brain = await screen.findByRole("list", { name: "Brain skills" });
+    await user.click(within(brain).getByRole("button", { name: "Run /knowledge-check" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "POST" && c.path === "/api/skills/runs")?.body).toMatchObject({
+        names: ["knowledge-check"],
+      }),
+    );
+    await user.click(within(brain).getByRole("button", { name: "Run find repeats" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/agent/actions/repeats")).toBe(true));
+    expect(await screen.findByText(/the knowledge agent is on it/)).toBeInTheDocument();
   });
 
   it("starts a new skill from words brought from a prompt", async () => {

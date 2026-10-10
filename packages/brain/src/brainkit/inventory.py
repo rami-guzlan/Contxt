@@ -11,7 +11,7 @@ their origin is read from it (`origin_of`), so nothing has to be rewritten.
 """
 from __future__ import annotations
 
-from . import baseline, history, util
+from . import baseline, history, statements, util
 from . import frontmatter as fm
 
 ORIGIN_KINDS = {
@@ -85,6 +85,7 @@ def note_row(st, note, *, created=None, changes=0, use=None) -> dict:
     days = config.review_days_for(note)
     due = note.review_due(days)
     use = use or {}
+    origin = origin_of(note, created)
     return {
         "type": "note", "id": note.id, "title": note.title, "summary": note.summary,
         "kind": note.kind, "area": note.area, "area_label": config.area_label(note.area),
@@ -114,7 +115,10 @@ def note_row(st, note, *, created=None, changes=0, use=None) -> dict:
         "review_by": str(note.meta.get("review_by") or "")[:10] or None,
         "review_due": due.isoformat() if due else None,
         "owner": note.owner or config.default_owner, "owner_set": bool(note.owner),
-        "origin": origin_of(note, created), "classification": note.classification,
+        "origin": origin, "classification": note.classification,
+        # the note as a statement: its kind, who said it, when the Brain learned it, when it
+        # was last confirmed, when to check it again, its tier (statements.py)
+        "statement": statements.describe(note, config, origin["kind"]),
         "supersedes": [i.strip() for i in str(note.meta.get("supersedes") or "").split(",")
                        if i.strip() and i.strip().lower() != "none"],
         "superseded_by": str(note.meta.get("superseded_by") or "") or None,
