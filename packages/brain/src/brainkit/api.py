@@ -12,12 +12,15 @@ hand is visible on the very next request, with no refresh command.
 from __future__ import annotations
 
 import contextlib
+import copy
 import os
 import threading
 from dataclasses import dataclass
 
 from . import config as config_mod
+from . import engine as engine_mod
 from . import kernel as kernel_mod
+from . import models_client
 from . import packets as packets_mod
 from . import request_type as request_type_mod
 from . import runtime as runtime_mod
@@ -319,9 +322,11 @@ class Brain:
         previous = self.ledger.last_packet(session) if continuing else None
         route = st.router.route(str(request), chain, partitions, focus_override=focus,
                                 task_type_override=task_type, previous=previous)
+        route, audit = self._engine(st, route)
         packet = packets_mod.build(route, config=st.config, index=st.index,
                                    delivered=delivered, fresh=bool(fresh), session_id=session,
                                    partition=partition, explain=explain, tools=tools)
+        audit.settle(packet.data)
         kernel = kernel_mod.compile(st.config, st.index, st.scopes, chain, partitions)
         kernel_fp = kernel.fingerprint
         # The shared part is held when this conversation got it or the client's startup file
@@ -356,7 +361,8 @@ class Brain:
                      "person_fingerprint": kernel.person_fingerprint or None,
                      "person_included": person_sent, "delivery": delivery,
                      "session_status": status, "vault_fingerprint": st.fingerprint[:12],
-                     "request_type": request_type_mod.classify(route)})
+                     "request_type": request_type_mod.classify(route),
+                     "engine": audit.summary()})
         if record and tools:
             if fresh and continuing:
                 # Nothing this conversation got before counts as held from here on.
@@ -375,11 +381,32 @@ class Brain:
                               engine=runtime_mod.STARTED_WITH)
             self.ledger.record(session, packet.id, str(request), route.mode, packet.text,
                                data, items)
+            self.ledger.record_decisions(packet.id, session, audit.rows())
             if not kernel_held or person_sent:
                 # The startup context as it was sent, once per version, for Activity to show.
                 self.ledger.record_kernel(kernel_fp if not kernel_held
                                           else kernel.person_fingerprint, parts[0])
         return Result("\n\n".join(parts), data)
+
+    def _engine(self, st, route):
+        """(route, audit): the local retrieval engine's route when a verified model service is
+        ready, else the router's own, untouched, with what exists written down (fallback).
+        The engine works on a copy: a service that fails mid-request leaves retrieval exactly
+        as it was."""
+        engine, service = engine_mod.Engine.connect(st)
+        if engine is None:
+            return route, engine_mod.fallback(route, service.reason, lock=service.lock)
+        trial = copy.copy(route)
+        for name in ("notes", "style_notes", "related", "sections", "must_holds",
+                     "must_overflow", "standing_answer", "candidates", "references",
+                     "notes_log", "ranked"):
+            setattr(trial, name, list(getattr(route, name) or []))
+        try:
+            return trial, engine.refine(trial)
+        except (models_client.ServiceError, OSError, ValueError, KeyError, TypeError) as exc:
+            models_client.forget()
+            return route, engine_mod.fallback(
+                route, f"the model service failed on this request ({exc})", lock=service.lock)
 
     def preview(self, request, *, principal=None, focus=None, partition=None,
                 tools=True) -> Result:
