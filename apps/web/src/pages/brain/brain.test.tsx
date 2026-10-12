@@ -387,13 +387,13 @@ describe("brain inventory", () => {
     await user.click(screen.getByRole("checkbox", { name: "Select Plain words" }));
     await user.click(screen.getByRole("checkbox", { name: "Select Old tagline" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "What to do" }), "mark");
-    await user.type(screen.getByLabelText("Why"), "Say it for CLOs");
+    await user.type(screen.getByLabelText("Why"), "Say it for plant managers");
     await user.click(screen.getByRole("button", { name: "Apply to 2 notes" }));
     await waitFor(() => expect(calls.filter((c) => c.path === "/api/brain/decisions")).toHaveLength(2));
     expect(calls.filter((c) => c.path === "/api/brain/decisions").at(-1)?.body).toEqual({
       decisions: [
-        { action: "mark", entry_id: "rules-old-tagline", state: "stale", reason: "Say it for CLOs" },
-        { action: "mark", entry_id: "rules-voice", state: "stale", reason: "Say it for CLOs" },
+        { action: "mark", entry_id: "rules-old-tagline", state: "stale", reason: "Say it for plant managers" },
+        { action: "mark", entry_id: "rules-voice", state: "stale", reason: "Say it for plant managers" },
       ],
     });
   });
