@@ -80,7 +80,10 @@ def _result(message, data=None, is_error=False):
 
 
 def _clean(text, limit) -> str:
-    return " ".join(str(text or "").split())[:limit]
+    """One line of the owner's words, with anything that looks like a secret hidden: goal
+    notes, journals and plan files are read by every AI (goals plan 11, integrity)."""
+    from .handoff import mask
+    return mask(" ".join(str(text or "").split()))[:limit]
 
 
 def is_goal(note) -> bool:
@@ -607,10 +610,11 @@ def write_plan(brain, goal_id, blocks, *, actor=None):
     note = _goal(st, goal_id)
     if note is None:
         return _result(f"No goal {goal_id!r}.", {"status": "missing"}, True)
+    from .handoff import mask
     sections = []
     for block in blocks or []:
         title = _clean(block.get("title") or "", 120) or "Untitled"
-        text = str(block.get("text") or "").strip()
+        text = mask(str(block.get("text") or "").strip())
         sections.append(f"## {title}\n\n{text}" if text else f"## {title}")
     text = ""
     if sections:
