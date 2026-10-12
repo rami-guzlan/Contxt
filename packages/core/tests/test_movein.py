@@ -89,7 +89,7 @@ def test_pulling_what_matters_pins_the_goals_and_the_active_projects(ws, owner, 
     plain = ws.distill.request(owner, item_ids=[note.id], wait=True)
     assert pinned(ws, owner, plain) == {("context_item", note.id)}
     ws.brain.set_goals(owner, {"purpose": "Help me run the studio."})
-    ws.brain.create_project(owner, name="Webinars", summary="Monthly webinars for CLOs")
+    ws.brain.create_project(owner, name="Webinars", summary="Monthly webinars for plant managers")
     weighed = ws.distill.request(owner, item_ids=[note.id], wait=True, guidance="Just pricing")
     assert pinned(ws, owner, weighed) == {
         ("context_item", note.id),
@@ -131,7 +131,7 @@ def test_what_a_run_left_out_comes_back_with_the_request(ws, owner, connect, bra
 
 
 def test_a_proposal_names_the_goal_and_the_project_it_serves(ws, owner, brain):
-    ws.brain.create_project(owner, name="Webinars", summary="Monthly webinars for CLOs")
+    ws.brain.create_project(owner, name="Webinars", summary="Monthly webinars for plant managers")
     ws.brain.propose(
         owner,
         title="Webinar day",
@@ -200,7 +200,7 @@ def test_a_change_may_retire_the_entries_it_now_covers(ws, owner, brain):
 
 def test_a_summary_reads_the_goals_and_projects_and_its_nudges_come_back(ws, owner, connect, brain):
     ws.brain.set_goals(owner, {"purpose": "Help me run the studio."})
-    ws.brain.create_project(owner, name="Webinars", summary="Monthly webinars for CLOs")
+    ws.brain.create_project(owner, name="Webinars", summary="Monthly webinars for plant managers")
     claude = connect()
     nudged = []
     for number in range(3):
