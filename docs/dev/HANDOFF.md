@@ -334,7 +334,10 @@ model's behavior is made yet.
 - The visual design pass, once the walkthrough is signed off. Keep the System Map's visuals and
   motion: the owner likes them.
 - Release: rename the product, legal review, then a tagged release (the release workflow exists:
-  a `v*` tag must match `workspace_core.__version__`; see `docs/releasing.md`).
+  a `v*` tag must match `workspace_core.__version__`; see `docs/releasing.md`). The current tree
+  is clean, but older commits still hold the test strings replaced at the handoff and the
+  acronym of the owner's employer in two lines of an earlier report script. A public release
+  should start from a fresh history (or a reviewed rewrite), with `docs/dev/` removed.
 - The team edition on the scaffolds already in place (admins per scope, teammates as goal
   owners, approvals routed by scope), piloted with one real team.
 - The Claude Code bridge for company connectors; search and Ask; local agents and teams on a
@@ -356,8 +359,10 @@ model's behavior is made yet.
 - **Never develop in, or update, the checkout that runs his live app** unless he asks. Use
   another clone or worktree.
 - **No real content from his work Brain ever enters this repository:** no notes, requests, eval
-  labels, cost figures, names or rules. The demo Brains in `brains/` are invented. Product code
-  names no organization or person.
+  labels, cost figures, names or rules, and no figures or phrasings borrowed from it as test
+  examples. The demo Brains in `brains/` are invented. Product code names no organization or
+  person. At the handoff a scan comparing the repository with his work Brain found and replaced
+  a few test strings that echoed it. Make up examples from the demo Brains' worlds instead.
 - **Delivered text has no em dashes, no en dashes, and no spaced hyphen used as a dash.** This
   covers docs, UI strings, commit messages, PR bodies and messages to him.
 - **User-facing text is plain** and says what to do next.
