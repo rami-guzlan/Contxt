@@ -37,6 +37,8 @@ from brainkit import models_client, safeguards_eval  # noqa: E402
 EVALS = os.path.join(ROOT, "packages", "brain", "tests", "evals")
 BRAINS = os.path.join(ROOT, "brains")
 ALL_ON = {"gate": True, "second_pass": True, "loop": True}
+# C, D and E run the decision model's steps even before it qualified here (`qualifying`):
+# they are how it qualifies.
 SETUPS = {
     "A": {"about": "today: keywords and bge-small", "engine": {"enabled": False},
           "models": 1, "service": False},
@@ -44,13 +46,14 @@ SETUPS = {
           "engine": {"layers": {"gate": False, "second_pass": False, "loop": False}},
           "models": 2, "service": True},
     "C": {"about": "B plus the Kev gate",
-          "engine": {"layers": {"gate": True, "second_pass": False, "loop": False}},
+          "engine": {"layers": {"gate": True, "second_pass": False, "loop": False},
+                     "qualifying": True},
           "models": 3, "service": True},
     "D": {"about": "C plus Kev's second pass and the link loop",
-          "engine": {"layers": dict(ALL_ON)}, "models": 3, "service": True},
+          "engine": {"layers": dict(ALL_ON), "qualifying": True}, "models": 3, "service": True},
     "E": {"about": "Kev as the main relevance scorer instead of the reranker",
-          "engine": {"layers": dict(ALL_ON), "scorer": "decide"}, "models": 2,
-          "service": True},
+          "engine": {"layers": dict(ALL_ON), "scorer": "decide", "qualifying": True},
+          "models": 2, "service": True},
 }
 EMBEDDINGS = ("bge-small-en-v1.5", "qwen3-embedding-0.6b")
 # The gates in 5.11.13 a winner must clear (speed is checked against 5.11.7 on the reference
@@ -73,7 +76,15 @@ def percentiles(values: list[float]) -> tuple[float | None, float | None]:
     return round(statistics.median(ordered), 1), round(p95, 1)
 
 
-def run_setup(key: str, embedding: str, models_dir: str | None) -> dict:
+def engine_for(key: str, cuts: dict | None = None) -> dict:
+    """A setup's engine settings, with these cuts over the defaults (fitting, or a fitted run)."""
+    found = json.loads(json.dumps(SETUPS[key]["engine"]))
+    if cuts and found.get("enabled", True):
+        found["cuts"] = dict(cuts)
+    return found
+
+
+def run_setup(key: str, embedding: str, models_dir: str | None, cuts: dict | None = None) -> dict:
     setup = SETUPS[key]
     if embedding != "bge-small-en-v1.5":
         return {"setup": key, "embedding": embedding, "skipped":
@@ -83,10 +94,11 @@ def run_setup(key: str, embedding: str, models_dir: str | None) -> dict:
         if not found.ready:
             return {"setup": key, "embedding": embedding,
                     "skipped": f"needs a verified local model service: {found.reason}"}
+    engine = engine_for(key, cuts)
     retrieval = safeguards_eval.run_retrieval(BRAINS, load("retrieval.json"),
-                                              models_dir=models_dir, engine=setup["engine"])
+                                              models_dir=models_dir, engine=engine)
     must = safeguards_eval.run_must_holds(BRAINS, load("must_holds.json"),
-                                          models_dir=models_dir, engine=setup["engine"])
+                                          models_dir=models_dir, engine=engine)
     rows = retrieval["rows"]
     layers: dict[str, list[float]] = {}
     totals = []
@@ -100,7 +112,8 @@ def run_setup(key: str, embedding: str, models_dir: str | None) -> dict:
             layers.setdefault(layer, []).append(float(ms))
     every = retrieval["all"]
     return {
-        "setup": key, "embedding": embedding, "about": setup["about"],
+        "setup": key, "embedding": embedding, "about": setup["about"], "cuts": dict(cuts or {}),
+        "tuning": retrieval["tuning"],
         "models": setup["models"] + (0 if models_dir else -1),
         "held_out_recall": retrieval["holdout"]["must_recall"],
         "recall": every["must_recall"], "precision": every["precision"],
@@ -200,11 +213,14 @@ def main(argv=None) -> int:
     parser.add_argument("--record", action="store_true",
                         help="keep which Kev steps the running decision model qualified for "
                              "on this machine (Settings shows each fallback)")
+    parser.add_argument("--cuts", default="",
+                        help="cuts over the defaults, as name=value pairs: relevance=0.2,gate=0.4")
     args = parser.parse_args(argv)
+    cuts = parse_cuts(args.cuts)
     results = []
     for key in [k for k in args.setups.upper() if k in SETUPS]:
         for embedding in EMBEDDINGS:
-            found = run_setup(key, embedding, args.models)
+            found = run_setup(key, embedding, args.models, cuts)
             results.append(found)
             if "skipped" in found:
                 print(f"Setup {key} with {embedding}: skipped ({found['skipped']})", flush=True)
@@ -219,6 +235,15 @@ def main(argv=None) -> int:
         with open(args.markdown, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(text)
     return 0
+
+
+def parse_cuts(text: str) -> dict:
+    """`relevance=0.2,gate=0.4` as {"relevance": 0.2, "gate": 0.4}."""
+    out = {}
+    for part in filter(None, (p.strip() for p in text.split(","))):
+        name, _sep, value = part.partition("=")
+        out[name.strip()] = float(value)
+    return out
 
 
 def record_qualification(results: list[dict]) -> None:

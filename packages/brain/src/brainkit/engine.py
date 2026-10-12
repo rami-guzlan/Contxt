@@ -75,7 +75,9 @@ SCORERS = ("rerank", "decide")  # what scores relevance: the reranker, or the de
 class Settings:
     """A Brain's engine settings: brain.json `engine`, over the starting points. `enabled`
     false keeps this Brain on the fallback even with a model service; `layers` and `scorer`
-    are how the comparison (5.11.11) runs setups B to E."""
+    are how the comparison (5.11.11) runs setups B to E, and `qualifying` how it judges a
+    decision model that has not qualified yet: it runs the model's steps anyway. Only the
+    comparison's scratch Brains set it."""
     cuts: dict = field(default_factory=lambda: dict(CUTS))
     floor: float = FLOOR
     ceiling: int = CEILING
@@ -86,6 +88,7 @@ class Settings:
     layers: dict = field(default_factory=lambda: dict(LAYERS))
     scorer: str = "rerank"
     ceiling_set: bool = False  # brain.json names a ceiling (else the machine setup's)
+    qualifying: bool = False  # the comparison runs an unqualified decision model's steps
 
     @classmethod
     def of(cls, config) -> Settings:
@@ -115,7 +118,7 @@ class Settings:
                    fitted=dict(data.get("fitted") or {}),
                    enabled=data.get("enabled", True) is not False,
                    layers=layers, scorer=scorer if scorer in SCORERS else "rerank",
-                   ceiling_set="ceiling" in data)
+                   ceiling_set="ceiling" in data, qualifying=data.get("qualifying") is True)
 
 
 @dataclass
@@ -265,7 +268,7 @@ class Engine:
         # A decision model runs a Kev step only once it qualified for it here (5.11.15).
         for step in ("gate", "second_pass"):
             if found.qualified and not found.qualified.get(step, True) \
-                    and settings.layers.get(step):
+                    and settings.layers.get(step) and not settings.qualifying:
                 settings.layers[step] = False
                 self.notes.append(
                     f"{decider_name} has not qualified for the "

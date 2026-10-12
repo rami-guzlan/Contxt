@@ -295,6 +295,45 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("install uv", str(caught.exception))
 
 
+class QualifyingRunTests(unittest.TestCase):
+    """The comparison judges whether a decision model qualifies by running its steps, so a
+    comparison Brain runs them even before it has qualified; a person's Brain never does."""
+
+    def setUp(self):
+        from tests import fixture
+        self.fixture = fixture
+        self.vault = fixture.build()
+
+    def tearDown(self):
+        self.fixture.remove(self.vault)
+
+    def test_a_qualifying_run_asks_the_decision_model_it_would_skip(self):
+        from brainkit.api import Brain
+        from tests.test_engine import Rig, TableDecider, TableReranker, set_engine
+        decider = TableDecider(None, "", gate=0.05)
+        rig = Rig(reranker=TableReranker(None, "", {"rules-style-002": 0.95}), decider=decider,
+                  qualify=["gate", "second_pass"])
+        try:
+            brain = Brain(self.vault, embeddings=False)
+            try:
+                res = brain.context("How should headlines be written?")
+                self.assertEqual(res.data["engine"]["gate"]["by"], "reranker")
+                self.assertEqual(decider.asked, [])
+            finally:
+                brain.close()
+            set_engine(self.vault, qualifying=True)
+            brain = Brain(self.vault, embeddings=False)
+            try:
+                res = brain.context("How should headlines be written?")
+                self.assertEqual(res.data["mode"], "nothing")  # the decision model's gate: no
+                self.assertEqual(res.data["engine"]["gate"]["yes"], 0.05)
+                self.assertEqual(res.data["engine"]["notes"], [])
+            finally:
+                brain.close()
+        finally:
+            rig.stop()
+
+
 class KevInstallTests(unittest.TestCase):
     def test_a_missing_kev_points_at_the_runtime_never_at_pypi(self):
         pin = modellock.Pin(name="kev-0.8b", role="decide", repository="jaredpalmer/kev-0.8b",
