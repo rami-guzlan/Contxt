@@ -283,7 +283,12 @@ model's behavior is made yet.
    on the demo Brain, then lives a real day on his own Brain, tries a goal with the coach, runs
    the T-41 story, and has two interviewees try the coach and a goal page. Visual design starts
    only after his sign-off. Help him by preparing everything; never fake a sign-off.
-3. **This PC's job: the local models** (BL 5.11 and 17):
+3. **This PC's job: the local models** (BL 5.11 and 17). Build step 9 (October 12) did the
+   first part on this PC's GTX 1060 (6 GB): the laptop setup's models pinned (Kev with its
+   base), `brain models setup` installs them and their runtime in one go, they run without a
+   12 GB GPU (on a small GPU or the CPU), and setups A to E ran on the demo set
+   (`docs/evals/setups-a-to-e.md`: no setup clears every gate; A stays ahead on recall;
+   Kev-0.8B does not qualify). The original list:
    - download each model in `models.lock.json`, then pin it (`brain models pin <name> <folder>`,
      revisions and checksums);
    - start the model service (`uv run brain models serve`, or `python -m brainkit.modelservice`)

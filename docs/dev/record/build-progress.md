@@ -707,25 +707,54 @@ without one. Checks per commit are targeted (the touched tests, ruff, mypy; web 
 tests when the web changes); the full suite and the report card run before the PR opens and
 after main is merged in.
 
-- [ ] Pins: Qwen3-Reranker-0.6B at `e61197ed`; Kev-0.8B at `9a45d25e` (the full revision), with
+- [x] Pins: Qwen3-Reranker-0.6B at `e61197ed`; Kev-0.8B at `9a45d25e` (the full revision), with
       its base Qwen3.5-0.8B-Base at `dc7cdfe2` pinned in the same entry; Qwen3.5-4B as unsloth's
       Q4_K_M GGUF at `e87f1764` (text only; the most used community build, checked by
       checksum). The lock learns a base model per entry: verified, fingerprinted and downloaded
       with it.
-- [ ] One command installs the runtime: a separate environment in the model home, pinned like
+- [x] One command installs the runtime: a separate environment in the model home, pinned like
       the lock: torch 2.8 (the CUDA 12.6 build on an NVIDIA GPU, which still runs Pascal; the CPU
       build otherwise), transformers 5.17, Kev from github.com/jaredpalmer/kev at `fc4a17e`
       (never PyPI's unrelated `kev`), llama-cpp-python 0.3.36 (the CUDA 12.5 build or the CPU
       one). The app starts the model service in that environment.
-- [ ] Runs without a 12 GB GPU: each model goes where it fits (the GPU while its memory lasts,
+- [x] Runs without a 12 GB GPU: each model goes where it fits (the GPU while its memory lasts,
       else the CPU); a dtype per device (bf16 only where the GPU has it natively, else what
       measures best); the reranker runs on the CPU (5.11.5 says a Windows laptop without a GPU
       runs it there; the code refused); the agent falls back to the CPU when the GPU has no room.
-- [ ] Fixes: the Kev install message (it named PyPI's unrelated package).
-- [ ] Measured here: every model verified and loaded; speed per role on the GPU and on the CPU;
+- [x] Fixes: the Kev install message (it named PyPI's unrelated package).
+- [x] Measured here: every model verified and loaded; speed per role on the GPU and on the CPU;
       setups A to E with bge-small on the public demo set (`engine_compare.py --record`), results
-      beside `docs/evals/setups-a-to-e.md`; default cuts fitted on the tuning split; Kev-0.8B's
-      qualification on the demo set.
+      in `docs/evals/setups-a-to-e.md`; cuts chosen on the tuning split; Kev-0.8B's
+      qualification on the demo set (not qualified).
+
+## Step 9: what came out
+
+- **It runs out of the box without a 12 GB GPU.** `brain models setup` installs the runtime
+  (about 8.5 GB with the CUDA build, mostly torch's CUDA libraries; far less with the CPU build)
+  and this computer's setup models (5.5 GB here), each verified against the lock. The app starts
+  the service in the runtime. On the PC every model ran on the GTX 1060 (fp16) and, with
+  `BRAIN_MODEL_DEVICE=cpu`, as a laptop without a GPU: MiniLM, Kev-0.8B and the 4B agent on the
+  CPU, all inside the Windows laptop's speed budget on a Ryzen 7 9700X.
+- **Measured on the GPU and the CPU** (`docs/evals/setups-a-to-e.md`): fp16 is the precision for
+  older NVIDIA GPUs (the same scores as fp32 in half the memory; bf16 is emulated there, slower);
+  Qwen3-Reranker on the CPU took 16 s for 50 passages, so without a GPU MiniLM is the default
+  reranker; computing only the last position's logits made the reranker 20% faster.
+- **Quality: no setup clears every gate on the demo set, and A stays ahead on recall.** With
+  Qwen3-Reranker as the cut, B recalls 75% (83% held out) against A's 85% (92%), with 100%
+  correct nothing against 88%. With MiniLM, 62% (67%). The small rerankers judge whether a note
+  answers a question, not whether an assistant needs it; no wording of the instruction or the
+  request changed that. Kev-0.8B gives most requests a gate "yes" between 0.3 and 0.5, so it
+  does not qualify for the gate or the second pass here, and as a relevance scorer (E) it keeps
+  nearly everything.
+- **Found and fixed:** the engine routed notes loaded `manual` (the owner's goals) into briefs,
+  which the router never does; the comparison could never qualify Kev (its steps fell back in the
+  very runs that judge it); Kev's install message named PyPI's unrelated `kev`; the service set
+  Kev's temperature over the one its pinned checkpoint carries; the runtime's pins carried a
+  stray line that uv refused (found by running the installer here).
+- **Waits for Rami:** whether the engine stays on by default once models are installed (on the
+  demo set it costs recall); the private labels, to measure on his real requests; a GPU with 12
+  GB or more for the "PC with GPU" speeds and a larger reranker. Next for step 10: the
+  Qwen3-Embedding backend, and the knowledge agent compared on a grown agent set.
 - Next (step 10): the Qwen3-Embedding meaning-index backend; the knowledge agent compared on a
   grown agent set (Qwen3.5-4B, 9B, Qwen3.6-35B-A3B, Qwen3.8-27B and Claude Code).
 - Waits for Rami: the private labels (his Brain's cuts, held-out numbers). The "PC with GPU"
