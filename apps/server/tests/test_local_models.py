@@ -28,12 +28,15 @@ def test_the_page_shows_the_machine_its_setup_and_each_role(owner, model):
     assert (found["enabled"], found["setup"], found["setup_label"]) == (True, "laptop", "Laptop")
     roles = {r["role"]: r for r in found["roles"]}
     assert (roles["decide"]["model"], roles["agent"]["model"]) == ("kev-0.8b", "qwen3.5-4b")
-    assert found["ram_in_use_gb"] == 5.6
+    # Without a GPU the reranker is MiniLM: Qwen3-Reranker misses the speed budget on a CPU.
+    assert roles["rerank"]["model"] == "ms-marco-minilm-l-6-v2"
+    assert found["ram_in_use_gb"] == 4.5
     # The meaning index's model is kept with the Brain, downloaded under Matching by meaning.
     meaning = {o["name"]: o for o in roles["embed"]["options"]}["bge-small-en-v1.5"]
     assert meaning["with_brain"] is True
     assert found["engine"]["ready"] is False  # no model service in a test
-    assert len(found["fallbacks"]) == 2  # Kev-0.8B has qualified for neither step here
+    # The reranker that gave way, and Kev-0.8B, which has qualified for neither step here.
+    assert len(found["fallbacks"]) == 3
     # No local agent model here yet: Claude Code stays the agent until the person says no.
     assert (found["agent_claude_code"], found["agent_claude_code_set"]) == (True, False)
     assert act(model, action="check").status_code == 403
@@ -43,7 +46,7 @@ def test_the_guard_rails_refuse_with_the_reason(owner):
     machine.save(dict(LAPTOP))
     too_big = act(owner, action="default", name="qwen3.6-35b-a3b")
     assert too_big.status_code == 422 and "will not fit" in too_big.text
-    unpinned = act(owner, action="download", name="qwen3-reranker-0.6b")
+    unpinned = act(owner, action="download", name="qwen3.5-9b")
     assert unpinned.status_code == 422 and "not pinned yet" in unpinned.text
     in_use = act(owner, action="remove", name="qwen3.5-4b")
     assert in_use.status_code == 422 and "in use here" in in_use.text
