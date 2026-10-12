@@ -18,7 +18,7 @@ from unittest import mock
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from brainkit import machine, modellock, modelservice  # noqa: E402
+from brainkit import machine, modellock, modelruntime, modelservice  # noqa: E402
 
 ADAPTER = b"a decision model's adapter"
 BASE = b"the base model it runs on"
@@ -188,6 +188,75 @@ class MiniLMTests(unittest.TestCase):
         self.assertEqual(len(found), 2)
         self.assertTrue(all(0.0 <= s <= 1.0 for s in found))
         self.assertGreater(found[0], found[1])
+
+
+class RuntimeTests(unittest.TestCase):
+    """One command makes the environment the models run in, in the builds this machine runs."""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="brain-runtime-")
+        self.env = mock.patch.dict(os.environ, {"BRAIN_MODEL_HOME": self.home})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def test_each_machine_gets_the_builds_it_can_run(self):
+        pascal = machine.Machine(ram_gb=62.0, gpu="NVIDIA GeForce GTX 1060 6GB", gpu_gb=6.0)
+        cases = [(pascal, 6.1, False, ("cuda", "cu126", "cu125")),
+                 (machine.Machine(ram_gb=32.0, gpu="a newer GPU", gpu_gb=16.0), 12.0, False,
+                  ("cuda", "cu128", "cu125")),
+                 (machine.Machine(ram_gb=16.0), 0.0, False, ("cpu", "cpu", "cpu")),
+                 (pascal, 6.1, True, ("cpu", "cpu", "cpu")),
+                 (machine.Machine(ram_gb=16.0, apple_silicon=True), 0.0, False, ("mac", "", ""))]
+        for found, compute, cpu, want in cases:
+            build = modelruntime.build_for(found, compute, cpu=cpu)
+            self.assertEqual((build.variant, build.torch, build.llama), want, found)
+
+    def test_kev_comes_from_its_repository_never_from_pypi(self):
+        build = modelruntime.build_for(machine.Machine(ram_gb=16.0))
+        steps = modelruntime.steps(build, "uv", os.path.join(self.home, "runtime"))
+        kev = [s for s in steps if any(a.startswith("kev") for a in s)]
+        self.assertEqual(len(kev), 1)
+        self.assertIn("--no-deps", kev[0])
+        self.assertTrue(kev[0][-1].startswith("kev @ git+https://github.com/jaredpalmer/kev@"))
+        with open(modelruntime.REQUIREMENTS, encoding="utf-8") as handle:
+            pins = [line.split("==")[0] for line in handle
+                    if line.strip() and not line.startswith("#")]
+        self.assertIn("torch", pins)
+        self.assertNotIn("kev", pins)
+        self.assertFalse([p for p in pins if p.startswith("nvidia-") or p == "triton"])
+
+    def test_install_runs_the_steps_and_the_service_then_starts_in_the_runtime(self):
+        ran = []
+
+        def run(argv):
+            ran.append(argv)
+            if argv[1] == "venv":  # the environment's interpreter appears
+                os.makedirs(os.path.dirname(modelruntime.python()), exist_ok=True)
+                open(modelruntime.python(), "w").close()
+
+        self.assertFalse(modelruntime.status()["installed"])
+        argv, _env = modelruntime.service_command()
+        self.assertEqual(argv[0], sys.executable)
+        with mock.patch("shutil.which", return_value="uv"):
+            record = modelruntime.install(found=machine.Machine(ram_gb=16.0), run=run,
+                                          say=lambda _line: None)
+        self.assertEqual(record["build"]["variant"], "cpu")
+        self.assertEqual([a[1] for a in ran], ["venv", "pip", "pip", "pip"])
+        self.assertIn("--torch-backend", ran[1])
+        found = modelruntime.status()
+        self.assertTrue(found["installed"] and found["current"])
+        argv, env = modelruntime.service_command()
+        self.assertEqual(argv, [modelruntime.python(), "-m", "brainkit.modelservice"])
+        self.assertEqual(env["PYTHONPATH"].split(os.pathsep)[0], modelruntime.BRAINKIT)
+
+    def test_without_uv_it_says_what_to_install(self):
+        with mock.patch("shutil.which", return_value=None):
+            with self.assertRaises(RuntimeError) as caught:
+                modelruntime.install(found=machine.Machine(ram_gb=16.0), say=lambda _l: None)
+        self.assertIn("install uv", str(caught.exception))
 
 
 class KevInstallTests(unittest.TestCase):

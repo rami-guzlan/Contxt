@@ -62,13 +62,17 @@ def build_parser():
                                       "lock, pin and serve for the retrieval engine's models")
     p.add_argument("action", nargs="?", default="status",
                    choices=["status", "lock", "pin", "serve", "machine", "use", "download",
-                            "remove", "speed"],
+                            "remove", "speed", "runtime", "setup"],
                    help="status (default); lock: the pinned models and whether each is here; "
                         "pin <name> <folder>: record a downloaded copy's checksums in the "
                         "lock; serve: run the local model service; machine: read this "
                         "computer again and show its setup; use <name>: make a pinned model "
                         "the default for its role here; download <name> and remove <name>; "
-                        "speed: time the models the service runs")
+                        "speed: time the models the service runs; runtime: install the "
+                        "environment the models run in; setup: the runtime and this "
+                        "computer's setup models in one go")
+    p.add_argument("--cpu", action="store_true",
+                   help="with runtime and setup: the CPU builds even where there is a GPU")
     p.add_argument("name", nargs="?", help="with pin, use, download and remove: the model's "
                                            "name in the lock")
     p.add_argument("folder", nargs="?", help="with pin: the downloaded model's folder")
@@ -536,13 +540,60 @@ def _machine_overview(found: dict) -> int:
     return 0
 
 
+def _setup_models(machine, modellock) -> int:
+    """Download this computer's setup models that are not here yet (`brain models setup`). The
+    meaning index's model lives with each Brain (contxt models --download)."""
+    lock = modellock.Lock.load()
+    settings = machine.check()
+    wanted = {role: machine.chosen(role, settings, lock) for role in machine.ROLES
+              if role != "embed"}
+    print(f"This computer's setup: {machine.SETUPS[settings['setup']]['label']}.")
+    failed = 0
+    for role, name in wanted.items():
+        if not name:
+            continue
+        if machine.here(name, lock):
+            print(f"  {machine.ROLE_WORDS[role]}: {name} is here")
+            continue
+        size = lock.pin(name).extra.get("size_gb")
+        print(f"  {machine.ROLE_WORDS[role]}: downloading {name}"
+              + (f" (about {size:g} GB)" if size else "") + " ...", flush=True)
+        try:
+            verdict = machine.download(name, lock=lock)
+        except (modellock.Refused, RuntimeError, OSError) as exc:
+            print(f"    not done: {exc}")
+            failed += 1
+            continue
+        print("    verified against the lock" if verdict.ok else f"    refused: {verdict.reason}")
+        failed += 0 if verdict.ok else 1
+    if failed:
+        return 1
+    print("Done. The app starts the model service when it starts; or run: brain models serve")
+    return 0
+
+
 def _models(args) -> int:
     """The retrieval engine's models: the lock, pinning a downloaded copy, the service."""
     import os
 
-    from brainkit import machine, modellock, models_client, modelservice
+    import subprocess
+
+    from brainkit import machine, modellock, modelruntime, models_client, modelservice
     if args.action == "serve":
+        argv, env = modelruntime.service_command()
+        if argv[0] != sys.executable:  # the runtime has the models' libraries; this may not
+            return subprocess.call(argv + ["--port", str(args.port)], env=env)
         return modelservice.main(["--port", str(args.port)])
+    if args.action in ("runtime", "setup"):
+        try:
+            modelruntime.install(cpu=args.cpu)
+        except (RuntimeError, OSError, subprocess.CalledProcessError) as exc:
+            print(f"Not done: {exc}")
+            return 1
+        print("The model runtime is ready.")
+        if args.action == "runtime":
+            return 0
+        return _setup_models(machine, modellock)
     if args.action in ("use", "download", "remove") and not args.name:
         print(f"brain models {args.action} <name>")
         return 2

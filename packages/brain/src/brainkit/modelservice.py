@@ -453,6 +453,8 @@ class ModelService:
             return row
         self.backends[role] = backend
         row.update(loaded=True, reason="")
+        if getattr(backend, "device", ""):
+            row["device"] = backend.device  # where it runs here: cuda, mps or cpu
         return row
 
     def health(self) -> dict:
@@ -649,13 +651,17 @@ def ensure(python: str | None = None) -> str:
         return ("the local models for this computer's setup are not downloaded yet ("
                 + ", ".join(machine.ROLE_WORDS[r] for r in missing)
                 + "): retrieval runs on words and meaning")
+    from . import modelruntime
     flags = 0
     if sys.platform == "win32":
         flags = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
-    subprocess.Popen([python or sys.executable, "-m", "brainkit.modelservice"],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    # In the model runtime when it is installed (brain models runtime): the models' libraries
+    # live there, not in the app's environment.
+    argv, env = modelruntime.service_command(python)
+    subprocess.Popen(argv, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      stdin=subprocess.DEVNULL, creationflags=flags)
-    return "the model service is starting"
+    return "the model service is starting" + (
+        "" if argv[0] == (python or sys.executable) else " in the model runtime")
 
 
 def main(argv=None) -> int:
