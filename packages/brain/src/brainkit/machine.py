@@ -431,6 +431,7 @@ def downloadable(name: str, lock: modellock.Lock) -> modellock.Pin:
 
 
 def _fetch(pin: modellock.Pin, cache: str) -> None:
+    """Fetch a model's pinned files at its revision, and the base model it runs on, if any."""
     try:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
@@ -443,6 +444,9 @@ def _fetch(pin: modellock.Pin, cache: str) -> None:
         pass
     snapshot_download(repo_id=pin.repository, revision=pin.revision, cache_dir=cache,
                       allow_patterns=sorted(pin.files))
+    if pin.base:
+        snapshot_download(repo_id=pin.base["repository"], revision=pin.base["revision"],
+                          cache_dir=cache, allow_patterns=sorted(pin.base["files"]))
 
 
 def remove(name: str, *, lock: modellock.Lock | None = None) -> None:

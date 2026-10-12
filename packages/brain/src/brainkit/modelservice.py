@@ -26,10 +26,17 @@ default (machine.py), else the lock's default for the role.
 - On start it writes `<model home>/modelservice.json` (its address, process and lock), which is
   how every client finds it; it removes the file when it stops.
 
-Backends: Qwen3-Reranker through transformers (CUDA, or MPS on a Mac), and Kev through its own
-server (`python -m kev.serve`), started once on a private port with the verified local copy and
-no downloads. Both import their libraries only when a verified model needs them, so on a machine
-without models the service runs, says so, and the engine falls back. Tests pass stand-ins.
+Backends: Qwen3-Reranker through transformers, MiniLM (the small reranker) through ONNX on the
+CPU, Kev through its own server (`python -m kev.serve`), started once on a private port with the
+verified local copy and no downloads, and the agent through llama.cpp (MLX on a Mac). Each
+imports its libraries only when a verified model needs them, so on a machine without models the
+service runs, says so, and the engine falls back. Tests pass stand-ins.
+
+No 12 GB GPU is needed (build step 9). Each model goes where it fits: a GPU while it has room
+(models load in role order, so a small GPU fills up and the rest run on the CPU), else the CPU.
+The precision follows the device: bf16 where the GPU has it natively, fp16 on an older NVIDIA GPU
+(on a GTX 1060 it gave the same scores as fp32 in half the memory and ran faster than emulated
+bf16), fp32 on the CPU. `BRAIN_MODEL_DEVICE` (cpu, cuda or mps) names a device instead.
 """
 from __future__ import annotations
 
@@ -48,8 +55,61 @@ from . import modellock, models_client
 
 DEFAULT_PORT = 8791
 MAX_BODY = 32 * 1024 * 1024  # bytes in one request
+GPU_ROOM_GB = 0.8  # what a model needs on a GPU beyond its weights: activations, a cache
 QWEN_SYSTEM = ("Judge whether the Document meets the requirements based on the Query and the "
                "Instruct provided. Note that the answer can only be \"yes\" or \"no\".")
+
+
+def probe() -> dict:
+    """This process's accelerators, read through torch: an NVIDIA GPU (its free memory and
+    whether it has bf16 natively), or Apple's. Without torch, the CPU alone."""
+    found = {"cuda": False, "free_gb": 0.0, "bf16": False, "mps": False}
+    try:
+        import torch
+    except ImportError:
+        return found
+    if torch.cuda.is_available():
+        free, _total = torch.cuda.mem_get_info()
+        found.update(cuda=True, free_gb=free / 2 ** 30,
+                     bf16=bool(torch.cuda.is_bf16_supported(including_emulation=False)))
+    elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        found.update(mps=True, bf16=True)
+    return found
+
+
+def place(size_gb: float, found: dict | None = None) -> tuple[str, str]:
+    """Where a model of `size_gb` (its weights in 16 bits) runs here, and in what precision:
+    (device, torch dtype name). A GPU while it has room for the weights and GPU_ROOM_GB more,
+    else the CPU in fp32. `BRAIN_MODEL_DEVICE` names a device instead."""
+    found = probe() if found is None else found
+    named = os.environ.get("BRAIN_MODEL_DEVICE", "").strip().lower()
+    if named == "cpu":
+        return "cpu", "float32"
+    if found.get("mps") and named in ("", "mps"):
+        return "mps", "bfloat16"
+    if found.get("cuda") and (named == "cuda" or (
+            not named and found.get("free_gb", 0.0) >= size_gb + GPU_ROOM_GB)):
+        return "cuda", "bfloat16" if found.get("bf16") else "float16"
+    return "cpu", "float32"
+
+
+def kev_dtype(dtype: str) -> str:
+    """Kev's name for a torch dtype (its KEV_DTYPE)."""
+    return {"bfloat16": "bf16", "float16": "fp16"}.get(dtype, "fp32")
+
+
+def cuda_libraries() -> None:
+    """On Windows, llama.cpp's CUDA build needs the CUDA runtime's DLLs; the CUDA build of torch
+    in the same environment ships them, so a machine needs no CUDA toolkit."""
+    if sys.platform != "win32":
+        return
+    try:
+        import torch
+    except ImportError:
+        return
+    folder = os.path.join(os.path.dirname(torch.__file__), "lib")
+    if os.path.isdir(folder):
+        os.add_dll_directory(folder)
 
 
 class Backend:
@@ -96,16 +156,20 @@ class AgentBackend(Backend):
 
 
 class LlamaCppAgent(AgentBackend):
-    """A 4-bit GGUF build through llama.cpp (CUDA, or the CPU on Windows without a GPU), its
-    answer bound to the JSON schema while it is generated. Not run where it cannot."""
+    """A 4-bit GGUF build through llama.cpp, its answer bound to the JSON schema while it is
+    generated: every layer on the GPU when the GPU has room left for it, else the CPU (on a
+    GTX 1060 an answer took 2.6 s on the GPU and 3.9 s on a Ryzen 7 9700X)."""
 
     def load(self) -> None:
+        cuda_libraries()
         from llama_cpp import Llama
         files = sorted(f for f in os.listdir(self.folder) if f.endswith(".gguf"))
         if not files:
             raise RuntimeError("no .gguf file in the model's folder")
-        self.net = Llama(model_path=os.path.join(self.folder, files[0]), n_ctx=8192,
-                         n_gpu_layers=-1, verbose=False)
+        path = os.path.join(self.folder, files[0])
+        self.device, _dtype = place(os.path.getsize(path) / 2 ** 30)
+        self.net = Llama(model_path=path, n_ctx=8192,
+                         n_gpu_layers=-1 if self.device != "cpu" else 0, verbose=False)
 
     def generate(self, system: str, prompt: str, schema: dict | None,
                  max_tokens: int) -> str:
@@ -177,26 +241,21 @@ def schema_problems(value, schema: dict | None) -> list[str]:
 class QwenReranker(RerankBackend):
     """Qwen3-Reranker: the probability that the answer to "does the document meet the request,
     given the instruction?" is yes, read from the model's next-token logits for "yes" and "no",
-    as its model card shows. Not run on a machine without a GPU or Apple Silicon."""
+    as its model card shows (only the last position's logits are computed). It runs on the CPU
+    too, slowly: on a machine without a GPU the speed check hands the cut to MiniLM."""
 
     BATCH = 8
 
     def load(self) -> None:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-            device = "mps"
-        else:
-            raise RuntimeError("no CUDA or Apple GPU: the reranker does not run on this CPU")
-        dtype = getattr(torch, self.pin.dtype or "bfloat16", torch.bfloat16)
+        device, dtype = place(float(self.pin.extra.get("size_gb") or 1.2))
         self.torch = torch
-        self.device = device
+        self.device, self.dtype = device, dtype
         self.tokenizer = AutoTokenizer.from_pretrained(self.folder, padding_side="left",
                                                        local_files_only=True)
         self.net = AutoModelForCausalLM.from_pretrained(
-            self.folder, torch_dtype=dtype, local_files_only=True).to(device).eval()
+            self.folder, dtype=getattr(torch, dtype), local_files_only=True).to(device).eval()
         self.yes_id = self.tokenizer.convert_tokens_to_ids("yes")
         self.no_id = self.tokenizer.convert_tokens_to_ids("no")
         self.max_length = int(self.pin.extra.get("max_length") or 8192)
@@ -213,7 +272,7 @@ class QwenReranker(RerankBackend):
                                     max_length=self.max_length, return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             with torch.no_grad():
-                logits = self.net(**inputs).logits[:, -1, :]
+                logits = self.net(**inputs, logits_to_keep=1).logits[:, -1, :]
             pair = torch.stack([logits[:, self.no_id], logits[:, self.yes_id]], dim=1)
             out += torch.nn.functional.log_softmax(pair.float(), dim=1)[:, 1].exp().tolist()
         return out
@@ -224,23 +283,27 @@ class QwenReranker(RerankBackend):
 
 class KevServer(DecideBackend):
     """Kev through its own server, started once on a private port with the verified local copy
-    and downloads turned off, and asked in System One's format. Not run where Kev cannot."""
+    (the adapter and its pinned base, in the same cache) and downloads turned off, and asked in
+    System One's format. The checkpoint carries its fitted temperature, pinned by checksum, so
+    none is set here. On a GTX 1060 a gate took 149 ms in fp16 (434 ms on a Ryzen 7 9700X)."""
 
     def load(self) -> None:
         import importlib.util
         if importlib.util.find_spec("kev") is None:
-            raise RuntimeError("the kev package is not installed (pip install kev[serve])")
+            raise RuntimeError("Kev is not installed in the model runtime: run `brain models "
+                               "runtime` (Kev comes from github.com/jaredpalmer/kev; PyPI's "
+                               "`kev` is an unrelated package)")
         self.port = free_port()
+        self.device, dtype = place(float(self.pin.extra.get("size_gb") or 2.0))
         env = dict(os.environ, HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
-                   HF_HUB_CACHE=os.path.dirname(os.path.dirname(os.path.dirname(self.folder))))
-        temperature = self.pin.extra.get("temperature")
-        if temperature:
-            env["KEV_TEMPERATURE"] = str(temperature)
+                   HF_HUB_CACHE=modellock.cache_of(self.folder), KEV_DTYPE=kev_dtype(dtype))
+        env.pop("KEV_TEMPERATURE", None)
         target = f"{self.pin.repository}@{self.pin.revision}"
         self.process = subprocess.Popen(
             [sys.executable, "-m", "kev.serve", "--run", target, "--port", str(self.port),
-             "--host", "127.0.0.1"], env=env, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL)
+             "--host", "127.0.0.1", "--device", "auto" if self.device == "mps" else self.device],
+            env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.monotonic() + 600
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
@@ -263,7 +326,44 @@ class KevServer(DecideBackend):
             process.terminate()
 
 
-BACKENDS = {"qwen3-reranker-0.6b": QwenReranker, "kev-0.8b": KevServer, "kev-4b": KevServer,
+class MiniLMReranker(RerankBackend):
+    """MiniLM (ms-marco-MiniLM-L-6-v2), the small reranker, from its pinned ONNX file on the
+    CPU: a cross-encoder's logit per (request, passage), as a probability. It reads words more
+    than meaning, and it is fast: 50 passages in under 0.1 s on a Ryzen 7 9700X, where
+    Qwen3-Reranker took 16 s on the same CPU. The reranker of machines without a GPU."""
+
+    MAX_TOKENS = 512
+
+    def load(self) -> None:
+        import onnxruntime
+        from tokenizers import Tokenizer
+        self.device = "cpu"
+        self.tokenizer = Tokenizer.from_file(os.path.join(self.folder, "tokenizer.json"))
+        self.tokenizer.enable_truncation(self.MAX_TOKENS)
+        self.tokenizer.enable_padding()
+        self.session = onnxruntime.InferenceSession(
+            os.path.join(self.folder, "onnx", "model.onnx"), providers=["CPUExecutionProvider"])
+        self.inputs = {i.name for i in self.session.get_inputs()}
+
+    def scores(self, query: str, instruction: str, documents: list[str]) -> list[float]:
+        import math
+
+        import numpy
+        found = self.tokenizer.encode_batch([(query, doc) for doc in documents])
+        feed = {"input_ids": [e.ids for e in found],
+                "attention_mask": [e.attention_mask for e in found],
+                "token_type_ids": [e.type_ids for e in found]}
+        logits = self.session.run(None, {name: numpy.array(rows, dtype=numpy.int64)
+                                         for name, rows in feed.items()
+                                         if name in self.inputs})[0]
+        return [1.0 / (1.0 + math.exp(-float(row[0]))) for row in logits]
+
+    def close(self) -> None:
+        self.session = None
+
+
+BACKENDS = {"qwen3-reranker-0.6b": QwenReranker, "ms-marco-minilm-l-6-v2": MiniLMReranker,
+            "kev-0.8b": KevServer, "kev-4b": KevServer,
             "kev-9b": KevServer, "qwen3.5-4b": _agent_backend, "qwen3.5-9b": _agent_backend,
             "qwen3.8-27b": _agent_backend, "qwen3.6-35b-a3b": _agent_backend}
 SERVED = ("rerank", "decide", "agent")
@@ -277,15 +377,7 @@ def free_port() -> int:
 
 def snapshot(models_dir: str, pin: modellock.Pin) -> str:
     """The folder of a model's pinned revision in a Hugging Face style cache, or ""."""
-    if not pin.revision or not pin.repository:
-        return ""
-    base = os.path.join(models_dir, "models--" + pin.repository.replace("/", "--"), "snapshots")
-    try:
-        names = sorted(os.listdir(base))
-    except OSError:
-        return ""
-    found = [n for n in names if n.startswith(pin.revision) or pin.revision.startswith(n)]
-    return os.path.join(base, found[0]) if found else ""
+    return modellock.snapshot(models_dir, pin.repository, pin.revision)
 
 
 class ModelService:

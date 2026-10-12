@@ -73,6 +73,8 @@ def build_parser():
                                            "name in the lock")
     p.add_argument("folder", nargs="?", help="with pin: the downloaded model's folder")
     p.add_argument("--revision", default="", help="with pin: the revision downloaded")
+    p.add_argument("--base", default="", help="with pin: the base model an adapter runs on, "
+                                              "<repository>@<revision>, in the same cache")
     p.add_argument("--port", type=int, default=8791, help="with serve: the port on 127.0.0.1")
     p.add_argument("--download", action="store_true",
                    help="download the embedding model into vault/.brain/models")
@@ -579,15 +581,20 @@ def _models(args) -> int:
         return 1
     if args.action == "pin":
         if not args.name or not args.folder:
-            print("brain models pin <name> <folder> [--revision <rev>]")
+            print("brain models pin <name> <folder> [--revision <rev>] [--base <repo>@<rev>]")
             return 2
         try:
-            found = modellock.record_pin(args.name, args.folder, revision=args.revision)
+            found = modellock.record_pin(args.name, args.folder, revision=args.revision,
+                                         base=args.base)
         except (modellock.Refused, OSError) as exc:
             print(f"Not pinned: {exc}")
             return 1
+        base = found.get("base")
         print(f"Pinned {found['name']}: {found['files']} file(s), revision "
-              f"{found['revision'] or 'unchanged'}. Review the change to models.lock.json.")
+              f"{found['revision'] or 'unchanged'}"
+              + (f"; its base {base['repository']}@{base['revision'][:8]}: {base['files']} "
+                 "file(s)" if base else "")
+              + ". Review the change to models.lock.json.")
         return 0
     lock = modellock.Lock.load()
     home = os.path.join(models_client.model_home(), "models")

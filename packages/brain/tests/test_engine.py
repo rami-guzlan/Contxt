@@ -228,7 +228,10 @@ class LockTests(unittest.TestCase):
         lock = modellock.Lock.load(modellock.LOCK_PATH)
         self.assertTrue(lock.pin("bge-small-en-v1.5").pinned)
         self.assertEqual(lock.pin("kev-4b").revision, "139fdd94")
-        self.assertFalse(lock.pin("qwen3-reranker-0.6b").pinned)  # pinned on the PC
+        # The laptop setup's models, pinned on the PC (build step 9).
+        for name in ("qwen3-reranker-0.6b", "kev-0.8b", "qwen3.5-4b", "ms-marco-minilm-l-6-v2"):
+            self.assertTrue(lock.pin(name).pinned, name)
+        self.assertFalse(lock.pin("kev-4b").pinned)  # no files yet: a GPU with 12 GB runs it
         with self.assertRaises(modellock.Refused):
             lock.pin("laya")
 

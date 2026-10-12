@@ -9,6 +9,9 @@ answers and an audit can name the exact model behind any decision (brain-logic p
 - A listed model loads only when its files match the lock's checksums; a model not pinned yet
   (no revision or no checksums) is refused until someone pins it on a machine that runs it:
   `brain models pin <name> <folder>` records the checksums of a downloaded copy.
+- An adapter (Kev is a LoRA adapter and a head) is only as pinned as the base model it runs on,
+  so its entry pins that base too (`base`: repository, revision, checksums), kept in the same
+  model cache and verified with it.
 - The lock's fingerprint (a hash of its pins) travels with every brief the engine builds, and
   a client refuses a model service whose lock differs.
 
@@ -41,9 +44,12 @@ class Pin:
     runtime: dict = field(default_factory=dict)
     extra: dict = field(default_factory=dict)  # what a backend needs (a temperature, a template)
     default: bool = False  # the model its role runs unless the service is told otherwise
+    base: dict = field(default_factory=dict)  # an adapter's base model: repository, revision, files
 
     @property
     def pinned(self) -> bool:
+        if self.base and not (self.base.get("revision") and self.base.get("files")):
+            return False
         return bool(self.revision) and bool(self.files)
 
 
@@ -75,19 +81,31 @@ class Lock:
             role = str(row.get("role") or "").strip()
             if not name or role not in ROLES:
                 continue
+            base = row.get("base") or {}
             pins[name] = Pin(
                 name=name, role=role, repository=str(row.get("repository") or ""),
                 revision=str(row.get("revision") or ""),
                 files={str(k): str(v).lower() for k, v in (row.get("files") or {}).items()},
                 dtype=str(row.get("dtype") or ""), runtime=dict(row.get("runtime") or {}),
-                extra=dict(row.get("extra") or {}), default=bool(row.get("default")))
+                extra=dict(row.get("extra") or {}), default=bool(row.get("default")),
+                base={"repository": str(base.get("repository") or ""),
+                      "revision": str(base.get("revision") or ""),
+                      "files": {str(k): str(v).lower()
+                                for k, v in (base.get("files") or {}).items()}}
+                if base else {})
         return cls(pins, path)
 
     @property
     def fingerprint(self) -> str:
-        """A hash of every pin: what a client and the service compare."""
-        rows = [[p.name, p.role, p.repository, p.revision, sorted(p.files.items()), p.dtype]
-                for p in sorted(self.pins.values(), key=lambda p: p.name)]
+        """A hash of every pin (and every base it runs on): what a client and the service
+        compare."""
+        rows = []
+        for p in sorted(self.pins.values(), key=lambda p: p.name):
+            row = [p.name, p.role, p.repository, p.revision, sorted(p.files.items()), p.dtype]
+            if p.base:
+                row.append([p.base["repository"], p.base["revision"],
+                            sorted(p.base["files"].items())])
+            rows.append(row)
         return util.short_hash(json.dumps(rows, sort_keys=True), 12)
 
     def pin(self, name: str) -> Pin:
@@ -112,13 +130,58 @@ class Lock:
                                         f"{name} <folder>` on a machine that runs it")
         if not folder or not os.path.isdir(folder):
             return Verdict(name, False, f"{name} is not downloaded ({folder or 'no folder'})")
-        for rel, expected in sorted(pin.files.items()):
-            path = os.path.join(folder, *rel.split("/"))
-            if not os.path.isfile(path):
-                return Verdict(name, False, f"{name}: {rel} is missing")
-            if file_sha256(path) != expected:
-                return Verdict(name, False, f"{name}: {rel} does not match the lock")
+        problem = _mismatch(pin.files, folder)
+        if problem:
+            return Verdict(name, False, f"{name}: {problem}")
+        if pin.base:
+            where = base_folder(pin, folder)
+            label = f"{name}: its base model {pin.base['repository']}"
+            if not where:
+                return Verdict(name, False, f"{label} is not downloaded")
+            problem = _mismatch(pin.base["files"], where)
+            if problem:
+                return Verdict(name, False, f"{label}: {problem}")
         return Verdict(name, True)
+
+
+def _mismatch(files: dict, folder: str) -> str:
+    """The first file of `files` missing from `folder` or differing from its checksum, or ""."""
+    for rel, expected in sorted(files.items()):
+        path = os.path.join(folder, *rel.split("/"))
+        if not os.path.isfile(path):
+            return f"{rel} is missing"
+        if file_sha256(path) != expected:
+            return f"{rel} does not match the lock"
+    return ""
+
+
+def snapshot(models_dir: str, repository: str, revision: str) -> str:
+    """The folder of a repository's revision in a Hugging Face style cache, or ""."""
+    if not repository or not revision:
+        return ""
+    found = os.path.join(models_dir, "models--" + repository.replace("/", "--"), "snapshots")
+    try:
+        names = sorted(os.listdir(found))
+    except OSError:
+        return ""
+    names = [n for n in names if n.startswith(revision) or revision.startswith(n)]
+    return os.path.join(found, names[0]) if names else ""
+
+
+def cache_of(folder: str) -> str:
+    """The model cache a model's folder sits in: `<cache>/models--org--name/snapshots/<rev>`
+    in a Hugging Face style cache, else the folder's parent (`<cache>/<name>`)."""
+    parts = os.path.normpath(folder).split(os.sep)
+    if len(parts) >= 4 and parts[-2] == "snapshots" and parts[-3].startswith("models--"):
+        return os.sep.join(parts[:-3])
+    return os.path.dirname(os.path.normpath(folder))
+
+
+def base_folder(pin: Pin, folder: str) -> str:
+    """Where an adapter's base model is: its pinned revision in the adapter's own cache."""
+    if not pin.base:
+        return ""
+    return snapshot(cache_of(folder), pin.base["repository"], pin.base["revision"])
 
 
 def file_sha256(path: str) -> str:
@@ -142,8 +205,11 @@ def checksums(folder: str) -> dict[str, str]:
     return dict(sorted(out.items()))
 
 
-def record_pin(name: str, folder: str, *, revision: str = "", path: str | None = None) -> dict:
-    """Write the checksums of a downloaded copy into the lock (a code change to review)."""
+def record_pin(name: str, folder: str, *, revision: str = "", base: str = "",
+               path: str | None = None) -> dict:
+    """Write the checksums of a downloaded copy into the lock (a code change to review).
+    `base` ("<repository>@<revision>") pins the base model an adapter runs on, from the same
+    model cache."""
     path = path or LOCK_PATH
     with open(path, encoding="utf-8") as handle:
         data = json.load(handle)
@@ -151,8 +217,22 @@ def record_pin(name: str, folder: str, *, revision: str = "", path: str | None =
     row = next((r for r in rows if r.get("name") == name), None)
     if row is None:
         raise Refused(f"{name!r} is not in the model lock; add its entry first")
+    found_base = None
+    if base:
+        repository, _sep, base_revision = base.partition("@")
+        where = snapshot(cache_of(folder), repository, base_revision)
+        if not repository or not base_revision or not where:
+            raise Refused(f"the base model {base} is not in the model cache beside {folder}")
+        found_base = {"repository": repository, "revision": os.path.basename(where),
+                      "files": checksums(where)}
     row["files"] = checksums(folder)
     if revision:
         row["revision"] = revision
+    if found_base:
+        row["base"] = found_base
     util.atomic_write(path, json.dumps(data, indent=2) + "\n")
-    return {"name": name, "files": len(row["files"]), "revision": row.get("revision")}
+    out = {"name": name, "files": len(row["files"]), "revision": row.get("revision")}
+    if found_base:
+        out["base"] = {"repository": found_base["repository"],
+                       "revision": found_base["revision"], "files": len(found_base["files"])}
+    return out
