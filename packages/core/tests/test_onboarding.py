@@ -29,7 +29,7 @@ def test_a_new_workspace_starts_with_nothing_done(ws, owner, brain):
 def test_steps_follow_what_the_brain_holds(ws, owner, connect, brain):
     empty(brain)
     ws.actors.rename(owner, owner.actor_id, "  Sam   Lee ")
-    ws.brain.create_project(owner, name="Webinars", summary="Monthly webinars for CLOs")
+    ws.brain.create_project(owner, name="Webinars", summary="Monthly webinars for plant managers")
     connect()
     done = steps(ws.onboarding.status(owner))
     assert done == {
