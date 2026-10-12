@@ -46,19 +46,20 @@ GATES = [
 ]
 
 WAITS = {
-    "Rami": [
+    "the owner": [
         "Labels for the private eval set, including about 20 requests that should get nothing.",
         "Confirming Claude Code for the knowledge agent as an opt-in once a local agent model "
         "is here.",
         "Confirming a preference as a subtype of rule.",
         "Labeled transcripts and the interview sorting exercise (ingestion precision, recall "
         "and tier routing).",
-        "The IKN content proposals (core facts to must-holds by domain, identity bullets), in "
-        "his app.",
-        "The walkthrough on the demo Brain and a real day on the IKN Brain, then sign-off.",
-        "G4: a goal of his own through the coach, the T-41 story and the two interviewees; "
-        "board restraint counted from those; objectives judged blind.",
-        "The private agent set from his own Catch up decisions.",
+        "Content proposals for the owner's own Brain (core facts to must-holds by domain, "
+        "identity bullets), made in the app and never committed here.",
+        "The walkthrough on the demo Brain and a real day on the owner's own Brain, then "
+        "sign-off.",
+        "G4: a goal of the owner's through the coach, the T-41 story and the two "
+        "interviewees; board restraint counted from those; objectives judged blind.",
+        "The private agent set from the owner's own Catch up decisions.",
     ],
     "The PC and real runs": [
         "Model downloads, pins and verification; the setup comparison B to E; defaults; cut "

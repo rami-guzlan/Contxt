@@ -2,9 +2,9 @@
 when an AI records an output, its text is checked against the must-holds of its domain.
 
 Deterministic checks come first, made by code from each must-hold's own words:
-- a phrase it forbids ("Never say 25+ years", "don't write 'world-class'"): quoted text, or the
+- a phrase it forbids ("Never say 15+ years", "don't write 'world-class'"): quoted text, or the
   words after never / do not / don't / avoid up to the end of the clause;
-- a figure it rules out ("never 25+ years": the figure with its unit);
+- a figure it rules out ("never 15+ years": the figure with its unit);
 - dashes, when the rule is about em or en dashes (and "spaced hyphens").
 
 A model check for the rest is a hook the app may turn on (`model_check`): it sees the rule and

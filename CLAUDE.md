@@ -4,6 +4,9 @@
 
 ## Claude Code specifics
 
+- Continuing development of Contxt itself (on a new machine, or after a break): read
+  [docs/dev/HANDOFF.md](docs/dev/HANDOFF.md) first. It says what has been built, the plans
+  behind it, what is open and how the owner works.
 - Claude Code reserves the MCP server name `workspace`: that is why the app's own MCP server
   is `contxt-app` and the Brain's is `contxt`.
 - To connect your Brain to Claude Code, run the one command `uv run contxt connect

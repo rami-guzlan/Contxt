@@ -9,6 +9,7 @@ does. The live vault is never written.
 """
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 import shutil
@@ -174,20 +175,27 @@ def replay(brain, packet_ids, *, at: str | None = None, proposal: str | None = N
     started = util.now()
     target = Target(brain, at=at, proposal=proposal)
     rows = []
+    # A scratch brain is private to this replay and nothing writes it while the briefs are
+    # rebuilt, so its index is built once instead of re-reading the vault for every brief.
+    # The live brain is never held this way: its writers must not wait on a replay.
+    steady = (target.target.deferring() if target.target is not brain
+              else contextlib.nullcontext())
     try:
-        for packet_id in packet_ids:
-            case = logged(brain, packet_id)
-            if case is None:
-                rows.append({"packet_id": packet_id, "error": "not in the ledger"})
-                continue
-            rebuilt = _rebuild(target.target, case)
-            if "error" in rebuilt:
+        with steady:
+            for packet_id in packet_ids:
+                case = logged(brain, packet_id)
+                if case is None:
+                    rows.append({"packet_id": packet_id, "error": "not in the ledger"})
+                    continue
+                rebuilt = _rebuild(target.target, case)
+                if "error" in rebuilt:
+                    rows.append({"packet_id": packet_id, "request": case["request"],
+                                 "error": rebuilt["error"]})
+                    continue
+                before, after = _summary(case["data"]), _summary(rebuilt)
                 rows.append({"packet_id": packet_id, "request": case["request"],
-                             "error": rebuilt["error"]})
-                continue
-            before, after = _summary(case["data"]), _summary(rebuilt)
-            rows.append({"packet_id": packet_id, "request": case["request"], "at": case["at"],
-                         "before": before, "after": after, "diff": diff(before, after)})
+                             "at": case["at"], "before": before, "after": after,
+                             "diff": diff(before, after)})
     finally:
         target.close()
     changed = [r for r in rows if r.get("diff") and not r["diff"]["same"]]

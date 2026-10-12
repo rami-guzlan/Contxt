@@ -387,13 +387,13 @@ describe("brain inventory", () => {
     await user.click(screen.getByRole("checkbox", { name: "Select Plain words" }));
     await user.click(screen.getByRole("checkbox", { name: "Select Old tagline" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "What to do" }), "mark");
-    await user.type(screen.getByLabelText("Why"), "Say it for CLOs");
+    await user.type(screen.getByLabelText("Why"), "Say it for plant managers");
     await user.click(screen.getByRole("button", { name: "Apply to 2 notes" }));
     await waitFor(() => expect(calls.filter((c) => c.path === "/api/brain/decisions")).toHaveLength(2));
     expect(calls.filter((c) => c.path === "/api/brain/decisions").at(-1)?.body).toEqual({
       decisions: [
-        { action: "mark", entry_id: "rules-old-tagline", state: "stale", reason: "Say it for CLOs" },
-        { action: "mark", entry_id: "rules-voice", state: "stale", reason: "Say it for CLOs" },
+        { action: "mark", entry_id: "rules-old-tagline", state: "stale", reason: "Say it for plant managers" },
+        { action: "mark", entry_id: "rules-voice", state: "stale", reason: "Say it for plant managers" },
       ],
     });
   });
@@ -802,7 +802,7 @@ const scale = {
   summary: "Company figures",
   route_key: "company/about",
   live: true,
-  body: "Studio delivers 500+ hours a year.",
+  body: "Studio delivers 120+ projects a year.",
 };
 
 const figures = {
@@ -811,7 +811,7 @@ const figures = {
   scope: "company",
   route_key: "company/about",
   title: "Studio figures",
-  body: "Studio delivers 600+ hours a year.",
+  body: "Studio delivers 150+ projects a year.",
   proposer: "model:Claude Code (act_claude)",
   created: "2026-09-28T12:05:00Z",
   sources: ["context_item:ctx_1", "task:task_9", "brain:facts-scale"],
@@ -921,7 +921,7 @@ describe("brain review", () => {
     await user.click(within(batch).getByRole("button", { name: /Studio figures/ }));
     expect(within(batch).getByText(/Contradicts “Scale and reach”/)).toBeInTheDocument();
     const before = within(batch).getByRole("region", { name: "In the Brain now" });
-    expect(within(before).getByText("500+").tagName).toBe("DEL");
+    expect(within(before).getByText("120+").tagName).toBe("DEL");
     expect(within(batch).getAllByText("Distill the deck into the Brain").length).toBeGreaterThan(0);
     await user.click(within(batch).getByRole("radio", { name: /Replace “Scale and reach” with this/ }));
     expect(within(batch).getByRole("checkbox", { name: "Select Studio figures" })).toBeChecked();
@@ -1120,7 +1120,7 @@ describe("reconciling a clash", () => {
     scope: "company",
     route_key: "company/about",
     title: "Scale and reach",
-    body: "Studio delivers 500+ hours a year company-wide; product figures live in Studio figures.",
+    body: "Studio delivers 120+ projects a year company-wide; product figures live in Studio figures.",
     proposer: "model:Claude Code (act_claude)",
     created: "2026-09-28T13:00:00Z",
     sources: ["task:task_rec", "run:run_9"],

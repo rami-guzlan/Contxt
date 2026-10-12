@@ -313,7 +313,7 @@ def alignment_tax(vault_src: str, requests: list[str] | None = None) -> dict:
                            util.tokens(later.text)))
             holds = outputcheck.must_holds_for(brain, request)
             began = time.perf_counter()
-            outputcheck.check("A draft with 25+ years of results — guaranteed.", holds)
+            outputcheck.check("A draft with 15+ years of results — guaranteed.", holds)
             check_ms.append((time.perf_counter() - began) * 1000)
 
         def share(pairs):

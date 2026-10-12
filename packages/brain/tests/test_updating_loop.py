@@ -93,7 +93,7 @@ class LoopTest(unittest.TestCase):
 
     def test_every_seeded_deterministic_violation_is_caught(self):
         holds = [
-            self.note("Never say 25+ years: say 40+ years.", topic="claims",
+            self.note("Never say 15+ years: say 30+ years.", topic="claims",
                       extra={"load": "domain", "applies_to": ["marketing"],
                              "triggers": ["years"]}),
             self.note("Delivered copy uses no em dashes or en dashes.", topic="punctuation",
@@ -106,7 +106,7 @@ class LoopTest(unittest.TestCase):
         notes = [self.brain.state().index.note(h) for h in holds]
         self.assertTrue(all(n.must_hold for n in notes), [n.load for n in notes])
         seeded = [
-            ("With 25+ years in training, we know plants.", "figure"),
+            ("With 15+ years in training, we know plants.", "figure"),
             ("Our approach — simple and fast.", "dash"),
             ("A world-class team for your floor.", "phrase"),
             ("Short shifts – long results.", "dash"),
@@ -114,23 +114,23 @@ class LoopTest(unittest.TestCase):
         for text, kind in seeded:
             found = outputcheck.check(text, notes)
             self.assertEqual([v.kind for v in found], [kind], text)
-        self.assertEqual(outputcheck.check("With 40+ years, a simple plan.", notes), [])
+        self.assertEqual(outputcheck.check("With 30+ years, a simple plan.", notes), [])
         folder = tempfile.mkdtemp()
         try:
             path = os.path.join(folder, "draft.md")
             with open(path, "w", encoding="utf-8") as handle:
-                handle.write("Our copy has 25+ years of trust.")
+                handle.write("Our copy has 15+ years of trust.")
             recorded = self.brain.record_output(path, title="Draft")
             self.assertEqual(recorded.data["status"], "flagged")
-            self.assertIn("25+ years", recorded.text)
+            self.assertIn("15+ years", recorded.text)
         finally:
             shutil.rmtree(folder, ignore_errors=True)
         # G3's signals: the flagged output and a draft sent back both count, as does a
         # correction.
-        back = self.brain.check_output("Copy with 25+ years.", domains=["marketing"],
+        back = self.brain.check_output("Copy with 15+ years.", domains=["marketing"],
                                        sent_back="run:1")
         self.assertTrue(back.data["violations"])
-        self.brain.correction("No, it is 40+ years.")
+        self.brain.correction("No, it is 30+ years.")
         self.assertEqual(measures.value(self.brain, {"kind": "at_most", "signal": "sent_back"}),
                          2.0)
         self.assertEqual(measures.value(self.brain, {"kind": "at_most",
@@ -144,11 +144,13 @@ class LoopTest(unittest.TestCase):
             paths = []
             for name in ("a.md", "b.md"):
                 path = os.path.join(folder, name)
-                open(path, "w", encoding="utf-8").write(name)
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(name)
                 self.brain.record_output(path, title=name, session_id=session)
                 paths.append(path)
             other = os.path.join(folder, "c.md")
-            open(other, "w", encoding="utf-8").write("c")
+            with open(other, "w", encoding="utf-8") as handle:
+                handle.write("c")
             self.brain.record_output(other, title="c")
             found = loop.independent(self.brain, paths + [other])
             self.assertEqual((found["given"], found["independent"]), (3, 2))
