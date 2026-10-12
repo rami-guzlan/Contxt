@@ -257,9 +257,13 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(len(kev), 1)
         self.assertIn("--no-deps", kev[0])
         self.assertTrue(kev[0][-1].startswith("kev @ git+https://github.com/jaredpalmer/kev@"))
+        import re
         with open(modelruntime.REQUIREMENTS, encoding="utf-8") as handle:
-            pins = [line.split("==")[0] for line in handle
-                    if line.strip() and not line.startswith("#")]
+            lines = [line.rstrip("\n") for line in handle
+                     if line.strip() and not line.startswith("#")]
+        pinned = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*==[0-9][^\s;]*( ; .+)?$")
+        self.assertEqual([line for line in lines if not pinned.match(line)], [])
+        pins = [line.split("==")[0] for line in lines]
         self.assertIn("torch", pins)
         self.assertNotIn("kev", pins)
         self.assertFalse([p for p in pins if p.startswith("nvidia-") or p == "triton"])
