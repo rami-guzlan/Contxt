@@ -449,3 +449,19 @@ workflow_runs = sa.Table(
     sa.Column("note", sa.Text, nullable=False, server_default=""),
     *_record(archivable=False),
 )
+
+# A goal's strategy board, or a project's optional one (services/goals.py): its blocks in order,
+# the columns, which blocks are collapsed and which your AIs can read, and the suggestions that
+# wait for it (dismissed ones remembered). Presentation only: the goal itself, its journal and
+# its shared plan live in the Brain.
+goal_boards = sa.Table(
+    "goal_boards",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("goal_id", sa.String(200), nullable=False, index=True),
+    sa.Column("kind", sa.String(16), nullable=False, server_default="goal"),  # goal | project
+    sa.Column("layout", sa.JSON, nullable=False),
+    sa.Column("suggestions", sa.JSON, nullable=False),
+    *_record(archivable=False),
+)

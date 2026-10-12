@@ -43,6 +43,9 @@ import type {
 } from "../api/types";
 import { type Item, minutes, queueOf } from "../lib/catchup";
 import { Compare } from "../components/Diff";
+import { GoalSteps, SlippedGoals } from "../components/goals/GoalsCatchUp";
+import { LoopCatchUp } from "../components/loop/LoopCatchUp";
+import { TasksCatchUp } from "../components/tasks/TasksCatchUp";
 import { ErrorNote, Loading } from "../components/ui";
 import { onDay, plural, when } from "../lib/format";
 import { day, entryUrl } from "./brain/shared";
@@ -149,8 +152,22 @@ function StartScreen({ plan, onStart, onRecap, onSeen }: { plan: CatchUpPlan; on
                 <strong>{checks.length}</strong> {checks.length === 1 ? "check" : "checks"} in Work
               </li>
             ) : null}
+            {plan.goals?.length ? (
+              <li>
+                <strong>{plan.goals.length}</strong> agent {plan.goals.length === 1 ? "goal" : "goals"} slipped
+              </li>
+            ) : null}
+            {plan.loop?.length ? (
+              <li>
+                <strong>{plan.loop.length}</strong> {plan.loop.length === 1 ? "thing" : "things"} to keep true
+              </li>
+            ) : null}
           </ul>
           <WorkChecks items={checks} />
+          <TasksCatchUp plan={plan} />
+          <LoopCatchUp plan={plan} />
+          <SlippedGoals items={plan.goals ?? []} />
+          <GoalSteps groups={plan.goal_steps ?? []} />
           <div className="row">
             {cards ? (
               <button type="button" className="primary big" onClick={onStart} autoFocus>
@@ -1517,6 +1534,24 @@ function NudgeCard({ nudge, onDone, onSkip }: { nudge: Nudge; onDone: (what: str
       </CardFrame>
     );
   }
+  if (nudge.type === "agent_goal") {
+    return (
+      <CardFrame
+        tag="A goal with a measure?"
+        title={nudge.title}
+        recommend={null}
+        busy={aside.isPending}
+        error={aside.error}
+        choices={[
+          { id: "set", label: "Set it as a goal", primary: true, run: () => navigate(`/projects?set=${encodeURIComponent(nudge.line)}`) },
+          no,
+          later,
+        ]}
+      >
+        <p className="muted small">An agent goal has a measure code checks, and its agent speaks up only when it slips.</p>
+      </CardFrame>
+    );
+  }
   return (
     <CardFrame
       tag="Add to your goals?"
@@ -1524,7 +1559,7 @@ function NudgeCard({ nudge, onDone, onSkip }: { nudge: Nudge; onDone: (what: str
       recommend={null}
       busy={aside.isPending}
       error={aside.error}
-      choices={[{ id: "goals", label: "Open my goals", primary: true, run: () => navigate("/settings?tab=goals") }, no, later]}
+      choices={[{ id: "goals", label: "Open my goals", primary: true, run: () => navigate("/settings?tab=alignment") }, no, later]}
     >
       <ul className="list compact-list small">
         {nudge.captures.map((c) => (

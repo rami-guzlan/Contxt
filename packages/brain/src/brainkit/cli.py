@@ -29,6 +29,8 @@ import json
 import os
 import sys
 
+from brainkit import statements
+
 
 def _emit(result, as_json=False) -> int:
     if as_json:
@@ -56,7 +58,22 @@ def build_parser():
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("status")
-    p = sub.add_parser("models", help="local model status; --download fetches missing ones")
+    p = sub.add_parser("models", help="local model status; --download fetches missing ones; "
+                                      "lock, pin and serve for the retrieval engine's models")
+    p.add_argument("action", nargs="?", default="status",
+                   choices=["status", "lock", "pin", "serve", "machine", "use", "download",
+                            "remove", "speed"],
+                   help="status (default); lock: the pinned models and whether each is here; "
+                        "pin <name> <folder>: record a downloaded copy's checksums in the "
+                        "lock; serve: run the local model service; machine: read this "
+                        "computer again and show its setup; use <name>: make a pinned model "
+                        "the default for its role here; download <name> and remove <name>; "
+                        "speed: time the models the service runs")
+    p.add_argument("name", nargs="?", help="with pin, use, download and remove: the model's "
+                                           "name in the lock")
+    p.add_argument("folder", nargs="?", help="with pin: the downloaded model's folder")
+    p.add_argument("--revision", default="", help="with pin: the revision downloaded")
+    p.add_argument("--port", type=int, default=8791, help="with serve: the port on 127.0.0.1")
     p.add_argument("--download", action="store_true",
                    help="download the embedding model into vault/.brain/models")
     p.add_argument("--reranker", action="store_true",
@@ -103,7 +120,7 @@ def build_parser():
     p.add_argument("--topic")
     p.add_argument("--title", help="what the note is for, in a few words")
     p.add_argument("--summary", help="one line saying what it covers")
-    p.add_argument("--kind", choices=["fact", "rule", "identity", "state"])
+    p.add_argument("--kind", choices=list(statements.NOTE_KINDS))
     p.add_argument("--scope")
     p.add_argument("--load", choices=["standing", "domain", "on-demand"],
                    help="default: standing for a rule in your own scope, else on-demand; "
@@ -198,6 +215,8 @@ def build_parser():
     p.add_argument("--holdout", action="store_true")
     for name in ("needed", "useful", "noise", "missing"):
         p.add_argument(f"--{name}", default="", help="note ids, comma-separated")
+    p.add_argument("--nothing", action="store_true",
+                   help="the request should get nothing from the Brain")
 
     return parser
 
@@ -241,6 +260,8 @@ def main(argv=None) -> int:
         mcp_server.main()
         return 0
 
+    if command == "models" and args.action != "status":
+        return _models(args)
     from brainkit.api import Brain
     brain = Brain(args.vault, principal=args.principal,
                   embeddings=False if args.no_embeddings else None)
@@ -263,6 +284,8 @@ def main(argv=None) -> int:
             print(f"{name:11s} {status['model']}: {state}")
         if not rows:
             print("Models are off (--no-embeddings or BRAIN_RERANK=0).")
+        from brainkit import health
+        print(health.engine_line())
         return 0
     if command == "status":
         from brainkit import health
@@ -476,7 +499,7 @@ def main(argv=None) -> int:
             ids = {name: [i.strip() for i in getattr(args, name).split(",") if i.strip()]
                    for name in ("needed", "useful", "noise", "missing")}
             try:
-                case = evalset.label(brain, args.case, **ids)
+                case = evalset.label(brain, args.case, nothing=args.nothing, **ids)
             except (KeyError, ValueError) as exc:
                 print(f"Not labeled: {exc}")
                 return 1
@@ -491,6 +514,92 @@ def main(argv=None) -> int:
         return 0
     parser.print_help()
     return 2
+
+
+def _machine_overview(found: dict) -> int:
+    """Print what Settings > On this computer > Local models shows."""
+    m = found["machine"]
+    gpu = f", {m['gpu']} with {m['gpu_gb']:g} GB" if m.get("gpu") else ", no GPU for models"
+    print(f"This computer: {m['ram_gb']:g} GB of RAM{gpu}"
+          + (", Apple Silicon" if m.get("apple_silicon") else "")
+          + f". Setup: {found['setup_label']}.")
+    for row in found["roles"]:
+        print(f"  {row['label']}: {row['model'] or 'none on this setup'}")
+    print(f"  About {found['ram_in_use_gb']:g} GB of RAM for these models.")
+    for line in found["fallbacks"]:
+        print(f"  {line}.")
+    engine = found["engine"]
+    print("The retrieval engine is " + ("on." if engine["ready"]
+                                         else f"in fallback: {engine['reason']}."))
+    return 0
+
+
+def _models(args) -> int:
+    """The retrieval engine's models: the lock, pinning a downloaded copy, the service."""
+    import os
+
+    from brainkit import machine, modellock, models_client, modelservice
+    if args.action == "serve":
+        return modelservice.main(["--port", str(args.port)])
+    if args.action in ("use", "download", "remove") and not args.name:
+        print(f"brain models {args.action} <name>")
+        return 2
+    try:
+        if args.action == "machine":
+            machine.check()
+            return _machine_overview(machine.overview())
+        if args.action == "use":
+            lock = modellock.Lock.load()
+            made = machine.choose(lock.pin(args.name).role, args.name, lock=lock)
+            print(f"{made['model']} is now the {machine.ROLE_WORDS[made['role']]} model here."
+                  + (f" {made['warning']}." if made["warning"] else ""))
+            if models_client.status(refresh=True).url:
+                models_client.reload()
+                print("The model service loaded it.")
+            return 0
+        if args.action == "download":
+            verdict = machine.download(args.name)
+            print(f"{args.name}: " + ("downloaded and verified against the lock" if verdict.ok
+                                      else f"downloaded, but refused: {verdict.reason}"))
+            return 0 if verdict.ok else 1
+        if args.action == "remove":
+            machine.remove(args.name)
+            print(f"Removed {args.name} from this computer.")
+            return 0
+        if args.action == "speed":
+            found = machine.check_speed()
+            for name, ms in found["measured"].items():
+                print(f"  {name}: {ms:g} ms")
+            for warning in found["slow"]:
+                print(f"  {warning}")
+            return 0
+    except (modellock.Refused, ValueError, RuntimeError, OSError,
+            models_client.ServiceError) as exc:
+        print(f"Not done: {exc}")
+        return 1
+    if args.action == "pin":
+        if not args.name or not args.folder:
+            print("brain models pin <name> <folder> [--revision <rev>]")
+            return 2
+        try:
+            found = modellock.record_pin(args.name, args.folder, revision=args.revision)
+        except (modellock.Refused, OSError) as exc:
+            print(f"Not pinned: {exc}")
+            return 1
+        print(f"Pinned {found['name']}: {found['files']} file(s), revision "
+              f"{found['revision'] or 'unchanged'}. Review the change to models.lock.json.")
+        return 0
+    lock = modellock.Lock.load()
+    home = os.path.join(models_client.model_home(), "models")
+    print(f"Model lock {lock.fingerprint} ({lock.path}); models live in {home}")
+    for pin in sorted(lock.pins.values(), key=lambda p: (p.role, not p.default, p.name)):
+        folder = modelservice.snapshot(home, pin) or os.path.join(home, pin.name)
+        verdict = lock.verify(pin.name, folder)
+        where = "verified here" if verdict.ok else verdict.reason
+        mark = " (default)" if pin.default else ""
+        print(f"  {pin.role:7s} {pin.name}{mark}: {pin.repository or '-'}@"
+              f"{pin.revision or 'unpinned'}; {where}")
+    return 0
 
 
 if __name__ == "__main__":

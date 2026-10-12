@@ -50,6 +50,10 @@ Everything below lives in the vault. The engine supplies a default for every key
              "files": ["CLAUDE.md", "AGENTS.md"],
              "budgets": {"company": 150, "role": 150, "person": 100, "total": 500}},
   "hooks": {"push": "words"},
+  "engine": {"cuts": {"gate": 0.5, "relevance": 0.5, "adds": 0.5, "contradicts": 0.7,
+                      "current": 0.5, "domain": 0.5},
+             "fitted": {"date": null, "eval_run": null, "models": {}},
+             "floor": 0.15, "ceiling": 300, "rounds": 3},
   "sessions": {"retention_days": 90},
   "git": {"auto_commit": true}
 }
@@ -69,6 +73,12 @@ Everything below lives in the vault. The engine supplies a default for every key
   stays the hard ceiling). `files` are written with the shared part only: AGENTS.md in full
   and CLAUDE.md as a stub that imports it (`@AGENTS.md`). The person's layer never goes in a
   file: Claude Code's session-start hook prints it, and otherwise the first brief carries it.
+- **The retrieval engine** (`engine`): the cuts its gate, reranker and decision model's
+  answers are held to, with the date, eval run and models they were fitted on (until then the
+  values above are starting points; cuts fitted for other models give way to these defaults); the loose meaning floor of its find step; the ceiling that only
+  protects speed; the link loop's rounds (three at most). `enabled: false` keeps a Brain on the
+  fallback even with a model service; `layers` and `scorer` are how the comparison of setups
+  runs. It runs only with a verified local model service (ROUTING.md).
 - **Hooks**: `push` is how Claude Code's prompt hook sends a brief before the model asks:
   `words` (the default, about a second), `meaning` (the router exactly as `get_task_context`
   runs it, a few seconds while the model loads) or `off`.
@@ -125,7 +135,7 @@ title: Lena's red lines
 summary: No hard sells in community content, no unapproved client claims, ...
 area: people
 topic: lena
-kind: fact                           # identity | rule | fact | state | focus
+kind: fact                           # identity | rule | fact | decision | procedure | state | goal | focus
 scope: company                       # who may see it; lives here, not in the path
 status: approved                     # approved | archived (pending notes live in inbox/)
 load: on-demand                      # standing notes go in the kernel
@@ -133,6 +143,8 @@ startup_text: One line for the kernel (standing notes).
 added: 2026-07-23
 partition: client:acme               # optional, seals the note to one client
 review_by: 2027-01-01                # optional, the health check flags it when past
+said_by: owner                       # optional: owner | owner-ai | person | document | system | agent
+subtype: preference                  # a rule's: convention | preference
 supersedes: none
 source: where it came from
 evidence: why it is true
@@ -142,9 +154,36 @@ One durable idea.
 
 Old ids keep working through `aliases.json` (`{"old-id": "new-id"}`).
 
+**One statement model** (`statements.py`, brain-logic plan 6). Every note is a statement of one
+kind: identity, rule (a convention or a preference is a rule of that subtype), fact, decision,
+procedure, value (filed as `state`), project (filed as `focus`) or goal. The note kinds, the
+capture types the presets govern, what the workspace, distillation and the knowledge agent
+propose, and the MCP and command-line choices all come from it; older words keep reading, and no
+note is rewritten. Read from what a note already records, unless it says:
+
+- **who said it** (`said_by`): from its origin (a conversation is the owner's AI, a meeting
+  another person, a file a document, a run an agent);
+- **when the Brain learned it** (its approval or `added`) and **when it was last confirmed**
+  (`verified`);
+- **when to check it again**: `review_by`, else its last check plus its kind's shelf life
+  (project 30 days, value 30, goal 90, fact and procedure 180, decision, rule and identity
+  365; `"statements": {"shelf_life": {"fact": 90}}` in brain.json changes any of them). The
+  updating loop uses it; today's review cadence (`governance.review_days`) is unchanged;
+- **its tier**: alignment (rules, identity, goals, must-holds), state (values) or knowledge.
+
+The app's entry API shows these as `statement`. A **goal** note (goals plan 3.1) is loaded
+`manual`, so it never changes what a request receives, and carries `level` (purpose, yours,
+agent), `serves`, `progress`, `measure`, `due`, `cadence`, `goal_status`, `why`, `started`.
+
+**Brief text** stays in the ledger 90 days under the personal and careful presets and 730 under
+regulated, unless `sessions.retention_days` says otherwise.
+
 A Focus is a note of kind `focus` in its own folder, `knowledge/projects/<slug>/`, with
 `project`, `project_status`, a `summary` (older ones: `index_line`) and optional
-`participants`, `pinned_notes`, `pinned_skills`, `aliases`. Its progress lives in
+`participants`, `pinned_notes`, `pinned_skills`, `aliases`, `objective` (the output it is
+chasing, a sentence or two, about 60 words at most; it opens every brief in the project, the
+summary standing in until it has one; a change needs a reason) and `goals` (the goals it
+serves). Its progress lives in
 `journal/focus/<id>.jsonl`. Notes filed beside it in the same folder (decisions, client
 guidance) count as the project's own context whenever the project is named.
 
@@ -171,6 +210,13 @@ they describe this brain, so they live in the vault. See [Routing](ROUTING.md).
 | `BRAIN_RERANK=0` | never load the reranker, even when `policy.rerank_weight` is set |
 | `BRAIN_MCP_PROFILE=full` | add read-only inspection tools to MCP |
 | `BRAIN_REPO_ROOT` | where CLAUDE.md and AGENTS.md are written (default: the vault's parent) |
+| `BRAIN_MODEL_HOME` | this machine's model home (default `~/.brainkit`): the downloaded local models, `settings.json` (the setup, the person's model choices, what was measured, which Kev steps qualified) and the model service's address |
+| `BRAIN_MODELS_LOCK` | another lock file in place of the shipped `models.lock.json` |
+| `BRAIN_MODEL_SERVICE=off` | never use a local model service (or a `http://127.0.0.1:<port>` to use that one) |
 
 `brain models` shows the local models; `--download` fetches the optional reranker
-into `vault/.brain/models`. Nothing downloads on its own.
+into `vault/.brain/models`. Nothing downloads on its own. For the retrieval engine:
+`brain models machine` reads this computer and shows its setup, `use <name>` makes a pinned model
+the default for its role, `download <name>` and `remove <name>` fetch or drop one (verified
+against the lock), `speed` times the models the service runs, `lock` lists every pin and
+`serve` runs the service.

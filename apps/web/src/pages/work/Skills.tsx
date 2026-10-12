@@ -6,12 +6,11 @@ import { WandSparkles } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
-import { brainFileUrl, useAddBuiltinSkills, useBrainSkill, useBuiltinSkills, useNote, useSkills } from "../../api/hooks";
-import type { BrainCheckpoint, SkillCard, SkillVersion } from "../../api/types";
+import { brainFileUrl, useBrainSkill, useNote, useSkills, useSkillsOverview } from "../../api/hooks";
+import type { BrainCheckpoint, SkillCard, SkillOverview, SkillVersion } from "../../api/types";
 import { Markdown } from "../../components/Markdown";
 import {
   ImproveSkill,
-  LatestRuns,
   NewSkill,
   RunSkill,
   Saved,
@@ -22,6 +21,7 @@ import {
 } from "../../components/SkillWork";
 import { FirstVisitTip } from "../../components/Tips";
 import { BringInSkill, SkillAboutLine, SkillCopies, SuggestedSkills } from "../../components/work/SkillExtras";
+import { BrainSkills, RecentRuns, RunBar } from "../../components/work/SkillsRun";
 import { Empty, ErrorNote, Loading, Pill, Section, Tabs } from "../../components/ui";
 import { bytes, label, plural, when } from "../../lib/format";
 import { SKILLS, skillUrl } from "../../lib/links";
@@ -41,8 +41,37 @@ function gist(description: string, limit = 180): string {
   return out.length > limit ? `${out.slice(0, limit - 1)}…` : out;
 }
 
+/** A skill's card facts (UX C): when it was last used, whether it may be out of date, what
+ * uses it, its version and its Claude Code copy. */
+function purposeFacts(facts: SkillOverview | undefined): string {
+  if (!facts) return "";
+  const users = [
+    ...facts.used_by.agents.map((a) => `agent ${a}`),
+    ...facts.used_by.workflows.map((w) => `workflow ${w.name}`),
+    ...facts.used_by.skills.map((name) => `/${name}`),
+  ];
+  const copy = !facts.copy
+    ? ""
+    : facts.copy.behind === 0
+      ? "Claude Code copy current"
+      : facts.copy.behind
+        ? `Claude Code copy ${plural(facts.copy.behind, "version")} behind`
+        : "Claude Code copy from an older Brain";
+  return [
+    facts.last_used ? `used ${when(facts.last_used)}` : "not used yet",
+    facts.changed.length ? `may be out of date: ${plural(facts.changed.length, "thing")} it loads changed` : "",
+    users.length ? `used by ${users.join(", ")}` : "",
+    facts.version ? `version ${facts.version}` : "",
+    copy,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function SkillsPage() {
   const { data, isLoading, error } = useSkills();
+  const { data: overview } = useSkillsOverview();
+  const facts = new Map((overview ?? []).map((f) => [f.name, f]));
   const [params, setParams] = useSearchParams();
   const teaching = params.get("capture");
   const { data: capture } = useNote(teaching ?? "");
@@ -85,27 +114,16 @@ export function SkillsPage() {
           onClose={() => setParams({})}
         />
       ) : null}
-      {data.skills.some((s) => s.use === "run") ? (
-        <section className="skill-panel" aria-label="Run skills">
-          <h2>Run skills</h2>
-          <p className="muted small">
-            Run one or several with a prompt, in the order you pick, with your notes and documents, and see the whole prompt your AI gets
-            before it runs.
-          </p>
-          <Link className="button primary" to="/work/prompts/new?run=1">
-            Run skills with a prompt
-          </Link>
-        </section>
-      ) : null}
+      <RunBar skills={data.skills} />
       <SuggestedSkills onWrite={(ask) => setParams({ new: "1", ask })} />
-      <LatestRuns />
-      <BuiltIns />
+      <BrainSkills skills={data.skills} />
       {data.waiting.length ? (
         <p className="notice small">
           Waiting in <Link to="/review">Review</Link>: {data.waiting.map((w) => `/${w.name}`).join(", ")}. Approve{" "}
           {data.waiting.length === 1 ? "it" : "them"} to put {data.waiting.length === 1 ? "it" : "them"} to work.
         </p>
       ) : null}
+      {data.skills.length ? <h2 className="skills-heading">Your skills, by purpose</h2> : null}
       {data.skills.length ? (
         [...byCategory].map(([category, list], index) => (
           <Section key={category} title={label(category)} tour={index === 0 ? "skills-list" : undefined}>
@@ -118,6 +136,11 @@ export function SkillsPage() {
                   </Link>
                   <ScopeChip />
                   {skill.description ? <p className="skill-card-text">{gist(skill.description)}</p> : null}
+                  {purposeFacts(facts.get(skill.name)) ? (
+                    <p className="skill-card-meta muted small" aria-label={`About /${skill.name}`}>
+                      {purposeFacts(facts.get(skill.name))}
+                    </p>
+                  ) : null}
                   {skill.use === "run" && skill.triggers[0] ? (
                     <p className="skill-card-meta muted small" title="Your AI picks it up when you ask like this, in any chat">
                       Ask: “{skill.triggers[0]}”
@@ -155,6 +178,7 @@ export function SkillsPage() {
           ) : null}
         </Empty>
       )}
+      <RecentRuns />
     </div>
   );
 }
@@ -382,28 +406,4 @@ function withoutHeading(source: string, name: string): string {
 
 /** The skills every Brain comes with: the knowledge agent, the knowledge check, teaching it,
  * wrapping up a chat and the goals interview. An older Brain can add the ones it lacks. */
-function BuiltIns() {
-  const { data } = useBuiltinSkills();
-  const add = useAddBuiltinSkills();
-  if (!data?.skills.length) return null;
-  return (
-    <Section title="Comes with every Brain">
-      <ul className="list builtins">
-        {data.skills.map((skill) => (
-          <li key={skill.name}>
-            {skill.installed ? <Link to={skillUrl(skill.name)}>/{skill.name}</Link> : <span>/{skill.name}</span>}
-            <span className="muted small"> · {gist(skill.description, 140)}</span>
-            {skill.installed ? null : <span className="chip small">Not in this Brain yet</span>}
-          </li>
-        ))}
-      </ul>
-      {data.missing.length ? (
-        <button type="button" className="primary" disabled={add.isPending} onClick={() => add.mutate(undefined)}>
-          {add.isPending ? "Adding…" : `Add the ${plural(data.missing.length, "missing one")}`}
-        </button>
-      ) : null}
-      <ErrorNote error={add.error} />
-    </Section>
-  );
-}
 

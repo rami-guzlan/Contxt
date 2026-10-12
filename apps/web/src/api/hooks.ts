@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, del, get, post, put, query } from "./client";
 import type {
+  LoopRun,
+  NodeLibrary,
   SkillAbout,
   SkillBroughtIn,
   SkillCopy,
@@ -20,6 +22,8 @@ import type {
   BackupFile,
   BackupMade,
   LocalModels,
+  LocalModelsOverview,
+  SkillOverview,
   AiApp,
   AiRequestFull,
   AiRequests,
@@ -31,6 +35,20 @@ import type {
   DifferenceExample,
   Dictation,
   Goals,
+  GoalBoard,
+  GoalCall,
+  GoalCoachResult,
+  GoalDraft,
+  GoalPage,
+  GoalView,
+  GoalsHome,
+  Ladder,
+  HandoffsNow,
+  LiveOverview,
+  SheetView,
+  StateEvent,
+  TaskDetail,
+  TimelineEvent,
   MadeFrom,
   MoveInKept,
   MoveInKind,
@@ -213,7 +231,7 @@ export const useBrainProject = (id: string) =>
 export function useCreateBrainProject() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: { name: string; summary: string; aliases: string[] }) =>
+    mutationFn: (body: { name: string; summary: string; aliases: string[]; objective?: string; goals?: string[] }) =>
       post<BrainProject>("/api/brain/projects", body),
     onSuccess: () => invalidate(keys.brain, keys.events, keys.onboarding),
   });
@@ -479,6 +497,30 @@ export function useRunSkill() {
     onSettled: () => invalidate(keys.skills, keys.tasks),
   });
 }
+
+/** Each skill's purpose card facts, in one call (UX C). */
+export const useSkillsOverview = () =>
+  useQuery({ queryKey: [...keys.skills, "overview"], queryFn: () => get<SkillOverview[]>("/api/skills/overview") });
+
+/** A run from the Skills page's run bar: the skills chosen, followed in order (none: the one
+ * that fits), with what is asked and the project. It makes the run's task; the run starts on
+ * this computer's CLI next. */
+export function useRunSkills() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { names: string[]; ask: string; project?: string | null }) => post<Task>("/api/skills/runs", body),
+    onSettled: () => invalidate(keys.skills, keys.tasks),
+  });
+}
+
+/** The brief a run was given (its packet), its credentials masked; read when asked for. */
+export const useRunPacket = (runId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: [...runnerKeys, "packet", runId],
+    queryFn: () => get<{ text: string; available: boolean }>(`/api/runners/runs/${encodeURIComponent(runId)}/packet`),
+    enabled,
+    staleTime: 60_000,
+  });
 
 /** The latest runs from the Skills page and every skill; looked at again while one goes. */
 export const useLatestSkillRuns = (limit = 5) =>
@@ -875,7 +917,7 @@ export const useReport = (days: number, claudeCode: boolean, enabled = true) =>
 export function useLabelRequest(id: string) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: { needed: string[]; useful: string[]; noise: string[]; missing: string[] }) =>
+    mutationFn: (body: { needed: string[]; useful: string[]; noise: string[]; missing: string[]; nothing?: boolean }) =>
       put<EvalCase>(`/api/brain/requests/${encodeURIComponent(id)}/labels`, body),
     onSettled: () => invalidate([...keys.brain, "request", id], [...keys.brain, "report"]),
   });
@@ -985,6 +1027,24 @@ export const useModels = () =>
     queryFn: () => get<LocalModels>("/api/brain/models"),
     refetchInterval: (q) => (q.state.data?.matching.downloading ? 3000 : false),
   });
+
+/** This computer's local models (Settings, On this computer): refreshed while one downloads. */
+export const useLocalModels = () =>
+  useQuery({
+    queryKey: [...keys.brain, "local-models"],
+    queryFn: () => get<LocalModelsOverview>("/api/brain/local-models"),
+    refetchInterval: (q) => (q.state.data?.downloading?.length ? 3000 : false),
+  });
+
+/** One change to this computer's local models: the person's call, never automatic. */
+export function useActLocalModels() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { action: "check" | "default" | "download" | "remove" | "speed" | "claude_code"; name?: string; on?: boolean }) =>
+      post<LocalModelsOverview>("/api/brain/local-models", body),
+    onSettled: () => invalidate([...keys.brain, "local-models"], [...keys.brain, "agent"]),
+  });
+}
 
 /** Fetch the model that matches by meaning, once: the person's call, never automatic. */
 export function useDownloadModels() {
@@ -1543,3 +1603,195 @@ export const useWorkAttention = () =>
       }>("/api/work/attention"),
     staleTime: 60_000,
   });
+
+// ------------------------------------------------------------------ goals and projects (G1)
+
+export const goalsKey = ["goals"] as const;
+
+export const useLadder = (signals = false) =>
+  useQuery({ queryKey: [...goalsKey, "ladder", signals], queryFn: () => get<Ladder>(`/api/goals${signals ? "?signals=true" : ""}`) });
+
+export const useGoal = (id: string) =>
+  useQuery({ queryKey: [...goalsKey, "one", id], queryFn: () => get<GoalPage>(`/api/goals/${encodeURIComponent(id)}`), enabled: !!id });
+
+export const useGoalsHome = () => useQuery({ queryKey: [...goalsKey, "home"], queryFn: () => get<GoalsHome>("/api/goals/home") });
+
+export const useGoalSettings = () =>
+  useQuery({ queryKey: [...goalsKey, "settings"], queryFn: () => get<{ weekly_review: boolean }>("/api/goals/settings") });
+
+function useGoalMutation<B, R>(fn: (body: B) => Promise<R>) {
+  const invalidate = useInvalidate();
+  // Refresh in the background: the page that asked goes on at once (a check-in stays fast).
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => {
+      void invalidate(goalsKey, keys.catchUp, [...keys.brain, "projects"]);
+    },
+  });
+}
+
+/** Set a goal from the coach's draft or the form. */
+export const useSetGoal = () =>
+  useGoalMutation((body: Partial<GoalDraft> & { title: string; template?: string; level?: "yours" | "agent"; kept_by?: string; serves?: string[] }) =>
+    post<GoalPage>("/api/goals", body),
+  );
+
+export const useChangeGoal = (id: string) =>
+  useGoalMutation((body: Record<string, unknown>) => api<GoalPage>(`/api/goals/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }));
+
+export const useCheckIn = (id: string) =>
+  useGoalMutation((body: { call: GoalCall; value?: number | null; line?: string }) =>
+    post<GoalView>(`/api/goals/${encodeURIComponent(id)}/check-in`, body),
+  );
+
+export const useSaveBoard = (id: string) =>
+  useGoalMutation((board: GoalBoard) =>
+    put<GoalPage>(`/api/goals/${encodeURIComponent(id)}/board`, { layout: board, expected_version: board.version || null }),
+  );
+
+export const useAnswerStep = (id: string) =>
+  useGoalMutation(({ step, accept }: { step: string; accept: boolean }) =>
+    post<GoalPage>(`/api/goals/${encodeURIComponent(id)}/suggestions/${encodeURIComponent(step)}`, { accept }),
+  );
+
+export const useGoalDecision = (id: string) =>
+  useGoalMutation((text: string) => post<GoalPage>(`/api/goals/${encodeURIComponent(id)}/decisions`, { text }));
+
+export const useLinkProject = (id: string) =>
+  useGoalMutation(({ project, linked }: { project: string; linked: boolean }) =>
+    post<GoalPage>(`/api/goals/${encodeURIComponent(id)}/projects`, { project, linked }),
+  );
+
+export const useGoalStarters = () => useGoalMutation(() => post<Ladder>("/api/goals/starters"));
+
+export const useRunGoalChecks = () => useGoalMutation(() => post<{ checks: unknown[]; ladder: Ladder }>("/api/goals/checks"));
+
+export const useGoalSettingsSave = () =>
+  useGoalMutation((body: { weekly_review: boolean }) => put<{ weekly_review: boolean }>("/api/goals/settings", body));
+
+/** One turn of the goal coach, in the background on your chosen model. */
+export const useGoalCoach = () =>
+  useMutation({
+    mutationFn: (messages: { role: "you" | "coach"; text: string }[]) => post<WorkJob<GoalCoachResult>>("/api/goals/coach", { messages }),
+  });
+
+/** Change a project's objective, with a reason (it reaches every brief in the project). */
+export function useProjectObjective(id: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { objective: string; reason: string }) =>
+      put<BrainProjectDetail>(`/api/brain/projects/${encodeURIComponent(id)}/objective`, body),
+    onSettled: () => invalidate(keys.brain, goalsKey),
+  });
+}
+
+// ------------------------------------------------------------------ State and tasks (step 6)
+
+export const liveKey = ["live"] as const;
+export const tasksKey = ["handoffs"] as const;
+
+export const useLive = () => useQuery({ queryKey: [...liveKey, "overview"], queryFn: () => get<LiveOverview>("/api/work/live") });
+
+export const useSheet = (id: string) =>
+  useQuery({ queryKey: [...liveKey, "sheet", id], queryFn: () => get<SheetView>(`/api/work/live/${encodeURIComponent(id)}`), enabled: !!id });
+
+export const useRowHistory = (sheet: string, row: string | null) =>
+  useQuery({
+    queryKey: [...liveKey, "history", sheet, row],
+    queryFn: () => get<StateEvent[]>(`/api/work/live/${encodeURIComponent(sheet)}/history${query({ row: row ?? "" })}`),
+    enabled: !!row,
+  });
+
+/** One State action; the sheet comes back as it is now. */
+export function useLiveAct() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { action: string; fields: Record<string, unknown> }) => post<SheetView & { sheet: { id: string } }>("/api/work/live/act", body),
+    onSettled: () => {
+      void invalidate(liveKey, keys.catchUp, goalsKey);
+    },
+  });
+}
+
+export const useHandoffs = (filters: Record<string, string> = {}) =>
+  useQuery({ queryKey: [...tasksKey, "now", filters], queryFn: () => get<HandoffsNow>(`/api/work/handoffs${query(filters)}`) });
+
+export const useTimeline = (days = 7) =>
+  useQuery({
+    queryKey: [...tasksKey, "timeline", days],
+    queryFn: () => get<{ since: string; owners: string[]; events: TimelineEvent[] }>(`/api/work/handoffs/timeline${query({ days: String(days) })}`),
+  });
+
+export const useHandoffTask = (id: string | null) =>
+  useQuery({ queryKey: [...tasksKey, "one", id], queryFn: () => get<TaskDetail>(`/api/work/handoffs/${encodeURIComponent(id ?? "")}`), enabled: !!id });
+
+/** Open, save, pass on, claim or finish a task: the same function as the hand_off tool. */
+export function useHandOff() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => post<{ task: TaskDetail; card: string; task_status: string }>("/api/work/handoffs", body),
+    onSettled: () => {
+      void invalidate(tasksKey, keys.catchUp, goalsKey, liveKey);
+    },
+  });
+}
+
+export function useTakeBack() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => post<{ task: TaskDetail }>(`/api/work/handoffs/${encodeURIComponent(id)}/take-back`),
+    onSettled: () => {
+      void invalidate(tasksKey, keys.catchUp);
+    },
+  });
+}
+
+/** The canvas's node library: kinds of step, what each takes and gives. */
+export function useNodeLibrary() {
+  return useQuery({ queryKey: ["workflows", "library"], queryFn: () => get<NodeLibrary>("/api/workflows/library"), staleTime: 300_000 });
+}
+
+/** The knowledge agent's runs, each with its steps (BL 17.8). */
+export function useLoopRuns() {
+  return useQuery({ queryKey: ["loop", "runs"], queryFn: () => get<LoopRun[]>("/api/loop/runs") });
+}
+
+/** "That's wrong" on a request: the notes it was handed become suspects. */
+export function useCorrect() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { text: string; packet_id?: string; session_id?: string }) =>
+      post<{ card: { id: string; title: string } | null; suspects: { id: string; title: string; score: number }[] }>("/api/loop/corrections", body),
+    onSettled: () => invalidate(keys.catchUp),
+  });
+}
+
+/** Answer a "Still true?" card: still true, fixed, or set aside. */
+export function useAnswerCorrection() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: "still_true" | "fixed" | "dismissed" }) =>
+      post<{ id: number; status: string }>(`/api/loop/corrections/${id}`, { status }),
+    onSettled: () => invalidate(keys.catchUp, keys.brain),
+  });
+}
+
+/** Keep a lesson the agent learned from your decisions as a suggested note. */
+export function useKeepLesson() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (key: string) => post<{ proposal_id: string | null; status: string }>("/api/loop/lessons", { key }),
+    onSettled: () => invalidate(keys.catchUp, keys.brain),
+  });
+}
+
+/** Say what an output is for: a project, a State row. */
+export function useLinkOutput() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { path: string; project?: string | null; row?: string | null }) => post<unknown>("/api/outputs/link", body),
+    onSettled: () => {
+      void invalidate(keys.outputs);
+    },
+  });
+}

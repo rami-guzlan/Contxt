@@ -8,6 +8,7 @@ from __future__ import annotations
 
 
 from . import kernel as kernel_mod
+from . import models_client
 from . import util
 
 
@@ -151,6 +152,7 @@ def report(brain, *, strict=False):
                  f"{len(index.focuses)} Focus items, {len(proposals)} pending proposals")
     tokenizer = util.tokenizer_status()
     facts.append("tokens: " + ("exact (tiktoken)" if tokenizer["exact"] else "estimated"))
+    facts.append(engine_line())
     if brain.embedder is None:
         facts.append("embeddings: off")
     else:
@@ -202,3 +204,14 @@ def status_line(brain) -> str:
     return (f"{st.config.name}: {len(st.index.notes)} notes, {len(st.index.skills)} skills, "
             f"{len(st.index.focuses)} Focus items, {len(st.snapshot.proposals)} pending, "
             f"vault at {brain.vault.root}")
+
+
+def engine_line() -> str:
+    """Which retrieval runs: the local engine with its verified models, or the fallback (code
+    and the meaning index, as without the engine), and why."""
+    found = models_client.status()
+    if found.ready:
+        models = ", ".join(f"{role} {model}" for role, model in sorted(found.models.items())
+                           if model)
+        return f"retrieval engine: on (lock {found.lock}; {models})"
+    return f"retrieval engine: fallback, code and the meaning index ({found.reason})"

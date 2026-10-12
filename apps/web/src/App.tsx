@@ -31,6 +31,7 @@ const CapturePage = page(() => import("./pages/Capture"), "CapturePage");
 const NotePage = page(() => import("./pages/Notes"), "NotePage");
 const ProjectPage = page(() => import("./pages/Projects"), "ProjectPage");
 const ProjectsPage = page(() => import("./pages/Projects"), "ProjectsPage");
+const GoalPage = page(() => import("./pages/goals/GoalPage"), "GoalPage");
 const ReviewPage = page(() => import("./pages/brain/Review"), "ReviewPage");
 const SearchPage = page(() => import("./pages/Misc"), "SearchPage");
 const SettingsPage = page(() => import("./pages/Settings"), "SettingsPage");
@@ -53,6 +54,7 @@ const WorkflowPage = page(() => import("./pages/work/Workflows"), "WorkflowPage"
 const NewWorkflowPage = page(() => import("./pages/work/Workflows"), "NewWorkflowPage");
 const WorkspacePage = page(() => import("./pages/work/Workspace"), "WorkspacePage");
 const WorkspaceDocPage = page(() => import("./pages/work/Workspace"), "WorkspaceDocPage");
+const SheetPage = page(() => import("./pages/work/Live"), "SheetPage");
 
 /** An old address that moved: same path below the moved part, same query. */
 function Moved({ from, to }: { from: string; to: string }) {
@@ -128,6 +130,7 @@ export function App() {
             <Route path="compose" element={<ComposeMoved />} />
             <Route path="workspace" element={<WorkspacePage />} />
             <Route path="workspace/:docId" element={<WorkspaceDocPage />} />
+            <Route path="live/:sheetId" element={<SheetPage />} />
             <Route path="skills" element={<SkillsPage />} />
             <Route path="skills/:name" element={<SkillPage />} />
             <Route path="agents" element={<WorkAgentsPage />} />
@@ -162,7 +165,8 @@ export function App() {
           <Route path="/suggestions" element={<Navigate to="/review" replace />} />
           <Route path="/approvals" element={<Navigate to="/review" replace />} />
           <Route path="/connections" element={<Navigate to="/settings?tab=apps" replace />} />
-          <Route path="/goals/*" element={<Retired />} />
+          <Route path="/goals" element={<Navigate to="/projects" replace />} />
+          <Route path="/goals/:goalId" element={<GoalPage />} />
           <Route path="/todos" element={<Retired />} />
           <Route path="/tasks/*" element={<Retired />} />
           <Route path="/meetings/*" element={<Retired />} />

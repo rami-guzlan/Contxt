@@ -547,6 +547,8 @@ export interface BrainPolicies {
   cross_check?: boolean;
   /** The external challenger argues against a few beliefs each week; off until you turn it on. */
   challenger?: boolean;
+  /** Private details hidden from a cloud model that reads what you bring in (decision 13). */
+  redact_cloud?: boolean;
 }
 
 export interface DecisionOutcome {
@@ -636,6 +638,10 @@ export interface BrainProject {
   updates: number;
   /** Where its notes are filed, area/topic. */
   topic: string;
+  /** The output it is chasing: it opens every brief in the project. */
+  objective?: string;
+  /** The goals it serves. */
+  goals?: string[];
 }
 
 /** One progress update on a project, as its journal keeps it. */
@@ -675,6 +681,10 @@ export interface BrainProjectDetail {
   updates: ProjectUpdate[];
   files: ProjectFile[];
   notes: { id: string; title: string; summary: string; kind: string; type: string | null; added: string | null }[];
+  /** The output it is chasing; it opens every brief in the project. */
+  objective?: string;
+  /** The goals it serves. */
+  goals?: string[];
 }
 
 /** What filing a file did: filed at once (with an undo point) or waiting for review. */
@@ -736,6 +746,19 @@ export interface SkillCard {
   /** Run it here; `support`: files other skills use (fonts, logos), kept rather than run;
    * `chat`: the Brain's own housekeeping, called by name in a conversation. */
   use: "run" | "support" | "chat";
+}
+
+/** A skill by its purpose (UX C): when it was last used, whether it may be out of date (what
+ * it loads changed since its last edit), what uses it, its version, its Claude Code copy. */
+export interface SkillOverview {
+  name: string;
+  category: string;
+  last_used: string | null;
+  last_edited: string | null;
+  changed: { key: string; title: string; at: string | null }[];
+  version: number;
+  used_by: { skills: string[]; agents: string[]; workflows: { id: string; name: string }[] };
+  copy: { behind: number | null; pushed_at: string | null } | null;
 }
 
 export interface SkillCards {
@@ -839,6 +862,8 @@ export interface DistillRequest {
 /** Which model does the AI work the app starts (none: the only one connected). */
 export interface DistillSettings {
   assignee_id: string | null;
+  /** The model that triages first: claude, local:<model>, ollama:<model>, or off. */
+  triage?: string | null;
 }
 
 // A CLI on the machine the workspace runs on (apps/server runners.py).
@@ -1304,7 +1329,9 @@ export interface Offer {
 
 export type Nudge =
   | { key: string; type: "start_project"; name: string; capture: { id: string; title: string }; title: string }
-  | { key: string; type: "add_goal"; subject: string; count: number; captures: { id: string; title: string }[]; title: string };
+  | { key: string; type: "add_goal"; subject: string; count: number; captures: { id: string; title: string }[]; title: string }
+  /** An agent's "Goals it serves" line that names no goal. */
+  | { key: string; type: "agent_goal"; agent: string; line: string; title: string };
 
 /** Offered once: what the earlier workspace holds that the Brain does not. */
 export interface LegacyOffer {
@@ -1393,6 +1420,55 @@ export interface CatchUpPlan {
   legacy: LegacyOffer | null;
   nudges: Nudge[];
   preset: Preset | null;
+  /** Agent goals that slipped (one card per slip). */
+  goals?: GoalCard[];
+  /** Tasks handed to you, and handoffs nobody claimed for a day. */
+  handed?: TaskItem[];
+  unclaimed?: TaskItem[];
+  /** AI values in State that wait for your tap. */
+  state_waiting?: StateWaiting[];
+  /** Suggested next steps for your goals, a quick yes grouped by goal. */
+  goal_steps?: { goal: string; title: string; steps: GoalSuggestion[] }[];
+  /** What the updating loop asks of you (BL 9). */
+  loop?: LoopCard[];
+}
+
+/** One ask of the updating loop in Catch up. */
+export interface LoopCard {
+  key: string;
+  type: "still_true" | "bent_rule" | "approval_health" | "corroborate" | "quarterly_review" | "lesson" | "hand_up";
+  ask: string;
+  note?: string;
+  title?: string;
+  text?: string;
+  correction?: number;
+  salience?: boolean;
+  count?: number;
+  uses?: number;
+  source?: string;
+  action?: string;
+  area?: string;
+  cases?: number;
+  why?: string;
+  at?: string;
+}
+
+/** A step of a knowledge agent run: what it answered, the tool it called and what came back. */
+export interface LoopRunStep {
+  answer: string;
+  tool: string | null;
+  args: Record<string, unknown> | null;
+  result: string | null;
+  problems: string[];
+}
+
+/** A knowledge agent run as the Brain keeps it (BL 17.8). */
+export interface LoopRun {
+  id: string;
+  at: string;
+  action: string;
+  ending: string;
+  record: { why?: string; model?: string; seconds?: number | null; prompt_version?: string; steps?: LoopRunStep[] };
 }
 
 // ---------------------------------------------------------------- goals and built-in skills
@@ -1543,11 +1619,58 @@ export interface AiRequestFull extends AiRequest {
   startup: { fingerprint: string; text: string | null } | null;
   /** Its place in your private eval set, with your labels, when you labeled it. */
   eval?: EvalCase | null;
+  /** Why each candidate went in or stayed out, as the ledger kept it. */
+  why?: RequestWhy | null;
+}
+
+/** One candidate a brief's retrieval looked at: its scores, what became of it and why. */
+export interface WhyRow {
+  kind: "note" | "section";
+  item: string;
+  title: string;
+  path?: string | null;
+  /** The keyword part of its match, 0 to 1. */
+  keyword: number | null;
+  /** Its meaning score, 0 to 1 (none without the local meaning model). */
+  meaning: number | null;
+  /** The local reranker's relevance score, 0 to 1 (none without the local engine). */
+  rerank: number | null;
+  /** The decision model's answers: question to probability, or option probabilities. */
+  kev: Record<string, unknown>;
+  outcome: "body" | "pointer" | "listed" | "held" | "out";
+  reason: string;
+  found_by: string;
+  round: number;
+}
+
+/** Why each candidate went in or stayed out of one brief: the local engine's record, or what
+ * retrieval scored without it (fallback). */
+export interface RequestWhy {
+  mode: "on" | "fallback" | null;
+  reason: string;
+  lock: string;
+  /** The gate: the decision model's yes against its cut, or, where that model has not
+   * qualified on this computer, the reranker's best score against the relevance cut. */
+  gate: { yes: number; cut: number; passed: boolean; by?: "reranker" } | null;
+  cuts: Record<string, number>;
+  fitted: { date?: string | null; eval_run?: string | null };
+  timings: Record<string, number>;
+  rounds: number;
+  ceiling_hit: boolean;
+  /** What this computer's setup ran instead of a step, in words. */
+  notes?: string[];
+  /** The cuts were fitted for other models: the defaults stood in. */
+  refit?: boolean;
+  in: WhyRow[];
+  out: WhyRow[];
+  out_count: number;
 }
 
 /** One of your real requests in the private eval set: the notes it needed, the ones that
  * helped, the ones that were noise, and the ones it should have had. */
 export interface EvalCase {
+  /** You marked it as a request that should get nothing from the Brain. */
+  nothing?: boolean;
   id: string;
   packet_id: string | null;
   request: string;
@@ -1690,9 +1813,14 @@ export interface OutputFile {
   size: number;
   modified: string;
   kind: OutputKind | string;
-  from: "skill" | null;
+  from: "skill" | "chat" | null;
   /** A skill run is still working in its folder. */
   working: boolean;
+  /** What it is for (BL 16.5): the project, the State row (sheet/row), who made it. */
+  project?: string | null;
+  for?: string | null;
+  maker?: string | null;
+  title?: string | null;
 }
 
 export interface Outputs {
@@ -1749,6 +1877,57 @@ export interface LocalModels {
   };
 }
 
+/** One pinned option for a role on this computer (Settings, On this computer, Local models). */
+export interface LocalModelOption {
+  name: string;
+  repository: string;
+  revision: string | null;
+  pinned: boolean;
+  size_gb: number | null;
+  ram_gb: number | null;
+  license: string | null;
+  downloaded: boolean;
+  why_not: string;
+  fits: boolean;
+  fit_reason: string;
+  measured: { speed_ms?: number; quality?: number; at?: string } | null;
+  slow: string;
+  in_use: boolean;
+  setup_default: boolean;
+  /** The meaning index's model: kept with the Brain, downloaded under Matching by meaning. */
+  with_brain?: boolean;
+}
+
+export interface LocalModelRole {
+  role: "embed" | "rerank" | "decide" | "agent";
+  label: string;
+  model: string | null;
+  options: LocalModelOption[];
+}
+
+/** This computer's local models: the machine, its setup, each role, and the engine's mode. */
+export interface LocalModelsOverview {
+  enabled: boolean;
+  machine?: { ram_gb: number; gpu: string; gpu_gb: number; apple_silicon: boolean; system: string };
+  setup?: "laptop" | "workstation" | "large" | "small";
+  setup_label?: string;
+  checked_at?: string | null;
+  roles?: LocalModelRole[];
+  ram_in_use_gb?: number;
+  budget_ms?: Record<string, number>;
+  fallbacks?: string[];
+  engine?: { ready: boolean; reason: string; lock: string; agent: string };
+  /** Claude Code for the knowledge agent, as it stands (the person's choice, or on until a
+   * local agent model is here). */
+  agent_claude_code?: boolean;
+  agent_claude_code_set?: boolean;
+  lock?: string;
+  downloading?: string[];
+  errors?: Record<string, string>;
+  /** A warning that did not refuse the change (a model slower than this machine's budget). */
+  notice?: string;
+}
+
 export interface BackupFile {
   name: string;
   size: number;
@@ -1770,7 +1949,8 @@ export interface BackupMade {
 export interface AgentModel {
   id: string;
   label: string;
-  kind: "cli" | "local";
+  /** cli: Claude Code; local: through Ollama; pinned: the app's own model service. */
+  kind: "cli" | "local" | "pinned";
   available: boolean;
   detail: string;
   /** A small model: it gets the short map and fewer candidates. */
@@ -1781,6 +1961,8 @@ export interface AgentAction {
   id: string;
   label: string;
   blurb: string;
+  /** The goal it works toward ("Why I'm doing this"), when that goal is on. */
+  serves?: { id: string; title: string; words: string } | null;
 }
 
 /** Something the agent asks the owner, with the one-tap answers its kind allows. */
@@ -1821,6 +2003,8 @@ export interface AgentRun {
 export interface AgentOverview {
   model: string;
   suggestions: boolean;
+  /** The goals it keeps (on once you turn them on in Settings > Alignment). */
+  goals?: GoalView[];
   actions: AgentAction[];
   questions: AgentQuestion[];
   runs: AgentRun[];
@@ -2097,7 +2281,26 @@ export interface SavedPrompt {
 
 // ------------------------------------------------------------------ Work: Workflows
 
-export type StepKind = "skill" | "agent" | "prompt" | "connector" | "upkeep" | "check";
+export type StepKind =
+  | "skill"
+  | "agent"
+  | "prompt"
+  | "connector"
+  | "upkeep"
+  | "ingest"
+  | "distill"
+  | "state"
+  | "task"
+  | "handoff"
+  | "check";
+
+/** The canvas's node library: each kind of step, what it takes and gives (BL 16.6). */
+export interface NodeLibrary {
+  kinds: { kind: StepKind; group: string; label: string; takes: string[]; gives: string[] }[];
+  actions: { id: string; label: string; blurb?: string }[];
+  ingest_sources: string[];
+  triggers: { id: string; label: string; later?: boolean }[];
+}
 
 /** One box of a workflow: what it runs, and what it is given. */
 export interface WorkflowStep {
@@ -2115,6 +2318,18 @@ export interface WorkflowStep {
   tools?: string[];
   writes?: boolean;
   action?: string;
+  /** An ingestion step: library, url or folder, and the item or address. */
+  source?: string;
+  target?: string;
+  /** A State step: the sheet, row and column it writes. */
+  sheet?: string;
+  row?: string;
+  column?: string;
+  /** A task or hand-off step. */
+  to?: string;
+  goal?: string | null;
+  done_when?: string;
+  next_step?: string;
 }
 
 /** When a workflow runs by itself, in the workspace's time zone. */
@@ -2285,4 +2500,329 @@ export interface SkillBroughtIn {
   files: number;
   /** What the Brain does not keep in a skill, with why. */
   skipped: string[];
+}
+
+// ---------------------------------------------------------------- the goal ladder (goals plan G1)
+
+export type GoalCall = "on_track" | "at_risk" | "off_track";
+export type GoalStatus =
+  | GoalCall
+  | "needs_attention"
+  | "no_data"
+  | "not_checked_in"
+  | "paused"
+  | "met"
+  | "missed"
+  | "dropped"
+  | "retired";
+
+export interface GoalMeasure {
+  kind: "enter" | "at_most" | "at_least" | "reach_by" | "every_period" | "trend" | "judgment";
+  signal?: string;
+  params?: Record<string, number>;
+  target?: number;
+  unit?: string;
+}
+
+/** One goal as the app shows it: yours, or an agent's. */
+export interface GoalView {
+  id: string;
+  title: string;
+  level: "yours" | "agent";
+  kept_by: string | null;
+  why: string;
+  serves: string[];
+  measure: GoalMeasure | null;
+  measure_words: string;
+  due: string | null;
+  cadence: "daily" | "weekly" | "monthly";
+  lifecycle: "active" | "paused" | "met" | "missed" | "dropped" | "retired";
+  started: string | null;
+  status: GoalStatus;
+  words: string;
+  /** Your latest call, when it still stands. */
+  call: GoalCall | null;
+  /** A computed measure that disagrees with your call; your call stands. */
+  flag: string;
+  stale: boolean;
+  now: number | null;
+  target: number | null;
+  unit: string | null;
+  trend: number[];
+  checked_at: string | null;
+  checked_in_at: string | null;
+  check_in_due: boolean;
+  projects: { id: string; title: string; status: string }[];
+  shared_plan: boolean;
+  /** Suggested next steps waiting (your goals, on the ladder). */
+  suggestions?: number;
+}
+
+export interface GoalSignal {
+  name: string;
+  label: string;
+  params: Record<string, number>;
+  available: boolean;
+  waits_for: string | null;
+  now: number | null;
+}
+
+export interface Ladder {
+  purpose: { id: string; exists: boolean; text: string; signals: string[] };
+  yours: GoalView[];
+  agents: GoalView[];
+  has_goals: boolean;
+  check_ins_due: number;
+  starters: { id: string; title: string; on: boolean }[];
+  signals: GoalSignal[];
+}
+
+export interface GoalBlock {
+  id: string;
+  type: "note" | "checklist" | "doc" | "projects" | "links" | "decisions" | "sheet";
+  title: string;
+  shared: boolean;
+  collapsed: boolean;
+  column: 0 | 1;
+  text?: string;
+  items?: { text: string; done: boolean }[];
+  doc_id?: string;
+  doc_title?: string;
+  links?: { title: string; url: string }[];
+  sheet_id?: string;
+  drives?: string;
+  agg?: "latest" | "sum" | "average" | "count";
+}
+
+export interface GoalBoard {
+  columns: 1 | 2;
+  template: string;
+  blocks: GoalBlock[];
+  version: number;
+}
+
+export interface GoalSuggestion {
+  id: string;
+  text: string;
+  source: string;
+  at: string;
+  status: "waiting" | "accepted" | "dismissed";
+}
+
+export interface GoalJournalEntry {
+  at: string;
+  kind: "check_in" | "decision" | "progress";
+  by: string;
+  call?: GoalCall;
+  value?: number | null;
+  line?: string;
+  text?: string;
+}
+
+/** A goal with no per-page extras: what the shared pieces read. */
+export type GoalBase = Omit<GoalView, "suggestions">;
+
+export interface GoalPage extends GoalBase {
+  /** The goal's tasks: what AI is doing for it. */
+  tasks?: TaskItem[];
+  journal: GoalJournalEntry[];
+  checks: { at: string; value: number | null; status: string; source: "you" | "code"; note: string }[];
+  plan: string;
+  context: string;
+  board: GoalBoard;
+  suggestions: GoalSuggestion[];
+  templates: { id: string; label: string }[];
+}
+
+export interface GoalDraft {
+  title: string;
+  why: string;
+  due: string;
+  cadence: "daily" | "weekly" | "monthly";
+  measure: GoalMeasure | null;
+  board: { wish?: string; outcome?: string; obstacle?: string; plan?: string };
+  first_steps: string[];
+  project: string;
+}
+
+export interface GoalCoachResult {
+  questions?: string[];
+  draft?: GoalDraft;
+  error?: string;
+}
+
+export interface GoalsHome {
+  has_goals: boolean;
+  purpose: string;
+  check_ins: GoalView[];
+  agent_goals: GoalView[];
+  review: {
+    goals: { id: string; title: string; words: string; flag: string | null }[];
+    agent_goals: { id: string; title: string; words: string }[];
+    notes: { goal: string; at: string; line: string }[];
+    next_steps: { goal: string; text: string }[];
+  } | null;
+}
+
+/** An agent goal that slipped, waiting in Catch up (one card per slip). */
+export interface GoalCard {
+  key: string;
+  goal: GoalView;
+  why: string;
+  at: string;
+}
+
+// ---------------------------------------------------------------- State and tasks (step 6)
+
+export type ColumnType = "text" | "number" | "money" | "date" | "date_range" | "status" | "person" | "link" | "reference";
+export type Friction = "free" | "confirm" | "locked";
+
+export interface StateColumn {
+  name: string;
+  type: ColumnType;
+  friction: Friction;
+  age_days: number | null;
+  source: string;
+  sensitivity: string;
+  options: string[];
+  ref: string;
+  formula: string;
+  formula_words?: string;
+}
+
+export interface StateSheet {
+  id: string;
+  title: string;
+  key: string;
+  columns: StateColumn[];
+  partition_by: string;
+  scope: string;
+  template: string;
+  builtin: boolean;
+  description: string;
+}
+
+export interface StateCell {
+  value: string | number | null;
+  at: string;
+  by: string;
+  said_by: string;
+  as_of: string;
+  source: string;
+  ai: boolean;
+  stale: boolean;
+}
+
+export interface StateEvent {
+  kind: string;
+  id?: string;
+  at: string;
+  column?: string;
+  value?: string | number | null;
+  by?: string;
+  said_by?: string;
+  source?: string;
+  ai?: boolean;
+  pending?: boolean;
+  event?: string;
+  key?: string;
+}
+
+export interface StateRow {
+  id: string;
+  key: string;
+  aliases: string[];
+  partition: string;
+  created: string;
+  updated: string;
+  cells: Record<string, StateCell>;
+  computed: Record<string, string | number | boolean | null>;
+  pending: StateEvent[];
+}
+
+export interface StateSummary {
+  rows: number;
+  columns: Record<string, { filled: number; by_status?: Record<string, number>; sum?: number; average?: number | null }>;
+}
+
+export interface SheetView {
+  sheet: StateSheet;
+  rows: StateRow[];
+  summary: StateSummary;
+}
+
+export interface StateWaiting {
+  sheet: string;
+  sheet_title: string;
+  row: string;
+  column: string;
+  value: string | number | null;
+  event: string;
+  at: string;
+  source: string;
+}
+
+export interface LiveOverview {
+  sheets: StateSheet[];
+  templates: { id: string; title: string; builtin: boolean; columns: string[] }[];
+  waiting: StateWaiting[];
+}
+
+export type HandoffStatus = "open" | "handed_off" | "working" | "waiting_for_you" | "blocked" | "done" | "dropped";
+
+export interface TaskCard {
+  done_when?: string;
+  done_so_far?: string;
+  next_step?: string;
+  decisions?: string;
+  open_questions?: string;
+  load?: string;
+  reason?: string;
+  by?: string;
+  at?: string;
+}
+
+export interface TaskItem {
+  id: string;
+  row: string;
+  task: string;
+  goal: string | null;
+  project: string | null;
+  for: string | null;
+  milestone: boolean;
+  owner: string;
+  owner_label: string;
+  tool: string | null;
+  status: HandoffStatus;
+  status_words: string;
+  due: string | null;
+  evidence: string[];
+  card: TaskCard;
+  created: string;
+  updated: string;
+  days_open: number | null;
+  since_update: number | null;
+  unclaimed?: boolean;
+  key?: string;
+}
+
+export interface TaskDetail extends TaskItem {
+  log: StateEvent[];
+  rendered: string;
+}
+
+export interface HandoffsNow {
+  lanes: Record<"waiting_for_you" | "handed_off" | "working" | "blocked" | "open", TaskItem[]>;
+  done_this_week: TaskItem[];
+  count: number;
+}
+
+export interface TimelineEvent {
+  at: string;
+  task: string;
+  title: string;
+  owner: string;
+  kind: "open" | "handoff" | "claim" | "save" | "finish" | "blocked" | "dropped";
+  from?: string;
+  to?: string;
 }

@@ -21,6 +21,12 @@ never pruned, so an entry's use is known for good. The detail behind it (each de
 the version and why routing picked it, and each packet's request) is kept for
 `sessions.retention_days` (90 by default), then pruned.
 
+BRIEF DECISIONS. For every brief, every candidate the retrieval engine looked at (or, in
+fallback, what routing scored): its keyword, meaning and reranker scores, the decision model's
+answers, the outcome (body, pointer, listed, held, out) and its reason, with the engine's mode,
+the lock's fingerprint, the cuts and each layer's time in the packet's data. Pruned with the
+detail above. An audit reads these, never recomputes them.
+
 MODEL CALLS. Background work that pays a model (a check, the knowledge agent, a run) records
 its tokens and cost in `model_calls`, pruned like the detail above, and by day in
 `model_daily`, kept for good: the fourth line of what context costs (costs.py).
@@ -60,10 +66,34 @@ CREATE TABLE IF NOT EXISTS dismissed (key TEXT PRIMARY KEY, at TEXT);
 CREATE TABLE IF NOT EXISTS verdicts (
     key TEXT PRIMARY KEY, relation TEXT, detail TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS kernels (fingerprint TEXT PRIMARY KEY, at TEXT, text TEXT);
+CREATE TABLE IF NOT EXISTS brief_decisions (
+    packet_id TEXT, session_id TEXT, at TEXT, kind TEXT, item TEXT, keyword REAL,
+    meaning REAL, rerank REAL, kev TEXT, outcome TEXT, reason TEXT, found_by TEXT,
+    round INTEGER);
+CREATE INDEX IF NOT EXISTS brief_decisions_packet ON brief_decisions(packet_id);
 CREATE TABLE IF NOT EXISTS model_calls (
     at TEXT, job TEXT, model TEXT, tokens_in INTEGER, tokens_out INTEGER, cache_read INTEGER,
     cache_write INTEGER, cost REAL, ms INTEGER, ref TEXT, measured INTEGER);
 CREATE INDEX IF NOT EXISTS model_calls_at ON model_calls(at);
+CREATE TABLE IF NOT EXISTS goal_checks (
+    goal_id TEXT, at TEXT, value REAL, status TEXT, source TEXT, note TEXT,
+    card INTEGER DEFAULT 0);
+CREATE INDEX IF NOT EXISTS goal_checks_goal ON goal_checks(goal_id, at);
+CREATE TABLE IF NOT EXISTS contexts (
+    principal TEXT, name TEXT, kind TEXT, label TEXT, last_used TEXT, closed TEXT,
+    PRIMARY KEY (principal, name));
+CREATE TABLE IF NOT EXISTS session_contexts (session_id TEXT PRIMARY KEY, name TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS corrections (
+    at TEXT, session_id TEXT, packet_id TEXT, text TEXT, suspect TEXT, score REAL, by TEXT,
+    status TEXT DEFAULT 'open');
+CREATE TABLE IF NOT EXISTS exceptions (
+    at TEXT, rule TEXT, proposal TEXT, relation TEXT, by TEXT);
+CREATE TABLE IF NOT EXISTS episodes (
+    at TEXT, action TEXT, area TEXT, topic TEXT, text TEXT, decision TEXT, reason TEXT,
+    ref TEXT);
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY, at TEXT, action TEXT, ending TEXT, record TEXT);
+CREATE TABLE IF NOT EXISTS sent_back (at TEXT, ref TEXT, violations TEXT);
 CREATE TABLE IF NOT EXISTS model_daily (
     day TEXT NOT NULL, job TEXT NOT NULL, model TEXT NOT NULL,
     calls INTEGER NOT NULL DEFAULT 0, tokens_in INTEGER NOT NULL DEFAULT 0,
@@ -111,6 +141,12 @@ class Ledger:
         if "epoch" not in columns:
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE deliveries ADD COLUMN epoch INTEGER")
+        # Outputs say what they are for (BL 16.5): the project, the State row, who made it.
+        kept = {row[1] for row in conn.execute("PRAGMA table_info(outputs)")}
+        for column in ("project", "row_ref", "maker", "made_with", "violations"):
+            if column not in kept:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute(f"ALTER TABLE outputs ADD COLUMN {column} TEXT")
         claimed = conn.execute("INSERT OR IGNORE INTO ledger_meta (key, value) VALUES "
                                "('usage_backfill', ?)", (util.now_iso(),)).rowcount
         if claimed:
@@ -294,6 +330,37 @@ class Ledger:
                 f"{column} = {column} + 1, tokens = tokens + excluded.tokens",
                 (day, kind, item, 1 if first else 0, int(tokens or 0)))
 
+    def record_decisions(self, packet_id: str, session_id: str, rows) -> None:
+        """Every candidate's scores and outcome for one brief (engine.Audit.rows)."""
+        now = util.now_iso()
+        with self._connect() as conn:
+            conn.executemany(
+                "INSERT INTO brief_decisions (packet_id, session_id, at, kind, item, keyword, "
+                "meaning, rerank, kev, outcome, reason, found_by, round) VALUES "
+                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [(packet_id, session_id, now, r.get("kind"), r.get("item"), r.get("keyword"),
+                  r.get("meaning"), r.get("rerank"),
+                  json.dumps(r.get("kev") or {}, ensure_ascii=False), r.get("outcome"),
+                  r.get("reason"), r.get("found_by"), int(r.get("round") or 0))
+                 for r in rows])
+
+    def decisions(self, packet_id: str) -> list[dict]:
+        """What `record_decisions` kept for one brief, in the order it was written."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT kind, item, keyword, meaning, rerank, kev, outcome, reason, found_by, "
+                "round FROM brief_decisions WHERE packet_id = ? ORDER BY rowid",
+                (packet_id,)).fetchall()
+        out = []
+        for row in rows:
+            found = dict(row)
+            try:
+                found["kev"] = json.loads(found.get("kev") or "{}")
+            except ValueError:
+                found["kev"] = {}
+            out.append(found)
+        return out
+
     def packet(self, packet_id: str) -> dict | None:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM packets WHERE id = ?", (packet_id,)).fetchone()
@@ -326,7 +393,7 @@ class Ledger:
         """The most recent packet in this session, for follow-up continuity: its data, plus
         the request it answered (`request`)."""
         with self._connect() as conn:
-            row = conn.execute("SELECT request, data FROM packets WHERE session_id = ? "
+            row = conn.execute("SELECT request, data, at FROM packets WHERE session_id = ? "
                                "ORDER BY at DESC, rowid DESC LIMIT 1", (session_id,)).fetchone()
         if row is None:
             return None
@@ -335,6 +402,7 @@ class Ledger:
         except ValueError:
             return None
         data.setdefault("request", row["request"] or "")
+        data.setdefault("at", row["at"] or "")
         return data
 
     def session_summary(self, session_id: str) -> dict:
@@ -537,15 +605,183 @@ class Ledger:
 
     # ------------------------------------------------------------------ outputs
     def record_output(self, path: str, session_id: str, *, title: str = "",
-                      client: str = "") -> None:
-        """A file an AI saved for the person, and the conversation it was made in."""
+                      client: str = "", project: str = "", row_ref: str = "",
+                      maker: str = "", made_with: str = "") -> None:
+        """A file an AI saved for the person, the conversation it was made in, and what it
+        is for: the project, the State row (`sheet/row`), who made it and with what."""
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO outputs (path, session_id, at, title, client) VALUES (?, ?, ?, ?, ?) "
+                "INSERT INTO outputs (path, session_id, at, title, client, project, row_ref, "
+                "maker, made_with) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(path) DO UPDATE SET session_id = excluded.session_id, "
                 "at = excluded.at, title = excluded.title, "
-                "client = COALESCE(NULLIF(excluded.client, ''), outputs.client)",
-                (path, session_id, util.now_iso(), title, client))
+                "client = COALESCE(NULLIF(excluded.client, ''), outputs.client), "
+                "project = COALESCE(NULLIF(excluded.project, ''), outputs.project), "
+                "row_ref = COALESCE(NULLIF(excluded.row_ref, ''), outputs.row_ref), "
+                "maker = COALESCE(NULLIF(excluded.maker, ''), outputs.maker), "
+                "made_with = COALESCE(NULLIF(excluded.made_with, ''), outputs.made_with)",
+                (path, session_id, util.now_iso(), title, client, project, row_ref, maker,
+                 made_with))
+
+    def flag_output(self, path: str, violations: list[dict]) -> None:
+        """A recorded output that breaks a must-hold."""
+        with self._connect() as conn:
+            conn.execute("UPDATE outputs SET violations = ? WHERE path = ?",
+                         (json.dumps(violations), path))
+
+    def link_output(self, path: str, *, project: str | None = None,
+                    row_ref: str | None = None) -> None:
+        """The person says what a file is for (a project, a State row)."""
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO outputs (path, session_id, at, title, client) "
+                         "VALUES (?, '', ?, '', '')", (path, util.now_iso()))
+            if project is not None:
+                conn.execute("UPDATE outputs SET project = ? WHERE path = ?", (project, path))
+            if row_ref is not None:
+                conn.execute("UPDATE outputs SET row_ref = ? WHERE path = ?", (row_ref, path))
+
+    def outputs_for(self, paths: list[str]) -> dict[str, dict]:
+        """What the ledger knows of these files, by path."""
+        out: dict[str, dict] = {}
+        with self._connect() as conn:
+            for start in range(0, len(paths), 400):
+                chunk = paths[start:start + 400]
+                marks = ",".join("?" for _ in chunk)
+                for row in conn.execute(f"SELECT * FROM outputs WHERE path IN ({marks})",
+                                        chunk):
+                    out[row["path"]] = dict(row)
+        return out
+
+    # ------------------------------------------------------------------ the updating loop
+    def add_correction(self, text: str, *, session_id: str = "", packet_id: str = "",
+                       suspect: str = "", score: float = 0.0, by: str = "") -> None:
+        """A correction the owner made, and the note most likely behind it (BL 9)."""
+        with self._connect() as conn:
+            conn.execute("INSERT INTO corrections (at, session_id, packet_id, text, suspect, "
+                         "score, by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (util.now_iso(), session_id, packet_id, text[:1000], suspect, score,
+                          by))
+
+    def corrections(self, *, status: str | None = "open", since: str = "") -> list[dict]:
+        query = "SELECT rowid AS id, * FROM corrections WHERE at >= ?"
+        args: list = [since]
+        if status:
+            query += " AND status = ?"
+            args.append(status)
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(query + " ORDER BY at DESC", args)]
+
+    def add_sent_back(self, ref: str, violations: list[dict]) -> None:
+        """A draft sent back once because it broke a must-hold (BL 9's output check)."""
+        with self._connect() as conn:
+            conn.execute("INSERT INTO sent_back (at, ref, violations) VALUES (?, ?, ?)",
+                         (util.now_iso(), ref[:200], json.dumps(violations)))
+
+    def sent_back_count(self, since: str = "") -> int:
+        """Drafts sent back, and recorded outputs flagged, since then."""
+        with self._connect() as conn:
+            back = conn.execute("SELECT COUNT(*) FROM sent_back WHERE at >= ?",
+                                (since,)).fetchone()[0]
+            flagged = conn.execute(
+                "SELECT COUNT(*) FROM outputs WHERE at >= ? AND violations IS NOT NULL "
+                "AND violations NOT IN ('', '[]')", (since,)).fetchone()[0]
+        return int(back) + int(flagged)
+
+    def close_correction(self, correction_id: int, status: str) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE corrections SET status = ? WHERE rowid = ?",
+                         (status, int(correction_id)))
+
+    def add_exception(self, rule: str, proposal: str, relation: str, *, by: str = "") -> None:
+        """An approval that bent a rule (BL 9, the exceptions ledger)."""
+        with self._connect() as conn:
+            conn.execute("INSERT INTO exceptions (at, rule, proposal, relation, by) VALUES "
+                         "(?, ?, ?, ?, ?)", (util.now_iso(), rule, proposal, relation, by))
+
+    def exceptions(self, rule: str | None = None) -> list[dict]:
+        with self._connect() as conn:
+            if rule:
+                rows = conn.execute("SELECT * FROM exceptions WHERE rule = ? ORDER BY at",
+                                    (rule,))
+            else:
+                rows = conn.execute("SELECT * FROM exceptions ORDER BY at")
+            return [dict(r) for r in rows]
+
+    def add_episode(self, *, action: str, area: str, topic: str, text: str, decision: str,
+                    reason: str = "", ref: str = "") -> None:
+        """One of the knowledge agent's suggestions and the person's decision (BL 17.6)."""
+        with self._connect() as conn:
+            conn.execute("INSERT INTO episodes (at, action, area, topic, text, decision, reason, "
+                         "ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                         (util.now_iso(), action, area, topic[:300], text[:1000], decision,
+                          reason[:500], ref))
+
+    def episodes(self) -> list[dict]:
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute("SELECT * FROM episodes ORDER BY at")]
+
+    def add_agent_run(self, run_id: str, action: str, ending: str, record: dict) -> None:
+        """The run record of one knowledge agent job (BL 17.8)."""
+        with self._connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO agent_runs (id, at, action, ending, record) "
+                         "VALUES (?, ?, ?, ?, ?)",
+                         (run_id, util.now_iso(), action, ending, json.dumps(record)))
+
+    def agent_runs(self, *, limit: int = 20) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM agent_runs ORDER BY at DESC LIMIT ?",
+                                (max(1, int(limit)),))
+            out = []
+            for row in rows:
+                item = dict(row)
+                try:
+                    item["record"] = json.loads(item.get("record") or "{}")
+                except ValueError:
+                    item["record"] = {}
+                out.append(item)
+            return out
+
+    # ------------------------------------------------------------------ working contexts
+    def use_context(self, session_id: str, principal: str, name: str, *, kind: str,
+                    label: str) -> int | None:
+        """Make `name` this conversation's working context (BL 8.3). Returns how many days it
+        sat idle before, when it was used at all."""
+        now = util.now_iso()
+        with self._connect() as conn:
+            row = conn.execute("SELECT last_used FROM contexts WHERE principal = ? AND "
+                               "name = ?", (principal, name)).fetchone()
+            conn.execute(
+                "INSERT INTO contexts (principal, name, kind, label, last_used, closed) "
+                "VALUES (?, ?, ?, ?, ?, NULL) ON CONFLICT(principal, name) DO UPDATE SET "
+                "last_used = excluded.last_used, label = excluded.label, closed = NULL",
+                (principal, name, kind, label, now))
+            if session_id:
+                conn.execute("INSERT INTO session_contexts (session_id, name, at) VALUES "
+                             "(?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET "
+                             "name = excluded.name, at = excluded.at",
+                             (session_id, name, now))
+        if row is None or not row["last_used"]:
+            return None
+        before = util.parse_date(str(row["last_used"])[:10])
+        return None if before is None else (util.today_date() - before).days
+
+    def session_context(self, session_id: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT name FROM session_contexts WHERE session_id = ?",
+                               (session_id,)).fetchone()
+        return str(row["name"]) if row and row["name"] else None
+
+    def contexts(self, principal: str) -> list[dict]:
+        """A person's working contexts, most recent first."""
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM contexts WHERE principal = ? ORDER BY last_used DESC",
+                (principal,))]
+
+    def close_context(self, principal: str, name: str) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE contexts SET closed = ? WHERE principal = ? AND name = ?",
+                         (util.now_iso(), principal, name))
 
     def output(self, path: str) -> dict | None:
         with self._connect() as conn:
@@ -679,6 +915,34 @@ class Ledger:
         out.sort(key=lambda g: g["at"], reverse=True)
         return out[:int(limit)]
 
+    # ------------------------------------------------------------------ goal checks
+    def add_goal_check(self, goal_id: str, *, status: str, value: float | None = None,
+                       source: str = "code", note: str = "", at: str | None = None,
+                       card: bool = False) -> None:
+        """One point on a goal's trend line: your check-in (`you`) or a computed check
+        (`code`), `card` when it raised a Catch up card. Kept for good, past the ledger's
+        retention."""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO goal_checks (goal_id, at, value, status, source, note, card) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (goal_id, at or util.now_iso(), value, status, source, note[:500],
+                 1 if card else 0))
+
+    def goal_checks(self, goal_id: str, *, limit: int = 50, source: str | None = None
+                    ) -> list[dict]:
+        """A goal's checks, newest first; only yours (`you`) or computed (`code`) with
+        `source`."""
+        query = ("SELECT goal_id, at, value, status, source, note, card FROM goal_checks "
+                 "WHERE goal_id = ?")
+        args: list = [goal_id]
+        if source:
+            query += " AND source = ?"
+            args.append(source)
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                query + " ORDER BY at DESC, rowid DESC LIMIT ?", (*args, max(1, int(limit))))]
+
     def dismiss(self, key: str) -> None:
         with self._connect() as conn:
             conn.execute("INSERT OR IGNORE INTO dismissed (key, at) VALUES (?, ?)",
@@ -776,6 +1040,7 @@ class Ledger:
         with self._connect() as conn:
             conn.execute("DELETE FROM deliveries WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM packets WHERE at < ?", (cutoff,))
+            conn.execute("DELETE FROM brief_decisions WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM sessions WHERE seen < ?", (cutoff,))
             conn.execute("DELETE FROM model_calls WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM kernels WHERE at < ? AND fingerprint NOT IN "

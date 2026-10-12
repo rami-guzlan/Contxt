@@ -62,6 +62,15 @@ def report(run):
     raise AssertionError("no report from the CLI")
 
 
+def run_token(seen):
+    """The run's own credential, read from the settings file the CLI was given (its stream
+    shows it masked); only while the run is going, since its folder goes when it ends."""
+    argv = seen["argv"]
+    with open(argv[argv.index("--mcp-config") + 1], encoding="utf-8") as handle:
+        config = json.load(handle)
+    return config["mcpServers"]["contxt-app"]["headers"]["Authorization"].removeprefix("Bearer ")
+
+
 def wait_for_report(owner, run_id, seconds=30):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -119,20 +128,52 @@ def test_a_run_streams_its_work_and_leaves_nothing_behind(owner, model, ready_ta
     server = seen["config"]["mcpServers"]["contxt-app"]
     assert (server["type"], server["url"]) == ("http", "http://127.0.0.1:8787/mcp")
 
-    # the run's credential works for nothing once the run is over
-    token = server["headers"]["Authorization"].removeprefix("Bearer ")
-    assert mcp(owner.client, token, "tools/list").status_code == 401
+    # the run's credential never shows in its stream, and works for nothing once it is over
+    assert server["headers"]["Authorization"] == "Bearer [masked]"
     credentials = owner.ok(owner.get(f"/api/actors/{model.actor_id}/credentials"))
     assert all(
         c["revoked_at"] for c in credentials if "Run from the workspace" in (c["label"] or "")
     )
 
 
+def test_a_runs_stream_is_kept_masked_and_replays_after_a_restart(owner, ready_task, runtime):
+    """One stream per run (UX C): kept on disk with its credentials masked, so a finished run
+    replays after the app restarts, with the brief it was given."""
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    done = finish(owner, run["id"])
+    shown = json.dumps(done["events"])
+    # The run's own credential (in the settings the CLI printed) never reaches the stream.
+    assert "wst_" not in shown and "Bearer [masked]" in shown
+    folder = os.path.join(runtime.ws.data_dir, "runs")
+    with open(os.path.join(folder, f"{run['id']}.jsonl"), encoding="utf-8") as handle:
+        kept = handle.read()
+    assert "wst_" not in kept and '"kind": "done"' in kept
+
+    runtime.runners.runs.clear()  # what a restart forgets
+    again = owner.ok(owner.get(f"/api/runners/runs/{run['id']}"))
+    assert again["status"] == "succeeded"
+    assert [e["seq"] for e in again["events"]] == [e["seq"] for e in done["events"]]
+    assert run["id"] in [r["id"] for r in owner.ok(owner.get("/api/runners/runs"))]
+    brief = owner.ok(owner.get(f"/api/runners/runs/{run['id']}/packet"))
+    assert brief["available"] and "# Run: Draft launch notes" in brief["text"]
+    assert owner.get("/api/runners/runs/lrun_nothing_here").status_code == 404
+
+
+def test_secrets_are_masked_and_ordinary_words_are_not():
+    mask = runners_module.mask
+    assert mask("token: abcdef123456") == "token: [masked]"
+    assert mask("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.x") == "Authorization: Bearer [masked]"
+    assert mask("key sk-ant-api03-abcdefghijklmnop") == "key [masked]"
+    assert mask("my password=hunter2xyz") == "my password=[masked]"
+    for plain in ("token count 123456 used", "tokens: 1200", "the bearer of good news"):
+        assert mask(plain) == plain
+
+
 def test_a_run_stopped_midway_leaves_a_blocker_on_the_task(owner, ready_task, monkeypatch):
     monkeypatch.setenv("FAKE_CLI_MODE", "hang")
     run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
     seen = wait_for_report(owner, run["id"])
-    token = seen["config"]["mcpServers"]["contxt-app"]["headers"]["Authorization"][len("Bearer ") :]
+    token = run_token(seen)
     claimed = mcp(
         owner.client,
         token,
@@ -244,8 +285,10 @@ def test_a_run_whose_watch_breaks_still_ends_and_revokes_its_credential(
         e["kind"] == "error" and "the database went away" in e["text"] for e in done["events"]
     )
     assert done["events"][-1]["kind"] == "done"
-    token = report(done)["config"]["mcpServers"]["contxt-app"]["headers"]["Authorization"]
-    assert mcp(owner.client, token.removeprefix("Bearer "), "tools/list").status_code == 401
+    credentials = owner.ok(owner.get(f"/api/actors/{model.actor_id}/credentials"))
+    assert all(
+        c["revoked_at"] for c in credentials if "Run from the workspace" in (c["label"] or "")
+    )
 
 
 def test_credentials_left_by_a_stopped_server_are_revoked(runtime, model, clock):
@@ -361,8 +404,7 @@ def test_the_apps_replies_to_a_run_repeat_its_contract(owner, ready_task, monkey
     monkeypatch.setenv("FAKE_CLI_MODE", "hang")
     run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
     seen = wait_for_report(owner, run["id"])
-    server = seen["config"]["mcpServers"]["contxt-app"]
-    token = server["headers"]["Authorization"].removeprefix("Bearer ")
+    token = run_token(seen)
     texts = []
     for _ in range(5):
         reply = mcp(owner.client, token, "tools/call", {"name": "get_due_tasks", "arguments": {}})

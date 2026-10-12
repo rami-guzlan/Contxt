@@ -13,6 +13,8 @@ hands it to the first model that can take it.
 from __future__ import annotations
 
 import builtins
+import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,10 +22,12 @@ import sqlalchemy as sa
 
 from workspace_core.db import schema
 from workspace_core.db.tx import Tx
+from workspace_core.domain import statements
 from workspace_core.domain.policy import Principal
 from workspace_core.domain.records import Task
-from workspace_core.errors import NotFound, ValidationFailed
+from workspace_core.errors import Conflict, NotFound, ValidationFailed
 
+from . import prepass
 from .actors import actor_can_claim
 from .runtime import Runtime
 from .tasks import Tasks
@@ -34,15 +38,86 @@ MERGE = "merge"  # a model writes one note from two that say the same thing
 MAX_PROJECTS = 12  # active projects pinned to a task that reads what came in
 MAX_LEFT_OUT = 50
 MAX_ITEMS = 20
-DEFAULTS: dict[str, Any] = {"assignee_id": None}
+RECENT_READS = 300  # earlier requests whose captures hash dedupe compares with
+FIT_WORDS = 2  # words a left-out statement shares with the goals and projects to fit them now
+COMMON = frozenset(
+    [
+        "about",
+        "after",
+        "again",
+        "also",
+        "because",
+        "been",
+        "before",
+        "being",
+        "from",
+        "have",
+        "into",
+        "just",
+        "like",
+        "more",
+        "most",
+        "much",
+        "must",
+        "only",
+        "other",
+        "over",
+        "said",
+        "same",
+        "should",
+        "some",
+        "such",
+        "than",
+        "that",
+        "their",
+        "them",
+        "then",
+        "there",
+        "these",
+        "they",
+        "this",
+        "those",
+        "through",
+        "very",
+        "what",
+        "when",
+        "where",
+        "which",
+        "while",
+        "will",
+        "with",
+        "would",
+        "your",
+        "every",
+        "need",
+        "needs",
+        "make",
+        "made",
+        "want",
+        "wants",
+    ]
+)
+
+
+def _words(text: str) -> set[str]:
+    """The content words of a text: four letters or more, not the commonest."""
+    return {w for w in re.findall(r"[a-z][a-z'-]{3,}", str(text or "").lower()) if w not in COMMON}
+
+
+# The model that does the work; the model that triages first (none: off until measured).
+DEFAULTS: dict[str, Any] = {"assignee_id": None, "triage": None}
+TRIAGE_ID = re.compile(r"^(claude|local:[\w.:-]{1,80}|ollama:[\w.:/-]{1,100})$")
 
 INSTRUCTIONS = """\
 Read every pinned item the person brought in: a note, a meeting's transcript, a document. Pull \
 out the context worth keeping, judged by two questions. Will it still be true and useful next \
 month? And does it serve one of the person's goals for this Brain, belong to one of their \
 active projects, or tell any AI who the person is or how they want work done? Their goals and \
-active projects are pinned too. Propose only what passes both. Leave out small talk, task \
-chatter, temporary status, guesses, and anything the Brain already holds. The person's own \
+active projects are pinned too. Propose only what passes both, with one exception: a \
+statement that contradicts what the Brain holds is proposed whether or not it serves a goal \
+(with contradicts set), so the person can settle which is current; check the Brain before \
+leaving anything out for serving no goal. Leave out small talk, chatter about to-dos, \
+temporary status, guesses, and anything the Brain already holds. The person's own \
 guidance, when it is given below, overrides the goals.
 
 Before proposing a statement, check what the Brain holds on its subject: the Relevant context \
@@ -60,8 +135,10 @@ For each statement you propose, call propose_brain_entry once with: a title of a
 words naming what it is about, as someone would search for it (no internal jargon or slide \
 headings); a summary, one line of plain words (at most 200 characters) saying what it holds, \
 written for someone scanning a list and never the statement's first sentence cut short; the \
-statement in plain language, able to stand on its own; its kind (fact, rule, preference, \
-decision or procedure); evidence that quotes the item it came from; sources naming the \
+statement in plain language, able to stand on its own; its kind ({kinds}); said_by, who \
+said it: owner when the person this Brain is for said it, person when someone else did (in \
+a meeting, an email), document when it is the document's own content; evidence that quotes \
+the item it came from; sources naming the \
 context_item refs (or brain_file refs), and brain:<entry id> for the entries you checked it \
 against; topic, the area/topic it belongs in, taken from where related entries live; goal, \
 the goal it serves in a few words, from the pinned goals; project, the id of the active \
@@ -84,7 +161,7 @@ as a disagreement.
 Then call complete_task with a one-line summary (how many proposals you made, how many replace \
 or contradict an entry) and left_out: every statement you considered and did not propose, \
 each with why in a few words (small talk, already in the Brain, serves no goal or project), \
-so the person can still pull it."""
+so the person can still pull it.""".replace("{kinds}", statements.words(statements.DISTILL_KINDS))
 
 CONTRACT = {
     "artifacts": [],
@@ -121,7 +198,7 @@ def merge_instructions(keep_id: str, keep_title: str, other_id: str, other_title
         "first entry's title unless it no longer fits.\n\n"
         f"The entry to keep: “{keep_title}” (id {keep_id}).\n"
         f"The entry to fold into it: “{other_title}” (id {other_id}).\n"
-        "Both are pinned in this task's inputs with their full text.\n\n"
+        "Both are pinned in this run's inputs with their full text.\n\n"
         f'Call propose_brain_entry exactly once with revises="{keep_id}", '
         f'replaces=["{other_id}"], the whole new text as the statement (not a list of '
         "changes), a title, its kind, evidence that names both entries, and this run's run_id. "
@@ -138,7 +215,7 @@ def reconcile_instructions(
     is not current, so the two can stand together."""
     proposal = f"A proposal waiting for review, “{title}”:\n\n{_quoted(body)}"
     entry = (
-        f"The entry “{entry_title}” (id {entry_id}), pinned in this task's inputs with its "
+        f"The entry “{entry_title}” (id {entry_id}), pinned in this run's inputs with its "
         "full text."
     )
     head = (
@@ -212,6 +289,9 @@ class DistillRequest:
 
 
 class Distillation:
+    # Set by the app: (triage model, text) -> the parts worth distilling, or None for all.
+    triager: Callable[[str, str], builtins.list[int] | None] | None = None
+
     def __init__(self, rt: Runtime, tasks: Tasks) -> None:
         self.rt = rt
         self.tasks = tasks
@@ -224,9 +304,14 @@ class Distillation:
             return self._settings(tx)
 
     def configure(
-        self, who: Principal, *, assignee_id: str | None | _Unset = UNSET
+        self,
+        who: Principal,
+        *,
+        assignee_id: str | None | _Unset = UNSET,
+        triage: str | None | _Unset = UNSET,
     ) -> dict[str, Any]:
-        """Which model does the AI work the app starts (none: the only one connected)."""
+        """Which model does the AI work the app starts (none: the only one connected), and
+        which model triages what is brought in first (none: off)."""
         who.require("workspace.admin")
         with self.rt.write() as tx:
             row = tx.one(schema.workspaces, self.rt.workspace_id, "workspace")
@@ -239,6 +324,13 @@ class Distillation:
                             "Choose a connected model to do this work.", field="assignee_id"
                         )
                 current["assignee_id"] = assignee_id or None
+            if not isinstance(triage, _Unset):
+                if triage and not TRIAGE_ID.match(str(triage)):
+                    raise ValidationFailed(
+                        "Triage runs on claude, a local:<model> or an ollama:<model>.",
+                        field="triage",
+                    )
+                current["triage"] = triage or None
             stored = dict((row["settings"] or {}).get("distill") or {})
             tx.update(
                 schema.workspaces,
@@ -398,6 +490,73 @@ class Distillation:
                 if not wait:
                     raise
                 assignee = None
+            earlier = self._read_before(tx, {row["id"] for row in chosen})
+            triage_model = self._settings(tx).get("triage")
+        # Hash dedupe before any model call (brain-logic plan 7.1): text another capture
+        # brought in and a model already read, or that the Brain holds word for word, is not
+        # read again. Asking again about the same capture still reads it.
+        prints = {
+            row["id"]: statements.fingerprint(str(row["body"] or row["text_shadow"] or ""))
+            for row in chosen
+        }
+        held = self.rt.brain.holds_text(list(prints.values()))
+        first: dict[str, Any] = {}  # in one request, the earliest capture of a text is read
+        for row in sorted(chosen, key=lambda r: (r["created_at"], r["id"])):
+            first.setdefault(prints[row["id"]], row)
+
+        def why(row: dict[str, Any]) -> str | None:
+            found = prints[row["id"]]
+            if found in held:
+                return "the Brain already holds it word for word"
+            if found in earlier:
+                return f"the same text was read before ({earlier[found]})"
+            if first[found]["id"] != row["id"]:
+                return f"the same text as {first[found]['title']}, read in this request"
+            return None
+
+        skipped = [
+            {"id": row["id"], "title": row["title"], "why": why(row)}
+            for row in chosen
+            if why(row) is not None
+        ]
+        if skipped and len(skipped) == len(chosen) and not files:
+            raise Conflict(
+                "Nothing new to read: "
+                + "; ".join(f"{s['title']}: {s['why']}" for s in skipped)
+                + ".",
+                skipped=skipped,
+            )
+        chosen = [row for row in chosen if row["id"] not in {s["id"] for s in skipped}]
+        # Triage (7.2, step 2): a cheaper model names the parts worth distilling; a capture
+        # with none makes no distillation call at all.
+        triaged: dict[str, dict[str, Any]] = {}
+        if triage_model and self.triager is not None:
+            for row in list(chosen):
+                # The text the run's packet holds: the note, then a file's extracted text.
+                text = "\n\n".join(t for t in (row["body"], row["text_shadow"]) if t)
+                kept = self.triager(str(triage_model), text)
+                if kept is None:
+                    continue
+                if not kept:
+                    skipped.append(
+                        {
+                            "id": row["id"],
+                            "title": row["title"],
+                            "why": "triage found nothing durable",
+                        }
+                    )
+                    chosen.remove(row)
+                    continue
+                parts = len(prepass.split(prepass.clean(text)[0]))
+                triaged[row["id"]] = {"kept": kept, "of": parts}
+            if not chosen and not files:
+                raise Conflict(
+                    "Nothing worth reading: "
+                    + "; ".join(f"{s['title']}: {s['why']}" for s in skipped)
+                    + ".",
+                    skipped=skipped,
+                )
+        wanted = [row["id"] for row in chosen]
         instructions = INSTRUCTIONS
         if str(guidance or "").strip():
             instructions += (
@@ -420,7 +579,16 @@ class Distillation:
             review_policy="auto",
             brain_request=titles[:2000],
             template=TEMPLATE,
-            provenance={"distill": {"items": wanted, "files": files, "waiting": assignee is None}},
+            provenance={
+                "distill": {
+                    "items": wanted,
+                    "files": files,
+                    "waiting": assignee is None,
+                    "fingerprints": [prints[i] for i in wanted],
+                    "skipped": skipped,
+                    "triage": triaged,
+                }
+            },
         )
         for row in chosen:
             self.tasks.pin(
@@ -430,6 +598,94 @@ class Distillation:
             self.tasks.pin(who, task.id, ref_type="brain_file", ref_id=path)
         self.pin_lens(who, task.id)
         return self.tasks.mark_ready(who, task.id) if assignee else task
+
+    def _read_before(self, tx: Tx, items: set[str]) -> dict[str, str]:
+        """The fingerprints of what earlier requests read from other captures: {fingerprint:
+        the capture's title}."""
+        tasks = schema.tasks
+        rows = tx.rows(
+            sa.select(tasks.c.provenance)
+            .where(tasks.c.workspace_id == self.rt.workspace_id, tasks.c.template == TEMPLATE)
+            .order_by(tasks.c.created_at.desc())
+            .limit(RECENT_READS)
+        )
+        out: dict[str, str] = {}
+        others: set[str] = set()
+        for row in rows:
+            about = (row["provenance"] or {}).get("distill") or {}
+            read = [str(i) for i in about.get("items") or [] if str(i) not in items]
+            prints = about.get("fingerprints") or []
+            if len(prints) == len(about.get("items") or []):
+                for item_id, value in zip(about.get("items") or [], prints, strict=False):
+                    if str(item_id) not in items:
+                        out.setdefault(str(value), str(item_id))
+            else:
+                others.update(read)  # older requests: read their captures' text now
+        if others:
+            for row in tx.rows(
+                sa.select(
+                    schema.context_items.c.id,
+                    schema.context_items.c.body,
+                    schema.context_items.c.text_shadow,
+                ).where(schema.context_items.c.id.in_(sorted(others)))
+            ):
+                text = str(row["body"] or row["text_shadow"] or "")
+                out.setdefault(statements.fingerprint(text), str(row["id"]))
+        if out:
+            titles = {
+                str(r["id"]): str(r["title"])
+                for r in tx.rows(
+                    sa.select(schema.context_items.c.id, schema.context_items.c.title).where(
+                        schema.context_items.c.id.in_(sorted(set(out.values())))
+                    )
+                )
+            }
+            out = {k: titles.get(v, v) for k, v in out.items()}
+        return out
+
+    def left_out(
+        self, who: Principal, *, q: str = "", limit: int = 100
+    ) -> builtins.list[dict[str, Any]]:
+        """Everything readings left out, newest first, found by its words (`q`), each scored
+        again against the goals and active projects as they stand now: one left out for
+        serving no goal that now shares words with one is marked `fits` (brain-logic plan
+        7.2, step 6)."""
+        lens = self._lens_words(who)
+        wanted = _words(q)
+        rows: builtins.list[dict[str, Any]] = []
+        for request in self.requests(who, limit=200):
+            for item in request.left_out:
+                statement = str(item.get("statement") or "")
+                why = str(item.get("why") or "")
+                if wanted and not wanted <= _words(f"{statement} {why}"):
+                    continue
+                shared = sorted(_words(statement) & lens)
+                rows.append(
+                    {
+                        "statement": statement,
+                        "why": why,
+                        "request_id": request.task_id,
+                        "source": request.title,
+                        "at": request.created_at,
+                        "fits": shared[:6] if len(shared) >= FIT_WORDS else [],
+                        "for_goals": "goal" in why.lower() or "project" in why.lower(),
+                    }
+                )
+                if len(rows) >= limit:
+                    return rows
+        return rows
+
+    def _lens_words(self, who: Principal) -> set[str]:
+        """The words of the owner's goals and active projects, as they stand now."""
+        try:
+            goals = self.rt.brain.goals()
+            text = " ".join(str(v) for v in (goals.get("answers") or {}).values())
+            text += " " + " ".join(
+                f"{p.title} {p.summary} {p.objective}" for p in self.rt.brain.projects() if p.active
+            )
+        except (OSError, ValueError, AttributeError):
+            text = ""
+        return _words(text)
 
     def pin_lens(self, who: Principal, task_id: str) -> None:
         """Pin what every reading of something brought in weighs against: the owner's goals

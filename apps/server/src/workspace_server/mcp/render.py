@@ -1,15 +1,19 @@
-"""Markdown a model reads: task packets and short tool results."""
+"""Markdown a model reads: run packets and short tool results."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from workspace_core.services import prepass
 
-def packet(p: dict[str, Any]) -> str:
-    """A task packet as a model-readable brief, with the exact calls to finish the run."""
+
+def packet(p: dict[str, Any], *, redacting: bool = False) -> str:
+    """A run's packet as a model-readable brief, with the exact calls to finish it. What was
+    brought in reaches the model without its boilerplate, with what code found in it first,
+    and with its sensitive spans redacted when the preset says so (`redacting`)."""
     task, run = p.get("task") or {}, p.get("run")
     purpose = p.get("purpose") or {}
-    lines = [f"# Task: {task.get('title')}", ""]
+    lines = [f"# Run: {task.get('title')}", ""]
     ids = f"task_id: {task.get('id')} (revision {task.get('revision')})"
     if run:
         ids += (
@@ -66,7 +70,13 @@ def packet(p: dict[str, Any]) -> str:
             if item.get("stale"):
                 lines.append("Warning: this Brain entry is marked stale.")
             if item.get("text"):
-                lines += ["", item["text"]]
+                text = str(item["text"])
+                if str(item.get("ref") or "").startswith("context_item:"):
+                    found = prepass.run(text).summary()
+                    if found:
+                        lines.append(f"Found by code: {found}")
+                    text = prepass.for_model(text, redacting=redacting)
+                lines += ["", text]
             if item.get("truncated"):
                 lines.append("(truncated; open it with get_context_item for the rest)")
             lines.append("")
@@ -107,7 +117,7 @@ def packet(p: dict[str, Any]) -> str:
 def due(tasks: list[dict[str, Any]], runs: list[dict[str, Any]]) -> str:
     lines = []
     if tasks:
-        lines.append(f"{len(tasks)} task(s) due for you, most overdue first:")
+        lines.append(f"{len(tasks)} run(s) due for you, most overdue first:")
         for t in tasks:
             due_at = t.get("next_due_at") or "now"
             lines.append(
@@ -122,6 +132,6 @@ def due(tasks: list[dict[str, Any]], runs: list[dict[str, Any]]) -> str:
         lines.append("You still hold these runs (finish or they expire):")
         for r in runs:
             lines.append(
-                f"- run_id {r['id']} for task {r['task_id']}, lease until {r['lease_expires_at']}"
+                f"- run_id {r['id']} (task_id {r['task_id']}), lease until {r['lease_expires_at']}"
             )
     return "\n".join(lines)

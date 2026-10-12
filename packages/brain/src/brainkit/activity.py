@@ -183,6 +183,7 @@ def request(brain, packet_id):
         own = str(data["person_fingerprint"])
         startup = {"fingerprint": own, "text": brain.ledger.kernel_text(own)}
     shaped["startup"] = startup
+    shaped["why"] = why(brain, st, row["id"], data)
     return _result(f"Request {row['id']}.", shaped)
 
 
@@ -205,9 +206,11 @@ def normal_path(path: str) -> str:
     return os.path.normcase(os.path.abspath(str(path or "").strip()))
 
 
-def record_output(brain, path, *, title="", session_id=None):
+def record_output(brain, path, *, title="", session_id=None, project="", for_row="",
+                  maker=""):
     """Note a file an AI saved for the person, with the conversation it was made in, so the
-    person can see what that conversation was given."""
+    person can see what that conversation was given; and what it is for (BL 16.5): the
+    project, the State row (`sheet/row`, or a row's name) and who made it."""
     text = str(path or "").strip()
     if not text or len(text) > 500:
         return _result("Give the saved file's full path.", {"status": "invalid"}, True)
@@ -215,13 +218,60 @@ def record_output(brain, path, *, title="", session_id=None):
     if session and not Ledger.valid(session):
         return _result("That is not a session id from get_task_context.",
                        {"status": "invalid"}, True)
+    st = brain.state()
+    project_id = str(project or "").strip()
+    if project_id and project_id not in st.index.focuses:
+        match = next((f for f in st.index.focuses.values()
+                      if f.title.lower() == project_id.lower()), None)
+        project_id = match.id if match else ""
+    row_ref = ""
+    if str(for_row or "").strip():
+        from . import state as state_mod
+        sheet_id, _, row_name = str(for_row).partition("/")
+        pairs = ([(state_mod.sheet(brain, sheet_id),
+                   state_mod.find_row(brain, sheet_id, row_name))] if row_name else
+                 state_mod.named_rows(brain, str(for_row), limit=1))
+        pairs = [(s, r) for s, r in pairs if s is not None and r is not None]
+        if pairs:
+            row_ref = f"{pairs[0][0].id}/{pairs[0][1].key}"
     brain.ledger.record_output(normal_path(text), session, title=" ".join(
-        str(title or "").split())[:200], client=brain.client)
+        str(title or "").split())[:200], client=brain.client, project=project_id,
+        row_ref=row_ref, maker=" ".join(str(maker or "").split())[:80])
+    # Checked against the must-holds (BL 9): a violation flags the output, never changes it.
+    violations = _check_file(brain, text)
+    if violations:
+        brain.ledger.flag_output(normal_path(text), violations)
+        lines = "; ".join(f"{v['found']!r} ({v['rule']})" for v in violations[:3])
+        return _result(f"Noted, and flagged: it breaks a must-hold: {lines}. Fix the file and "
+                       "record it again.", {"status": "flagged", "path": normal_path(text),
+                                            "violations": violations,
+                                            "session_id": session or None})
     return _result("Noted: the person can now see what this conversation was given when the "
                    "file was made." if session else
                    "Noted. Pass your session_id next time, so the file shows what it was made "
                    "from.", {"status": "recorded", "path": normal_path(text),
                              "session_id": session or None})
+
+
+TEXT_FILES = (".md", ".txt", ".html", ".htm", ".csv", ".json", ".eml")
+MAX_CHECKED = 400_000
+
+
+def _check_file(brain, path: str) -> list[dict]:
+    """A recorded text file's must-hold violations (other files are not read)."""
+    from . import outputcheck
+    full = normal_path(path)
+    if not full.lower().endswith(TEXT_FILES) or not os.path.isfile(full):
+        return []
+    try:
+        if os.path.getsize(full) > MAX_CHECKED:
+            return []
+        with open(full, encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        return []
+    found = outputcheck.check(text, outputcheck.must_holds_for(brain, text))
+    return [v.to_dict() for v in found]
 
 
 def made_from(brain, path):
@@ -272,3 +322,36 @@ def _saved(brain, st, sessions: set) -> dict[str, list[dict]]:
                              or proposal.id),
                 "status": "waiting", "source": "chat"})
     return out
+
+
+OUT_SHOWN = 30  # candidates that stayed out, shown at most (the ledger keeps them all)
+
+
+def why(brain, st, packet_id: str, data: dict) -> dict | None:
+    """Why each candidate went in or stayed out of one brief, as the ledger kept it: its
+    keyword, meaning and reranker scores, the decision model's answers, the outcome and the
+    reason, with the engine's mode, the lock, the gate, the cuts and each layer's time. Read
+    back, never recomputed. None for a brief from before the ledger kept these."""
+    try:
+        rows = brain.ledger.decisions(packet_id)
+    except Exception:  # an unreadable ledger has nothing to say
+        rows = []
+    engine = data.get("engine") or {}
+    if not rows and not engine:
+        return None
+    shaped = []
+    for row in rows:
+        named = _piece(st, row["kind"], row["item"], 0, "")
+        shaped.append(dict(row, title=named.get("title") or row["item"],
+                           path=named.get("path")))
+    inside = [r for r in shaped if r["outcome"] != "out"]
+    outside = sorted((r for r in shaped if r["outcome"] == "out"),
+                     key=lambda r: -max(r.get("rerank") or 0.0, r.get("keyword") or 0.0,
+                                        r.get("meaning") or 0.0))
+    return {"mode": engine.get("mode"), "reason": engine.get("reason") or "",
+            "lock": engine.get("lock") or "", "gate": engine.get("gate"),
+            "cuts": engine.get("cuts") or {}, "fitted": engine.get("fitted") or {},
+            "timings": engine.get("timings") or {}, "rounds": engine.get("rounds") or 0,
+            "ceiling_hit": bool(engine.get("ceiling_hit")), "notes": engine.get("notes") or [],
+            "refit": bool(engine.get("refit")), "in": inside,
+            "out": outside[:OUT_SHOWN], "out_count": len(outside)}

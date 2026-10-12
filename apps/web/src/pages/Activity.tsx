@@ -9,9 +9,10 @@
 import { useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { useAiRequest, useAiRequests, useBrainCatalog, useLabelRequest, useProposeEntry, useReport, useWeekly } from "../api/hooks";
-import type { AiRequest, CostLineName, EvalCase, ReportCard, RequestPiece } from "../api/types";
+import { useAiRequest, useAiRequests, useBrainCatalog, useCorrect, useLabelRequest, useProposeEntry, useReport, useWeekly } from "../api/hooks";
+import type { AiRequest, CostLineName, EvalCase, ReportCard, RequestPiece, RequestWhy, WhyRow } from "../api/types";
 import { Markdown } from "../components/Markdown";
+import { TasksTab } from "../components/tasks/Tasks";
 import { Empty, ErrorNote, Loading, Tabs } from "../components/ui";
 import { plural, when } from "../lib/format";
 import { ActivityPage as ChangesView } from "./brain/Activity";
@@ -22,6 +23,7 @@ const TABS = [
   { id: "requests", label: "Requests" },
   { id: "report", label: "Cost and quality" },
   { id: "changes", label: "Changes" },
+  { id: "tasks", label: "Tasks and handoffs" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -29,7 +31,7 @@ type TabId = (typeof TABS)[number]["id"];
 export function AiActivityPage() {
   const [params, setParams] = useSearchParams();
   const asked = params.get("tab");
-  const tab: TabId = asked === "changes" || asked === "report" ? asked : "requests";
+  const tab: TabId = asked === "changes" || asked === "report" || asked === "tasks" ? asked : "requests";
   return (
     <div className="page activity">
       <p className="eyebrow">Activity</p>
@@ -43,7 +45,9 @@ export function AiActivityPage() {
           setParams(next, { replace: true });
         }}
       />
-      {tab === "changes" ? (
+      {tab === "tasks" ? (
+        <TasksTab />
+      ) : tab === "changes" ? (
         <>
           <Week />
           <ChangesView />
@@ -299,6 +303,7 @@ export function RequestRow({ request, brainTokens }: { request: AiRequest; brain
   const [open, setOpen] = useState(false);
   const [teaching, setTeaching] = useState(false);
   const [labeling, setLabeling] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
   const got = request.got.filter((p) => p.kind !== "focus" || !request.project);
   const share = request.share ?? (brainTokens ? request.tokens / brainTokens : 0);
   return (
@@ -346,10 +351,15 @@ export function RequestRow({ request, brainTokens }: { request: AiRequest; brain
           ) : null}
           {teaching ? (
             <Teach request={request} onClose={() => setTeaching(false)} />
+          ) : correcting ? (
+            <Wrong request={request} onClose={() => setCorrecting(false)} />
           ) : labeling ? (
             <Label request={request} onClose={() => setLabeling(false)} />
           ) : (
             <div className="row">
+              <button type="button" className="link small" onClick={() => setCorrecting(true)}>
+                That's wrong
+              </button>
               <button type="button" className="link small" onClick={() => setTeaching(true)}>
                 Something was missing? Teach it
               </button>
@@ -414,7 +424,83 @@ function Sent({ request }: { request: AiRequest }) {
       ) : request.kernel ? (
         <p className="muted small">It also got the startup context, once for this chat.</p>
       ) : null}
+      {full.why ? <Why why={full.why} /> : null}
     </div>
+  );
+}
+
+const OUTCOME_WORDS: Record<WhyRow["outcome"], string> = {
+  body: "whole",
+  pointer: "as a pointer",
+  listed: "listed",
+  held: "already in the chat",
+  out: "out",
+};
+
+/** A candidate's scores, as the ledger kept them. */
+function whyScores(row: WhyRow): string {
+  const parts: string[] = [];
+  if (row.keyword !== null && row.keyword !== undefined) parts.push(`words ${row.keyword.toFixed(2)}`);
+  if (row.meaning !== null && row.meaning !== undefined) parts.push(`meaning ${row.meaning.toFixed(2)}`);
+  if (row.rerank !== null && row.rerank !== undefined) parts.push(`relevance ${row.rerank.toFixed(2)}`);
+  const current = row.kev?.current;
+  if (typeof current === "number") parts.push(`current ${current.toFixed(2)}`);
+  return parts.join(" · ");
+}
+
+function WhyList({ rows, label }: { rows: WhyRow[]; label: string }) {
+  if (!rows.length) return <p className="muted small">None.</p>;
+  return (
+    <ul className="plain why-list" aria-label={label}>
+      {rows.map((row) => (
+        <li key={`${row.kind}:${row.item}`}>
+          {row.kind === "note" ? <Link to={entryUrl(row.item)}>{row.title}</Link> : <span>{row.title}</span>}{" "}
+          <span className="kind-chip">{OUTCOME_WORDS[row.outcome] ?? row.outcome}</span>
+          <span className="muted small">
+            {" "}
+            {[row.reason, row.found_by && row.found_by !== row.reason ? `found as ${row.found_by}` : "", whyScores(row)]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Why each candidate went in or stayed out, read back from the ledger, never recomputed. */
+function Why({ why }: { why: RequestWhy }) {
+  const gate = why.gate
+    ? why.gate.by === "reranker"
+      ? `; the reranker's best score was ${why.gate.yes.toFixed(2)} against the cut of ${why.gate.cut}`
+      : `; the gate said ${why.gate.yes.toFixed(2)} against ${why.gate.cut}`
+    : "";
+  const engine =
+    why.mode === "on"
+      ? `The local engine chose these (lock ${why.lock}${gate}${why.rounds ? `; ${plural(why.rounds, "link round")}` : ""}).`
+      : `Chosen by words and meaning, without the local engine${why.reason ? ` (${why.reason})` : ""}.`;
+  return (
+    <details className="request-why">
+      <summary>Why these, and not others</summary>
+      <p className="muted small">
+        {engine}
+        {why.ceiling_hit ? " More candidates matched than the ceiling allows; the best were scored." : ""}
+      </p>
+      {why.notes?.length ? (
+        <ul className="plain muted small" aria-label="This computer's fallbacks">
+          {why.notes.map((note) => (
+            <li key={note}>{note}.</li>
+          ))}
+        </ul>
+      ) : null}
+      <h4>Why this</h4>
+      <WhyList rows={why.in} label="Why this" />
+      <h4>Why not that one</h4>
+      <WhyList rows={why.out} label="Why not that one" />
+      {why.out_count > why.out.length ? (
+        <p className="muted small">and {why.out_count - why.out.length} more out, kept in the ledger.</p>
+      ) : null}
+    </details>
   );
 }
 
@@ -459,6 +545,8 @@ function Label({ request, onClose }: { request: AiRequest; onClose: () => void }
   const [verdicts, setVerdicts] = useState<Record<string, Verdict> | null>(null);
   const [missing, setMissing] = useState<string[] | null>(null);
   const [adding, setAdding] = useState("");
+  const [nothing, setNothing] = useState<boolean | null>(null);
+  const empty = nothing ?? Boolean(full?.eval?.nothing);
   const current = verdicts ?? verdictsFrom(full?.eval);
   const absent = missing ?? full?.eval?.missing ?? [];
   const titles = new Map((catalog?.entries ?? []).map((entry) => [entry.title, entry.id]));
@@ -479,10 +567,18 @@ function Label({ request, onClose }: { request: AiRequest; onClose: () => void }
       className="stack-tight"
       onSubmit={(event) => {
         event.preventDefault();
-        label.mutate({ needed: ids("needed"), useful: ids("useful"), noise: ids("noise"), missing: absent });
+        label.mutate(
+          empty
+            ? { needed: [], useful: [], noise: ids("noise"), missing: [], nothing: true }
+            : { needed: ids("needed"), useful: ids("useful"), noise: ids("noise"), missing: absent },
+        );
       }}
     >
       <p className="muted small">For each note it got: did the task need it, did it help, or was it noise? Then add any note it should have had.</p>
+      <label className="check small">
+        <input type="checkbox" checked={empty} onChange={(event) => setNothing(event.target.checked)} /> It should get nothing from
+        the Brain (a general question, coding elsewhere, someone else's work): anything it got was noise.
+      </label>
       {notes.length ? (
         <ul className="label-list">
           {notes.map((note) => (
@@ -539,7 +635,11 @@ function Label({ request, onClose }: { request: AiRequest; onClose: () => void }
         </ul>
       ) : null}
       <div className="row">
-        <button type="submit" className="primary" disabled={label.isPending || (!Object.values(current).some(Boolean) && !absent.length)}>
+        <button
+          type="submit"
+          className="primary"
+          disabled={label.isPending || (!empty && !Object.values(current).some(Boolean) && !absent.length)}
+        >
           Save labels
         </button>
         <button type="button" className="link" onClick={onClose}>
@@ -552,6 +652,52 @@ function Label({ request, onClose }: { request: AiRequest; onClose: () => void }
 }
 
 /** What it should have known, in the person's words: a suggestion that waits in Catch up. */
+/** "That's wrong": what the AI made from this request was wrong. The notes it was handed become
+ * suspects, and the likeliest gets a "Still true?" card in Catch up; nothing changes on its own. */
+function Wrong({ request, onClose }: { request: AiRequest; onClose: () => void }) {
+  const correct = useCorrect();
+  const [text, setText] = useState("");
+  if (correct.isSuccess) {
+    const card = correct.data.card;
+    return (
+      <p className="small" role="status">
+        {card ? (
+          <>
+            Most likely behind it: <Link to={entryUrl(card.id)}>{card.title}</Link>. It asks "Still true?" in{" "}
+            <Link to="/catch-up">Catch up</Link>.
+          </>
+        ) : (
+          <>Kept. No note it was handed looks behind it: teach it what it should have known instead.</>
+        )}
+      </p>
+    );
+  }
+  return (
+    <form
+      className="stack-tight"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!text.trim()) return;
+        correct.mutate({ text: text.trim(), packet_id: request.id, session_id: request.session_id });
+      }}
+    >
+      <label className="field">
+        <span className="field-label">What was wrong?</span>
+        <textarea rows={2} value={text} onChange={(event) => setText(event.target.value)} />
+      </label>
+      <div className="row">
+        <button type="submit" className="primary" disabled={!text.trim() || correct.isPending}>
+          Find the note behind it
+        </button>
+        <button type="button" className="link" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+      <ErrorNote error={correct.error} />
+    </form>
+  );
+}
+
 function Teach({ request, onClose }: { request: AiRequest; onClose: () => void }) {
   const propose = useProposeEntry();
   const [text, setText] = useState("");

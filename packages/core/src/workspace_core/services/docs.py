@@ -67,14 +67,14 @@ with what the Brain holds.
 
 Save the result once with save_skill_result, with this run's run_id: a short title, and the
 questions and challenges as Markdown, most important first, each with one line on why it
-matters. Then complete the task. Never publish or send anything."""
+matters. Then complete the run. Never publish or send anything."""
 CONTINUE = """\
 Read the pinned note “{title}” ({note}) in full with get_context_item. Continue it from where it
 stops{where}, in its own voice and shape, using only what the note, the Brain's context
 (search_context) and the request say; mark anything missing as [to check] instead of inventing it.
 
 Save the result once with save_skill_result, with this run's run_id: a short title, and only the
-new part as Markdown (it goes after what is there). Then complete the task. Never publish or send
+new part as Markdown (it goes after what is there). Then complete the run. Never publish or send
 anything."""
 
 

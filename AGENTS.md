@@ -45,6 +45,7 @@ brains/              starter Brains: `empty` and four made-up demos
 config/templates     worker prompts for the app's AI work
 docker/, compose.yaml local and private-server Docker profiles
 docs/                setup, architecture, MCP, operations, decisions (ADRs), the Brain
+docs/dev/            internal: the plans, the build record and the development handoff
 ```
 
 A person's own Contxt lives in `brain/` (its own git repository), `data/`, `outputs/` and

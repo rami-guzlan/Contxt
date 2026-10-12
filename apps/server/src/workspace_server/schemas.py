@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -125,6 +125,7 @@ class PoliciesIn(Body):
     model_checks: bool | None = None  # your own AI reads possible disagreements
     cross_check: bool | None = None  # the weekly cross-check of your beliefs
     challenger: bool | None = None  # the external challenger (off until turned on)
+    redact_cloud: bool | None = None  # sensitive spans redacted for cloud models (decision 13)
 
 
 class CatchUpItemIn(Body):
@@ -191,6 +192,8 @@ class BrainProjectIn(Body):
     name: str = Field(max_length=200)
     summary: str = Field(max_length=1000)
     aliases: list[str] = Field(default_factory=list, max_length=24)
+    objective: str = Field(default="", max_length=1000)
+    goals: list[str] = Field(default_factory=list, max_length=12)
 
 
 class ProjectUpdateIn(Body):
@@ -227,6 +230,15 @@ class RequestLabelsIn(Body):
     useful: list[str] = Field(default_factory=list, max_length=40)
     noise: list[str] = Field(default_factory=list, max_length=40)
     missing: list[str] = Field(default_factory=list, max_length=40)
+    nothing: bool = False  # it should get nothing from the Brain
+
+
+class LocalModelsIn(Body):
+    """One change to this computer's local models (Settings, On this computer)."""
+
+    action: Literal["check", "default", "download", "remove", "speed", "claude_code"]
+    name: str = Field(default="", max_length=100)
+    on: bool | None = None
 
 
 class ReplayIn(Body):
@@ -255,6 +267,7 @@ class RememberIn(Body):
 
 class DistillSettingsIn(Body):
     assignee_id: str | None = None  # the model that does the AI work the app starts
+    triage: str | None = None  # the model that triages first (claude, local:..., ollama:...)
 
 
 class ReconcileIn(Body):
@@ -623,3 +636,130 @@ class SkillPushIn(Body):
 
 class SuggestionDismissIn(Body):
     key: str = Field(min_length=1, max_length=80)
+
+
+# ------------------------------------------------------------------------- goals (G1)
+
+
+class ProjectObjectiveIn(Body):
+    objective: str = Field(max_length=1000)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class GoalIn(Body):
+    """A goal from the coach's draft or the form; `board` fills the plan template's notes,
+    `first_steps` become suggestions, `project` links a project to it."""
+
+    title: str = Field(min_length=1, max_length=160)
+    why: str = Field(default="", max_length=600)
+    level: Literal["yours", "agent"] = "yours"
+    kept_by: str | None = Field(default=None, max_length=120)
+    measure: dict[str, Any] | None = None
+    due: str | None = Field(default=None, max_length=10)
+    cadence: Literal["daily", "weekly", "monthly"] = "weekly"
+    serves: list[str] | None = Field(default=None, max_length=10)
+    template: Literal["plan", "launch", "grow", "blank"] = "plan"
+    board: dict[str, str] | None = None
+    first_steps: list[str] = Field(default_factory=list, max_length=3)
+    project: str | None = Field(default=None, max_length=200)
+
+
+class GoalChangeIn(Body):
+    title: str | None = Field(default=None, min_length=1, max_length=160)
+    why: str | None = Field(default=None, max_length=600)
+    measure: dict[str, Any] | None = None
+    due: str | None = Field(default=None, max_length=10)
+    cadence: Literal["daily", "weekly", "monthly"] | None = None
+    status: Literal["active", "paused", "met", "missed", "dropped", "retired"] | None = None
+    serves: list[str] | None = Field(default=None, max_length=10)
+    reason: str = Field(default="", max_length=500)
+
+
+class GoalCheckInIn(Body):
+    call: Literal["on_track", "at_risk", "off_track"]
+    value: float | None = None
+    line: str = Field(default="", max_length=300)
+
+
+class GoalBoardIn(Body):
+    layout: dict[str, Any]
+    expected_version: int | None = None
+
+
+class GoalSuggestionIn(Body):
+    accept: bool
+
+
+class GoalDecisionIn(Body):
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class GoalLinkIn(Body):
+    project: str = Field(min_length=1, max_length=200)
+    linked: bool = True
+
+
+class GoalCoachTurn(Body):
+    role: Literal["you", "coach"]
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class GoalCoachIn(Body):
+    messages: list[GoalCoachTurn] = Field(min_length=1, max_length=8)
+    model: str | None = Field(default=None, max_length=140)
+
+
+class GoalSettingsIn(Body):
+    weekly_review: bool
+
+
+# ------------------------------------------------------------------- State and tasks (step 6)
+
+
+class LiveActIn(Body):
+    action: Literal[
+        "create_sheet", "add_column", "add_row", "write", "touch", "decide", "remove_row"
+    ]
+    fields: dict[str, Any] = Field(default_factory=dict)
+
+
+class CorrectionIn(Body):
+    text: str = Field(min_length=1, max_length=1000)
+    session_id: str | None = Field(default=None, max_length=80)
+    packet_id: str | None = Field(default=None, max_length=80)
+
+
+class CorrectionAnswerIn(Body):
+    status: Literal["still_true", "fixed", "dismissed"]
+
+
+class LessonIn(Body):
+    key: str = Field(min_length=1, max_length=300)
+
+
+class CheckOutputIn(Body):
+    text: str = Field(min_length=1, max_length=200_000)
+
+
+class HandOffIn(Body):
+    task: str | None = Field(default=None, max_length=20)
+    new_task: dict[str, Any] | None = None
+    goal: str | None = Field(default=None, max_length=200)
+    to: str | None = Field(default=None, max_length=120)
+    claim: bool | None = None
+    status: Literal["working", "blocked", "waiting_for_you", "done", "dropped"] | None = None
+    done_so_far: str | None = Field(default=None, max_length=2000)
+    next_step: str | None = Field(default=None, max_length=1000)
+    done_when: str | None = Field(default=None, max_length=1000)
+    decisions: str | None = Field(default=None, max_length=2000)
+    open_questions: str | None = Field(default=None, max_length=2000)
+    load: str | None = Field(default=None, max_length=1000)
+    evidence: list[str] | None = Field(default=None, max_length=20)
+    goal_note: str | None = Field(default=None, max_length=1000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class OutputLinkIn(Body):
+    path: str = Field(min_length=1, max_length=1000)
+    project: str | None = Field(default=None, max_length=200)
+    row: str | None = Field(default=None, max_length=300)

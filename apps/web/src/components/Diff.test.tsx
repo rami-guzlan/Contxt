@@ -39,25 +39,25 @@ describe("word differences", () => {
   it("shows the two versions side by side with the changes marked", () => {
     render(
       <Compare
-        before={{ label: "In the Brain now", title: "Scale", body: "500+ hours a year" }}
-        after={{ label: "Proposed", title: "Figures", body: "600+ hours a year" }}
+        before={{ label: "In the Brain now", title: "Scale", body: "120+ projects a year" }}
+        after={{ label: "Proposed", title: "Figures", body: "150+ projects a year" }}
       />,
     );
     const before = screen.getByRole("region", { name: "In the Brain now" });
     const after = screen.getByRole("region", { name: "Proposed" });
-    expect(within(before).getByText("500+").tagName).toBe("DEL");
-    expect(within(after).getByText("600+").tagName).toBe("INS");
+    expect(within(before).getByText("120+").tagName).toBe("DEL");
+    expect(within(after).getByText("150+").tagName).toBe("INS");
   });
 
   it("does not mark two texts written apart, which share too little to compare word by word", () => {
     const { container } = render(
       <Compare
-        before={{ label: "In the Brain now", title: "Scale", body: "Founded 1985, offices across EMEA and APAC." }}
-        after={{ label: "Proposed", title: "Figures", body: "Studio delivers 600+ hours of bespoke content." }}
+        before={{ label: "In the Brain now", title: "Scale", body: "Founded 1998, offices in three states." }}
+        after={{ label: "Proposed", title: "Figures", body: "The workshop runs 40 sessions a year." }}
       />,
     );
     expect(container.querySelector("del, ins")).toBeNull();
-    expect(screen.getByText("Studio delivers 600+ hours of bespoke content.")).toBeInTheDocument();
+    expect(screen.getByText("The workshop runs 40 sessions a year.")).toBeInTheDocument();
   });
 
   it("folds long unchanged stretches of a long text, so the change stands out", () => {

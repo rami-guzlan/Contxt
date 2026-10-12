@@ -12,12 +12,17 @@ hand is visible on the very next request, with no refresh command.
 from __future__ import annotations
 
 import contextlib
+import copy
 import os
+import re
 import threading
 from dataclasses import dataclass
 
 from . import config as config_mod
+from . import engine as engine_mod
+from . import frontmatter as fm
 from . import kernel as kernel_mod
+from . import models_client
 from . import packets as packets_mod
 from . import request_type as request_type_mod
 from . import runtime as runtime_mod
@@ -229,8 +234,8 @@ class Brain:
     @property
     def ledger(self) -> Ledger:
         if self._ledger is None:
-            days = int((self.state().config.data.get("sessions") or {}).get("retention_days")
-                       or 90)
+            from . import governance
+            days = governance.retention_days(self.state().config)
             self._ledger = Ledger(os.path.join(self.vault.runtime_dir, "sessions.sqlite"), days)
         return self._ledger
 
@@ -297,13 +302,15 @@ class Brain:
     def context(self, request, *, principal=None, via=None, partition=None,
                 session_id=None, fresh=False, focus=None, task_type=None,
                 startup_fingerprint=None, explain=False, record=True,
-                include_kernel=None, tools=True, delivery="pull") -> Result:
+                include_kernel=None, tools=True, delivery="pull", context=None) -> Result:
         """Route one request and return one bounded context packet.
 
         Without `tools`, the packet for a model that cannot call the brain at all: it holds
         nothing from before and cannot continue a session, so nothing in the text asks for a
         tool, the procedure comes in full, and nothing is recorded. `delivery` says how it
-        reached the model: "pull" (the model asked) or "push" (a client's hook sent it)."""
+        reached the model: "pull" (the model asked) or "push" (a client's hook sent it).
+        `context` names a working context (BL 8.3): a task (its card leads), a goal, a project,
+        a State row, or "general"; a conversation keeps the last one it named."""
         if not str(request or "").strip():
             return error("get_task_context needs the request text.")
         st = self.state()
@@ -317,11 +324,16 @@ class Brain:
             session = Ledger.mint()
         delivered = self.ledger.delivered(session) if continuing and not fresh else {}
         previous = self.ledger.last_packet(session) if continuing else None
+        working = self._working_context(st, context, session, continuing, chain,
+                                        partitions, record=record and tools)
+        focus = focus or working.get("focus")
         route = st.router.route(str(request), chain, partitions, focus_override=focus,
                                 task_type_override=task_type, previous=previous)
+        route, audit = self._engine(st, route)
         packet = packets_mod.build(route, config=st.config, index=st.index,
                                    delivered=delivered, fresh=bool(fresh), session_id=session,
                                    partition=partition, explain=explain, tools=tools)
+        audit.settle(packet.data)
         kernel = kernel_mod.compile(st.config, st.index, st.scopes, chain, partitions)
         kernel_fp = kernel.fingerprint
         # The shared part is held when this conversation got it or the client's startup file
@@ -342,6 +354,15 @@ class Brain:
         elif not person_held:
             parts.append("# Startup context, your own layer\n\n" + kernel.person)
         person_sent = bool(kernel.person) and not person_held
+        extra = self._state_sections(st, str(request), working, partitions,
+                                     since=(previous or {}).get("at") or "",
+                                     first=not continuing, delivered=delivered)
+        if extra:
+            packet.text = packet.text.rstrip() + "\n\n" + extra
+            packet.items.extend(working.get("state_items", []))
+            packet.data["state_rows"] = working.get("rows_shown", [])
+            if working.get("name"):
+                packet.data["working_context"] = working["name"]
         parts.append("# Task context\n\n" + packet.text)
         status = "continuing" if continuing else "new"
         if tools:
@@ -356,7 +377,8 @@ class Brain:
                      "person_fingerprint": kernel.person_fingerprint or None,
                      "person_included": person_sent, "delivery": delivery,
                      "session_status": status, "vault_fingerprint": st.fingerprint[:12],
-                     "request_type": request_type_mod.classify(route)})
+                     "request_type": request_type_mod.classify(route),
+                     "engine": audit.summary()})
         if record and tools:
             if fresh and continuing:
                 # Nothing this conversation got before counts as held from here on.
@@ -375,11 +397,115 @@ class Brain:
                               engine=runtime_mod.STARTED_WITH)
             self.ledger.record(session, packet.id, str(request), route.mode, packet.text,
                                data, items)
+            self.ledger.record_decisions(packet.id, session, audit.rows())
             if not kernel_held or person_sent:
                 # The startup context as it was sent, once per version, for Activity to show.
                 self.ledger.record_kernel(kernel_fp if not kernel_held
                                           else kernel.person_fingerprint, parts[0])
         return Result("\n\n".join(parts), data)
+
+    def _working_context(self, st, context, session, continuing, chain, partitions, *,
+                         record=True):
+        """What a working context adds to a brief: {"name", "kind", "focus", "task", "goal",
+        "row", "idle"}. Named now, or the one this conversation named last."""
+        from . import handoff, ladder
+        from . import state as state_mod
+        name = " ".join(str(context or "").split())
+        if not name and continuing:
+            name = self.ledger.session_context(session) or ""
+        if not name or name.lower() == "general":
+            if name and record:
+                self.ledger.use_context(session, chain[-1], "general", kind="general",
+                                        label="General")
+            return {}
+        found: dict = {"name": name}
+        if re.match(r"^T-\d+$", name, re.IGNORECASE):
+            item = handoff.task(self, name.upper())
+            if item is not None:
+                found.update(kind="task", task=item, label=f"{item['id']} {item['task']}")
+                if item.get("project"):
+                    found["focus"] = item["project"]
+        if "kind" not in found and ladder.is_goal(st.index.note(name)):
+            found.update(kind="goal", goal=name, label=st.index.note(name).title)
+        if "kind" not in found:
+            focus = st.index.focuses.get(name) or next(
+                (f for f in st.index.focuses.values()
+                 if f.title.lower() == name.lower()), None)
+            if focus is not None:
+                found.update(kind="project", focus=focus.id, label=focus.title)
+        if "kind" not in found:
+            sheet_id, _, row_name = name.partition("/")
+            pairs = []
+            if row_name and state_mod.sheet(self, sheet_id) is not None:
+                row = state_mod.find_row(self, sheet_id, row_name, partitions=partitions)
+                if row is not None:
+                    pairs.append((state_mod.sheet(self, sheet_id), row))
+            else:
+                pairs = state_mod.named_rows(self, name, partitions=partitions, limit=1)
+            if pairs:
+                found.update(kind="row", row=pairs[0],
+                             label=f"{pairs[0][0].title}: {pairs[0][1].key}")
+        if "kind" not in found:
+            return {"name": name, "unknown": True}
+        if record:
+            found["idle"] = self.ledger.use_context(session, chain[-1], name,
+                                                    kind=found["kind"], label=found["label"])
+        return found
+
+    def _state_sections(self, st, request, working, partitions, *, since="", first=False,
+                        delivered=None):
+        """The brief's parts from State and tasks: the working context's task card or goal,
+        "Current state" for named rows, a note when a context sat idle, and on a
+        conversation's first brief the tasks waiting to be picked up."""
+        from . import handoff, ladder
+        from . import state as state_mod
+        parts = []
+        if working.get("unknown"):
+            parts.append(f"## Working context\n\nNo task, goal, project or State row is named "
+                         f"{working['name']!r}; carrying on without one.")
+        if (working.get("idle") or 0) >= 14:
+            parts.append(f"## Working context\n\nYou last worked in {working['label']} "
+                         f"{working['idle']} days ago. Resume it here, or close it.")
+        if working.get("kind") == "task":
+            parts.append("## Your task\n\n" + handoff.render(self, working["task"])
+                         + "\n\nSave progress with hand_off before stopping, and pass it on "
+                           "or finish it the same way.")
+        if working.get("kind") == "goal":
+            parts.append("## Your goal\n\n" + ladder.context(self, working["goal"]))
+        block, shown = state_mod.brief_block(
+            self, request, partitions=partitions,
+            extra=[working["row"]] if working.get("row") else None,
+            held={k[1]: v for k, v in (delivered or {}).items() if k[0] == "state"})
+        if block:
+            parts.append(block)
+            working["rows_shown"] = [f"{s.id}/{r.key}" for s, r, _h in shown]
+            working["state_items"] = [("state", f"{s.id}/{r.key}", digest, 0)
+                                      for s, r, digest in shown]
+        if first:
+            waiting = handoff.pending_lines(self)
+            if waiting:
+                parts.append("## Waiting to be picked up\n\n" + "\n".join(waiting))
+        return "\n\n".join(parts)
+
+    def _engine(self, st, route):
+        """(route, audit): the local retrieval engine's route when a verified model service is
+        ready, else the router's own, untouched, with what exists written down (fallback).
+        The engine works on a copy: a service that fails mid-request leaves retrieval exactly
+        as it was."""
+        engine, service = engine_mod.Engine.connect(st)
+        if engine is None:
+            return route, engine_mod.fallback(route, service.reason, lock=service.lock)
+        trial = copy.copy(route)
+        for name in ("notes", "style_notes", "related", "sections", "must_holds",
+                     "must_overflow", "standing_answer", "candidates", "references",
+                     "notes_log", "ranked"):
+            setattr(trial, name, list(getattr(route, name) or []))
+        try:
+            return trial, engine.refine(trial)
+        except (models_client.ServiceError, OSError, ValueError, KeyError, TypeError) as exc:
+            models_client.forget()
+            return route, engine_mod.fallback(
+                route, f"the model service failed on this request ({exc})", lock=service.lock)
 
     def preview(self, request, *, principal=None, focus=None, partition=None,
                 tools=True) -> Result:
@@ -531,7 +657,13 @@ class Brain:
             header += f"\nStale ({stale}): verify before relying on it."
         if note.confidence:
             header += f"\nConfidence: {note.confidence}."
-        return Result(header + "\n\n" + note.body.strip() + "\n",
+        body = note.body.strip()
+        if note.kind == "goal":
+            # A goal opens with its shared plan: only the board blocks its owner shared.
+            plan = self.vault.goal_plan(note.id).strip()
+            if plan:
+                body += "\n\n" + plan
+        return Result(header + "\n\n" + body + "\n",
                       {"id": note.id, "path": note.path, "meta": note.meta,
                        "body": note.body, "route_key": note.route_key, "title": note.title,
                        "summary": note.summary, "kind": note.kind, "added": note.added,
@@ -714,6 +846,8 @@ class Brain:
             "aliases": list(found.aliases), "status": state.get("status") or "active",
             "active": found.active, "state": state, "brief": found.note.body.strip(),
             "route_key": found.note.route_key,
+            "objective": str(found.note.meta.get("objective") or ""),
+            "goals": fm.as_list(found.note.meta.get("goals")),
             "updates": [dict(seq=u.seq, at=u.at, summary=u.summary, changes=u.changes,
                              evidence=u.evidence, actor=u.actor)
                         for u in reversed(found.updates)],
@@ -1072,10 +1206,244 @@ class Brain:
         from . import activity
         return activity.request(self, packet_id)
 
-    def record_output(self, path, *, title="", session_id=None) -> Result:
-        """Note a file an AI saved for the person, with the conversation it was made in."""
+    def record_output(self, path, *, title="", session_id=None, project="", for_row="",
+                      maker="") -> Result:
+        """Note a file an AI saved for the person, with the conversation it was made in and
+        what it is for (a project, a State row) and who made it."""
         from . import activity
-        return activity.record_output(self, path, title=title, session_id=session_id)
+        return activity.record_output(self, path, title=title, session_id=session_id,
+                                      project=project, for_row=for_row, maker=maker)
+
+    # ------------------------------------------------------------------ the updating loop
+    def check_output(self, text, *, domains=None, sent_back="") -> Result:
+        """An output's text against the must-holds in play (BL 9): every deterministic
+        violation, each with the rule and what was found. `sent_back` names the draft when the
+        caller sends it back for them (counted by the `sent_back` measure)."""
+        from . import outputcheck
+        found = outputcheck.check(text, outputcheck.must_holds_for(self, text, domains=domains))
+        violations = [v.to_dict() for v in found]
+        if violations and sent_back:
+            self.ledger.add_sent_back(str(sent_back), violations)
+        return Result(f"{len(found)} must-hold violation(s).", {"violations": violations})
+
+    def correction(self, text, *, session_id="", packet_id="", principal=None) -> Result:
+        """The owner corrected an AI's output: the notes in the brief before it become
+        suspects, and the most likely one gets a "Still true?" card (loop.py)."""
+        from . import loop
+        found = loop.record_correction(self, str(text or ""), session_id=str(session_id or ""),
+                                       packet_id=str(packet_id or ""),
+                                       by=self.principal(principal))
+        card = found["card"]
+        return Result(f"Most likely behind it: {card['title']}." if card else
+                      "No note in that brief looks behind it.", found)
+
+    def loop_status(self) -> Result:
+        """What the updating loop asks of the owner now: open corrections, bent rules,
+        approval health, single-source notes, the quarterly review, lessons."""
+        from . import agent_tools, loop
+        open_ones = []
+        st = self.state()
+        for row in self.ledger.corrections():
+            note = st.index.note(row["suspect"]) if row["suspect"] else None
+            if note is not None:
+                open_ones.append({"id": row["id"], "at": row["at"], "text": row["text"],
+                                  "note": note.id, "title": note.title,
+                                  "salience": note.kind == "rule" and not note.must_hold})
+        all_runs = self.ledger.agent_runs(limit=200)
+        runs = [r for r in all_runs if r["action"] == "check-alignment"]
+        import datetime as dt
+        # The agent's hand-ups of the last two weeks, for Catch up.
+        since = (util.today_date() - dt.timedelta(days=14)).isoformat()
+        hand_ups = [{"id": r["id"], "action": r["action"], "at": r["at"],
+                     "why": str((r.get("record") or {}).get("why") or "")}
+                    for r in all_runs if r["ending"] == "hand-up" and r["at"] >= since][:5]
+        return Result("The updating loop.", {
+            "hand_ups": hand_ups,
+            "corrections": open_ones,
+            "bent_rules": loop.bent_rules(self),
+            "approval_health": loop.approval_health(self),
+            "single_source": loop.single_source(self),
+            "review_due": loop.review_due(
+                runs[0]["at"] if runs else "",
+                since=min((str(r.get("at") or "") for r in self.vault.decisions()
+                           if r.get("at")), default="")),
+            "last_review": runs[0]["at"] if runs else "",
+            "lessons": agent_tools.lessons(self)})
+
+    def close_correction(self, correction_id, status) -> Result:
+        if status not in ("still_true", "fixed", "dismissed"):
+            return error("status is still_true, fixed or dismissed.", status="invalid")
+        self.ledger.close_correction(int(correction_id), status)
+        return Result("Closed.", {"status": status})
+
+    def agent_tool(self, name, args) -> Result:
+        """One of the knowledge agent's tools (agent_tools.py), checked by code: a look
+        returns data, a suggestion returns the suggestion and writes nothing."""
+        from . import agent_tools
+        result, problems = agent_tools.call(self, name, args)
+        if problems:
+            return Result("; ".join(problems), {"problems": problems}, is_error=True)
+        return Result("ok", {"result": result})
+
+    def agent_menu(self) -> Result:
+        from . import agent_tools
+        return Result(agent_tools.menu(), {"tools": list(agent_tools.TOOLS)})
+
+    def changes_digest(self, since="") -> Result:
+        from . import agent_tools
+        found = agent_tools.changes_since(self, since)
+        return Result(found["line"], found)
+
+    def record_agent_run(self, run_id, action, ending, record) -> Result:
+        from .handoff import mask
+        import json as _json
+        clean = _json.loads(mask(_json.dumps(record, default=str)))
+        self.ledger.add_agent_run(str(run_id), str(action), str(ending), clean)
+        return Result("Recorded.", {"id": run_id})
+
+    def agent_runs(self, *, limit=20) -> Result:
+        """The knowledge agent's runs, newest first, each with its steps (BL 17.8)."""
+        rows = self.ledger.agent_runs(limit=limit)
+        return Result(f"{len(rows)} run(s).", {"runs": rows})
+
+    def record_episode(self, *, action, area, topic, text, decision, reason="", ref="") -> Result:
+        self.ledger.add_episode(action=action, area=area, topic=topic, text=text,
+                                decision=decision, reason=reason, ref=ref)
+        return Result("Kept.", {})
+
+    def blast_radius(self, proposal_id, *, limit=20) -> Result:
+        """What a waiting proposal would change in the last briefs that used its note: the
+        replay harness against the proposed brain (BL 9)."""
+        from . import replay
+        st = self.state()
+        proposal = st.snapshot.proposals.get(str(proposal_id))
+        if proposal is None:
+            return error(f"No pending proposal {proposal_id!r}.", status="missing")
+        item = str((proposal.target or {}).get("id") or "")
+        packets = replay.recent_packets(self, item=item, limit=limit) if item else []
+        if not packets:
+            return Result("No recent brief used it.", {"briefs": 0, "changed": 0, "rows": [],
+                                                      "seconds": 0.0})
+        found = replay.replay(self, packets, proposal=str(proposal_id))
+        return Result(f"{found['changed']} of {found['replayed']} briefs would change.",
+                      {"briefs": found["replayed"], "changed": found["changed"],
+                       "rows": found["rows"], "seconds": found["seconds"]})
+
+    # ------------------------------------------------------------------ State and tasks
+    def get_state(self, *, sheet="", row="", query="", principal=None, partition=None,
+                  session_id=None) -> Result:
+        """State for an AI (BL 8.5): the sheets, one sheet's rows, or one row and its
+        changes (state.py)."""
+        from . import state as state_mod
+        caller = self.caller(principal, None, partition)
+        if isinstance(caller, Result):
+            return caller
+        _chain, partitions = caller
+        text, data = state_mod.get_state(self, sheet_id=str(sheet or ""), row=str(row or ""),
+                                         query=str(query or ""), partitions=partitions)
+        return Result(text, data, is_error=data.get("status") == "missing")
+
+    def update_state(self, updates, *, evidence="", principal=None, partition=None,
+                     session_id=None) -> Result:
+        """An AI's cell updates (BL 8.4): free columns apply marked AI-filled, confirm ones
+        wait for the owner, locked ones are refused."""
+        from . import state as state_mod
+        caller = self.caller(principal, None, partition)
+        if isinstance(caller, Result):
+            return caller
+        chain, partitions = caller
+        text, data = self._write_value(lambda: state_mod.update_state(
+            self, updates, who=chain[-1], session=str(session_id or ""), evidence=evidence,
+            partitions=partitions))
+        return Result(text, data, is_error=data.get("status") == "invalid")
+
+    def _write_value(self, run):
+        """Run a write that returns (text, data) under the vault's write lock."""
+        box: dict = {}
+
+        def wrapped():
+            box["out"] = run()
+            return Result("", {})
+        done = self._write(wrapped)
+        if "out" not in box:
+            return done.text, dict(done.data)
+        return box["out"]
+
+    def state_act(self, action, fields=None, *, actor=None) -> Result:
+        """The owner's State actions in the app (state.py): sheets, templates, rows, history,
+        create_sheet, add_column, add_row, write, touch, decide, remove_row, waiting."""
+        from . import state as state_mod
+        f = dict(fields or {})
+        who = self.principal(actor)
+        reads = {
+            "sheets": lambda: Result("Sheets.", {"sheets": [s.to_dict() for s in
+                                                             state_mod.sheets(self)]}),
+            "templates": lambda: Result("Templates.", {"templates": [
+                {"id": k, "title": v["title"], "builtin": bool(v.get("builtin")),
+                 "columns": [c.name for c in v["columns"]]}
+                for k, v in state_mod.TEMPLATES.items()]}),
+            "rows": lambda: self._sheet_rows(state_mod, f),
+            "history": lambda: Result("History.", {"events": state_mod.history(
+                self, str(f.get("sheet")), str(f.get("row")), f.get("column"))}),
+            "waiting": lambda: Result("Waiting.", {"waiting": state_mod.waiting(self)}),
+            "promotions": lambda: Result("Suggestions.", {"suggestions":
+                                                          state_mod.promotions(self)}),
+        }
+        if action in reads:
+            return reads[action]()
+        writes = {
+            "create_sheet": lambda: state_mod.create_sheet(
+                self, title=f.get("title", ""), template=f.get("template", ""),
+                columns=f.get("columns"), key=f.get("key", ""),
+                partition_by=f.get("partition_by", ""), actor=actor),
+            "add_column": lambda: state_mod.add_column(self, f.get("sheet"),
+                                                       f.get("column") or {}, actor=actor),
+            "add_row": lambda: state_mod.add_row(self, f.get("sheet"), f.get("key"),
+                                                 f.get("values") or {},
+                                                 aliases=f.get("aliases"), who=who),
+            "write": lambda: state_mod.write(self, f.get("sheet"), f.get("row"),
+                                             f.get("values") or {}, who=who,
+                                             as_of=f.get("as_of") or ""),
+            "touch": lambda: state_mod.touch(self, f.get("sheet"), f.get("row"),
+                                             f.get("column"), who=who),
+            "decide": lambda: state_mod.decide(self, f.get("sheet"), f.get("row"),
+                                               f.get("event"), accept=bool(f.get("accept")),
+                                               who=who),
+            "remove_row": lambda: state_mod.remove_row(self, f.get("sheet"), f.get("row"),
+                                                       who=who, reason=f.get("reason", "")),
+        }
+        if action not in writes:
+            return error(f"Do one of {', '.join([*reads, *writes])}.", status="invalid")
+        return self._write(writes[action])
+
+    def _sheet_rows(self, state_mod, f) -> Result:
+        found = state_mod.sheet(self, str(f.get("sheet") or ""))
+        if found is None:
+            return error(f"No sheet {f.get('sheet')!r}.", status="missing")
+        current = state_mod.rows(self, found.id)
+        return Result(found.title, {"sheet": found.to_dict(),
+                                    "rows": [r.to_dict() for r in current],
+                                    "summary": state_mod.summary(found, current)})
+
+    def hand_off(self, *, session_id=None, principal=None, **kwargs) -> Result:
+        """Take, save, pass on or finish a task, or add a goal note (handoff.py)."""
+        from . import handoff
+        who = self.principal(principal)
+        return self._write(lambda: handoff.hand_off(self, session=str(session_id or ""),
+                                                    acting_for=who, **kwargs))
+
+    def tasks(self, **filters) -> Result:
+        from . import handoff
+        found = handoff.tasks(self, **filters)
+        return Result(f"{len(found)} tasks.", {"tasks": found})
+
+    def task(self, task_id) -> Result:
+        from . import handoff
+        found = handoff.task(self, task_id)
+        if found is None:
+            return error(f"No task {task_id!r}.", status="missing")
+        found["rendered"] = handoff.render(self, found)
+        return Result(found["rendered"], found)
 
     def made_from(self, path) -> Result:
         """What a saved file was made from, when an AI recorded it (activity.py)."""
@@ -1226,6 +1594,68 @@ class Brain:
         point (goals.py)."""
         from . import goals
         return self._write(lambda: goals.write(self, answers, **kwargs))
+
+    def ladder(self, *, with_signals=False) -> Result:
+        """The goal ladder: the purpose, your goals and agent goals, and with `with_signals`
+        the signal library with each signal's value now (ladder.py)."""
+        from . import ladder
+        found = ladder.ladder(self)
+        found["signals"] = ladder.signals(self) if with_signals else []
+        return Result(f"{len(found['yours'])} goals of yours, {len(found['agents'])} agent "
+                      "goals.", found)
+
+    def goal(self, goal_id) -> Result:
+        """One goal in full: its checks, journal and shared plan, and what an AI receives."""
+        from . import ladder
+        st = self.state()
+        note = st.index.note(str(goal_id or ""))
+        if not ladder.is_goal(note):
+            return error(f"No goal {goal_id!r}.", status="missing")
+        found = ladder.view(self, note, st=st, full=True)
+        found["context"] = ladder.context(self, note.id)
+        return Result(note.title, found)
+
+    def goal_cards(self) -> Result:
+        """Agent goals that slipped and wait for the owner in Catch up."""
+        from . import ladder
+        found = ladder.cards(self)
+        return Result(f"{len(found)} agent goals need a look.", {"cards": found})
+
+    def act_goal(self, action, goal_id="", fields=None, *, actor=None) -> Result:
+        """One change to the ladder (ladder.py): `set`, `change`, `check_in`, `note`, `plan`
+        (the board's shared blocks), `starters` (the knowledge agent's goals), `link` (a
+        project to the goal) or `check` (run the computed checks now)."""
+        from . import ladder
+        fields = dict(fields or {})
+        if action == "check":
+            return self._write(lambda: Result("Checked.", {"checks": ladder.run_checks(
+                self, force=bool(fields.get("force")),
+                only=[goal_id] if goal_id else None)}))
+        runs = {
+            "set": lambda: ladder.set_goal(
+                self, actor=actor, apply=fields.pop("apply", True) is not False, **{
+                    k: v for k, v in fields.items() if k in (
+                        "title", "why", "level", "kept_by", "measure", "due", "cadence",
+                        "serves", "goal_id")}),
+            "change": lambda: ladder.change_goal(
+                self, goal_id, fields.get("changes") or {}, reason=fields.get("reason", ""),
+                actor=actor),
+            "check_in": lambda: ladder.check_in(
+                self, goal_id, call=fields.get("call"), value=fields.get("value"),
+                line=fields.get("line", ""), actor=actor, via=fields.get("via", "app")),
+            "note": lambda: ladder.journal_note(
+                self, goal_id, fields.get("text", ""), kind=fields.get("kind", "decision"),
+                by=fields.get("by"), actor=actor),
+            "plan": lambda: ladder.write_plan(self, goal_id, fields.get("blocks") or [],
+                                              actor=actor),
+            "starters": lambda: ladder.turn_on_starters(self, actor=actor),
+            "link": lambda: ladder.link_project(self, goal_id, fields.get("project"),
+                                                linked=fields.get("linked", True) is not False,
+                                                actor=actor),
+        }
+        if action not in runs:
+            return error(f"Do one of {', '.join([*runs, 'check'])}.", status="invalid")
+        return self._write(runs[action])
 
     def move_in(self, sources, *, name="", principal=None) -> Result:
         """Read what an AI app already knows (a memory list, an instruction file, pasted text)

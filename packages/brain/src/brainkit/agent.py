@@ -38,7 +38,8 @@ from . import util
 from .goals import GOALS_ID
 
 ACTIONS = ("tidy-repeats", "check-drift", "check-alignment", "freshen-up", "tidy-projects",
-           "tidy-skills", "fill-gaps")
+           "tidy-skills", "fill-gaps", "verify-sources")
+VERIFY_NOTES = 5  # a verification run's budget: notes per run (searches per note: its skill)
 CHAT = "knowledge-agent"  # the procedure for a conversation with the owner
 FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "agent")
 MAX_CANDIDATES = 10
@@ -286,8 +287,27 @@ def gather(brain, action: str, *, limit: int = MAX_CANDIDATES, visible=None) -> 
                  if all(i in visible for i in c["ids"] if i in notes and i != GOALS_ID)]
     out = []
     for number, item in enumerate(found[:limit], 1):
-        out.append({"ref": f"c{number}", **item})
+        out.append({"ref": f"c{number}", **_typed(brain, st, action, item)})
     return {"action": action, "candidates": out, "found": len(found)}
+
+
+TYPED = {"tidy-repeats": "duplicate", "check-drift": "contradicts", "freshen-up": "stale"}
+
+
+def _typed(brain, st, action: str, item: dict) -> dict:
+    """A candidate with Kev's typed check (or code's) for its action (BL 17.5), so the model
+    writes only what needs words."""
+    from . import kev
+    kind = TYPED.get(action)
+    ids = [i for i in item.get("ids") or [] if st.index.note(i) is not None]
+    if not kind or not ids:
+        return item
+    note = st.index.note(ids[0])
+    other = st.index.note(ids[1]) if len(ids) > 1 else None
+    if kind in ("duplicate", "contradicts") and other is None:
+        return item
+    found = kev.check(brain, kind, note, other)
+    return dict(item, checks=[found], text=f"{item['text']}\n\n{kev.line(found)}")
 
 
 def _repeats(brain, st) -> list[dict]:
@@ -349,6 +369,55 @@ def _drift(brain, st) -> list[dict]:
     return out
 
 
+def _goals_needing_a_look(brain, st) -> list[dict]:
+    """Your goals with no recent check-in, no projects, or no plan for what gets in the way
+    (goals plan 7): one candidate each, saying which."""
+    from . import ladder
+    out = []
+    for note in ladder.goal_notes(st, "yours"):
+        if ladder.lifecycle(note) != "active":
+            continue
+        shown = ladder.view(brain, note, st=st)
+        plan = brain.vault.goal_plan(note.id).lower()
+        why = []
+        if shown["status"] == "not_checked_in":
+            why.append("no check-in lately")
+        if not shown["projects"]:
+            why.append("no projects")
+        if "obstacle" not in plan and "plan" not in plan.split("\n", 1)[-1]:
+            why.append("no plan for what gets in the way")
+        if why:
+            out.append({"kind": "goal", "ids": [note.id], "title": note.title,
+                        "text": f"Your goal `{note.id}`: {note.title}. Why: "
+                                f"{shown['why'] or 'not said'}. Status: {shown['words']}. "
+                                f"Needs a look: {', '.join(why)}."})
+    return out
+
+
+def _verification(brain, st) -> list[dict]:
+    """Notes to check against the web (BL 9): the owner's picks (`verify: true`), notes resting
+    on one source that decision briefs used, stale ones, then the most used; at most
+    VERIFY_NOTES."""
+    from . import loop
+    picked = [n for n in _live_notes(st) if fm.as_bool(n.meta.get("verify"))]
+    single = [st.index.note(r["id"]) for r in loop.single_source(brain, limit=VERIFY_NOTES)]
+    stale = [st.index.note(r["ids"][0]) for r in _freshness(brain, st)]
+    used = _usage(brain)
+    most = sorted(_live_notes(st), key=lambda n: -int((used.get(n.id) or {}).get("d30") or 0))
+    out, seen = [], set()
+    for why, notes in (("picked by the owner", picked), ("rests on one source", single),
+                       ("stale", stale), ("used most", most)):
+        for note in notes:
+            if note is None or note.id in seen or note.kind in ("identity", "goal", "focus"):
+                continue
+            seen.add(note.id)
+            out.append({"kind": "note", "ids": [note.id], "title": note.title,
+                        "text": _note_text(note, f"To verify ({why}): ")})
+            if len(out) >= VERIFY_NOTES:
+                return out
+    return out
+
+
 def _alignment(brain, st) -> list[dict]:
     used = _usage(brain)
     out = [{"kind": "goals", "ids": [GOALS_ID], "title": "The goals and projects",
@@ -356,6 +425,7 @@ def _alignment(brain, st) -> list[dict]:
                      + "\n\nActive projects:\n" + ("\n".join(
                          f"- `{p['id']}` {p['title']}: {p['current'] or p['status']}"
                          for p in _projects(st) if p["active"]) or "None."))}]
+    out += _goals_needing_a_look(brain, st)
     for note in st.index.notes.values():
         if note.must_hold and note.live and not (note.triggers or note.applies_to):
             out.append({"kind": "note", "ids": [note.id], "title": note.title,
@@ -474,6 +544,7 @@ _GATHER = {
     "tidy-repeats": _repeats,
     "check-drift": _drift,
     "check-alignment": _alignment,
+    "verify-sources": lambda brain, st: _verification(brain, st),
     "freshen-up": _freshness,
     "tidy-projects": _projects_to_check,
     "tidy-skills": _skills_to_check,

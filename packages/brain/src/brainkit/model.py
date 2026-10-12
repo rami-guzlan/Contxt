@@ -61,6 +61,19 @@ class Note:
         return value or LEGACY_KINDS.get(self.area, "fact")
 
     @property
+    def statement_kind(self) -> str:
+        """Its kind in the one vocabulary (statements.py): a `state` note is a value, a
+        `focus` a project."""
+        from . import statements
+        return statements.kind(self.kind)
+
+    @property
+    def tier(self) -> str:
+        """alignment, state or knowledge (statements.tier)."""
+        from . import statements
+        return statements.tier(self.kind, self.load)
+
+    @property
     def title(self) -> str:
         value = str(self.meta.get("title") or "").strip()
         return value or util.excerpt(self.index_line, 90)

@@ -39,7 +39,11 @@ from .services.context import Context
 from .services.distill import Distillation
 from .services.docs import Docs
 from .services.events import Events
+from .services.goals import Goals
+from .services.handoffs import Handoffs
 from .services.legacy import Legacy
+from .services.live import LiveContext
+from .services.loop import Loop
 from .services.movein import MovingIn
 from .services.notes import Note, Notes
 from .services.onboarding import Onboarding
@@ -92,6 +96,12 @@ class Workspace:
             rt, self.brain, self.skills, self.compose, self.notes, self.prompts, self.artifacts
         )
         self.catch_up.checks = self.workflows.waiting
+        self.goals = Goals(rt)
+        self.catch_up.goals = self.goals
+        self.live = LiveContext(rt)
+        self.handoffs = Handoffs(rt)
+        self.handoffs.agents = self.agents
+        self.loop = Loop(rt, self.brain)
 
     # ---------------------------------------------------------------- lifecycle
 

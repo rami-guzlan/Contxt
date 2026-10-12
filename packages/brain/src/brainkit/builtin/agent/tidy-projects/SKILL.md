@@ -30,6 +30,8 @@ the owner records.
 
 ## Answer with one JSON object only
 
+EXAMPLE, made up for the shape only; never copy its text:
+
 ```json
 {"summary": "1 to close, 2 to bring up to date.",
  "findings": [

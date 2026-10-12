@@ -15,6 +15,7 @@ import type { BrainHealth, CatchUpPlan, Goals } from "../api/types";
 import { BringIn } from "../components/BringIn";
 import { ContextPreview } from "../components/ContextPreview";
 import { Flashcards } from "../components/Flashcards";
+import { GoalsStrip } from "../components/goals/GoalsStrip";
 import { SeeTheDifference } from "../components/Difference";
 import { FirstVisitTip } from "../components/Tips";
 import { ErrorNote, Loading, Section } from "../components/ui";
@@ -41,6 +42,7 @@ export function HomePage() {
       {plan ? <Hero plan={plan} /> : null}
       <Flashcards />
       {goals ? <GoalsLine goals={goals} /> : null}
+      <GoalsStrip />
       <NextSteps goals={goals} />
       <div className="cards-3">
         <UsedCard />
@@ -172,7 +174,7 @@ function GoalsLine({ goals }: { goals: Goals }) {
   if (!goals.exists) {
     return (
       <p className="goals-line">
-        <Sparkles className="button-icon" aria-hidden="true" /> <Link to="/settings?tab=goals">Say what your Brain is for</Link>
+        <Sparkles className="button-icon" aria-hidden="true" /> <Link to="/settings?tab=alignment">Say what your Brain is for</Link>
         <span className="muted"> · everything you bring in is sifted against it</span>
       </p>
     );
@@ -180,7 +182,7 @@ function GoalsLine({ goals }: { goals: Goals }) {
   return (
     <p className="goals-line">
       <span className="muted">Helping you:</span> {goals.purpose}{" "}
-      <Link className="small" to="/settings?tab=goals">
+      <Link className="small" to="/settings?tab=alignment">
         Change
       </Link>
     </p>
@@ -198,7 +200,7 @@ function NextSteps({ goals }: { goals: Goals | undefined }) {
   const asked = (apps ?? []).some((a) => a.last_request);
   const first = (projects ?? []).find((p) => p.active);
   const steps = [
-    { done: !!goals?.exists, to: "/settings?tab=goals", label: "Say what your Brain is for", why: "Everything you bring in is sifted against it." },
+    { done: !!goals?.exists, to: "/settings?tab=alignment", label: "Say what your Brain is for", why: "Everything you bring in is sifted against it." },
     { done: asked, to: "/settings?tab=apps", label: "Connect an AI app", why: "Claude Code, Claude Desktop, Cursor or Codex: one step each." },
     {
       // nothing downloads on its own: until the person asks, the Brain matches by words

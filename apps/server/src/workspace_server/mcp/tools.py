@@ -14,6 +14,7 @@ from typing import Any
 
 from workspace_core.domain.policy import Principal
 from workspace_core.errors import ValidationFailed
+from workspace_core.services import prepass
 from workspace_core.workspace import Workspace
 
 from . import render
@@ -86,14 +87,17 @@ def claim_task(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str
         lease_seconds=int(lease) if lease else None,
         idempotency_key=_str(args, "idempotency_key"),
     )
-    return render.packet(claim.packet), {"run": claim.run.to_dict(), "packet": claim.packet}
+    return render.packet(claim.packet, redacting=redacting(ws, who)), {
+        "run": claim.run.to_dict(),
+        "packet": claim.packet,
+    }
 
 
 def get_task_packet(
     ws: Workspace, who: Principal, args: dict[str, Any]
 ) -> tuple[str, dict[str, Any]]:
     packet = ws.bus.packet(who, task_id=_str(args, "task_id"), run_id=_str(args, "run_id"))
-    return render.packet(packet), {"packet": packet}
+    return render.packet(packet, redacting=redacting(ws, who)), {"packet": packet}
 
 
 def append_task_event(
@@ -111,7 +115,7 @@ def append_task_event(
     if event.type == "run.heartbeat":
         text = f"Lease renewed until {event.data.get('lease_expires_at')}."
     elif event.type == "task.blocked":
-        text = "The task is blocked; a person will see your reason. Move to other work."
+        text = "The run is blocked; a person will see your reason. Move to other work."
     return text, {"event": event.to_dict()}
 
 
@@ -129,12 +133,12 @@ def complete_task(
     task = ws.tasks.get(who, run.task_id)
     after = {
         "review": "It is waiting for a person's review.",
-        "done": "The task is done.",
-        "failed": "The task is marked failed.",
+        "done": "The run is done.",
+        "failed": "The run is marked failed.",
     }
     return (
         f"Run {run.id} closed and the lease released. "
-        f"{after.get(task.status, f'The task is {task.status}.')}",
+        f"{after.get(task.status, f'The run is {task.status}.')}",
         {"run": run.to_dict(), "task_status": task.status},
     )
 
@@ -179,6 +183,8 @@ def get_context_item(
     text = item.body or ""
     if item.text_shadow:
         text += ("\n\n" if text else "") + f"Text of {item.filename}:\n{item.text_shadow}"
+    # Without its boilerplate, and redacted when the preset says so (decision 13).
+    text = prepass.for_model(text, redacting=redacting(ws, who))
     try:
         offset = max(0, int(args.get("offset") or 0))
     except (TypeError, ValueError) as exc:
@@ -267,6 +273,7 @@ def propose_brain_entry(
         must_hold=args.get("must_hold") or None,
         as_of=_str(args, "as_of"),
         valid_until=_str(args, "valid_until"),
+        said_by=_str(args, "said_by"),
     )
     # Refused is a failure the model must notice; a duplicate (the same proposal retried) is
     # not.
@@ -304,7 +311,7 @@ def save_digest(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[st
     )
     return (
         f"Saved the digest ({len(digest['points'])} key points). It is shown beside the item; "
-        "now complete the task.",
+        "now complete the run.",
         {"digest": digest},
     )
 
@@ -320,7 +327,7 @@ def save_skill_result(
     )
     return (
         f"Saved \u201c{saved['title']}\u201d (version {saved['version']}). It shows on the "
-        "skill's page; now complete the task.",
+        "skill's page; now complete the run.",
         {"result": saved},
     )
 
@@ -348,7 +355,7 @@ def propose_brain_skill(
     )
     text = result.message
     if result.status == "pending":
-        text += " Now complete the task."
+        text += " Now complete the run."
     return text, {"proposal": asdict(result)}, result.status == "refused"
 
 
@@ -421,6 +428,70 @@ def _ids(args: dict[str, Any], name: str) -> list[str] | None:
     raise ValidationFailed(f"{name} is a list of entry ids.", field=name)
 
 
+def get_state(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    who.require("brain.read")
+    found = ws.rt.brain.get_state(
+        sheet=str(args.get("sheet") or ""),
+        row=str(args.get("row") or ""),
+        query=str(args.get("query") or ""),
+    )
+    return str(found.pop("text", "")), found
+
+
+def update_state(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    who.require("brain.propose")
+    updates = args.get("updates")
+    if not isinstance(updates, list) or not updates:
+        raise ValidationFailed("Send updates as a list of {sheet, row, column, value}.")
+    found = ws.rt.brain.update_state(
+        updates, evidence=str(args.get("evidence") or ""), session_id=""
+    )
+    return str(found.pop("text", "")), found
+
+
+HAND_OFF_FIELDS = (
+    "task",
+    "new_task",
+    "goal",
+    "to",
+    "claim",
+    "status",
+    "done_so_far",
+    "next_step",
+    "done_when",
+    "decisions",
+    "open_questions",
+    "load",
+    "evidence",
+    "goal_note",
+    "reason",
+)
+
+
+def hand_off(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """A run moves a task as the app's own work ("Gnomon run"), acting for the owner; a run
+    for an agent moves it as that agent."""
+    who.require("brain.propose")
+    fields = {k: args[k] for k in HAND_OFF_FIELDS if args.get(k) not in (None, "")}
+    agent = str(args.get("agent") or "").strip()
+    found = ws.rt.brain.hand_off(
+        **fields, caller=f"agent:{agent}" if agent else "you", tool="Gnomon run"
+    )
+    return str(found.pop("text", "")), found
+
+
+def redacting(ws: Workspace, who: Principal) -> bool:
+    """Does a model reading through these tools get what was brought in redacted? A model is
+    a cloud model here unless its connection says it runs on this computer (Ollama)."""
+    if who.is_human:
+        return False
+    try:
+        policy = ws.rt.brain.policies()
+    except (OSError, ValueError, RuntimeError, KeyError):  # unreadable: the careful default
+        return True
+    return bool(policy.get("redact_cloud", True))
+
+
 # ---------------------------------------------------------------------- registry
 
 TOOLS: dict[str, Tool] = {
@@ -436,7 +507,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "claim_task",
-            "Claim one due task for a bounded lease. Returns the run_id and the full task "
+            "Claim one due run for a bounded lease. Returns the run_id and the full run "
             "packet: purpose, instructions, pinned inputs, Brain context, output contract. "
             "A refused claim means someone else has it or it is not due: skip it.",
             _obj(
@@ -452,7 +523,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "get_task_packet",
-            "The packet of your run (exactly as it was at claim time), or the packet a task "
+            "The packet of your run (exactly as it was at claim time), or the packet a run "
             "would get now.",
             _obj({"run_id": RUN, "task_id": {"type": "string"}}),
             get_task_packet,
@@ -489,7 +560,7 @@ TOOLS: dict[str, Tool] = {
         Tool(
             "complete_task",
             "Close your run and release the lease. outcome is succeeded (default) or failed. "
-            "The task then waits for review, is done, or is marked failed.",
+            "The run then waits for review, is done, or is marked failed.",
             _obj(
                 {
                     "run_id": RUN,
@@ -497,7 +568,7 @@ TOOLS: dict[str, Tool] = {
                     "outcome": {"type": "string", "enum": ["succeeded", "failed"]},
                     "left_out": {
                         "type": "array",
-                        "description": "When the task pulls context: what you considered and "
+                        "description": "When the run pulls context: what you considered and "
                         "did not propose, each with why, so the person can still pull it.",
                         "items": {
                             "type": "object",
@@ -518,7 +589,7 @@ TOOLS: dict[str, Tool] = {
         Tool(
             "search_context",
             "Search the Brain's long-term entries, and working material you can see, in your "
-            "own words. A person's notes are not searchable: they reach you pinned to a task.",
+            "own words. A person's notes are not searchable: they reach you pinned to a run.",
             _obj(
                 {
                     "query": {"type": "string"},
@@ -555,7 +626,7 @@ TOOLS: dict[str, Tool] = {
         Tool(
             "get_brain_skill",
             "Read one of the Brain's procedures (skills) in full, with what it loads. Packets "
-            "list the candidates for a task under 'Skill candidates'.",
+            "list the candidates for a run under 'Skill candidates'.",
             _obj({"name": {"type": "string"}}, ["name"]),
             get_brain_skill,
             "brain.read",
@@ -574,8 +645,8 @@ TOOLS: dict[str, Tool] = {
             "will still matter next month). It waits for a person's approval. Quote the "
             "evidence and name the sources (refs). Check the Brain first (search_context): "
             "when it replaces an entry, say so with replaces; when it contradicts one and you "
-            "cannot tell which is current, say so with contradicts. During a task, pass its "
-            "run_id so the proposal is credited to that task (a distillation request asks for "
+            "cannot tell which is current, say so with contradicts. During a run, pass its "
+            "run_id so the proposal is credited to that run (a distillation request asks for "
             "exactly this).",
             _obj(
                 {
@@ -647,6 +718,14 @@ TOOLS: dict[str, Tool] = {
                         "type": "string",
                         "description": "The last day it holds, YYYY-MM-DD, when it says so.",
                     },
+                    "said_by": {
+                        "type": "string",
+                        "enum": ["owner", "owner-ai", "person", "document", "system", "agent"],
+                        "description": "Who said it: owner (the person this Brain is for), "
+                        "person (someone else, in a meeting or an email), document (the "
+                        "document's own content). A rule someone else gives, or a document "
+                        "states, is kept as what they said, never as the owner's rule.",
+                    },
                     "must_hold": {
                         "type": "object",
                         "description": "Only for a rule that must never be missed whenever its "
@@ -675,7 +754,7 @@ TOOLS: dict[str, Tool] = {
                     "run_id": {
                         "type": "string",
                         "description": "The run_id from claim_task, when proposing as part of "
-                        "a task.",
+                        "a run.",
                     },
                     "idempotency_key": KEY,
                 },
@@ -705,7 +784,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "save_digest",
-            "Save the digest of the item a digest task reads (its template is digest): a short "
+            "Save the digest of the item a digest run reads (its template is digest): a short "
             "summary, its key points each marked by how it fits what the Brain holds now, and "
             "the decisions, actions, open questions and people in it. It is shown beside the "
             "item; nothing reaches the Brain from it.",
@@ -760,7 +839,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "save_skill_result",
-            "Save what a skill run made (a task whose template is skill): a short title and "
+            "Save what a skill run made (a run whose template is skill): a short title and "
             "the whole result as Markdown, ready to use. It is shown on the skill's page; "
             "saved again in the same run, it becomes a new version of the same result.",
             _obj(
@@ -780,7 +859,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "propose_brain_skill",
-            "Propose a skill from a task whose template is skill-draft: a new version of one "
+            "Propose a skill from a run whose template is skill-draft: a new version of one "
             "(target: its name, the change as edits) or a new skill (name, category, "
             "description and body). It waits in Review for a person; nothing changes until "
             "they approve it.",
@@ -847,6 +926,67 @@ TOOLS: dict[str, Tool] = {
                 ["run_id"],
             ),
             propose_brain_skill,
+            "brain.propose",
+        ),
+        Tool(
+            "get_state",
+            "Read State: fast-changing values per entity (accounts, repos, tasks). No sheet "
+            "lists the sheets; a sheet lists its rows (filter with query); a row gives its "
+            "values with dates and recent changes.",
+            _obj(
+                {
+                    "sheet": {"type": "string"},
+                    "row": {"type": "string"},
+                    "query": {"type": "string"},
+                }
+            ),
+            get_state,
+            "brain.read",
+        ),
+        Tool(
+            "update_state",
+            "Write State values you learned, with evidence: a list of {sheet, row, column, "
+            "value, as_of}. Some columns apply at once, some wait for the owner, some are "
+            "theirs alone. Tasks move only with hand_off.",
+            _obj(
+                {
+                    "updates": {"type": "array", "items": {"type": "object"}},
+                    "evidence": {"type": "string"},
+                },
+                ["updates"],
+            ),
+            update_state,
+            "brain.propose",
+        ),
+        Tool(
+            "hand_off",
+            "Move a task: claim it, save progress (no `to`), pass it on (`to`, with done_when "
+            "and next_step), or finish (status done, with evidence). new_task opens one. "
+            "Save before the run ends.",
+            _obj(
+                {
+                    "task": {"type": "string"},
+                    "new_task": {"type": "object"},
+                    "goal": {"type": "string"},
+                    "goal_note": {"type": "string"},
+                    "to": {"type": "string"},
+                    "claim": {"type": "boolean"},
+                    "status": {
+                        "type": "string",
+                        "enum": ["working", "blocked", "waiting_for_you", "done", "dropped"],
+                    },
+                    "done_so_far": {"type": "string"},
+                    "next_step": {"type": "string"},
+                    "done_when": {"type": "string"},
+                    "decisions": {"type": "string"},
+                    "open_questions": {"type": "string"},
+                    "load": {"type": "string"},
+                    "evidence": {"type": "array", "items": {"type": "string"}},
+                    "reason": {"type": "string"},
+                    "agent": {"type": "string", "description": "The agent this run works as."},
+                }
+            ),
+            hand_off,
             "brain.propose",
         ),
         Tool(

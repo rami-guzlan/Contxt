@@ -6,11 +6,12 @@
 import { Bot } from "lucide-react";
 import { Link } from "react-router";
 
-import { useAgent, useAgentMap, useAgentSettings, useAgentSkills, useAgentSuggestions, useRunAgentAction } from "../../api/hooks";
-import type { AgentAction, AgentModel, AgentRun } from "../../api/types";
+import { useAgent, useAgentMap, useAgentSettings, useAgentSkills, useAgentSuggestions, useLoopRuns, useRunAgentAction } from "../../api/hooks";
+import type { AgentAction, AgentModel, AgentOverview, AgentRun, LoopRun } from "../../api/types";
 import { useAgentPanel } from "../../components/agent/AgentContext";
 import { ActionTurn } from "../../components/agent/AgentPanel";
 import { AgentQuestions } from "../../components/agent/AgentQuestions";
+import { GoalStatus, Progress, Trend } from "../../components/goals/GoalParts";
 import { Markdown } from "../../components/Markdown";
 import { ErrorNote, Loading, Section } from "../../components/ui";
 import { plural, when } from "../../lib/format";
@@ -34,6 +35,7 @@ export function AgentPage() {
           </button>
         </div>
       </section>
+      <AgentGoals goals={agent.goals ?? []} />
       <Models models={agent.models} value={agent.model} suggestions={agent.suggestions} />
       <Section title="Actions">
         <div className="agent-actions">
@@ -48,12 +50,37 @@ export function AgentPage() {
       <Suggestions />
       <Section title="What it did">
         <Runs runs={agent.runs} />
+        <RunSteps />
       </Section>
       <Section title="How it works">
         <MapView />
         <Procedures />
       </Section>
     </div>
+  );
+}
+
+/** The goals it keeps, at the top: what it is for, measured by code. */
+function AgentGoals({ goals }: { goals: NonNullable<AgentOverview["goals"]> }) {
+  return (
+    <Section title="Goals it keeps">
+      {goals.length ? (
+        <ul className="goal-rows">
+          {goals.map((g) => (
+            <li key={g.id} className="row wrap goal-row">
+              <Link to={`/settings?tab=alignment&goal=${encodeURIComponent(g.id)}`}>{g.title}</Link>
+              <Progress goal={g} />
+              <GoalStatus goal={g} />
+              <Trend values={g.trend} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted small">
+          It can keep the Brain itself healthy with four goals, measured by code. <Link to="/settings?tab=alignment">Turn them on in Settings &gt; Alignment</Link>.
+        </p>
+      )}
+    </Section>
   );
 }
 
@@ -112,6 +139,12 @@ function ActionCard({ action, last }: { action: AgentAction; last?: AgentRun }) 
     <article className="agent-action" aria-label={action.label}>
       <h3>{action.label}</h3>
       <p className="muted small">{action.blurb}</p>
+      {action.serves ? (
+        <p className="small">
+          <Link to={`/settings?tab=alignment&goal=${encodeURIComponent(action.serves.id)}`}>Why I'm doing this</Link>: {action.serves.title} (
+          {action.serves.words})
+        </p>
+      ) : null}
       {last ? (
         <p className="small">
           Last {when(last.at)}: {last.summary}
@@ -175,6 +208,43 @@ function Runs({ runs }: { runs: AgentRun[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** How each run went, step by step (BL 17.8): the tool it called, what came back, what code
+ * refused, and how it ended. */
+function RunSteps() {
+  const { data: runs } = useLoopRuns();
+  if (!runs?.length) return null;
+  return (
+    <details className="sent-text">
+      <summary>How each run went, step by step</summary>
+      <ol className="agent-runs">
+        {runs.map((run: LoopRun) => (
+          <li key={run.id}>
+            <span className="small">
+              <strong>{run.action}</strong> · {when(run.at)} · {run.ending === "hand-up" ? `handed up: ${run.record.why ?? ""}` : "findings"}
+              {run.record.model ? <span className="muted"> · {run.record.model}</span> : null}
+            </span>
+            <ol className="small">
+              {(run.record.steps ?? []).map((step, index) => (
+                <li key={index}>
+                  {step.tool ? (
+                    <>
+                      Looked with <code>{step.tool}</code>
+                      {step.result ? <span className="muted">: {step.result.slice(0, 160)}</span> : null}
+                    </>
+                  ) : (
+                    <>Answered</>
+                  )}
+                  {step.problems.length ? <span className="warning"> Refused: {step.problems.join("; ")}</span> : null}
+                </li>
+              ))}
+            </ol>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 

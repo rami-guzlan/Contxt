@@ -338,7 +338,13 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     flows = (
         None
         if args.no_worker
-        else WorkflowWorker(runtime.ws, runtime.runners, runtime.agent, settings.worker_interval)
+        else WorkflowWorker(
+            runtime.ws,
+            runtime.runners,
+            runtime.agent,
+            settings.worker_interval,
+            library=runtime.library,
+        )
     )
     if worker:
         worker.start()
@@ -354,6 +360,12 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
         librarian.start()
     if flows:
         flows.start()
+    # The local model service the retrieval engine runs on (one per machine, shared by the app
+    # and every AI app's Brain connection). Without verified models it says so, and retrieval
+    # falls back to code and the meaning index. BRAIN_MODEL_SERVICE=off leaves it unstarted.
+    from brainkit import modelservice
+
+    print(modelservice.ensure())
     print(f"Contxt on {settings.base_url}")
     print(f"Sign in: {settings.base_url}/auth/login?token={runtime.owner_token}")
     print(f"The app's MCP endpoint, for the AI work it starts: {settings.base_url}/mcp")

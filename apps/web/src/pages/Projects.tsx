@@ -1,10 +1,12 @@
-// Projects: the work the Brain follows across every conversation. Each has what it is for, where
-// it stands, your own Workspace for it (docs, links and agents, private to you), its progress as
-// a timeline, its files with which copy each is, the notes filed with it, and the names your AI
-// knows it by; and you can see exactly what your AI gets for it.
+// Goals and Projects: the work the Brain follows across every conversation and, once you set
+// one, the goals it serves (goals plan 6.1). Each project has its objective (the output it is
+// chasing, at the top of every brief in it), where it stands, your own Workspace for it, its
+// progress as a timeline, its files, the notes filed with it, and the names your AI knows it by;
+// and you can see exactly what your AI gets for it. Goals are optional: without one this is
+// simply Projects, with one quiet line about them.
 
 import { type FormEvent, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import {
   useAiRequests,
@@ -14,10 +16,14 @@ import {
   useBrainProposals,
   useCreateBrainProject,
   useGoals,
+  useLadder,
+  useProjectObjective,
   useUpdateProject,
 } from "../api/hooks";
 import type { BrainProject, BrainProjectDetail } from "../api/types";
 import { ContextPreview } from "../components/ContextPreview";
+import { GoalCard, SetGoal, goalUrl } from "../components/goals/GoalParts";
+import { ProjectTasks } from "../components/tasks/Tasks";
 import { Markdown } from "../components/Markdown";
 import { Empty, ErrorNote, Field, Loading, Section } from "../components/ui";
 import { ProjectWorkspace } from "../components/work/WorkspaceParts";
@@ -53,29 +59,90 @@ const STATE: { key: string; name: string }[] = [
 
 export function ProjectsPage() {
   const { data: projects, isLoading, error } = useBrainProjects();
+  const { data: ladder } = useLadder();
+  const [params] = useSearchParams();
+  // "Set it as a goal" from Catch up opens the panel with the words it came with.
+  const start = params.get("set") ?? "";
   const [adding, setAdding] = useState(false);
+  const [setting, setSetting] = useState(!!start);
+  const [goalFilter, setGoalFilter] = useState("");
   if (isLoading) return <Loading />;
   if (!projects) return <ErrorNote error={error} />;
-  const active = projects.filter((p) => p.active);
-  const rest = projects.filter((p) => !p.active);
+  const hasGoals = !!ladder?.has_goals;
+  const goals = (ladder?.yours ?? []).filter((g) => !["dropped", "retired"].includes(g.lifecycle));
+  const titles = new Map(goals.map((g) => [g.id, g.title]));
+  const shown = goalFilter ? projects.filter((p) => (goalFilter === "none" ? !p.goals?.length : p.goals?.includes(goalFilter))) : projects;
+  const active = shown.filter((p) => p.active);
+  const rest = shown.filter((p) => !p.active);
   return (
     <div className="page">
-      <h1>Projects</h1>
+      <h1>{hasGoals ? "Goals and Projects" : "Projects"}</h1>
       <p className="lede">
-        The work your AI follows. Mention a project by any of its names in any chat, and your AI gets what it is for, where it
-        stands, its latest progress and its current files.
+        {hasGoals ? "What you want to achieve, and the work toward it. Your Brain's purpose is in " : "The work your AI follows. "}
+        {hasGoals ? (
+          <>
+            <Link to="/settings?tab=alignment">Settings &gt; Alignment</Link>.
+          </>
+        ) : (
+          "Mention a project by any of its names in any chat, and your AI gets its objective, where it stands, its latest progress and its current files."
+        )}
       </p>
+      {!hasGoals ? (
+        <p className="muted small">
+          Goals are optional. Add one when you want to plan toward something bigger than a single project.{" "}
+          <button type="button" className="link small" onClick={() => setSetting(true)}>
+            Set a goal
+          </button>
+        </p>
+      ) : null}
       <div className="row" data-tour="projects-new">
+        {hasGoals ? (
+          <button type="button" onClick={() => setSetting(true)}>
+            + Goal
+          </button>
+        ) : null}
         <button type="button" className="primary" onClick={() => setAdding(!adding)}>
-          New project
+          {hasGoals ? "+ Project" : "New project"}
         </button>
       </div>
-      {adding ? <NewProject onDone={() => setAdding(false)} /> : null}
-      <Section title="Active" tour="projects-list">
+      {setting ? <SetGoal start={start} onClose={() => setSetting(false)} /> : null}
+      {adding ? <NewProject goals={goals.map((g) => ({ id: g.id, title: g.title }))} onDone={() => setAdding(false)} /> : null}
+      {hasGoals ? (
+        <Section title="Your goals">
+          <ul className="goal-cards">
+            {goals.map((g) => (
+              <GoalCard key={g.id} goal={g} />
+            ))}
+          </ul>
+          <button type="button" className="link small" onClick={() => setSetting(true)}>
+            + Set a goal
+          </button>
+        </Section>
+      ) : null}
+      <Section
+        title={hasGoals ? "Projects" : "Active"}
+        tour="projects-list"
+        actions={
+          hasGoals ? (
+            <label className="small">
+              Goal{" "}
+              <select value={goalFilter} onChange={(event) => setGoalFilter(event.target.value)}>
+                <option value="">All</option>
+                {goals.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.title}
+                  </option>
+                ))}
+                <option value="none">No goal</option>
+              </select>
+            </label>
+          ) : null
+        }
+      >
         {active.length ? (
           <ul className="project-cards">
             {active.map((p) => (
-              <ProjectCard key={p.id} project={p} />
+              <ProjectCard key={p.id} project={p} goals={hasGoals ? titles : undefined} />
             ))}
           </ul>
         ) : (
@@ -86,7 +153,7 @@ export function ProjectsPage() {
         <Section title="Paused or finished">
           <ul className="project-cards">
             {rest.map((p) => (
-              <ProjectCard key={p.id} project={p} />
+              <ProjectCard key={p.id} project={p} goals={hasGoals ? titles : undefined} />
             ))}
           </ul>
         </Section>
@@ -95,10 +162,11 @@ export function ProjectsPage() {
   );
 }
 
-function ProjectCard({ project }: { project: BrainProject }) {
+function ProjectCard({ project, goals: titles }: { project: BrainProject; goals?: Map<string, string> }) {
   const { data: goals } = useGoals();
   const fromGoals = (goals?.projects ?? []).some((name) => name.toLowerCase() === project.title.toLowerCase());
   const quiet = quietDays(project.updated);
+  const serves = (project.goals ?? []).filter((id) => titles?.has(id));
   return (
     <li className="card project-card">
       <header>
@@ -108,6 +176,24 @@ function ProjectCard({ project }: { project: BrainProject }) {
         {project.status && project.status !== "active" ? <span className="chip">{label(project.status)}</span> : null}
         {fromGoals ? <span className="chip small">From your goals</span> : null}
       </header>
+      {titles ? (
+        <p className="small">
+          {serves.length ? (
+            <>
+              Serves:{" "}
+              {serves.map((id, i) => (
+                <span key={id}>
+                  {i ? ", " : ""}
+                  <Link to={goalUrl(id)}>{titles.get(id)}</Link>
+                </span>
+              ))}
+            </>
+          ) : (
+            <span className="muted">(no goal)</span>
+          )}
+        </p>
+      ) : null}
+      {project.objective ? <p className="small">Objective: {clip(project.objective, 200)}</p> : null}
       {project.summary ? <p className="muted">{project.summary}</p> : null}
       {project.current && project.current !== project.summary ? (
         <p className="small">
@@ -152,13 +238,18 @@ function StillActive({ project, days }: { project: BrainProject; days: number })
   );
 }
 
-/** A new project: its name, what it is for in a line, and the other names you will call it. */
-function NewProject({ onDone }: { onDone: () => void }) {
+/** A new project: its name, the output it is chasing (its objective, which opens every brief in
+ * it), what it is for in a line, the goals it serves (asked only when you have goals), and the
+ * other names you will call it. */
+function NewProject({ onDone, goals = [] }: { onDone: () => void; goals?: { id: string; title: string }[] }) {
   const create = useCreateBrainProject();
   const navigate = useNavigate();
   const [name, setName] = useState("");
+  const [objective, setObjective] = useState("");
   const [summary, setSummary] = useState("");
   const [aliases, setAliases] = useState("");
+  const [serves, setServes] = useState<string[]>([]);
+  const words = objective.trim() ? objective.trim().split(/\s+/).length : 0;
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -166,6 +257,8 @@ function NewProject({ onDone }: { onDone: () => void }) {
       {
         name: name.trim(),
         summary: summary.trim(),
+        ...(objective.trim() ? { objective: objective.trim() } : {}),
+        ...(serves.length ? { goals: serves } : {}),
         aliases: aliases.split(",").map((a) => a.trim()).filter(Boolean),
       },
       {
@@ -182,14 +275,32 @@ function NewProject({ onDone }: { onDone: () => void }) {
       <Field label="Name">
         <input required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} />
       </Field>
+      <Field label="What output are we chasing?" hint={`Its objective, a sentence or two: every brief in the project opens with it. ${words ? `${words} of 60 words.` : ""}`}>
+        <textarea rows={2} maxLength={1000} value={objective} onChange={(event) => setObjective(event.target.value)} />
+      </Field>
       <Field label="What it is for" hint="One line.">
         <input required maxLength={300} value={summary} onChange={(event) => setSummary(event.target.value)} />
       </Field>
+      {goals.length ? (
+        <fieldset className="stack small">
+          <legend>The goals it serves</legend>
+          {goals.map((g) => (
+            <label key={g.id}>
+              <input
+                type="checkbox"
+                checked={serves.includes(g.id)}
+                onChange={(event) => setServes(event.target.checked ? [...serves, g.id] : serves.filter((id) => id !== g.id))}
+              />{" "}
+              {g.title}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
       <Field label="Other names you will call it" hint="Comma separated, like: campaign proposals, Jordan's proposals">
         <input value={aliases} onChange={(event) => setAliases(event.target.value)} />
       </Field>
       <div className="row">
-        <button type="submit" className="primary" disabled={create.isPending || !name.trim() || !summary.trim()}>
+        <button type="submit" className="primary" disabled={create.isPending || !name.trim() || !summary.trim() || words > 60}>
           Start it
         </button>
         <button type="button" onClick={onDone}>
@@ -203,20 +314,79 @@ function NewProject({ onDone }: { onDone: () => void }) {
 
 // ---------------------------------------------------------------- one project
 
+/** The project's objective: the output it is chasing, the first line of every brief in it.
+ * Changing it reaches every brief, so it takes a reason and makes an undo point. */
+function Objective({ project }: { project: BrainProjectDetail }) {
+  const change = useProjectObjective(project.id);
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(project.objective ?? "");
+  const [reason, setReason] = useState("");
+  if (!editing) {
+    return (
+      <p>
+        <strong>Objective:</strong> {project.objective || <span className="muted">not set yet; its briefs use what it is for meanwhile</span>}{" "}
+        <button type="button" className="link small" onClick={() => setEditing(true)}>
+          {project.objective ? "Edit" : "Set it"}
+        </button>
+      </p>
+    );
+  }
+  return (
+    <form
+      className="stack"
+      aria-label="Objective"
+      onSubmit={(event: FormEvent) => {
+        event.preventDefault();
+        change.mutate({ objective: text.trim(), reason: reason.trim() }, { onSuccess: () => setEditing(false) });
+      }}
+    >
+      <Field label="What output are we chasing?" hint="A sentence or two, about 60 words at most. It reaches every brief in the project.">
+        <textarea rows={2} maxLength={1000} value={text} onChange={(event) => setText(event.target.value)} />
+      </Field>
+      <Field label="Why it changes">
+        <input required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
+      </Field>
+      <div className="row">
+        <button type="submit" className="primary" disabled={change.isPending || !reason.trim()}>
+          Save
+        </button>
+        <button type="button" onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
+      <ErrorNote error={change.error} />
+    </form>
+  );
+}
+
 export function ProjectPage() {
   const { projectId = "" } = useParams();
   const { data: project, isLoading, error } = useBrainProject(projectId);
+  const { data: ladder } = useLadder();
   const [adding, setAdding] = useState(false);
   if (isLoading) return <Loading />;
   if (!project) return <ErrorNote error={error} />;
   return (
     <div className="page project-page">
       <nav className="breadcrumb" aria-label="Breadcrumb">
-        <Link to="/projects">Projects</Link>
+        <Link to="/projects">{ladder?.has_goals ? "Goals and Projects" : "Projects"}</Link>
       </nav>
       <header className="page-head">
         <h1>{project.title}</h1>
+        {ladder?.has_goals && project.goals?.length ? (
+          <p className="small">
+            Serves:{" "}
+            {project.goals.map((id, i) => (
+              <span key={id}>
+                {i ? ", " : ""}
+                <Link to={goalUrl(id)}>{ladder.yours.find((g) => g.id === id)?.title ?? id}</Link>
+              </span>
+            ))}
+          </p>
+        ) : null}
+        <Objective project={project} />
         {project.summary ? <p className="lede">{project.summary}</p> : null}
+        <ProjectTasks project={project.id} />
       </header>
       <div className="grid-2">
         <Section title="Where it stands" tour="project-state">

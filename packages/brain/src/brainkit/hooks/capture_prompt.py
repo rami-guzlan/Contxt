@@ -67,7 +67,10 @@ def push_mode(vault_root: str) -> str:
 
 def is_new(data: dict, held: dict) -> bool:
     """Does this brief give the conversation something it does not hold? Must-holds come with
-    every brief, so they count only the first time."""
+    every brief, so they count only the first time. When the local engine's gate or cut found
+    nothing for the message, a push sends nothing (a pull would get one line)."""
+    if data.get("mode") == "nothing":
+        return False
     if any(data.get(key) for key in NEW):
         return True
     return any(("must", item) not in held for item in data.get("must_hold_ids") or [])

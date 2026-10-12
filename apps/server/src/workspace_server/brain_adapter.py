@@ -17,10 +17,13 @@ from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
 
+from brainkit import statements
 from brainkit import util as brain_util
 from brainkit.api import Brain, Result
 from brainkit.governance import summary_from
+from brainkit.model import listish
 from brainkit.scopes import Scopes
+from workspace_core.domain import statements as statements_core
 from workspace_core.errors import Conflict, NotFound, ValidationFailed
 from workspace_core.ports import (
     BrainArea,
@@ -92,16 +95,6 @@ def _skill_hint(match: re.Match[str]) -> str:
         'get_brain_skill(name="...") when the task follows it.\n'
     )
 
-
-KIND_MAP = {
-    "fact": "fact",
-    "rule": "rule",
-    "preference": "fact",
-    "decision": "fact",
-    "procedure": "rule",
-    "identity": "identity",
-    "state": "state",
-}
 
 # The folders the workspace serves files from. Notes are read through entries; the inbox,
 # the runtime folder and the configuration are never served.
@@ -194,6 +187,11 @@ class BrainKitAdapter:
         self._lock = threading.Lock()
         self._fetching = False  # the matching model is being downloaded
         self._fetch_error: str | None = None
+        # Skills' git history for the Skills page, kept while the Brain's files are unchanged.
+        self._skills_history: tuple[str, dict[str, dict[str, Any]]] | None = None
+        self._held_texts: tuple[str, set[str]] | None = None  # live notes' fingerprints
+        self._local_fetching: set[str] = set()  # local models being downloaded
+        self._local_errors: dict[str, str] = {}
 
     def close(self) -> None:
         self.brain.close()
@@ -253,6 +251,101 @@ class BrainKitAdapter:
 
         threading.Thread(target=fetch, name="matching-model", daemon=True).start()
         return self.models()
+
+    # ---------------------------------------------------------------- local models
+
+    def local_models(self) -> dict[str, Any]:
+        """Settings, On this computer, Local models (brain-logic plan 5.11.16)."""
+        from brainkit import machine
+
+        found = machine.overview()
+        embedder = self.brain.embedder
+        here = bool(embedder is not None and embedder.present())
+        for role in found.get("roles") or []:
+            for option in role["options"]:
+                if option.get("with_brain"):  # the meaning index's model, kept with the Brain
+                    option.update(downloaded=here, why_not="" if here else "not downloaded")
+        found.update(
+            enabled=True,
+            downloading=sorted(self._local_fetching),
+            errors=dict(self._local_errors),
+        )
+        return found
+
+    def act_local_models(
+        self, action: str, name: str = "", on: bool | None = None
+    ) -> dict[str, Any]:
+        """One change the owner asked for. A refusal (the lock, the RAM check, a model in
+        use) is a ValidationFailed with the reason; a warning that does not refuse comes
+        back as `notice`."""
+        from brainkit import machine, modellock, models_client
+
+        notice = ""
+        try:
+            if action == "check":
+                machine.check()  # and with the models here, time them again
+                if models_client.status(refresh=True).ready:
+                    notice = "; ".join(machine.check_speed()["slow"])
+            elif action == "default":
+                lock = modellock.Lock.load()
+                made = machine.choose(lock.pin(name).role, name, lock=lock)
+                notice = str(made.get("warning") or "")
+                self._reload_local_models()
+            elif action == "download":
+                self._download_local_model(name)
+            elif action == "remove":
+                machine.remove(name)
+            elif action == "speed":
+                notice = "; ".join(machine.check_speed()["slow"])
+            elif action == "claude_code":
+                machine.set_agent_claude_code(bool(on))
+        except (modellock.Refused, ValueError) as exc:
+            raise ValidationFailed(str(exc)) from exc
+        except (models_client.ServiceError, OSError, RuntimeError) as exc:
+            raise Conflict(f"Not done: {exc}") from exc
+        found = self.local_models()
+        found["notice"] = notice
+        return found
+
+    def _reload_local_models(self) -> None:
+        """A running model service loads the new default; with none running, one starts when
+        this computer's models are here."""
+        from brainkit import models_client, modelservice
+
+        found = models_client.status(refresh=True)
+        if found.url:
+            models_client.reload(found)
+        else:
+            log.info(modelservice.ensure())
+
+    def _download_local_model(self, name: str) -> None:
+        """Fetch a pinned model in the background, then verify it against the lock."""
+        from brainkit import machine, modellock
+
+        lock = modellock.Lock.load()
+        machine.downloadable(name, lock)  # refused now, not in the background
+        with self._lock:
+            if name in self._local_fetching:
+                return
+            self._local_fetching.add(name)
+            self._local_errors.pop(name, None)
+
+        def fetch() -> None:
+            try:
+                verdict = machine.download(name, lock=lock)
+                if not verdict.ok:
+                    self._local_errors[name] = (
+                        f"Downloaded, but it does not match the lock, so it is not used: "
+                        f"{verdict.reason}"
+                    )
+            except Exception as exc:  # the network, the disk: say what went wrong
+                self._local_errors[name] = f"{name} could not be downloaded: {exc}"
+                log.warning(self._local_errors[name], exc_info=True)
+            finally:
+                with self._lock:
+                    self._local_fetching.discard(name)
+
+        threading.Thread(target=fetch, name=f"local-model-{name}", daemon=True).start()
 
     # ---------------------------------------------------------------- reads
 
@@ -652,12 +745,53 @@ class BrainKitAdapter:
             return None
         versions = self.skill_versions(skill.name) or []
         edited = str(versions[0].get("at") or "") if versions else ""
+        return {"last_edited": edited or None, "changed": self._changed_since(st, skill, edited)}
+
+    def _changed_since(self, st: Any, skill: Any, edited: str) -> list[dict[str, Any]]:
+        """What a skill loads that changed after its last edit."""
         changed: list[dict[str, Any]] = []
         for key in skill.loads:
             when, title = self._load_changed(st, str(key))
             if when and edited and when > edited:
                 changed.append({"key": str(key), "title": title, "at": when})
-        return {"last_edited": edited or None, "changed": changed}
+        return changed
+
+    def holds_text(self, fingerprints: list[str]) -> set[str]:
+        st = self.brain.state()
+        with self._lock:
+            if self._held_texts is None or self._held_texts[0] != st.fingerprint:
+                self._held_texts = (
+                    st.fingerprint,
+                    {statements_core.fingerprint(n.body) for n in st.index.notes.values()},
+                )
+            held = self._held_texts[1]
+        return {f for f in fingerprints if f in held}
+
+    def skills_history(self, names: list[str]) -> dict[str, dict[str, Any]]:
+        """Each skill's versions (their hashes, newest first), its last edit and what it loads
+        that changed since, read from git once while the Brain's files stay as they are (git
+        is slow, and the Skills page asks for every skill at once)."""
+        st = self.brain.state()
+        chain, partitions = self._view(st)
+        with self._lock:
+            if self._skills_history is None or self._skills_history[0] != st.fingerprint:
+                self._skills_history = (st.fingerprint, {})
+            known = self._skills_history[1]
+        out: dict[str, dict[str, Any]] = {}
+        for name in names:
+            skill = st.index.skills.get(str(name or "").strip().lstrip("/"))
+            if skill is None or not Scopes.admits(skill.scope, skill.partition, chain, partitions):
+                continue
+            if skill.name not in known:
+                versions = self.skill_versions(skill.name) or []
+                edited = str(versions[0].get("at") or "") if versions else ""
+                known[skill.name] = {
+                    "hashes": [v.get("hash") for v in versions],
+                    "last_edited": edited or None,
+                    "changed": self._changed_since(st, skill, edited),
+                }
+            out[name] = known[skill.name]
+        return out
 
     def _load_changed(self, st: Any, key: str) -> tuple[str | None, str]:
         """When what a skill loads last changed on disk (a document, or the newest note on a
@@ -1174,6 +1308,8 @@ class BrainKitAdapter:
                     files=counts.get(focus.id, 0),
                     updates=len(focus.updates),
                     topic=focus.note.route_key,
+                    objective=str(focus.note.meta.get("objective") or ""),
+                    goals=listish(focus.note.meta.get("goals")),
                 )
             )
         return out
@@ -1184,6 +1320,14 @@ class BrainKitAdapter:
             return None
         data: dict[str, Any] = dict(result.data)
         return data
+
+    def project_objective(self, project_id: str, objective: str, *, reason: str) -> None:
+        with self._lock:
+            result = self.brain.update(project_id, {"objective": objective}, reason=reason)
+        if result.is_error and result.data.get("status") != "unchanged":
+            if result.data.get("status") == "missing":
+                raise NotFound(result.text)
+            raise ValidationFailed(result.text, field="objective")
 
     def project_update(
         self, project_id: str, *, summary: str, changes: dict[str, str], evidence: str = ""
@@ -1198,10 +1342,19 @@ class BrainKitAdapter:
         return data
 
     def create_project(
-        self, *, name: str, summary: str, aliases: list[str], proposer: str
+        self,
+        *,
+        name: str,
+        summary: str,
+        aliases: list[str],
+        proposer: str,
+        objective: str = "",
+        goals: list[str] | None = None,
     ) -> BrainProject:
         with self._lock:
-            result = self.brain.focus_create(name, summary, aliases=aliases)
+            result = self.brain.focus_create(
+                name, summary, aliases=aliases, objective=objective, goals=goals or []
+            )
         if result.is_error:
             if result.data.get("status") == "exists":
                 raise Conflict(result.text)
@@ -1248,8 +1401,11 @@ class BrainKitAdapter:
             source += "; sources: " + ", ".join(sources)
         area, _, topic_name = (topic or "").partition("/")
         if kind == "decision" and not revises:
-            # A decision is a fact the capture policy knows as a decision.
+            # Older readers know a decision by its type as well as its kind.
             extra = dict(extra or {}, type="decision")
+        if statements.subtype(kind) and not revises:
+            # A preference or a convention is a rule of that subtype (one vocabulary).
+            extra = dict(extra or {}, subtype=statements.subtype(kind))
         # A must-hold the proposer suggests: the Brain checks its fields like any other.
         extra = dict(extra or {})
         must = extra.pop("must_hold", None) or {}
@@ -1272,7 +1428,7 @@ class BrainKitAdapter:
                 # Always one: a change to an entry must not keep the old text's summary.
                 summary=summary or summary_from(statement),
                 # A change to an entry keeps the entry's kind, scope and place.
-                note_kind=None if revises else KIND_MAP.get(kind, "fact"),
+                note_kind=None if revises else statements.filed(kind),
                 scope=None if revises else scope or None,
                 evidence=evidence,
                 source=source,
@@ -1351,6 +1507,13 @@ class BrainKitAdapter:
         )
         for key in ("got", "opened"):
             row[key] = [p for p in row.get(key) or [] if p["kind"] != "note" or p["id"] in seen]
+        found = row.get("why")
+        if found:
+            # Candidates the owner may not see are left out of "why", as from what it got.
+            for key in ("in", "out"):
+                found[key] = [
+                    r for r in found.get(key) or [] if r["kind"] != "note" or r["item"] in seen
+                ]
         if hidden:
             # It was handed notes the owner does not see: its text would show them.
             row["text"] = None
@@ -1436,7 +1599,7 @@ class BrainKitAdapter:
         found = evalset.case_for(self.brain, packet_id)
         return dict(found) if found else None
 
-    def eval_label(self, packet_id: str, labels: dict[str, list[str]]) -> dict[str, Any]:
+    def eval_label(self, packet_id: str, labels: dict[str, Any]) -> dict[str, Any]:
         """The owner's labels for one logged request: it joins the private eval set first if
         it is not in it yet."""
         from brainkit import evalset
@@ -1544,6 +1707,145 @@ class BrainKitAdapter:
                 raise Conflict(result.text)
             raise ValidationFailed(result.text, field=result.data.get("field"))
         return dict(result.data)
+
+    def ladder(self, *, with_signals: bool = False) -> dict[str, Any]:
+        return dict(self.brain.ladder(with_signals=with_signals).data)
+
+    def goal(self, goal_id: str) -> dict[str, Any]:
+        result = self.brain.goal(goal_id)
+        if result.is_error:
+            raise NotFound(result.text, id=goal_id)
+        return dict(result.data)
+
+    def goal_cards(self) -> list[dict[str, Any]]:
+        return list(self.brain.goal_cards().data.get("cards") or [])
+
+    def act_goal(
+        self, action: str, goal_id: str = "", fields: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.act_goal(action, goal_id, fields or {})
+        if result.is_error:
+            status = result.data.get("status")
+            if status == "missing":
+                raise NotFound(result.text, id=goal_id)
+            if status in ("forbidden", "busy"):
+                raise Conflict(result.text)
+            raise ValidationFailed(result.text, field=result.data.get("field"))
+        return dict(result.data)
+
+    # ---------------------------------------------------------------- State and tasks
+
+    @staticmethod
+    def _raise(result: Any, field: str | None = None) -> None:
+        status = result.data.get("status")
+        if status == "missing":
+            raise NotFound(result.text)
+        if status in ("exists", "taken", "forbidden", "busy"):
+            raise Conflict(result.text)
+        raise ValidationFailed(result.text, field=result.data.get("field") or field)
+
+    def state_act(self, action: str, fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.state_act(action, fields or {})
+        if result.is_error:
+            self._raise(result)
+        return dict(result.data)
+
+    def update_state(
+        self, updates: list[dict[str, Any]], *, evidence: str = "", session_id: str = ""
+    ) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.update_state(
+                updates, evidence=evidence, session_id=session_id or None
+            )
+        if result.is_error:
+            self._raise(result)
+        return dict(result.data, text=result.text)
+
+    def get_state(self, *, sheet: str = "", row: str = "", query: str = "") -> dict[str, Any]:
+        result = self.brain.get_state(sheet=sheet, row=row, query=query)
+        return dict(result.data, text=result.text)
+
+    def hand_off(self, **fields: Any) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.hand_off(**fields)
+        if result.is_error:
+            self._raise(result)
+        return dict(result.data, text=result.text)
+
+    def tasks(self, **filters: Any) -> list[dict[str, Any]]:
+        return list(self.brain.tasks(**filters).data.get("tasks") or [])
+
+    def task(self, task_id: str) -> dict[str, Any]:
+        result = self.brain.task(task_id)
+        if result.is_error:
+            raise NotFound(result.text, id=task_id)
+        return dict(result.data)
+
+    def outputs_for(self, paths: list[str]) -> dict[str, dict[str, Any]]:
+        from brainkit.activity import normal_path
+
+        wanted = {normal_path(p): p for p in paths}
+        found = self.brain.ledger.outputs_for(list(wanted))
+        return {wanted[k]: v for k, v in found.items() if k in wanted}
+
+    # ---------------------------------------------------------------- the updating loop
+
+    def agent_tool(self, name: str, args: Any) -> tuple[Any, list[str]]:
+        result = self.brain.agent_tool(name, args)
+        if result.is_error:
+            return None, list(result.data.get("problems") or [result.text])
+        return result.data.get("result"), []
+
+    def agent_menu(self) -> str:
+        return self.brain.agent_menu().text
+
+    def sweep(self) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.sync()
+        return dict(result.data, text=result.text)
+
+    def changes_digest(self) -> str:
+        return self.brain.changes_digest().text
+
+    def record_agent_run(
+        self, run_id: str, action: str, ending: str, record: dict[str, Any]
+    ) -> None:
+        self.brain.record_agent_run(run_id, action, ending, record)
+
+    def record_episode(self, **fields: Any) -> None:
+        self.brain.record_episode(**fields)
+
+    def loop_status(self) -> dict[str, Any]:
+        return dict(self.brain.loop_status().data)
+
+    def correction(self, text: str, *, session_id: str = "", packet_id: str = "") -> dict[str, Any]:
+        return dict(self.brain.correction(text, session_id=session_id, packet_id=packet_id).data)
+
+    def close_correction(self, correction_id: int, status: str) -> None:
+        result = self.brain.close_correction(correction_id, status)
+        if result.is_error:
+            raise ValidationFailed(result.text, field="status")
+
+    def check_output(self, text: str, *, sent_back: str = "") -> list[dict[str, Any]]:
+        found = self.brain.check_output(text, sent_back=sent_back)
+        return list(found.data.get("violations") or [])
+
+    def agent_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        return list(self.brain.agent_runs(limit=limit).data.get("runs") or [])
+
+    def blast_radius(self, proposal_id: str) -> dict[str, Any]:
+        result = self.brain.blast_radius(proposal_id)
+        if result.is_error:
+            raise NotFound(result.text)
+        return dict(result.data)
+
+    def link_output(self, path: str, *, project: str | None = None, row: str | None = None) -> None:
+        from brainkit.activity import normal_path
+
+        with self._lock:
+            self.brain.ledger.link_output(normal_path(path), project=project, row_ref=row)
 
     def builtin_skills(self) -> dict[str, Any]:
         return dict(self.brain.builtin_skills().data)

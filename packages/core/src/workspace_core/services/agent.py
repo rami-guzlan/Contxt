@@ -35,13 +35,21 @@ from typing import Any
 
 from workspace_core.clock import iso
 from workspace_core.db import schema
+from workspace_core.domain import statements
 from workspace_core.domain.policy import Principal
 from workspace_core.errors import Conflict, NotFound, ValidationFailed
 from workspace_core.ids import new_id
 
+from . import agent_loop
 from .brain import Brain
 from .runtime import Runtime
 
+# The goal each action works toward, among the knowledge agent's four (brainkit/ladder.py).
+ACTION_GOALS = {
+    "freshen-up": "goal-notes-checked",
+    "fill-gaps": "goal-questions-answered",
+    "check-alignment": "goal-rules-reach",
+}
 ACTIONS: dict[str, dict[str, str]] = {
     "tidy-repeats": {
         "label": "Find repeats",
@@ -71,6 +79,10 @@ ACTIONS: dict[str, dict[str, str]] = {
         "label": "Fill gaps",
         "blurb": "What your AIs asked that the Brain could not answer.",
     },
+    "verify-sources": {
+        "label": "Verify with sources",
+        "blurb": "Your most used, single-source and stale notes, checked against the web.",
+    },
 }
 # What each action's procedure lets the model answer; anything else is skipped.
 VERDICTS: dict[str, tuple[str, ...]] = {
@@ -81,8 +93,10 @@ VERDICTS: dict[str, tuple[str, ...]] = {
     "tidy-projects": ("next-steps", "close", "ask"),
     "tidy-skills": ("triggers", "retire", "fine"),
     "fill-gaps": ("teach", "route", "ignore"),
+    "verify-sources": ("confirmed", "challenge", "ask"),
 }
-FINE = ("different", "fine", "keep", "lasting", "ignore")
+FINE = ("different", "fine", "keep", "lasting", "ignore", "confirmed")
+MAX_SOURCES = 5
 DEFAULT_MODEL = "claude"
 MODEL = re.compile(r"^[a-z][a-z0-9-]{0,30}(:[A-Za-z0-9._:/-]{1,100})?$")
 KEY = re.compile(r"^[a-z0-9:_|.@/-]{1,300}$")
@@ -96,7 +110,7 @@ BRIEF_CANDIDATES = 5  # for a small local one
 UNUSED_DAYS = 90
 QUIET_DAYS = 14
 IDLE_SKILL_DAYS = 60
-NOTE_KINDS = ("fact", "rule", "decision", "preference")
+NOTE_KINDS = statements.AGENT_KINDS  # one vocabulary (domain/statements.py)
 
 PREAMBLE = """\
 You are the knowledge agent of a person's Brain: what every AI they use can know. Code made the \
@@ -136,6 +150,17 @@ def _text(value: Any, limit: int = 4000) -> str:
 
 def _key(*parts: str) -> str:
     return "|".join(p for p in parts if p)[:300]
+
+
+def _sources(finding: dict[str, Any]) -> list[str]:
+    """The web sources a verification finding cites: links only, at most MAX_SOURCES."""
+    found = finding.get("sources")
+    items = found if isinstance(found, list) else []
+    return [
+        str(s).strip()[:500]
+        for s in items
+        if isinstance(s, str) and re.match(r"^https?://\S+$", s.strip())
+    ][:MAX_SOURCES]
 
 
 def _phrases(value: Any) -> list[str]:
@@ -184,10 +209,33 @@ class KnowledgeAgent:
         questions waiting, and the last runs (newest first)."""
         who.require("brain.read")
         state = self._state()
+        goals = [
+            g
+            for g in self.rt.brain.ladder().get("agents") or []
+            if g.get("kept_by") == "knowledge-agent"
+        ]
+        kept = {g["id"]: g for g in goals}
         return {
             "model": state.get("model") or DEFAULT_MODEL,
             "suggestions": state.get("suggestions", True) is not False,
-            "actions": [{"id": k, **v} for k, v in ACTIONS.items()],
+            # Its goals first, and for each action the goal it serves ("Why I'm doing this").
+            "goals": goals,
+            "actions": [
+                {
+                    "id": k,
+                    **v,
+                    "serves": (
+                        {
+                            "id": ACTION_GOALS[k],
+                            "title": kept[ACTION_GOALS[k]]["title"],
+                            "words": kept[ACTION_GOALS[k]]["words"],
+                        }
+                        if ACTION_GOALS.get(k) in kept
+                        else None
+                    ),
+                }
+                for k, v in ACTIONS.items()
+            ],
             "questions": [q for q in state.get("questions") or [] if q.get("status") == "open"],
             "runs": list(reversed(state.get("runs") or [])),
         }
@@ -213,6 +261,12 @@ class KnowledgeAgent:
 
     def model(self) -> str:
         return str(self._state().get("model") or DEFAULT_MODEL)
+
+    def chosen_model(self) -> str | None:
+        """The model the owner chose, or None: then the app picks (a local model when one is
+        here, brain-logic plan 17)."""
+        found = self._state().get("model")
+        return str(found) if found else None
 
     # ---------------------------------------------------------------- suggestions, no model
 
@@ -385,12 +439,18 @@ class KnowledgeAgent:
             return "", gathered
         procedure = self.rt.brain.agent_skill(action)
         outline = self.rt.brain.agent_outline(brief=brief).get("text") or ""
-        parts = [PREAMBLE, "# The procedure\n\n" + procedure.strip()]
-        if not brief:
-            kernel = (self.rt.brain.kernel(tools=False) or {}).get("text") or ""
-            if kernel.strip():
-                parts.append("# The person's startup context (their rules)\n\n" + kernel.strip())
+        menu = self.rt.brain.agent_menu()
+        # The core prompt (BL 17.2), then the job's procedure; the person's rules and the
+        # must-holds in play with every job.
+        parts = [agent_loop.core(menu) if menu else PREAMBLE]
+        parts.append("# The procedure\n\n" + procedure.strip())
+        kernel = (self.rt.brain.kernel(tools=False) or {}).get("text") or ""
+        if kernel.strip():
+            parts.append("# The person's startup context (their rules)\n\n" + kernel.strip())
         parts.append(outline.strip())
+        digest = self.rt.brain.changes_digest()
+        if digest:
+            parts.append("# What changed lately\n\n" + digest)
         parts.append(
             "# The candidates\n\n"
             + "\n\n".join(f"## {c['ref']}\n\n{c['text']}" for c in gathered["candidates"])
@@ -446,6 +506,10 @@ class KnowledgeAgent:
             candidate = candidates.get(str(finding.get("ref") or "").strip())
             verdict = str(finding.get("verdict") or "").strip().lower()
             if candidate is None or verdict not in VERDICTS[action]:
+                record["skipped"] += 1
+                continue
+            if action == "verify-sources" and not _sources(finding):
+                # A finding without a source is never kept (BL 9's gate).
                 record["skipped"] += 1
                 continue
             if verdict in FINE:
@@ -511,6 +575,33 @@ class KnowledgeAgent:
         origin = f"agent:{action}"
         ids = [str(i) for i in candidate.get("ids") or []]
         kind = candidate.get("kind")
+        if action == "verify-sources":
+            sources = _sources(finding)
+            cited = "Sources: " + "; ".join(sources)
+            target = self._which(candidate, finding, "which")
+            if verdict == "challenge":
+                claim = _text(finding.get("text"), 1000)
+                if not claim:
+                    return None
+                made = self.brain.challenge(
+                    who,
+                    note_id=target,
+                    claim=claim,
+                    evidence=f"{why} {cited}".strip(),
+                    source=sources[0],
+                )
+                return {"proposal_id": made.proposal_id} if made.proposal_id else None
+            ask = _text(finding.get("text"), 300) or "Is this still true?"
+            return {
+                "action": action,
+                "verdict": verdict,
+                "why": f"{why} {cited}".strip(),
+                "text": _text(finding.get("text"), 1000),
+                "ask": ask,
+                "sources": sources,
+                "target": {"type": "note", "id": target, "title": candidate["title"]},
+                "key": _key(action, verdict, "note", target, ask[:60]),
+            }
         if verdict == "merge":
             keep = self._which(candidate, finding, "keep")
             text = _text(finding.get("text"))
@@ -682,6 +773,16 @@ class KnowledgeAgent:
                     q["closed_at"] = tx.now
 
         self._update(change)
+        # Its memory (BL 17.6): the suggestion, the person's decision and why, by topic.
+        self.rt.brain.record_episode(
+            action=str(question.get("action") or ""),
+            area=str(target.get("type") or ""),
+            topic=str(target.get("title") or target.get("id") or ""),
+            text=str(question.get("ask") or question.get("text") or ""),
+            decision="declined" if do in ("dismiss", "verify") else "kept",
+            reason=_words(text, 300) if do == "answer" else "",
+            ref=str(target.get("id") or ""),
+        )
         return outcome
 
     # ---------------------------------------------------------------- a conversation

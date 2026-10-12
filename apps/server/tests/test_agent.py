@@ -207,6 +207,57 @@ def test_local_models_come_from_ollama_and_their_thinking_is_left_out(runtime):
     assert [m.kind for m in Models(runtime.runners, fetch=down).list()] == ["cli"]
 
 
+def test_the_pinned_local_model_is_the_default_when_it_is_here(runtime):
+    from brainkit import models_client
+
+    service = models_client.Status(
+        url="http://127.0.0.1:1",
+        ready=True,
+        roles={"agent": {"model": "qwen3.5-4b", "verified": True, "loaded": True}},
+    )
+    asked = []
+
+    class Agent:
+        def __init__(self, found):
+            self.found = found
+
+        def generate(self, prompt, *, schema=None, max_tokens=800, timeout=240.0):
+            asked.append((prompt, schema))
+            return {
+                "text": '<think>hmm</think>{"findings": []}',
+                "usage": {"tokens_in": 120, "tokens_out": 9},
+                "latency_ms": 40,
+            }
+
+    def none(url, body=None, *, timeout=2.0):
+        raise OSError("no Ollama here")
+
+    models = Models(
+        runtime.runners, fetch=none, service=lambda: service, agent=Agent, settings=lambda: {}
+    )
+    assert models.default() == "local:qwen3.5-4b"
+    pinned = models.list()[0]
+    assert (pinned.id, pinned.kind, pinned.brief) == ("local:qwen3.5-4b", "pinned", True)
+    claude = next(m for m in models.list() if m.id == "claude")
+    # With a local model here, Claude Code is the person's opt-in.
+    assert not claude.available and claude.detail.startswith("Off for the knowledge agent")
+    owner = runtime.ws.owner()
+    assert models.ask(owner, pinned, "Judge.", json_only=True) == '{"findings": []}'
+    assert asked == [("Judge.", {"type": "object"})]
+    opted = Models(
+        runtime.runners,
+        fetch=none,
+        service=lambda: service,
+        agent=Agent,
+        settings=lambda: {"agent_claude_code": True},
+    )
+    claude = next(m for m in opted.list() if m.id == "claude")
+    assert not claude.detail.startswith("Off for the knowledge agent")
+    gone = Models(runtime.runners, fetch=none, service=models_client.Status, settings=lambda: {})
+    assert gone.default() == "claude"  # no local model here: Claude Code, as before
+    assert [m.kind for m in gone.list()] == ["cli"]
+
+
 def test_suggestions_and_setting_one_aside(owner, runtime, brain_vault):
     stub(runtime)
     add_note(

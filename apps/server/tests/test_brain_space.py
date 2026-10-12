@@ -353,17 +353,20 @@ def test_a_proposal_carries_a_plain_one_line_summary(owner, model):
 
 
 def test_the_model_for_the_apps_ai_work_is_the_owners_setting(owner, model, working_notes):
-    assert owner.ok(owner.get("/api/brain/distill/settings")) == {"assignee_id": None}
+    assert owner.ok(owner.get("/api/brain/distill/settings")) == {
+        "assignee_id": None,
+        "triage": None,
+    }
     refused = model.put("/api/brain/distill/settings", json={"assignee_id": model.actor_id})
     assert refused.status_code == 403
     chosen = owner.ok(
         owner.put("/api/brain/distill/settings", json={"assignee_id": model.actor_id})
     )
-    assert chosen == {"assignee_id": model.actor_id}
+    assert chosen == {"assignee_id": model.actor_id, "triage": None}
     bad = owner.put("/api/brain/distill/settings", json={"assignee_id": "act_nobody"})
     assert bad.status_code == 422
     cleared = owner.ok(owner.put("/api/brain/distill/settings", json={"assignee_id": None}))
-    assert cleared == {"assignee_id": None}
+    assert cleared == {"assignee_id": None, "triage": None}
 
 
 def test_a_request_waits_for_the_first_model(owner, runtime, working_notes):

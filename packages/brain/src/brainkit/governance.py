@@ -42,14 +42,15 @@ import fnmatch
 import re
 
 from . import frontmatter as fm
-from . import uploads, util
+from . import statements, uploads, util
 from .model import CONFIDENCE, LEGACY_KINDS, LOADS, MAX_CRITICAL, MUST_HOLD, listish
 from .scopes import Scopes
+from .sessions import Ledger
 
 KINDS = ("note.create", "note.update", "note.archive", "focus.create")
 RESERVED = {"status", "proposal", "approved_by", "approved_at", "revised"}
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{1,120}$")
-NOTE_KINDS = ("fact", "rule", "identity", "state")
+NOTE_KINDS = statements.NOTE_KINDS  # one vocabulary (statements.py)
 RULE_START = re.compile(r"^\s*(never|always|do not|don't|avoid|must|every|only|stage|use|run|"
                         r"keep|check|verify|i prefer|i'd prefer|i want|i'd like|i would like|"
                         r"i like|i don't want|i do not want|i'd rather|i would rather|"
@@ -109,8 +110,7 @@ def auto_applies(config, principal: str, scope: str) -> bool:
 # (the owner, in the workspace or the CLI), `chat` (the owner's AI, in a conversation) or
 # `folder` (a folder the brain sweeps). Anyone else's changes to shared knowledge follow
 # scopes (auto_applies) and wait for the approver.
-CAPTURE_TYPES = ("file", "fact", "decision", "progress", "preference", "rule", "convention",
-                 "change")
+CAPTURE_TYPES = statements.CAPTURE_TYPES
 CAPTURE_ORIGINS = ("app", "chat", "folder")
 # What changes how every AI behaves, and changes to what is there, never apply from a chat or
 # a folder under any preset; a person may still let them in, one type at a time.
@@ -150,6 +150,29 @@ def preset_of(config) -> str:
     return value if value in PRESETS else DEFAULT_PRESET
 
 
+RETENTION_DAYS = {"regulated": 730}  # else 90 (brain-logic plan 6, decision 9)
+
+
+def redact_cloud(config) -> bool:
+    """Are sensitive spans (emails, phone numbers, account and ID numbers) redacted in what a
+    cloud model reads of something brought in? brain.json `governance.redact_cloud`, else on
+    under careful and regulated and off under personal (decision 13)."""
+    own = config.governance.get("redact_cloud")
+    if isinstance(own, bool):
+        return own
+    return preset_of(config) != "personal"
+
+
+def retention_days(config) -> int:
+    """How long brief text stays in the ledger: brain.json `sessions.retention_days`, else 90
+    days under the personal and careful presets and 730 under regulated."""
+    try:
+        own = int((config.data.get("sessions") or {}).get("retention_days") or 0)
+    except (TypeError, ValueError):
+        own = 0
+    return own if own > 0 else RETENTION_DAYS.get(preset_of(config), 90)
+
+
 def capture_policy(config) -> dict:
     """{type: {origin: "apply" | "wait"}}: brain.json's `governance.capture` over the
     preset's matrix."""
@@ -163,24 +186,44 @@ def capture_policy(config) -> dict:
     return out
 
 
+OUTPUT_REF = re.compile(r"\boutput:([^\s,;]+)")
+
+
+def circular(brain, st, text, origin=None, source="") -> str | None:
+    """The note a statement only repeats from the brief its source output was made from, or
+    None (brain-logic plan 7.2, decision 11). The links come from `record_output` (the
+    conversation that made the file) and the ledger (what that conversation was handed)."""
+    from . import review
+    from .activity import normal_path
+    paths = [m.group(1) for m in OUTPUT_REF.finditer(str(source or ""))]
+    if str(origin or "").startswith("output:"):
+        paths.insert(0, str(origin)[len("output:"):].strip())  # a path may hold spaces
+    for path in dict.fromkeys(p for p in paths if p):
+        try:
+            made = brain.ledger.output(normal_path(path))
+            given = [item for kind_, item, *_rest in brain.ledger.session_items(
+                made["session_id"])] if made else []
+        except Exception:  # an unreadable ledger links nothing
+            given = []
+        for note_id in dict.fromkeys(given):
+            note = st.index.note(str(note_id))
+            if note is not None and review.similarity(text, note.body, {}) >= review.CLOSE:
+                return note.id
+    return None
+
+
 def capture_type(kind: str, target: dict) -> str:
-    """What a note proposal is, as the capture policy names it: a change to an entry, a rule,
-    a convention (who you are, how you are known), progress (where things stand), a decision
-    or a fact."""
+    """What a note proposal is, as the capture policy names it: a change to an entry, a rule
+    (or the preference or convention it is), a convention (who you are, how you are known),
+    progress (where things stand), a decision or a fact (statements.capture_type)."""
     if kind in ("note.update", "note.archive"):
         return "change"
     # An older vault's layer says what its notes are (rules, facts, ...).
     note_kind = str(target.get("kind") or LEGACY_KINDS.get(str(target.get("layer") or ""))
                     or "").strip().lower()
-    if note_kind == "rule":
-        return "rule"
-    if note_kind == "identity":
-        return "convention"
-    if note_kind == "state":
-        return "progress"
-    if str(target.get("type") or "").strip().lower() == "decision":
-        return "decision"
-    return "fact"
+    return statements.capture_type(
+        note_kind, str(target.get("subtype") or ""),
+        decision=str(target.get("type") or "").strip().lower() == "decision")
 
 
 def captures_apply(brain, who, kind, origin) -> bool:
@@ -340,6 +383,45 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     text = str(text or "").strip()
     note_kind = str(note_kind or "").strip().lower() or None
     problems = []
+    own_word = str((extra or {}).get("said_by") or "").strip().lower()
+    if own_word and own_word not in statements.SAID_BY:
+        problems.append(f"said_by is one of {', '.join(statements.SAID_BY)}")
+    said = statements.said_at_door(origin, capture_origin, session_id, own_word)
+    if kind == "note.create" and said:
+        # Who said it, recorded at the door (brain-logic plan 7.1).
+        extra = dict(extra or {}, said_by=said)
+        if said in statements.CONTENT_SPEAKERS and (
+                note_kind in ("rule", "procedure")
+                or (not note_kind and RULE_START.match(text))
+                or (not note_kind and LEGACY_KINDS.get(area) == "rule")):
+            # An instruction found inside content is reported, never kept as a rule: the
+            # injected-memory gap (7.1). The owner can still make it a rule when approving.
+            text = statements.reported(text, said)
+            note_kind = "fact"
+            if LEGACY_KINDS.get(area) == "rule":
+                area = next((a for a in config.area_order() if LEGACY_KINDS.get(a) == "fact"),
+                            area)
+            extra["instruction_from"] = str(origin or said)
+    if kind == "note.create" and text:
+        echoed = circular(brain, st, text, origin, source)
+        if echoed:
+            problems.append(
+                f"it repeats `{echoed}`, which the brief behind that output gave: an AI output "
+                "built from a brief cannot count as evidence for the notes in that brief (the "
+                "circular-evidence rule)")
+    if kind == "note.create" and session_id and Ledger.valid(session_id) \
+            and statements.quotes(evidence):
+        # Evidence must be real: a quote of the person is checked against what they said in
+        # that conversation; one that is not there makes the statement inferred, and it waits.
+        try:
+            heard = [str(r.get("request") or "")
+                     for r in brain.ledger.requests(session=session_id, limit=200)]
+        except Exception:  # an unreadable ledger cannot vouch for a quote
+            heard = []
+        missing = statements.unheard(evidence, heard)
+        if missing:
+            extra = dict(extra or {}, confidence="inferred", unheard_quote=missing[0][:300])
+            force_pending = True
     if area not in config.areas:
         problems.append(f"area must be one of {', '.join(config.area_order())}")
     if note_kind and note_kind not in NOTE_KINDS and kind != "focus.create":
@@ -354,6 +436,10 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         problems.append("text is required")
     if load is not None and str(load).strip().lower() not in LOADS:
         problems.append("load must be standing, domain, on-demand or manual")
+    if note_kind == "goal":
+        # A goal steers what is kept and what agents do, never what a request receives.
+        problems += statements.goal_problems(extra or {})
+        load = load or "manual"
     must = must_hold_fields(st, base, load, applies_to, triggers, must_text, critical,
                             problems)
     dates = {}
@@ -445,6 +531,8 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
             target["kind"] = "rule" if RULE_START.match(text) else "fact"
     elif summary:
         target["index_line"] = summary
+    if note_kind == "goal":
+        target["kind"] = "goal"  # no layer implies it, so even an older vault says so
     if startup_text:
         target["startup_text"] = startup_text
     target.update(must)
@@ -673,26 +761,40 @@ def inbox(brain, **_ignored):
     return _result(f"{len(rows)} pending proposal(s):\n{text}", {"proposals": rows})
 
 
-def _require_approver(brain, actor):
+def _require_approver(brain, actor, scope=None):
     config = brain.state().config
     approver = config.governance.get("approver") or config.owner
     approvers = {approver} | set(config.governance.get("approvers") or [])
     who = brain.principal(actor)
-    if who not in approvers:
+    if who not in approvers and not (scope and who in admins_of(brain.state(), scope)):
         return None, _result(f"{who} cannot decide proposals; approver is {approver}.",
                              {"status": "forbidden"}, True)
     return who, None
 
 
+def admins_of(st, scope: str) -> set[str]:
+    """Who administers a scope (BL 9, scaffolded for the team edition): brain.json's
+    `admins` for the scope and every scope above it. In the solo Brain the owner is the
+    approver of every scope, so this is empty."""
+    named = st.config.data.get("admins") or {}
+    chain = st.scopes.chain(scope) or [scope]
+    found: set[str] = set()
+    for level in chain:
+        found.update(str(p) for p in (named.get(level) or []))
+    return found
+
+
 def approve(brain, proposal_id, *, actor=None, edits=None, body=None, reason=""):
     """The owner keeps a proposal. One that revises or retires a baseline needs a `reason`
     (baseline.reason_problem), and with `revision_delay` on, a revision of a rule, a standing
-    note or a must-hold is scheduled for DELAY_HOURS later instead of applied now."""
-    who, refusal = _require_approver(brain, actor)
-    if refusal:
-        return refusal
+    note or a must-hold is scheduled for DELAY_HOURS later instead of applied now. An admin of
+    the proposal's scope may decide it too (team edition)."""
     st = brain.state()
     proposal = st.snapshot.proposals.get(str(proposal_id))
+    who, refusal = _require_approver(
+        brain, actor, scope=str((proposal.target or {}).get("scope") or "") if proposal else None)
+    if refusal:
+        return refusal
     if proposal is None:
         return _result(f"No pending proposal {proposal_id!r}.", {"status": "missing"}, True)
     if proposal.kind == "note.challenge":
@@ -839,7 +941,8 @@ def reject(brain, proposal_id, reason="", *, actor=None):
     record = {"at": util.now_iso(), "action": "rejected", "by": who, "proposal": proposal.id,
               "kind": proposal.kind, "reason": str(reason or ""), "target": proposal.target,
               "body": proposal.body, "proposer": proposal.proposer,
-              "session": str(proposal.meta.get("session") or "")}
+              "session": str(proposal.meta.get("session") or ""),
+              "created": str(proposal.created or "")}
     if proposal.meta.get("capture"):
         record["capture"] = str(proposal.meta["capture"])
     decisions = brain.vault.append_decision(record)
@@ -911,7 +1014,8 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
               "scope": meta.get("scope"), "superseded": superseded,
               "proposer": header.get("proposer") or actor,
               "session": str(header.get("session") or ""), "hash": util.sha256(body.strip()),
-              "file_hash": brain.vault.file_hash(relpath)}
+              "file_hash": brain.vault.file_hash(relpath),
+              "created": str(header.get("created") or "")}
     if header.get("capture"):
         record["capture"] = str(header["capture"])
     if kind in ("note.update", "note.archive"):
@@ -923,6 +1027,11 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
         record["baseline_revised"] = dict(revision)
     decisions = brain.vault.append_decision(record)
     touched.append(brain.vault.path(decisions))
+    if not auto and kind in ("note.create", "note.update"):
+        # The exceptions ledger (BL 9): an approval that bends a rule counts against it.
+        from . import loop
+        for rule, relation in bent_rules(st, header, body, note_id, meta):
+            loop.note_exception(brain, rule, proposal_id, relation, by=actor)
     if proposal_path:
         brain.vault.remove_file(proposal_path)
         touched.append(brain.vault.path(proposal_path))
@@ -936,6 +1045,29 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
         {"status": "applied" if auto else "approved", "id": note_id, "path": relpath,
          "superseded": superseded, "commit": outcome.get("commit"),
          "kernel": outcome.get("kernel")})
+
+
+def bent_rules(st, header, text, note_id, meta) -> list[tuple[str, str]]:
+    """The rules a statement bends: ones its proposal names as conflicting, and rules or
+    must-holds in its own topic it contradicts by words, figures or polarity."""
+    from . import review
+    out: dict[str, str] = {}
+    for rule_id in re.split(r"[,\s]+", str(header.get("conflicts") or "")):
+        note = st.index.note(rule_id) if rule_id else None
+        if note is not None and (note.kind in ("rule", "procedure") or note.must_hold):
+            out[note.id] = "contradicts"
+    area = str(meta.get("area") or meta.get("layer") or "")
+    topic = str(meta.get("topic") or "")
+    for note in st.index.notes.values():
+        if note.id == note_id or note.id in out or not note.live:
+            continue
+        if not (note.kind in ("rule", "procedure") or note.must_hold):
+            continue
+        if (note.area, note.topic) != (area, topic) and not note.must_hold:
+            continue
+        if review.contradiction(text, note.body):
+            out[note.id] = "contradicts"
+    return list(out.items())
 
 
 def decide(brain, decisions, *, actor=None, label=None, source=None):
@@ -1192,11 +1324,14 @@ def unarchive(brain, note_id, *, reason="", actor=None):
 FIELDS = ("owner", "review_days", "review_by", "classification", "area", "topic", "aliases",
           "load", "applies_to", "triggers", "must_text", "critical", "baseline", "as_of",
           "valid_until", "library", "refresh", "origin", "tags", "prompt_skills",
-          "prompt_agent", "prompt_docs", "prompt_reads", "title", "project_id")
+          "prompt_agent", "prompt_docs", "prompt_reads", "title", "project_id", "said_by",
+          "subtype", "objective", "goals", *(f for f in statements.GOAL_FIELDS
+                                              if f not in ("review_by", "level")))
 CARD_FIELDS = ("library", "refresh", "origin", "tags", "prompt_skills", "prompt_agent",
                "prompt_docs", "prompt_reads", "title", "project_id")
 # Card fields that hold a list, set as comma-separated words.
-LIST_FIELDS = ("aliases", "tags", "prompt_skills", "prompt_docs", "prompt_reads")
+LIST_FIELDS = ("aliases", "tags", "prompt_skills", "prompt_docs", "prompt_reads", "goals",
+               "serves")
 # When a note reaches a model: in every session, whenever its domain comes up (a must-hold),
 # when relevant, or only when asked for. Set together and checked by must_hold_fields.
 MUST_FIELDS = ("load", "applies_to", "triggers", "must_text", "critical")
@@ -1224,6 +1359,22 @@ def update(brain, note_id, fields, *, reason="", actor=None):
             problems.append(f"{name} is a date (YYYY-MM-DD)")
     if wanted.get("classification") and wanted["classification"] not in CLASSIFICATIONS:
         problems.append(f"classification is one of {', '.join(CLASSIFICATIONS)}")
+    if ("objective" in wanted or "goals" in wanted) and not st.config.is_focus(note):
+        problems.append("only a project has an objective and the goals it serves")
+    if wanted.get("objective") and statements.objective_problem(wanted["objective"]):
+        problems.append(statements.objective_problem(wanted["objective"]))
+    goal_fields = [k for k in wanted if k in statements.GOAL_FIELDS]
+    if goal_fields and note.kind != "goal":
+        problems.append(f"only a goal has {', '.join(goal_fields)}")
+    elif goal_fields:
+        problems += statements.goal_problems(wanted)
+    if "objective" in wanted and not str(reason or "").strip():
+        # Like the rest of a project's baseline: a change says why, and makes an undo point.
+        problems.append("a change to a project's objective needs a reason")
+    if wanted.get("said_by") and wanted["said_by"] not in statements.SAID_BY:
+        problems.append(f"said_by is one of {', '.join(statements.SAID_BY)}")
+    if wanted.get("subtype") and wanted["subtype"] not in statements.RULE_SUBTYPES:
+        problems.append(f"subtype is one of {', '.join(statements.RULE_SUBTYPES)}")
     if any(k in wanted for k in CARD_FIELDS) and str(note.meta.get("type")) != "file":
         problems.append("only a document's card goes in the Library")
     asset = str(note.meta.get("file") or "").startswith("assets/")
@@ -1425,6 +1576,8 @@ POLICY = {
     "cross_check": ("governance", "cross_check", "bool"),
     # The external challenger argues against a few beliefs each week; off until turned on.
     "challenger": ("governance", "challenger", "bool"),
+    # Sensitive spans redacted in what a cloud model reads (decision 13).
+    "redact_cloud": ("governance", "redact_cloud", "bool"),
 }
 
 
@@ -1440,7 +1593,7 @@ def policies(brain) -> dict:
         "auto_apply_scopes": list(data["governance"].get("auto_apply_scopes") or []),
         "max_proposals_per_session": int(data["governance"].get("max_proposals_per_session")
                                          or DEFAULT_SESSION_BUDGET),
-        "retention_days": int((data.get("sessions") or {}).get("retention_days") or 90),
+        "retention_days": retention_days(config),
         "approver": config.approver,
         "preset": preset_of(config),
         "presets": list(PRESETS),
@@ -1452,6 +1605,7 @@ def policies(brain) -> dict:
         "model_checks": bool(data["governance"].get("model_checks", True)),
         "cross_check": bool(data["governance"].get("cross_check", True)),
         "challenger": bool(data["governance"].get("challenger", False)),
+        "redact_cloud": redact_cloud(config),
         "capture_types": list(CAPTURE_TYPES),
         "capture_origins": list(CAPTURE_ORIGINS),
     }

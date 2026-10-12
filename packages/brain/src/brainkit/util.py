@@ -11,6 +11,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from functools import lru_cache
 
 # ------------------------------------------------------------------ tokens
@@ -298,13 +299,26 @@ def _replace(path, write) -> None:
     try:
         write(fd)
         os.chmod(tmp, mode)
-        os.replace(tmp, path)
+        replace(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise
+
+
+def replace(src, dst, *, tries: int = 6, wait: float = 0.05) -> None:
+    """os.replace, tried again for a moment when Windows refuses it because another process
+    (an antivirus scan, the search indexer) holds the file just then."""
+    for attempt in range(tries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == tries - 1:
+                raise
+            time.sleep(wait * (attempt + 1))
 
 
 def append_jsonl(path, record: dict) -> None:

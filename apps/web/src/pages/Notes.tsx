@@ -606,7 +606,7 @@ function Versions({
           void beforeChange().then(() => action.mutate({ id: note.id, action: "name", body: { label: name.trim() } }, { onSuccess: () => setName("") }));
         }}
       >
-        <input aria-label="Version name" placeholder="Name this version, like “Sent to Sarah”" value={name} onChange={(event) => setName(event.target.value)} />
+        <input aria-label="Version name" placeholder="Name this version, like “Sent for review”" value={name} onChange={(event) => setName(event.target.value)} />
         <button type="submit" disabled={!name.trim() || action.isPending}>
           Name it
         </button>

@@ -49,6 +49,7 @@ from workspace_core.errors import ValidationFailed
 
 from .brain import Brain, display_name
 from .legacy import Legacy
+from .loop import cards as loop_cards
 from .onboarding import GOALS_ID
 from .runtime import Runtime
 
@@ -109,6 +110,7 @@ KEEP_UNUSED_DAYS = 90  # "keep them": the unused notes are not offered again for
 OFFER_RUN = 5  # this many of the same yes in a row earns an offer to decide once
 OFFER_DAYS = 60
 SECONDS = {
+    "goal": 40,  # an agent goal that slipped: why, the trend, the suggested step
     "check": 60,  # a workflow's check: read what a step made, then go on, edit or stop
     "judgment": 40,
     "baseline": 60,
@@ -331,6 +333,9 @@ class CatchUp:
         self._project_titles: dict[str, str] = {}
         # Work's checks: workflow runs waiting for the owner (set once Workflows exists).
         self.checks: Any = None
+        # Goals and Projects (set once Goals exists): agent goals that slipped, and the
+        # suggested next steps for your goals.
+        self.goals: Any = None
 
     # ---------------------------------------------------------------- the plan
 
@@ -387,8 +392,24 @@ class CatchUp:
             }
             for run in (self.checks(who) if self.checks is not None else [])
         ]
+        slipped = [c for c in port.goal_cards() if c["key"] not in hidden]
+        steps = self._goal_steps(hidden)
+        handed, unclaimed = self._tasks(now, hidden)
+        state_waiting = [
+            w
+            for w in port.state_act("waiting").get("waiting") or []
+            if f"state:{w['event']}" not in hidden
+        ]
+        # The updating loop's asks (BL 9): "Still true?", bent rules, approval health,
+        # corroboration, the quarterly review, lessons and the agent's hand-ups.
+        looped = loop_cards(port, iso(now), hidden)
         seconds = (
-            SECONDS["check"] * len(work)
+            SECONDS["quick"] * len(looped)
+            + SECONDS["goal"] * len(slipped)
+            + SECONDS["judgment"] * len(handed)
+            + SECONDS["quick"] * (len(unclaimed) + len(state_waiting))
+            + SECONDS["quick"] * len(steps)
+            + SECONDS["check"] * len(work)
             + sum(SECONDS.get(card["type"], SECONDS["judgment"]) for card in judgment)
             + SECONDS["quick"] * len(quick)
             + sum(SECONDS.get(card["type"], 20) for card in upkeep)
@@ -402,7 +423,20 @@ class CatchUp:
             "recap_first": away is not None and away >= AWAY_DAYS,
             "seconds": seconds,
             "minutes": math.ceil(seconds / 60) if seconds else 0,
-            "caught_up": not (judgment or quick or upkeep or offered or legacy or work),
+            "caught_up": not (
+                judgment
+                or quick
+                or upkeep
+                or offered
+                or legacy
+                or work
+                or slipped
+                or steps
+                or handed
+                or unclaimed
+                or state_waiting
+                or looped
+            ),
             "counts": {
                 "judgment": len(judgment),
                 "quick": len(quick),
@@ -413,8 +447,20 @@ class CatchUp:
                 "handled": recap.get("went_in_total", len(handled)),
                 "snoozed": sum(1 for key in hidden if key in state.get("snoozed", {})),
                 "checks": len(work),
+                "goals": len(slipped),
+                "goal_steps": sum(len(g["steps"]) for g in steps),
+                "handed": len(handed),
+                "unclaimed": len(unclaimed),
+                "state_waiting": len(state_waiting),
+                "loop": len(looped),
             },
+            "loop": looped,
+            "handed": handed,
+            "unclaimed": unclaimed,
+            "state_waiting": state_waiting,
             "work": work,
+            "goals": slipped,
+            "goal_steps": steps,
             "health": dict(
                 health(inventory, attention, now),
                 unsaved=port.unsaved(),
@@ -432,6 +478,55 @@ class CatchUp:
             "nudges": [n for n in self._nudges(now, projects) if n["key"] not in hidden],
             "preset": policies.get("preset"),
         }
+
+    def _tasks(
+        self, now: datetime, hidden: set[str]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Tasks handed to you (Needs your judgment), and handoffs nobody claimed for a day
+        (a quick Remind or Take back)."""
+        handed, unclaimed = [], []
+        for task in self.rt.brain.tasks(open_only=True):
+            key = f"task:{task['id']}:{task['status']}"
+            if key in hidden:
+                continue
+            if task["status"] == "waiting_for_you":
+                handed.append(dict(task, key=key))
+            elif (
+                task["status"] == "handed_off"
+                and task.get("updated")
+                and now - parse_iso(task["updated"]) >= timedelta(days=1)
+            ):
+                unclaimed.append(dict(task, key=key))
+        return handed, unclaimed
+
+    def _goal_steps(self, hidden: set[str]) -> list[dict[str, Any]]:
+        """Suggested next steps for your goals, a quick yes grouped by goal."""
+        if self.goals is None:
+            return []
+        table = schema.goal_boards
+        with self.rt.read() as tx:
+            rows = tx.rows(
+                sa.select(table.c.goal_id, table.c.suggestions).where(
+                    table.c.workspace_id == self.rt.workspace_id
+                )
+            )
+        titles = {g["id"]: g["title"] for g in self.rt.brain.ladder().get("yours") or []}
+        out = []
+        for row in rows:
+            waiting = [
+                s
+                for s in row["suggestions"] or []
+                if s.get("status") == "waiting" and f"goalstep:{s['id']}" not in hidden
+            ]
+            if waiting and row["goal_id"] in titles:
+                out.append(
+                    {
+                        "goal": row["goal_id"],
+                        "title": titles[row["goal_id"]],
+                        "steps": waiting,
+                    }
+                )
+        return out
 
     def _suggestions(
         self,
@@ -704,6 +799,7 @@ class CatchUp:
                 subjects.setdefault(subject.lower(), []).append(
                     {"id": row["id"], "title": row["title"], "subject": subject}
                 )
+        out += self._agent_goal_lines()
         for found in subjects.values():
             if len(found) >= SUBJECT_MIN:
                 subject = found[0]["subject"]
@@ -716,6 +812,32 @@ class CatchUp:
                         "captures": [{"id": f["id"], "title": f["title"]} for f in found[:10]],
                         "title": f"You brought in {len(found)} things about {subject} this "
                         "month. Add it to your goals?",
+                    }
+                )
+        return out
+
+    def _agent_goal_lines(self) -> list[dict[str, Any]]:
+        """An agent's "Goals it serves" lines that name no goal: each offered once as a goal
+        with a measure (goals plan 7). One that names a goal by its id or title is a link."""
+        ladder = self.rt.brain.ladder()
+        agents = self.rt.brain.agents()
+        goals = (ladder.get("yours") or []) + (ladder.get("agents") or [])
+        known = {g["id"].lower() for g in goals} | {g["title"].lower() for g in goals}
+        known |= {"you-goals", "the brain's purpose", "purpose"}
+        out: list[dict[str, Any]] = []
+        for agent in agents:
+            for line in agent.get("goals") or []:
+                text = " ".join(str(line).split()).strip(" .")
+                if not text or text.lower() in known:
+                    continue
+                out.append(
+                    {
+                        "key": f"nudge:agentgoal:{agent.get('name')}:{_slug(text)}",
+                        "type": "agent_goal",
+                        "agent": agent.get("name"),
+                        "line": text,
+                        "title": f"The {agent.get('name')} agent serves “{text}”. Make this a "
+                        "goal with a measure?",
                     }
                 )
         return out

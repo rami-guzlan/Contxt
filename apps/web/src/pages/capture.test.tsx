@@ -72,6 +72,37 @@ describe("capture", () => {
     expect(screen.getByRole("link", { name: "Kickoff call" })).toBeInTheDocument();
   });
 
+  it("keeps what readings left out searchable, marked when it fits the goals now", async () => {
+    const leftOut = [
+      {
+        statement: "Webinar sign-ups doubled after the newsletter mention.",
+        why: "serves no goal or project",
+        request_id: "task_1",
+        source: "Monday call",
+        at: "2026-10-05T10:00:00Z",
+        fits: ["webinar", "newsletter"],
+        for_goals: true,
+      },
+      { statement: "The coffee was cold.", why: "small talk", request_id: "task_1", source: "Monday call", at: "2026-10-05T10:00:00Z", fits: [], for_goals: false },
+    ];
+    const calls = mockApi({
+      "GET /api/notes": [typed],
+      "GET /api/speech": ready,
+      "GET /api/brain/distill/left-out": leftOut,
+      "GET /api/brain/distill/left-out?q=coffee": [leftOut[1]],
+      "POST /api/brain/proposals": { status: 201, body: { status: "pending", message: "ok", proposal_id: "p1" } },
+    });
+    const user = userEvent.setup();
+    renderAt(<CapturePage />);
+    const panel = await screen.findByText(/Left out when reading · 1 fit your goals now/);
+    await user.click(panel);
+    expect(screen.getByText(/fits your goals now: webinar, newsletter/)).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Pull anyway" })[0]!);
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/brain/proposals")).toBe(true));
+    await user.type(screen.getByRole("searchbox", { name: "Find what was left out" }), "coffee");
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/distill/left-out?q=coffee")).toBe(true));
+  });
+
   it("brings in a file and opens it", async () => {
     const calls = mockApi({ "GET /api/notes": [], "GET /api/speech": ready, "POST /api/captures": { status: 201, body: transcript } });
     const user = userEvent.setup();

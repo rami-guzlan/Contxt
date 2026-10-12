@@ -20,7 +20,8 @@ FALLBACK_IDENTITY = ("AI Brain", "brain@localhost")
 # folder (a OneDrive path, a long home) would then fail every commit.
 GIT = ("git", "-c", "core.longpaths=true") if os.name == "nt" else ("git",)
 # Where governed changes live in a vault: what must reach git for the history and undo to hold.
-GOVERNED = ("knowledge", "inbox", "references", "skills", "agents", "assets", "journal")
+GOVERNED = ("knowledge", "inbox", "references", "skills", "agents", "assets", "journal",
+            "goals", "state")
 
 
 def _env() -> dict:

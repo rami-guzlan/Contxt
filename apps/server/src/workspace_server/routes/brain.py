@@ -25,10 +25,12 @@ from ..schemas import (
     DistillSettingsIn,
     GapIn,
     GoalsIn,
+    LocalModelsIn,
     MarkIn,
     MergeIn,
     MoveInIn,
     PoliciesIn,
+    ProjectObjectiveIn,
     ProjectUpdateIn,
     ProposalIn,
     ReconcileIn,
@@ -232,7 +234,14 @@ def projects(who: Who, ws: WS) -> list[dict[str, Any]]:
 @router.post("/projects", status_code=201)
 def create_project(body: BrainProjectIn, who: Who, ws: WS) -> dict[str, Any]:
     return asdict(
-        ws.brain.create_project(who, name=body.name, summary=body.summary, aliases=body.aliases)
+        ws.brain.create_project(
+            who,
+            name=body.name,
+            summary=body.summary,
+            aliases=body.aliases,
+            objective=body.objective,
+            goals=body.goals,
+        )
     )
 
 
@@ -241,6 +250,14 @@ def project(project_id: str, who: Who, ws: WS) -> dict[str, Any]:
     """One project in full: its brief, where it stands, its progress newest first, its files
     and the notes filed with it."""
     return ws.brain.project(who, project_id)
+
+
+@router.put("/projects/{project_id}/objective")
+def project_objective(
+    project_id: str, body: ProjectObjectiveIn, who: Who, ws: WS
+) -> dict[str, Any] | None:
+    """Change the output the project is chasing (it reaches every brief in the project)."""
+    return ws.brain.project_objective(who, project_id, body.objective, reason=body.reason)
 
 
 @router.post("/projects/{project_id}/updates", status_code=201)
@@ -341,6 +358,27 @@ def models(who: Who, ws: WS) -> dict[str, Any]:
 def download_models(who: Who, ws: WS) -> dict[str, Any]:
     """Fetch the matching model (about 70 MB, once): the owner's call, never automatic."""
     return ws.brain.download_models(who)
+
+
+@router.get("/distill/left-out")
+def left_out(who: Who, ws: WS, q: str = "", limit: int = 100) -> list[dict[str, Any]]:
+    """Everything readings left out, found by its words, each scored again against the goals
+    and active projects as they stand now."""
+    return ws.distill.left_out(who, q=q, limit=max(1, min(int(limit), 300)))
+
+
+@router.get("/local-models")
+def local_models(who: Who, ws: WS) -> dict[str, Any]:
+    """This computer's local models: the machine and its setup, each role's model and the
+    pinned options, and whether the retrieval engine runs in full or in fallback."""
+    return ws.brain.local_models(who)
+
+
+@router.post("/local-models")
+def act_local_models(body: LocalModelsIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Check this computer again, make a pinned model the default for its role, download,
+    remove or time one, or turn Claude Code on or off for the knowledge agent."""
+    return ws.brain.act_local_models(who, body.action, body.name, body.on)
 
 
 @router.get("/catch-up")

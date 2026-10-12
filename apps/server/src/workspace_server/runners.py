@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -63,7 +64,43 @@ ACTIVE = ("starting", "running")
 RUN_LABEL = "Run from the workspace"  # the label of a run's own credential
 LEFTOVER_MARGIN = 300  # seconds past a run's time limit after which its credential is a leftover
 MAX_EVENTS = 2000
-KEEP_RUNS = 30
+KEEP_RUNS = 30  # in memory; every run's stream is also kept on disk (STREAMS)
+KEEP_STREAMS = 200  # runs whose streams stay on disk, newest first
+STREAMS = "runs"  # the folder in the data folder that holds them
+# What never reaches a stream, on screen or on disk: credentials a run may print or read.
+SECRETS = (
+    re.compile(r"\b(wst|sk|pk|rk|ghp|gho|ghs|github_pat|xox[abpr])[-_][A-Za-z0-9_\-]{8,}"),
+    re.compile(r"\bAKIA[0-9A-Z]{12,}\b"),
+    re.compile(r"(?i)\b(bearer)(\s+)[A-Za-z0-9._~+/\-]{12,}=*"),
+    re.compile(r"(?i)\b(token|api[-_]?key|password|passwd|secret)(\s*[:=]\s*)[^\s\"',;]{6,}"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
+)
+
+
+def mask(text: str) -> str:
+    """The text with anything that looks like a credential replaced by a marker."""
+    out = str(text)
+    for pattern in SECRETS:
+        out = pattern.sub(_masked, out)
+    return out
+
+
+def _masked(found: re.Match[str]) -> str:
+    groups = found.groups()
+    if (
+        len(groups) >= 2
+        and groups[1] is not None
+        and groups[0]
+        and not groups[0].startswith(("wst", "sk", "pk", "rk", "gh", "github", "xox"))
+    ):
+        return f"{groups[0]}{groups[1]}[masked]"  # keep the label, drop the value
+    return "[masked]"
+
+
+def _masked_fields(fields: dict[str, Any]) -> dict[str, Any]:
+    return {k: mask(v) if isinstance(v, str) else v for k, v in fields.items()}
+
+
 # What a run that makes files may use besides the workspace's tools: files in its own folder
 # (restricted mode keeps them there) and Python.
 FILE_TOOLS = ("Read", "Write", "Edit", "Glob", "Grep", "Bash")
@@ -399,6 +436,7 @@ class Runners:
         self.resolve = resolve
         self.popen = popen
         self.runs: dict[str, LocalRun] = {}
+        self.streams = os.path.join(ws.data_dir, STREAMS)
         self.contracts = anchoring.Contracts()  # the app's MCP replies repeat each run's line
         self._procs: dict[str, Any] = {}
         self._lock = threading.Lock()
@@ -589,6 +627,8 @@ class Runners:
         with self._lock:
             self.runs[run.id] = run
             self._trim()
+        self._keep(run)
+        self._prune_streams()
         self._add(run, "status", text=f"Starting {spec.label} as {actor.name}.")
         if connector:
             self._add(
@@ -735,14 +775,92 @@ class Runners:
 
     def get(self, who: Principal, run_id: str) -> LocalRun:
         who.require("workspace.admin")
-        run = self.runs.get(run_id)
+        run = self.runs.get(run_id) or self._load(run_id)
         if run is None:
             raise NotFound(f"No run {run_id} on this computer.")
         return run
 
-    def recent(self, who: Principal) -> list[LocalRun]:
+    def recent(self, who: Principal, *, limit: int = KEEP_RUNS) -> list[LocalRun]:
+        """Runs here now and lately, newest first: those in memory, then those kept on disk."""
         who.require("workspace.admin")
-        return sorted(self.runs.values(), key=lambda r: r.started_at, reverse=True)
+        found = dict(self.runs)
+        for run_id in self._kept()[: max(0, limit)]:
+            if run_id not in found:
+                loaded = self._load(run_id, events=False)
+                if loaded is not None:
+                    found[run_id] = loaded
+        return sorted(found.values(), key=lambda r: r.started_at, reverse=True)[:limit]
+
+    def packet(self, who: Principal, run_id: str) -> dict[str, Any]:
+        """The brief a run was given: its packet as it was when the run claimed its work."""
+        run = self.get(who, run_id)
+        try:
+            found = self.ws.bus.packet(who, task_id=run.task_id)
+        except (NotFound, Conflict):
+            return {"text": "", "available": False}
+        from .mcp import render
+
+        try:  # what the run's model was handed: redacted when the preset says so
+            hidden = bool(self.ws.rt.brain.policies().get("redact_cloud", True))
+        except (OSError, ValueError, RuntimeError, KeyError):
+            hidden = True
+        return {"text": mask(render.packet(found, redacting=hidden)), "available": True}
+
+    # ---------------------------------------------------------------- the streams on disk
+
+    def _stream_path(self, run_id: str, ext: str) -> str:
+        safe = re.sub(r"[^A-Za-z0-9_-]", "", run_id)
+        return os.path.join(self.streams, f"{safe}.{ext}")
+
+    def _keep(self, run: LocalRun) -> None:
+        """The run's record (without its events) beside its stream."""
+        try:
+            os.makedirs(self.streams, exist_ok=True)
+            record = {k: v for k, v in asdict(run).items() if k != "events"}
+            path = self._stream_path(run.id, "json")
+            with open(path + ".tmp", "w", encoding="utf-8") as handle:
+                json.dump(record, handle, default=str)
+            os.replace(path + ".tmp", path)
+        except OSError:
+            log.warning("Could not keep the record of %s", run.id, exc_info=True)
+
+    def _kept(self) -> list[str]:
+        """Run ids kept on disk, newest first."""
+        try:
+            names = [n for n in os.listdir(self.streams) if n.endswith(".json")]
+        except OSError:
+            return []
+        paths = [os.path.join(self.streams, n) for n in names]
+        paths.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        return [os.path.basename(p)[: -len(".json")] for p in paths]
+
+    def _load(self, run_id: str, *, events: bool = True) -> LocalRun | None:
+        try:
+            with open(self._stream_path(run_id, "json"), encoding="utf-8") as handle:
+                record = json.load(handle)
+        except (OSError, ValueError):
+            return None
+        names = {f.name for f in LocalRun.__dataclass_fields__.values()}
+        run = LocalRun(**{k: v for k, v in record.items() if k in names and k != "events"})
+        if run.status in ACTIVE and run.id not in self.runs:
+            run.status, run.stopping = "failed", None  # the app stopped while it ran
+        if events:
+            try:
+                with open(self._stream_path(run_id, "jsonl"), encoding="utf-8") as handle:
+                    run.events = [json.loads(line) for line in handle if line.strip()]
+            except (OSError, ValueError):
+                run.events = []
+        return run
+
+    def _prune_streams(self) -> None:
+        for run_id in self._kept()[KEEP_STREAMS:]:
+            if run_id in self.runs:
+                continue
+            for ext in ("json", "jsonl"):
+                try:
+                    os.remove(self._stream_path(run_id, ext))
+                except OSError:
+                    pass
 
     def cancel(self, who: Principal, run_id: str) -> LocalRun:
         run = self.get(who, run_id)
@@ -881,6 +999,7 @@ class Runners:
                 run.finished_at = iso(self.ws.rt.clock.now())
                 run.status = ended  # last: a finished run is complete when anyone sees it finished
                 self._procs.pop(run.id, None)
+                self._keep(run)
         try:
             self._event(
                 who,
@@ -1032,13 +1151,24 @@ class Runners:
         )
 
     def _add(self, run: LocalRun, kind: str, **fields: Any) -> None:
+        """One step of the run's stream, its credentials masked, kept in memory and on disk."""
         with self._lock:
             seq = run.events[-1]["seq"] + 1 if run.events else 1
-            run.events.append(
-                {"seq": seq, "at": iso(self.ws.rt.clock.now()), "kind": kind, **fields}
-            )
+            event = {
+                "seq": seq,
+                "at": iso(self.ws.rt.clock.now()),
+                "kind": kind,
+                **_masked_fields(fields),
+            }
+            run.events.append(event)
             if len(run.events) > MAX_EVENTS:
                 del run.events[: len(run.events) - MAX_EVENTS]
+            try:
+                os.makedirs(self.streams, exist_ok=True)
+                with open(self._stream_path(run.id, "jsonl"), "a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(event, default=str) + "\n")
+            except OSError:
+                log.warning("Could not keep a step of %s", run.id, exc_info=True)
 
     def _trim(self) -> None:
         finished = [r for r in self.runs.values() if r.status not in ACTIVE]

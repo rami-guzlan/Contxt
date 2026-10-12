@@ -58,10 +58,12 @@ def _save(contract, state) -> None:
     path = contract.get("state")
     if not path:
         return
+    from brainkit import util  # light: the hook stays quick
+
     temporary = f"{path}.{os.getpid()}.tmp"
     with open(temporary, "w", encoding="utf-8") as handle:
         json.dump(state, handle)
-    os.replace(temporary, path)
+    util.replace(temporary, path)
 
 
 def _log(contract, **record) -> None:

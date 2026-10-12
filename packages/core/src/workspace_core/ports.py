@@ -99,6 +99,8 @@ class BrainProject:
     files: int = 0
     updates: int = 0
     topic: str = ""  # where its notes are filed: "projects/<slug>"
+    objective: str = ""  # the output it is chasing; it opens every brief in the project
+    goals: list[str] = field(default_factory=list)  # the goals it serves
 
 
 @dataclass(frozen=True)
@@ -367,7 +369,14 @@ class BrainPort(Protocol):
         ...
 
     def create_project(
-        self, *, name: str, summary: str, aliases: list[str], proposer: str
+        self,
+        *,
+        name: str,
+        summary: str,
+        aliases: list[str],
+        proposer: str,
+        objective: str = "",
+        goals: list[str] | None = None,
     ) -> BrainProject: ...
 
     def project(self, project_id: str) -> dict[str, Any] | None:
@@ -380,6 +389,11 @@ class BrainPort(Protocol):
         self, project_id: str, *, summary: str, changes: dict[str, str], evidence: str = ""
     ) -> dict[str, Any]:
         """Record progress on a project: one append-only update, never a rewrite."""
+        ...
+
+    def project_objective(self, project_id: str, objective: str, *, reason: str) -> None:
+        """Change a project's objective (it reaches every brief in the project): a reason
+        and an undo point, like the rest of its baseline."""
         ...
 
     def preview(
@@ -508,8 +522,9 @@ class BrainPort(Protocol):
         """A logged request's place in the private eval set, with its labels; None if absent."""
         ...
 
-    def eval_label(self, packet_id: str, labels: dict[str, list[str]]) -> dict[str, Any]:
-        """Label a logged request (needed, useful, noise, missing note ids) for the eval set."""
+    def eval_label(self, packet_id: str, labels: dict[str, Any]) -> dict[str, Any]:
+        """Label a logged request (needed, useful, noise, missing note ids, and `nothing`: it
+        should get nothing) for the eval set."""
         ...
 
     def eval_status(self) -> dict[str, Any]:
@@ -586,6 +601,28 @@ class BrainPort(Protocol):
         """Fetch the matching model in the background (the owner's call, never automatic)."""
         ...
 
+    def skills_history(self, names: list[str]) -> dict[str, dict[str, Any]]:
+        """Each skill's version hashes (newest first), last edit and what it loads that
+        changed since, for the Skills page: {name: {"hashes", "last_edited", "changed"}}."""
+        ...
+
+    def holds_text(self, fingerprints: list[str]) -> set[str]:
+        """Which of these text fingerprints (statements.fingerprint) a live note already
+        says word for word: hash dedupe before any model reads them."""
+        ...
+
+    def local_models(self) -> dict[str, Any]:
+        """This computer's local models (brain-logic plan 5.11.16): the machine and its setup,
+        each role's model and pinned options, and whether the engine runs in full."""
+        ...
+
+    def act_local_models(
+        self, action: str, name: str = "", on: bool | None = None
+    ) -> dict[str, Any]:
+        """check | default | download | remove | speed | claude_code; returns local_models()
+        with a `notice` (a warning that does not refuse)."""
+        ...
+
     def made_from(self, path: str) -> dict[str, Any] | None:
         """What a file an AI saved for the person was made from, when it said so: the
         conversation's requests and what each got; None when nothing was recorded."""
@@ -616,6 +653,121 @@ class BrainPort(Protocol):
 
     def set_goals(self, answers: dict[str, str]) -> dict[str, Any]:
         """Set the Brain's goals as its owner, as one undo point."""
+        ...
+
+    def ladder(self, *, with_signals: bool = False) -> dict[str, Any]:
+        """The goal ladder (brainkit/ladder.py): {"purpose", "yours", "agents", "has_goals",
+        "check_ins_due", "starters", "signals"}; the signal library (each signal's value now,
+        for the measure picker) only `with_signals`."""
+        ...
+
+    def goal(self, goal_id: str) -> dict[str, Any]:
+        """One goal in full: its checks, journal, shared plan and `context` (what an AI
+        receives). NotFound when there is no such goal."""
+        ...
+
+    def goal_cards(self) -> list[dict[str, Any]]:
+        """Agent goals that slipped: one card per slip, until the goal recovers."""
+        ...
+
+    def act_goal(
+        self, action: str, goal_id: str = "", fields: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """set | change | check_in | note | plan | starters | link | check
+        (brainkit/ladder.py)."""
+        ...
+
+    # ---- State (BL 8) and tasks (goals plan 5)
+
+    def state_act(self, action: str, fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The owner's State actions (brainkit/state.py): sheets, templates, rows, history,
+        waiting, promotions; create_sheet, add_column, add_row, write, touch, decide,
+        remove_row. NotFound, Conflict or ValidationFailed on a refusal."""
+        ...
+
+    def update_state(
+        self, updates: list[dict[str, Any]], *, evidence: str = "", session_id: str = ""
+    ) -> dict[str, Any]:
+        """An AI's cell updates through the app's runs: {"text", "results"}."""
+        ...
+
+    def get_state(self, *, sheet: str = "", row: str = "", query: str = "") -> dict[str, Any]:
+        """State as an AI reads it: {"text", ...}."""
+        ...
+
+    def hand_off(self, **fields: Any) -> dict[str, Any]:
+        """Take, save, pass on or finish a task, or add a goal note (brainkit/handoff.py):
+        {"task", "card", "owner", "task_status"}. ValidationFailed with how to fix the
+        call."""
+        ...
+
+    def tasks(self, **filters: Any) -> list[dict[str, Any]]:
+        """Tasks from the Tasks sheet, filtered by owner, status, goal or project."""
+        ...
+
+    def task(self, task_id: str) -> dict[str, Any]:
+        """One task with its card, its rendered card and its log. NotFound without one."""
+        ...
+
+    def outputs_for(self, paths: list[str]) -> dict[str, dict[str, Any]]:
+        """What the Brain recorded for these output files (by absolute path): the project,
+        the State row, who made it, the conversation."""
+        ...
+
+    # ---- the updating loop (BL 9) and the local knowledge agent (BL 17)
+
+    def agent_tool(self, name: str, args: Any) -> tuple[Any, list[str]]:
+        """Run one of the knowledge agent's tools: (its result, the problems that refused
+        it)."""
+        ...
+
+    def agent_menu(self) -> str:
+        """The agent's tools, one line each, for its core prompt."""
+        ...
+
+    def sweep(self) -> dict[str, Any]:
+        """File what is new in the watched folders (an ingestion step): {"text", ...}."""
+        ...
+
+    def changes_digest(self) -> str:
+        """What changed lately, by area, in a line (the map carries it)."""
+        ...
+
+    def record_agent_run(
+        self, run_id: str, action: str, ending: str, record: dict[str, Any]
+    ) -> None:
+        """Keep a job's run record (BL 17.8), credentials masked."""
+        ...
+
+    def record_episode(self, **fields: Any) -> None:
+        """One agent suggestion and the person's decision (BL 17.6)."""
+        ...
+
+    def loop_status(self) -> dict[str, Any]:
+        """What the updating loop asks of the owner now (brainkit/loop.py)."""
+        ...
+
+    def correction(self, text: str, *, session_id: str = "", packet_id: str = "") -> dict[str, Any]:
+        """The owner corrected an AI's output: its suspects and the "Still true?" card."""
+        ...
+
+    def close_correction(self, correction_id: int, status: str) -> None: ...
+
+    def check_output(self, text: str, *, sent_back: str = "") -> list[dict[str, Any]]:
+        """The must-hold violations in an output's text; `sent_back` names a draft sent
+        back for them, so the measure counts it."""
+        ...
+
+    def agent_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        """The knowledge agent's runs, newest first, each with its steps."""
+        ...
+
+    def blast_radius(self, proposal_id: str) -> dict[str, Any]:
+        """What a waiting proposal would change in recent briefs (the replay harness)."""
+        ...
+
+    def link_output(self, path: str, *, project: str | None = None, row: str | None = None) -> None:
+        """The person says what an output is for."""
         ...
 
     def builtin_skills(self) -> dict[str, Any]:
@@ -763,6 +915,9 @@ class NoBrain:
 
     def project(self, project_id: str) -> dict[str, Any] | None:
         return None
+
+    def project_objective(self, project_id: str, objective: str, *, reason: str) -> None:
+        raise Conflict("This workspace has no Brain to keep projects in.")
 
     def project_update(self, project_id: str, **_: Any) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to follow projects in.")
@@ -914,6 +1069,20 @@ class NoBrain:
     def download_models(self) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to download a model for.")
 
+    def skills_history(self, names: list[str]) -> dict[str, dict[str, Any]]:
+        return {}
+
+    def holds_text(self, fingerprints: list[str]) -> set[str]:
+        return set()
+
+    def local_models(self) -> dict[str, Any]:
+        return {"enabled": False}
+
+    def act_local_models(
+        self, action: str, name: str = "", on: bool | None = None
+    ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to run local models for.")
+
     def made_from(self, path: str) -> dict[str, Any] | None:
         return None
 
@@ -933,6 +1102,111 @@ class NoBrain:
 
     def set_goals(self, answers: dict[str, str]) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain to keep goals in.")
+
+    def ladder(self, *, with_signals: bool = False) -> dict[str, Any]:
+        return {
+            "purpose": {
+                "id": "you-goals",
+                "exists": False,
+                "text": "",
+                "signals": [],
+                "rules": {},
+            },
+            "must_holds": [],
+            "yours": [],
+            "agents": [],
+            "has_goals": False,
+            "check_ins_due": 0,
+            "starters": [],
+            "signals": [],
+        }
+
+    def goal(self, goal_id: str) -> dict[str, Any]:
+        raise NotFound("This workspace has no Brain.")
+
+    def goal_cards(self) -> list[dict[str, Any]]:
+        return []
+
+    def act_goal(
+        self, action: str, goal_id: str = "", fields: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep goals in.")
+
+    def state_act(self, action: str, fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        if action in ("sheets", "waiting", "promotions"):
+            return {"sheets": [], "waiting": [], "suggestions": []}
+        if action == "templates":
+            return {"templates": []}
+        raise Conflict("This workspace has no Brain to keep State in.")
+
+    def update_state(
+        self, updates: list[dict[str, Any]], *, evidence: str = "", session_id: str = ""
+    ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep State in.")
+
+    def get_state(self, *, sheet: str = "", row: str = "", query: str = "") -> dict[str, Any]:
+        return {"text": "No State sheets yet.", "sheets": []}
+
+    def hand_off(self, **fields: Any) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain to keep tasks in.")
+
+    def tasks(self, **filters: Any) -> list[dict[str, Any]]:
+        return []
+
+    def task(self, task_id: str) -> dict[str, Any]:
+        raise NotFound("This workspace has no Brain.")
+
+    def outputs_for(self, paths: list[str]) -> dict[str, dict[str, Any]]:
+        return {}
+
+    def agent_tool(self, name: str, args: Any) -> tuple[Any, list[str]]:
+        return None, ["This workspace has no Brain."]
+
+    def agent_menu(self) -> str:
+        return ""
+
+    def sweep(self) -> dict[str, Any]:
+        return {"text": "This workspace has no Brain to file into."}
+
+    def changes_digest(self) -> str:
+        return ""
+
+    def record_agent_run(
+        self, run_id: str, action: str, ending: str, record: dict[str, Any]
+    ) -> None:
+        return None
+
+    def record_episode(self, **fields: Any) -> None:
+        return None
+
+    def loop_status(self) -> dict[str, Any]:
+        return {
+            "corrections": [],
+            "bent_rules": [],
+            "approval_health": {},
+            "single_source": [],
+            "review_due": False,
+            "lessons": [],
+            "hand_ups": [],
+        }
+
+    def correction(self, text: str, *, session_id: str = "", packet_id: str = "") -> dict[str, Any]:
+        return {"suspects": [], "card": None}
+
+    def close_correction(self, correction_id: int, status: str) -> None:
+        return None
+
+    def check_output(self, text: str, *, sent_back: str = "") -> list[dict[str, Any]]:
+        return []
+
+    def agent_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        return []
+
+    def blast_radius(self, proposal_id: str) -> dict[str, Any]:
+        return {"briefs": 0, "changed": 0, "rows": [], "seconds": 0.0}
+
+    def link_output(self, path: str, *, project: str | None = None, row: str | None = None) -> None:
+        return None
 
     def builtin_skills(self) -> dict[str, Any]:
         return {"skills": [], "missing": []}

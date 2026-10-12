@@ -130,6 +130,26 @@ def test_a_copy_goes_to_claude_code_with_its_version_stamped(owner, tmp_path):
     assert refused.status_code == 409 and "did not come from Contxt" in refused.text
 
 
+def test_the_skills_page_shows_each_skill_by_purpose_with_how_it_stands(owner, model):
+    """Your skills by purpose (UX C): each with when it was last used, whether it may be out of
+    date, what uses it, its version and its Claude Code copy, in one call."""
+    found = {s["name"]: s for s in owner.ok(owner.get("/api/skills/overview"))}
+    sheet = found["brand-sheet"]
+    assert set(sheet) == {
+        "name",
+        "category",
+        "last_used",
+        "last_edited",
+        "changed",
+        "version",
+        "used_by",
+        "copy",
+    }
+    assert sheet["version"] >= 1 and isinstance(sheet["changed"], list)
+    assert sheet["used_by"]["agents"] == [] and sheet["copy"] is None
+    assert model.get("/api/skills/overview").status_code in (200, 403)
+
+
 def test_suggestions_answer_even_with_nothing_to_suggest(owner):
     found = owner.ok(owner.get("/api/skills/suggestions"))
     assert found["suggestions"] == [] and found["matched_by"] in ("meaning", "words")

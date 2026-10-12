@@ -364,3 +364,73 @@ def test_a_skill_keeps_its_versions(ws, owner):
     assert current["current"] and current["body"].startswith("1. Read the calendar.")
     with pytest.raises(NotFound):
         ws.skills.versions(owner, "no-such-skill")
+
+
+def test_a_result_that_breaks_a_must_hold_is_sent_back_once_then_kept_flagged(
+    ws, owner, connect, brain
+):
+    """BL 9's output check: the first save that breaks a must-hold is refused with what broke;
+    the second is kept with its violations, and both count for the measure."""
+    claude = connect()
+    brain.forbidden = {"no-guarantees": "guaranteed"}
+    task = ws.skills.run(owner, "weekly-posts", ask="One post.")
+    claim = ws.bus.claim(claude, task.id)
+    with pytest.raises(ValidationFailed, match="breaks") as refused:
+        ws.skills.save_result(claude, run_id=claim.run.id, title="Post", text="Guaranteed wins.")
+    assert refused.value.details["violations"][0]["rule"] == "no-guarantees"
+    kept = ws.skills.save_result(claude, run_id=claim.run.id, title="Post", text="Guaranteed.")
+    assert kept["violations"][0]["found"] == "guaranteed"
+    clean = ws.skills.save_result(claude, run_id=claim.run.id, title="Post", text="Results vary.")
+    assert "violations" not in clean and clean["version"] == 2
+    assert brain.sent_back == [f"run:{claim.run.id}", f"run:{claim.run.id}"]
+
+
+def test_the_loop_asks_in_catch_up_and_answers_in_one_tap(ws, owner, brain):
+    from workspace_core.services.loop import cards
+
+    brain.loop = {
+        "corrections": [
+            {
+                "id": 3,
+                "at": "2026-10-01",
+                "text": "Webinars are Thursdays.",
+                "note": "voice-guide",
+                "title": "Voice guide",
+                "salience": True,
+            }
+        ],
+        "bent_rules": [{"rule": "voice-guide", "title": "Voice guide", "count": 3}],
+        "approval_health": {"advice": "Let more apply with undo.", "rate": 1.0},
+        "single_source": [{"id": "voice-guide", "title": "Voice guide", "uses": 4}],
+        "review_due": True,
+        "lessons": [
+            {
+                "action": "tidy-repeats",
+                "area": "marketing",
+                "decision": "declined",
+                "cases": 3,
+                "text": "In marketing, the owner declined ...",
+            }
+        ],
+        "hand_ups": [{"id": "ajob_1", "action": "check-drift", "at": "2026-10-09", "why": "x"}],
+    }
+    found = cards(brain, "2026-10-10T12:00:00Z", set())
+    assert [c["type"] for c in found] == [
+        "still_true",
+        "bent_rule",
+        "approval_health",
+        "corroborate",
+        "quarterly_review",
+        "lesson",
+        "hand_up",
+    ]
+    assert "review:2026-Q4" in [c["key"] for c in found]
+    assert len(cards(brain, "2026-10-10T12:00:00Z", {"correction:3"})) == 6
+    plan = ws.catch_up.plan(owner)
+    assert plan["counts"]["loop"] == 7 and not plan["caught_up"]
+    ws.loop.answer(owner, 3, "still_true")
+    assert brain.closed == [(3, "still_true")]
+    kept = ws.loop.keep_lesson(owner, "lesson:tidy-repeats:marketing:declined")
+    assert kept["proposal_id"] and brain.proposed[-1]["kind"] == "rule"
+    with pytest.raises(NotFound):
+        ws.loop.keep_lesson(owner, "lesson:none")

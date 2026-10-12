@@ -15,6 +15,7 @@ from typing import Any
 import sqlalchemy as sa
 
 from workspace_core.db import schema
+from workspace_core.domain import statements
 from workspace_core.domain.policy import Principal
 from workspace_core.errors import Conflict, NotFound, PermissionDenied, ValidationFailed
 from workspace_core.ports import (
@@ -31,7 +32,10 @@ from workspace_core.ports import (
 from .distill import RECONCILE
 from .runtime import Runtime, recall, remember
 
-KINDS = ("fact", "rule", "preference", "decision", "procedure", "identity", "state")
+# What the owner can do with this computer's local models (Settings, On this computer).
+LOCAL_ACTIONS = ("check", "default", "download", "remove", "speed", "claude_code")
+
+KINDS = statements.PROPOSAL_KINDS  # one vocabulary (domain/statements.py)
 MAX_FILE = 10 * 1024 * 1024  # the Brain's own ceiling for one document or asset
 ACTIONS = (
     "approve",
@@ -79,10 +83,17 @@ ENTRY_FIELDS = (
     "prompt_agent",
     "prompt_docs",
     "prompt_reads",
+    # The entry as a statement (brain-logic plan 6): who said it, and a rule's subtype.
+    "said_by",
+    "subtype",
+    # A project's objective (a sentence or two; a change needs a reason) and its goals.
+    "objective",
+    "goals",
 )
 LIBRARY_KINDS = ("guide", "reference", "influence", "asset")
 LIBRARY_REFRESH = ("never", "weekly", "monthly")
 FIELD_LIMITS = {  # characters; other fields take 200
+    "objective": 600,
     "triggers": 1200,
     "applies_to": 600,
     "tags": 600,
@@ -505,6 +516,29 @@ class Brain:
             raise PermissionDenied("Only a person downloads a model.")
         return self.rt.brain.download_models()
 
+    def local_models(self, who: Principal) -> dict[str, Any]:
+        """This computer's local models: the machine, its setup, each role's model and the
+        pinned options, and whether the retrieval engine runs in full or in fallback."""
+        who.require("brain.read")
+        return self.rt.brain.local_models()
+
+    def act_local_models(
+        self, who: Principal, action: str, name: str = "", on: bool | None = None
+    ) -> dict[str, Any]:
+        """Check this computer again, make a pinned model the default for its role, download,
+        remove or time one, or turn Claude Code on or off for the knowledge agent: the owner's
+        call, never automatic."""
+        who.require("workspace.admin")
+        if not who.is_human:
+            raise PermissionDenied("Only a person changes this computer's models.")
+        if action not in LOCAL_ACTIONS:
+            raise ValidationFailed(
+                f"An action is one of {', '.join(LOCAL_ACTIONS)}.", field="action"
+            )
+        if action in ("default", "download", "remove") and not name:
+            raise ValidationFailed("Say which model.", field="name")
+        return self.rt.brain.act_local_models(action, name, on)
+
     def set_policies(self, who: Principal, changes: dict[str, Any]) -> dict[str, Any]:
         """The owner changes how the Brain is governed: one undo point, one event."""
         who.require("brain.govern")
@@ -638,17 +672,25 @@ class Brain:
         )
 
     def label_request(
-        self, who: Principal, packet_id: str, labels: dict[str, list[str]]
+        self, who: Principal, packet_id: str, labels: dict[str, Any]
     ) -> dict[str, Any]:
-        """The owner's labels for a logged request (needed, useful, noise, missing notes): it
-        joins the private eval set kept beside the Brain, never shared."""
+        """The owner's labels for a logged request (needed, useful, noise, missing notes, or
+        that it should get nothing): it joins the private eval set kept beside the Brain,
+        never shared."""
         who.require("brain.govern")
-        clean = {
+        clean: dict[str, Any] = {
             key: [str(i).strip() for i in labels.get(key) or [] if str(i).strip()][:40]
             for key in ("needed", "useful", "noise", "missing")
         }
-        if not any(clean.values()):
+        nothing = bool(labels.get("nothing"))
+        if nothing and (clean["needed"] or clean["useful"] or clean["missing"]):
+            raise ValidationFailed(
+                "A request that should get nothing has no needed or helpful notes.",
+                field="labels",
+            )
+        if not nothing and not any(clean.values()):
             raise ValidationFailed("Mark at least one note.", field="labels")
+        clean["nothing"] = nothing
         return self.rt.brain.eval_label(str(packet_id or "").strip(), clean)
 
     def eval_status(self, who: Principal) -> dict[str, Any]:
@@ -1153,6 +1195,18 @@ class Brain:
             raise NotFound(f"The Brain follows no project {project_id}.")
         return found
 
+    def project_objective(
+        self, who: Principal, project_id: str, objective: str, *, reason: str
+    ) -> dict[str, Any] | None:
+        """Change a project's objective: the output it is chasing, which opens every brief in
+        the project. Like its baseline, a change says why and makes an undo point."""
+        who.require("brain.govern")
+        text = " ".join(str(objective or "").split())
+        if not " ".join(str(reason or "").split()):
+            raise ValidationFailed("Say in a few words why the objective changes.", field="reason")
+        self.rt.brain.project_objective(project_id, text, reason=reason)
+        return self.project(who, project_id)
+
     def project_update(
         self,
         who: Principal,
@@ -1193,10 +1247,19 @@ class Brain:
         return made
 
     def create_project(
-        self, who: Principal, *, name: str, summary: str, aliases: list[str] | None = None
+        self,
+        who: Principal,
+        *,
+        name: str,
+        summary: str,
+        aliases: list[str] | None = None,
+        objective: str | None = None,
+        goals: list[str] | None = None,
     ) -> BrainProject:
         """Start a project in the Brain: its name, one line on what it is for, and the other
-        names people will call it by, so a request that uses one brings its state and files."""
+        names people will call it by, so a request that uses one brings its state and files.
+        Its `objective`, a sentence or two on the output it is chasing, opens every brief in
+        the project; `goals` are the goals it serves (optional)."""
         who.require("brain.govern")
         name = " ".join(str(name or "").split())
         summary = " ".join(str(summary or "").split())
@@ -1213,8 +1276,19 @@ class Brain:
             raise ValidationFailed(
                 f"Up to {MAX_ALIASES} other names, each up to 80 characters.", field="aliases"
             )
+        objective = " ".join(str(objective or "").split())
+        if len(objective) > 600:
+            raise ValidationFailed(
+                "An objective is a sentence or two (about 60 words).", field="objective"
+            )
+        linked = [str(g).strip() for g in (goals or []) if str(g).strip()][:12]
         made = self.rt.brain.create_project(
-            name=name, summary=summary, aliases=names, proposer=proposer(who)
+            name=name,
+            summary=summary,
+            aliases=names,
+            proposer=proposer(who),
+            objective=objective,
+            goals=linked,
         )
         with self.rt.write() as tx:
             tx.emit(
@@ -1264,6 +1338,7 @@ class Brain:
         must_hold: dict[str, Any] | None = None,
         as_of: str | None = None,
         valid_until: str | None = None,
+        said_by: str | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
 
@@ -1372,6 +1447,15 @@ class Brain:
             if not DAY.match(text):
                 raise ValidationFailed(f"{name} is a date, YYYY-MM-DD.", field=name)
             extra[name] = text
+        said = str(said_by or "").strip().lower()
+        if said:
+            # Who said it, from the proposer (brain-logic plan 7.1); else the Brain reads it
+            # from where the statement came from.
+            if said not in statements.SAID_BY:
+                raise ValidationFailed(
+                    f"said_by is one of {', '.join(statements.SAID_BY)}.", field="said_by"
+                )
+            extra["said_by"] = said
         request = {
             "title": title,
             "statement": statement,

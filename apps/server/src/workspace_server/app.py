@@ -38,8 +38,11 @@ from .routes import (
     captures,
     compose,
     connections,
+    goals,
     legacy,
     library,
+    live,
+    loop,
     mcp,
     notes,
     outputs,
@@ -56,6 +59,7 @@ from .runners import Runners
 from .settings import Settings
 from .speech import Speech
 from .templates import TemplateLibrary, find_templates_dir
+from .triage import Triage
 
 
 @dataclass
@@ -128,6 +132,18 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
     )
     models = Models(runners)
     differences = Differences(ws, runners)
+    triage = Triage(models)
+
+    def triager(model_id: str, text: str) -> list[int] | None:
+        # A cloud model triages redacted text when the preset says so (decisions 7 and 13).
+        local = model_id.startswith(("local:", "ollama:"))
+        try:
+            hidden = bool(ws.rt.brain.policies().get("redact_cloud", True)) and not local
+        except (OSError, ValueError, RuntimeError, KeyError):
+            hidden = not local
+        return triage.keep(model_id, text, redacting=hidden)
+
+    ws.distill.triager = triager
     return Runtime(
         settings=settings,
         ws=ws,
@@ -197,6 +213,9 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         workflows,
         work,
         test_the_brain,
+        goals,
+        live,
+        loop,
         mcp,
     )
     for module in routers:

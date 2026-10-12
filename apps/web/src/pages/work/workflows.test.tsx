@@ -129,6 +129,7 @@ describe("Workflows", () => {
     expect(await screen.findByDisplayValue("Weekly Brain upkeep")).toBeInTheDocument();
     expect(screen.getByLabelText("How often")).toHaveValue("weekly");
     expect(screen.getByLabelText("At")).toHaveValue("08:00");
+    await user.click(screen.getByRole("button", { name: "List" }));
     await user.click(screen.getByRole("button", { name: /Your check/ }));
     await user.click(screen.getByRole("button", { name: "Save the workflow" }));
     await waitFor(() =>
@@ -153,6 +154,7 @@ describe("Workflows", () => {
     const user = userEvent.setup();
     renderAt(<NewWorkflowPage />, { path: "/work/workflows/new", route: "/work/workflows/new" });
     await user.type(await screen.findByLabelText("Its name"), "Deals");
+    await user.click(screen.getByRole("button", { name: "List" }));
     await user.click(screen.getByRole("button", { name: /Connector/ }));
     await user.type(screen.getByLabelText("What to find"), "This week's new deals.");
     await user.type(screen.getByLabelText(/The tools it may use/), "mcp__hubspot__search_crm_objects{Enter}mcp__hubspot__get_crm_objects");
@@ -162,6 +164,49 @@ describe("Workflows", () => {
         name: "Deals",
         schedule: { kind: "manual" },
         steps: [{ kind: "connector", ask: "This week's new deals.", tools: ["mcp__hubspot__search_crm_objects", "mcp__hubspot__get_crm_objects"], writes: false }],
+      }),
+    );
+  });
+
+  it("builds on the canvas from the node library, and says when a step does not fit", async () => {
+    const library = {
+      kinds: [
+        { kind: "task", group: "Tasks", label: "Open a task", takes: ["none", "text"], gives: ["task"] },
+        { kind: "handoff", group: "Tasks", label: "Hand off", takes: ["task"], gives: ["task"] },
+      ],
+      actions: [],
+      ingest_sources: ["library", "url", "folder"],
+      triggers: [
+        { id: "schedule", label: "A schedule" },
+        { id: "events", label: "When something happens", later: true },
+      ],
+    };
+    const calls = mockApi({
+      ...base,
+      "GET /api/workflows/library": library,
+      "POST /api/workflows": { status: 201, body: { ...workflow, id: "wf_4" } },
+    });
+    const user = userEvent.setup();
+    renderAt(<NewWorkflowPage />, { path: "/work/workflows/new", route: "/work/workflows/new" });
+    await user.type(await screen.findByLabelText("Its name"), "Open and pass");
+    const shelf = await screen.findByRole("complementary", { name: "Node library" });
+    expect(within(shelf).getByText(/When something happens \(coming later\)/)).toBeInTheDocument();
+    await user.click(await within(shelf).findByRole("button", { name: "Hand off" }));
+    expect(await screen.findByRole("list", { name: "Steps that do not fit" })).toHaveTextContent("Hand off needs task");
+    await user.click(screen.getByRole("button", { name: "Take out step 1" }));
+    await user.click(within(shelf).getByRole("button", { name: "Open a task" }));
+    await user.type(screen.getByLabelText("The task"), "Refresh the pricing skill");
+    await user.click(within(shelf).getByRole("button", { name: "Hand off" }));
+    await user.type(screen.getByLabelText("Done when"), "The skill is fixed");
+    await user.type(screen.getByLabelText("The next step"), "Update the figure");
+    expect(screen.queryByRole("list", { name: "Steps that do not fit" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save the workflow" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({
+        steps: [
+          { kind: "task", ask: "Refresh the pricing skill", to: "you" },
+          { kind: "handoff", to: "Claude Code", done_when: "The skill is fixed", next_step: "Update the figure" },
+        ],
       }),
     );
   });

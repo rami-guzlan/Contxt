@@ -48,6 +48,8 @@ can know) accurate, tidy and aimed at their goals, with as little of their time 
 
 End with one JSON block, even when it is empty, so the app can offer buttons:
 
+EXAMPLE, made up for the shape only; never copy its text:
+
 ```json
 {"run": ["freshen-up"], "notes": [{"title": "Webinars start at 11 ET", "text": "Webinars start at 11:00 Eastern.", "kind": "fact"}]}
 ```

@@ -564,7 +564,7 @@ class FakeBrain:
     def projects(self):
         return list(self.started)
 
-    def create_project(self, *, name, summary, aliases, proposer):
+    def create_project(self, *, name, summary, aliases, proposer, objective="", goals=None):
         slug = name.lower().replace(" ", "-")
         if any(p.id == slug for p in self.started):
             raise Conflict(f"A Focus {slug} already exists; record an update instead.")
@@ -754,6 +754,19 @@ class FakeBrain:
     def download_models(self):
         return {"matching": {"enabled": True, "present": False, "downloading": True}}
 
+    def holds_text(self, fingerprints):
+        return set(fingerprints) & set(getattr(self, "held_texts", set()))
+
+    def skills_history(self, names):
+        return {n: {"hashes": [], "last_edited": None, "changed": []} for n in names}
+
+    def local_models(self):
+        return {"enabled": True, "setup": "laptop", "roles": []}
+
+    def act_local_models(self, action, name="", on=None):
+        self.local_acts = [*getattr(self, "local_acts", []), (action, name, on)]
+        return dict(self.local_models(), notice="")
+
     def made_from(self, path):
         return None
 
@@ -906,6 +919,107 @@ class FakeBrain:
             "updated": None,
             "text": "\n\n".join(self.goal_answers.values()) if exists else "",
         }
+
+    # The goal ladder: no goals, like a Brain that has none yet.
+    def ladder(self, *, with_signals=False):
+        from workspace_core.ports import NoBrain
+
+        return NoBrain().ladder(with_signals=with_signals)
+
+    def goal_cards(self):
+        return []
+
+    def goal(self, goal_id):
+        from workspace_core.errors import NotFound
+
+        raise NotFound(f"No goal {goal_id!r}.")
+
+    def act_goal(self, action, goal_id="", fields=None):
+        from workspace_core.errors import Conflict
+
+        raise Conflict("The test Brain keeps no goals.")
+
+    # State and tasks: none, like a Brain that has none yet.
+    def state_act(self, action, fields=None):
+        from workspace_core.ports import NoBrain
+
+        return NoBrain().state_act(action, fields)
+
+    def tasks(self, **filters):
+        return []
+
+    def task(self, task_id):
+        from workspace_core.errors import NotFound
+
+        raise NotFound(f"No task {task_id!r}.")
+
+    def hand_off(self, **fields):
+        from workspace_core.errors import Conflict
+
+        raise Conflict("The test Brain keeps no tasks.")
+
+    def get_state(self, *, sheet="", row="", query=""):
+        return {"text": "No State sheets yet.", "sheets": []}
+
+    def update_state(self, updates, *, evidence="", session_id=""):
+        from workspace_core.errors import Conflict
+
+        raise Conflict("The test Brain keeps no State.")
+
+    def outputs_for(self, paths):
+        return {}
+
+    # The updating loop and the local agent: nothing recorded, no tools.
+    def agent_tool(self, name, args):
+        return None, [f"no tool {name!r}"]
+
+    def agent_menu(self):
+        return ""
+
+    def changes_digest(self):
+        return ""
+
+    def record_agent_run(self, run_id, action, ending, record):
+        self.agent_runs_kept = [
+            *getattr(self, "agent_runs_kept", []),
+            (run_id, action, ending, record),
+        ]
+
+    def record_episode(self, **fields):
+        self.episodes = [*getattr(self, "episodes", []), fields]
+
+    def loop_status(self):
+        from workspace_core.ports import NoBrain
+
+        return getattr(self, "loop", None) or NoBrain().loop_status()
+
+    def correction(self, text, *, session_id="", packet_id=""):
+        return {"suspects": [], "card": None}
+
+    def close_correction(self, correction_id, status):
+        self.closed = [*getattr(self, "closed", []), (correction_id, status)]
+
+    def check_output(self, text, *, sent_back=""):
+        found = [
+            {"note": rule, "rule": rule, "found": phrase, "kind": "phrase"}
+            for rule, phrase in getattr(self, "forbidden", {}).items()
+            if phrase.lower() in str(text).lower()
+        ]
+        if found and sent_back:
+            self.sent_back = [*getattr(self, "sent_back", []), sent_back]
+        return found
+
+    def agent_runs(self, limit=20):
+        return [
+            {"id": r, "action": a, "ending": e, "at": "2026-10-10T12:00:00Z", "record": rec}
+            for r, a, e, rec in reversed(getattr(self, "agent_runs_kept", []))
+        ][:limit]
+
+    def blast_radius(self, proposal_id):
+        return {"briefs": 0, "changed": 0, "rows": [], "seconds": 0.0}
+
+    def link_output(self, path, *, project=None, row=None):
+        return None
 
     def set_goals(self, answers):
         if not answers.get("purpose"):
