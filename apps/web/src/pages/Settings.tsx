@@ -36,6 +36,7 @@ import { entryUrl } from "./brain/shared";
 import { ConnectionsPage } from "./Connections";
 import { PRESETS } from "./FirstRun";
 import { AiWork, EarlierWorkspace } from "./Misc";
+import { TestTheBrain } from "./settings/test-the-brain/TestTheBrain";
 import { Alignment } from "./settings/Alignment";
 import { LocalModels } from "./settings/LocalModels";
 import { RedactCloud } from "./settings/Privacy";
@@ -45,6 +46,7 @@ const TABS = [
   { id: "alignment", label: "Alignment" },
   { id: "approval", label: "Approval" },
   { id: "computer", label: "On this computer" },
+  { id: "test", label: "Test the Brain" },
   { id: "backups", label: "Backups" },
   { id: "about", label: "About" },
 ] as const;
@@ -66,6 +68,7 @@ export function SettingsPage() {
       {tab === "alignment" ? <Alignment purpose={<YourGoals />} /> : null}
       {tab === "approval" ? <Approval /> : null}
       {tab === "computer" ? <ThisComputer /> : null}
+      {tab === "test" ? <TestTheBrain /> : null}
       {tab === "backups" ? <Backups /> : null}
       {tab === "about" ? <About /> : null}
     </div>

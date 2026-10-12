@@ -19,6 +19,8 @@ from workspace_core.workspace import Workspace
 
 from . import web, webapp
 from .brain_adapter import BrainKitAdapter
+from .brain_testing import TestTheBrain
+from .builtin_checks import BuiltinChecks
 from .deps import error_response
 from .difference import Differences
 from .extractor import DocumentExtractor
@@ -48,6 +50,7 @@ from .routes import (
     runners,
     skills,
     system,
+    test_the_brain,
     work,
     workflows,
     workspace,
@@ -73,12 +76,14 @@ class Runtime:
     models: Models
     agent: AgentWork
     library: Library
+    testing: TestTheBrain
     closed: bool = False
 
     def close(self) -> None:
         if self.closed:
             return
         self.closed = True
+        self.testing.close()
         self.runners.close()
         self.ws.close()
         if self.brain is not None:
@@ -126,6 +131,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         outputs=settings.exports_dir or os.path.join(settings.data_dir, "exports"),
     )
     models = Models(runners)
+    differences = Differences(ws, runners)
     triage = Triage(models)
 
     def triager(model_id: str, text: str) -> list[int] | None:
@@ -146,11 +152,16 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         owner_token=token,
         runners=runners,
         speech=Speech(settings.speech_models),
-        differences=Differences(ws, runners),
+        differences=differences,
         outputs=Outputs(ws, settings.exports_dir or os.path.join(settings.data_dir, "exports")),
         models=models,
         agent=AgentWork(ws, models),
         library=Library(ws, settings.data_dir),
+        testing=TestTheBrain(
+            settings,
+            ws,
+            builtin=BuiltinChecks(settings.data_dir, ws, adapter, differences),
+        ),
     )
 
 
@@ -201,6 +212,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         compose,
         workflows,
         work,
+        test_the_brain,
         goals,
         live,
         loop,
