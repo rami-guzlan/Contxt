@@ -11,9 +11,9 @@ guide. It is not product documentation. Before the repository is ever made publi
 ## 0. Read this first (Claude Code)
 
 1. Read this file to the end.
-2. Read [build/build-progress.md](build/build-progress.md): every step's checklist, what came
+2. Read [record/build-progress.md](record/build-progress.md): every step's checklist, what came
    out, and a log entry per merge. Its last entries are the current state.
-3. Read [build/report-card-2026-10-10.md](build/report-card-2026-10-10.md): every bar the
+3. Read [record/report-card-2026-10-10.md](record/report-card-2026-10-10.md): every bar the
    plans set, as measured on the demo Brains.
 4. Open a plan only when the task needs it (section 2 says which covers what). The plans are
    long; their section numbers are cited everywhere as "BL 9", "UX 4.7", "goals plan 5.8" and
@@ -72,10 +72,10 @@ Positioning (the owner's direction, October 2026):
 | [plans/knowledge-work-ux-plan.md](plans/knowledge-work-ux-plan.md) | "UX": the screens, phases A to G, and the one build order for both plans (its section 6) | All 8 decisions approved; A to F built; G (the walkthrough) waits for the owner |
 | [plans/goals-and-handoffs-plan.md](plans/goals-and-handoffs-plan.md) | Goals and Projects, check-ins, agent goals, tasks and `hand_off`, the goal coach (G0 to G4) | All 16 decisions approved; G0 to G4 built; the G4 walkthrough waits for the owner |
 | [plans/testing-lab-plan.md](plans/testing-lab-plan.md) | The Gnomon Lab: measuring whether the Brain actually helps the owner's agents (not whether the code works), on a frozen copy of his live Brain, in a separate private repo | Not started; its section 13 decisions wait for the owner (decision 13 is settled) |
-| [build/build-progress.md](build/build-progress.md) | The build record: steps 2 to 8, checklists, what came out, a log entry per merge | Current |
-| [build/report-card-2026-10-10.md](build/report-card-2026-10-10.md) | Output of `scripts/report_card.py` | Current |
-| [build/walkthrough-script.md](build/walkthrough-script.md) | The owner's UX G walkthrough, screen by screen, with its bars | Waiting for him |
-| [build/test-the-brain-progress.md](build/test-the-brain-progress.md) | The Test the Brain branch's own record | Milestone 5 open |
+| [record/build-progress.md](record/build-progress.md) | The build record: steps 2 to 8, checklists, what came out, a log entry per merge | Current |
+| [record/report-card-2026-10-10.md](record/report-card-2026-10-10.md) | Output of `scripts/report_card.py` | Current |
+| [record/walkthrough-script.md](record/walkthrough-script.md) | The owner's UX G walkthrough, screen by screen, with its bars | Waiting for him |
+| [record/test-the-brain-progress.md](record/test-the-brain-progress.md) | The Test the Brain branch's own record | Milestone 5 open |
 | [prompts/lab-chat-prompt-laptop.md](prompts/lab-chat-prompt-laptop.md) | The paste-ready prompt that starts the Lab's build chat | Written for the laptop: adapt paths and ports |
 | [prompts/test-the-brain-chat-prompt-laptop.md](prompts/test-the-brain-chat-prompt-laptop.md) | The prompt that started the Test the Brain chat | Reference |
 
@@ -287,7 +287,7 @@ model's behavior is made yet.
    - open one PR.
    Its record says screenshots were blocked because printing the sign-in link was refused.
    That was correct: use a browser the owner signs in to, or skip the screenshots.
-2. **The owner's walkthrough (UX G and G4).** He walks [build/walkthrough-script.md](build/walkthrough-script.md)
+2. **The owner's walkthrough (UX G and G4).** He walks [record/walkthrough-script.md](record/walkthrough-script.md)
    on the demo Brain, then lives a real day on his own Brain, tries a goal with the coach, runs
    the T-41 story, and has two interviewees try the coach and a goal page. Visual design starts
    only after his sign-off. Help him by preparing everything; never fake a sign-off.
