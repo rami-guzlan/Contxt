@@ -25,8 +25,11 @@ router.py       request signals, intents, Focus naming, note-first selection, sk
 packets.py      budgets, session deduplication, rendering -> Packet
 engine.py       the local retrieval engine: gate, wide find, relevance cut, second pass, link
                 loop, fit; the audit of every decision; fallback
-modellock.py    the pinned local models (models.lock.json), verified file by file
-modelservice.py the local model service on 127.0.0.1: each model loaded once, shared
+modellock.py    the pinned local models (models.lock.json) and adapters' base models, verified
+                file by file
+modelservice.py the local model service on 127.0.0.1: each model loaded once, shared, placed
+                on the GPU while it has room and on the CPU otherwise
+modelruntime.py the separate environment the models run in (models-runtime.txt), one command
 models_client.py finding and trusting the service; the rerank and System One adapters
 kernel.py       standing context compiled per principal in layers; AGENTS.md, CLAUDE.md stub
 sessions.py     SQLite session ledger: packets and deliveries per conversation; daily use

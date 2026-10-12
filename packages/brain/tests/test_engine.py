@@ -596,8 +596,9 @@ class MachineTests(unittest.TestCase):
 
     def test_no_default_is_offered_that_will_not_fit(self):
         # A 16 GB machine that reports 15.0 GB has room for about 5.5 GB of models; the laptop
-        # defaults need 5.6, so the small reranker gives way first.
-        machine.check(machine.Machine(ram_gb=15.0))
+        # defaults need 5.6, so the small reranker gives way first. (Its small GPU keeps
+        # Qwen3-Reranker in the defaults: without one, the speed budget hands the cut to MiniLM.)
+        machine.check(machine.Machine(ram_gb=15.0, gpu="a small GPU", gpu_gb=4.0))
         self.assertEqual(machine.chosen("rerank", lock=self.lock), "ms-marco-minilm-l-6-v2")
         self.assertEqual(machine.chosen("agent", lock=self.lock), "qwen3.5-4b")
         found = machine.overview(self.lock)
@@ -609,10 +610,10 @@ class MachineTests(unittest.TestCase):
             machine.choose("rerank", "qwen3-reranker-0.6b", lock=self.lock)
 
     def test_a_choice_the_ram_check_says_will_not_fit_is_refused(self):
-        machine.check(machine.Machine(ram_gb=15.8))  # 16 GB, no GPU
+        machine.check(machine.Machine(ram_gb=15.8))  # 16 GB, no GPU: MiniLM is the reranker
         with self.assertRaises(ValueError) as caught:
             machine.choose("agent", "qwen3.5-9b", lock=self.lock)
-        self.assertIn("will not fit: these models need about 8.9 GB and this computer has "
+        self.assertIn("will not fit: these models need about 7.8 GB and this computer has "
                       "room for about 6.3 GB", str(caught.exception))
         with self.assertRaises(ValueError) as caught:
             machine.choose("decide", "qwen3.5-4b", lock=self.lock)
@@ -628,7 +629,7 @@ class MachineTests(unittest.TestCase):
         self.assertEqual(machine.chosen("agent"), "qwen3.5-9b")
 
     def test_settings_show_each_role_its_options_and_each_fallback(self):
-        machine.check(machine.Machine(ram_gb=15.8))
+        machine.check(machine.Machine(ram_gb=15.8, gpu="a small GPU", gpu_gb=6.0))
         found = machine.overview(self.lock)
         self.assertEqual((found["setup"], found["setup_label"]), ("laptop", "Laptop"))
         roles = {r["role"]: r for r in found["roles"]}

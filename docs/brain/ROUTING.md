@@ -185,8 +185,8 @@ one (its summary until it has an objective), then the request, then that the rul
 
 ## The local retrieval engine (brain-logic plan 5.11)
 
-When a verified local model service runs (a PC with an NVIDIA GPU or an Apple Silicon Mac, with
-the pinned models), `engine.py` decides what goes into a brief:
+When a verified local model service runs (on any computer with 16 GB of RAM and the pinned
+models; no GPU is needed), `engine.py` decides what goes into a brief:
 
 1. **Gate**: a decision model (Kev) answers one yes/no question over the request and a short
    map of the Brain's areas: should this request get anything at all? No means one line (the
@@ -219,7 +219,19 @@ binds to 127.0.0.1, verifies each model against the lock and loads it once for e
 it refuses a model the lock does not list or whose files differ, and the engine refuses a
 service whose lock differs from its own. Decisions go through System One (Jev's request format,
 which Kev and Laya speak); relevance through a rerank interface, so models change without code
-changes. `brain models pin <name> <folder>` records a downloaded copy's checksums.
+changes. `brain models pin <name> <folder>` records a downloaded copy's checksums; an adapter
+(Kev) pins the base model it runs on in the same entry (`--base <repository>@<revision>`), and
+both are verified before it loads.
+
+**Installing it.** `brain models setup` does it in one go: it installs the model runtime (a
+separate environment in the model home, pinned in `models-runtime.txt`: torch, transformers,
+Kev from github.com/jaredpalmer/kev, llama.cpp, onnxruntime, in the builds this computer runs)
+and downloads this computer's setup models, each verified against the lock. `brain models
+runtime` installs the runtime alone; `--cpu` takes the CPU builds even where there is a GPU.
+The app then starts the service in that runtime. No 12 GB GPU is needed: the service puts each
+model on the GPU while it has room and on the CPU otherwise, in the precision the device runs
+best (bf16 where the GPU has it natively, fp16 on an older NVIDIA GPU, fp32 on the CPU), and its
+health says where each runs. `BRAIN_MODEL_DEVICE=cpu` keeps every model on the CPU.
 
 **The audit trail.** For every brief the ledger keeps each candidate's keyword, meaning and
 reranker scores, the decision model's answers with their probabilities, the outcome (whole, a
@@ -239,7 +251,7 @@ setup, each with a default model per role:
 
 | Setup | Detected as | Meaning, reranker, decisions, agent | Ceiling |
 | --- | --- | --- | --- |
-| Laptop | 16 GB, no GPU with 12 GB or more | bge-small, Qwen3-Reranker-0.6B, Kev-0.8B, Qwen3.5-4B | 100 |
+| Laptop | 16 GB, no GPU with 12 GB or more | bge-small, Qwen3-Reranker-0.6B (MiniLM without a GPU, or when it measures over the budget), Kev-0.8B, Qwen3.5-4B | 100 |
 | Workstation | an NVIDIA GPU with 12 GB or more, or a Mac with 32 GB or more | bge-small, Qwen3-Reranker-0.6B, Kev-4B, Qwen3.5-9B | 300 |
 | Large workstation | a GPU with 24 GB or more, or a Mac with 64 GB or more | bge-small, Qwen3-Reranker-0.6B, Kev-9B, Qwen3.6-35B-A3B | 300 |
 | Small | under 16 GB | bge-small and MiniLM; no decision model or agent | 100 |
@@ -248,7 +260,11 @@ The person can make any pinned option the default for its role (Settings, On thi
 Local models, or `brain models use <name>`); a choice the RAM check says will not fit is refused
 with the reason (about 9.5 GB stays with the system; a GPU counts its memory less 1 GB plus
 spare RAM), and one that measured slower than the machine's budget (5.11.7) is allowed with a
-warning. The choices, what was measured here and which Kev steps qualified live in this
+warning. The reranker has to meet the budget by default: without a GPU (Apple Silicon aside)
+MiniLM is the reranker, since Qwen3-Reranker took 16 s for 50 passages on a fast desktop CPU
+against a 2 s budget; with a GPU, Qwen3-Reranker stays until this computer's speed check
+(`brain models speed`, note-sized passages) measures it over the budget. The choices, what was
+measured here and which Kev steps qualified live in this
 machine's settings (`<model home>/settings.json`), never in a Brain. The machine's ceiling
 applies unless brain.json names one.
 

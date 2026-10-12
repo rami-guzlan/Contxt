@@ -576,7 +576,22 @@ def _models(settings: Settings, *, download: bool) -> int:
         print(f"Speech to text is ready: {speech.model} in {speech.models_dir}.")
     else:
         print(f"No speech model in {speech.models_dir}. Run: contxt models --download")
+    print(_engine_line())
     return 0 if ready and state["ready"] else 1
+
+
+def _engine_line() -> str:
+    """Where the local retrieval engine stands, and the one command that installs it."""
+    from brainkit import modelruntime, models_client
+
+    if models_client.status().ready:
+        return "The local retrieval engine is running."
+    if modelruntime.status()["installed"]:
+        return "The local retrieval engine's runtime is installed; the app starts it."
+    return (
+        "Optional, the local retrieval engine (no GPU is needed; about 14 GB with an NVIDIA "
+        "GPU, about 6 GB without): uv run brain models setup"
+    )
 
 
 if __name__ == "__main__":

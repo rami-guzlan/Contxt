@@ -190,6 +190,42 @@ class MiniLMTests(unittest.TestCase):
         self.assertGreater(found[0], found[1])
 
 
+class SpeedBudgetTests(unittest.TestCase):
+    """The reranker each machine gets by default meets its speed budget (5.11.15)."""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="brain-speed-")
+        self.env = mock.patch.dict(os.environ, {"BRAIN_MODEL_HOME": self.home})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def test_without_a_gpu_minilm_is_the_reranker(self):
+        machine.check(machine.Machine(ram_gb=16.0, system="Windows"))
+        self.assertEqual(machine.chosen("rerank"), "ms-marco-minilm-l-6-v2")
+        self.assertEqual(machine.chosen("decide"), "kev-0.8b")
+        self.assertIn("qwen3-reranker-0.6b is too slow without a GPU",
+                      machine.overview()["fallbacks"][0])
+        machine.check(machine.Machine(ram_gb=16.0, apple_silicon=True, system="Darwin"))
+        self.assertEqual(machine.chosen("rerank"), "qwen3-reranker-0.6b")
+
+    def test_a_small_gpu_keeps_qwen_until_it_measures_too_slow(self):
+        machine.check(machine.Machine(ram_gb=62.0, gpu="GTX 1060", gpu_gb=6.0))
+        self.assertEqual(machine.chosen("rerank"), "qwen3-reranker-0.6b")
+        machine.record("qwen3-reranker-0.6b", speed_ms=1900)  # inside 2 s
+        self.assertEqual(machine.chosen("rerank"), "qwen3-reranker-0.6b")
+        machine.record("qwen3-reranker-0.6b", speed_ms=5200)
+        self.assertEqual(machine.chosen("rerank"), "ms-marco-minilm-l-6-v2")
+        self.assertIn("measured 5200 ms here, over the budget of 2000 ms",
+                      machine.overview()["fallbacks"][0])
+        # The person can still choose it: their choice wins, with a warning.
+        made = machine.choose("rerank", "qwen3-reranker-0.6b")
+        self.assertIn("slower than this machine's budget", made["warning"])
+        self.assertEqual(machine.chosen("rerank"), "qwen3-reranker-0.6b")
+
+
 class RuntimeTests(unittest.TestCase):
     """One command makes the environment the models run in, in the builds this machine runs."""
 

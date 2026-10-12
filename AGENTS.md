@@ -32,6 +32,9 @@ Do it step by step, and show the person each result.
    the person its output.
 8. Optional: `uv run contxt models --download` (about 550 MB, local models for matching by
    meaning and for speech). Ask first.
+9. Optional: `uv run brain models setup`, the local retrieval engine: its runtime and this
+   computer's models, verified against the lock (no GPU is needed; about 14 GB with an NVIDIA
+   GPU, about 6 GB without). Ask first, and point `BRAIN_MODEL_HOME` at a drive with room.
 
 ## Layout
 

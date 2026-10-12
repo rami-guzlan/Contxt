@@ -210,7 +210,8 @@ they describe this brain, so they live in the vault. See [Routing](ROUTING.md).
 | `BRAIN_RERANK=0` | never load the reranker, even when `policy.rerank_weight` is set |
 | `BRAIN_MCP_PROFILE=full` | add read-only inspection tools to MCP |
 | `BRAIN_REPO_ROOT` | where CLAUDE.md and AGENTS.md are written (default: the vault's parent) |
-| `BRAIN_MODEL_HOME` | this machine's model home (default `~/.brainkit`): the downloaded local models, `settings.json` (the setup, the person's model choices, what was measured, which Kev steps qualified) and the model service's address |
+| `BRAIN_MODEL_HOME` | this machine's model home (default `~/.brainkit`): the downloaded local models, the model runtime, `settings.json` (the setup, the person's model choices, what was measured, which Kev steps qualified) and the model service's address. The models take several GB: point it at a drive with room |
+| `BRAIN_MODEL_DEVICE` | `cpu` keeps every local model on the CPU (`cuda` or `mps` names a GPU); by default each goes on the GPU while it has room |
 | `BRAIN_MODELS_LOCK` | another lock file in place of the shipped `models.lock.json` |
 | `BRAIN_MODEL_SERVICE=off` | never use a local model service (or a `http://127.0.0.1:<port>` to use that one) |
 
@@ -219,4 +220,5 @@ into `vault/.brain/models`. Nothing downloads on its own. For the retrieval engi
 `brain models machine` reads this computer and shows its setup, `use <name>` makes a pinned model
 the default for its role, `download <name>` and `remove <name>` fetch or drop one (verified
 against the lock), `speed` times the models the service runs, `lock` lists every pin and
-`serve` runs the service.
+`serve` runs the service. `runtime` installs the environment the models run in (`--cpu` for the
+CPU builds), and `setup` installs it and downloads this computer's setup models in one go.

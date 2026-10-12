@@ -67,6 +67,7 @@ BUDGETS_MS = {
 }
 ROLE_STEP = {"rerank": "cut", "decide": "gate"}
 SPEED_PASSAGES = 50  # what the reranker scores in the speed check: a typical candidate set
+SPEED_CHARS = 1000   # each passage about the size of a note's text the reranker reads
 # No default is offered that the RAM check says will not fit (5.11.13). When a setup's defaults
 # do not fit, these give way in order: the small reranker, then the local agent (Claude Code
 # can stand in), then the local decision model.
@@ -241,6 +242,21 @@ def setup_models(settings: dict, lock: modellock.Lock | None = None) -> tuple[di
     lock = lock or modellock.Lock.load()
     machine = machine_of(settings)
     gave = []
+    reranker = models.get("rerank")
+    if reranker and reranker != SMALL_RERANKER:
+        # The speed budget (5.11.15): measured on the PC, Qwen3-Reranker took 16 s for 50
+        # passages on a Ryzen 7 9700X's CPU against a 2 s budget, and MiniLM 0.09 s. Without a
+        # GPU it never runs by default; with one, until this computer measures it too slow.
+        speed = ((settings.get("measured") or {}).get(reranker) or {}).get("speed_ms")
+        limit = budget(machine)["cut"]
+        if not machine.gpu and not machine.apple_silicon:
+            models["rerank"] = SMALL_RERANKER
+            gave.append(f"{reranker} is too slow without a GPU: the reranker is "
+                        f"{SMALL_RERANKER}")
+        elif speed is not None and float(speed) > limit:
+            models["rerank"] = SMALL_RERANKER
+            gave.append(f"{reranker} measured {float(speed):g} ms here, over the budget of "
+                        f"{limit} ms: the reranker is {SMALL_RERANKER}")
     for role, smaller in GIVE_WAY:
         if fits(models, machine, lock)[0]:
             break
@@ -479,7 +495,8 @@ def check_speed(found: models_client.Status | None = None, *, runs: int = 3) -> 
         raise ValueError("no model service is running here: download this setup's models first")
     settings = load()
     machine = machine_of(settings)
-    passages = [f"[note-{i}] A passage about house style, prices or projects, number {i}."
+    line = "A passage about house style, prices or projects, who decided it and when. "
+    passages = [(f"[note-{i}] " + line * (SPEED_CHARS // len(line) + 1))[:SPEED_CHARS]
                 for i in range(SPEED_PASSAGES)]
     calls = {}
     roles = found.roles
@@ -497,7 +514,12 @@ def check_speed(found: models_client.Status | None = None, *, runs: int = 3) -> 
         times = []
         for _ in range(max(1, runs)):
             started = time.perf_counter()
-            call()
+            try:
+                call()
+            except (models_client.ServiceError, OSError):
+                # No answer within the call's timeout: at least that slow.
+                times.append(models_client.CALL_TIMEOUT * 1000)
+                break
             times.append((time.perf_counter() - started) * 1000)
         name = str(roles[role].get("model"))
         speed = sorted(times)[len(times) // 2]

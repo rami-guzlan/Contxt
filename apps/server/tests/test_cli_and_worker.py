@@ -57,6 +57,13 @@ def test_migrate_backup_and_restore(env, capsys, monkeypatch):
     assert (env / "brain2" / "brain.json").exists()
 
 
+def test_models_names_the_one_command_for_the_local_engine(env, capsys, monkeypatch):
+    monkeypatch.setenv("BRAIN_MODEL_HOME", str(env / "model-home"))
+    monkeypatch.setenv("BRAIN_MODEL_SERVICE", "off")
+    _code, out = run(capsys, "models")
+    assert "no GPU is needed" in out and "uv run brain models setup" in out
+
+
 def test_status_counts_ai_work_and_what_waits(env, capsys):
     code, out = run(capsys, "status")
     assert code == 0 and "AI work: none; waiting for your review: 0" in out
