@@ -42,11 +42,14 @@ written into the same contract shape in `data/test-the-brain/builtin/results`:
 | Health check | `brain check`, read only | free |
 | Report card | `brain report`: cost by day and line, brief size by request type | free |
 | Your labeled requests | `brain eval`: your labeled real requests and the Brain's own `eval.json`, scored on a second copy of the Brain with a throwaway ledger | free |
+| Check this computer | the engine's machine check: memory, graphics, the setup this computer gets, and which retrieval steps (the relevance cut, the gate, the second pass, the knowledge agent, matching by meaning) run here or fall back to something simpler, with what runs instead; it keeps what it found in this computer's own model settings, never in a Brain, and times the reranker when the local model service is running | free |
 | See the difference | one request answered twice by Claude Code on this computer, with and without your Brain | uses your Claude Code plan; needs a second press |
 
-Parts that need the local retrieval engine (build step 3b) say so: "Waits for the retrieval engine
-(build step 3b)". They light up when the engine is part of the install: the page checks for it, and
-only the stage adapter (`workspace_server/watch.py`, `engine_stages`) reads its record.
+A part that needs something not in this install says what it waits for, for example "Waits for the
+retrieval engine (build step 3b)", and lights up by itself when that is there: the page checks
+whether the engine and its machine check are part of the install. With the engine installed but its
+local model service not running, the page says so and why (the engine falls back to the router's
+own scoring and still writes down what exists), instead of drawing its stages as done.
 
 ## Watch it work, and the test marker
 
@@ -55,7 +58,10 @@ delivery and no usage count, so it counts as no request, in usage or in evals. I
 test in the reply (`test: true`, client `contxt-test`), so anything that lists it can tell. The
 stages main can show come from the routing trace: read the request, admission (must-holds),
 wide search, and fit. The gate, the relevance cut and the second pass with the link loop are drawn
-as waiting until the engine is there.
+as waiting until the engine decided the brief; when it did, its own record in the brief's data
+(`engine`: the gate's answer, the time of each layer, the rounds of the link loop, the outcome
+counts) fills them, and gives the other stages their time (`workspace_server/watch.py`,
+`engine_stages`).
 
 A saved case of a connected Lab is drawn from the Lab's own record, and nothing is run again. If a
 case's `view` has `stages` (a list of `{id, name, in, out, ms, note, dropped, added}`), they are

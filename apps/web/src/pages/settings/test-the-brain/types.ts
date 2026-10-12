@@ -95,6 +95,15 @@ export interface BuiltinInfo {
     python: string;
     engine: boolean;
     matching: { enabled?: boolean; present?: boolean; model?: string; about_mb?: number };
+    machine?: {
+      setup: string | null;
+      ram_gb: number | null;
+      gpu: string;
+      models_ram_gb: number | null;
+      checked_at: string | null;
+      engine_running: boolean;
+      engine_reason: string;
+    } | null;
   };
 }
 

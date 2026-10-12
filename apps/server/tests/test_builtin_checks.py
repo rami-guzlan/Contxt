@@ -77,7 +77,7 @@ def test_without_a_lab_the_page_offers_the_checks_this_app_can_run(owner):
     state = owner.ok(owner.get(PREFIX))
     assert state["source"] == "builtin" and state["lab"] is None
     kinds = {k["id"]: k for k in state["status"]["run_kinds"]}
-    assert set(kinds) == {"health", "report", "eval", "difference"}
+    assert set(kinds) == {"health", "report", "eval", "machine", "difference"}
     assert kinds["difference"]["paid"] and not kinds["health"]["paid"]
     waits = {w["suite"]: w for w in state["builtin"]["waits"]}
     if not builtin_checks.engine_ready():
@@ -328,3 +328,73 @@ def test_the_stages_use_the_engines_record_and_say_why_it_did_not_run():
     assert (
         gate["state"] == "waiting" and "not running here: no verified model service" in gate["note"]
     )
+
+
+def test_the_machine_check_says_which_engine_steps_run_here_or_what_runs_instead(owner, runtime):
+    if not builtin_checks.machine_ready():
+        pytest.skip("this install has no machine check yet")
+    before = owner.ok(owner.get(PREFIX))["status"]["qualification"]
+    assert {s["step"] for s in before} == {
+        "Matching by meaning",
+        "The relevance cut",
+        "The gate",
+        "The second pass",
+        "The knowledge agent",
+    }
+    started, live = run(owner, "machine")
+    assert live["active"]["state"] == "done", live
+    summary = owner.ok(owner.get(f"{PREFIX}/runs/{started['run']}"))
+    named = next(m for m in summary["metrics"] if m["id"] == "machine.steps_named")
+    # In a test no model service runs, so every step that does not run names what does instead.
+    assert named["value"] == 1.0 and named["met"] is True and named["gate"] == "machine.steps_named"
+    after = owner.ok(owner.get(PREFIX))["status"]["qualification"]
+    for step in after:
+        assert step["state"] in ("on", "fallback")
+        assert step["state"] == "on" or step["fallback"], step
+    computer = owner.ok(owner.get(f"{PREFIX}/runs/{started['run']}/cases/MC-computer"))
+    assert {r["label"] for r in computer["view"]["rows"]} >= {"Memory", "Setup it gets"}
+    behind = owner.ok(
+        owner.get(f"{PREFIX}/runs/{started['run']}/cases", params={"gate": "machine.steps_named"})
+    )
+    assert behind["total"] == 5, "each step is a case behind its gate"
+    assert owner.ok(owner.get(PREFIX))["builtin"]["computer"]["machine"]["setup"]
+
+
+def test_the_qualification_table_reads_the_engines_machine_overview():
+    over = {
+        "roles": [
+            {
+                "role": "decide",
+                "model": "kev-0.8b",
+                "options": [
+                    {
+                        "name": "kev-0.8b",
+                        "ram_gb": 1.5,
+                        "measured": {"speed_ms": 90.0},
+                        "downloaded": True,
+                    }
+                ],
+            },
+            {"role": "rerank", "model": "qwen3-reranker-0.6b", "options": []},
+            {
+                "role": "embed",
+                "model": "bge-small",
+                "options": [{"name": "bge-small", "downloaded": True}],
+            },
+            {"role": "agent", "model": "qwen3.5-4b", "options": []},
+        ],
+        "engine": {"ready": True, "reason": "", "agent": False},
+        "budget_ms": {"gate": 60, "cut": 300, "second_pass": 150},
+        "fallbacks": [
+            "kev-0.8b has not qualified for the second pass here: it is skipped",
+        ],
+        "agent_claude_code": True,
+    }
+    rows = {r["step"]: r for r in builtin_checks.qualification(over)}
+    assert rows["The gate"]["state"] == "on" and rows["The gate"]["speed_ms"] == 90.0
+    assert rows["The gate"]["budget_ms"] == 60 and rows["The gate"]["peak_ram_mb"] == 1500
+    assert rows["The second pass"]["state"] == "fallback"
+    assert "it is skipped" in rows["The second pass"]["fallback"]
+    assert rows["The knowledge agent"]["fallback"] == "Claude Code on this computer does its work."
+    assert rows["Matching by meaning"]["state"] == "on"
+    assert builtin_checks.qualification(None) == []

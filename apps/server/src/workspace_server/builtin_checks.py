@@ -59,6 +59,13 @@ KINDS: list[dict[str, Any]] = [
         "paid": False,
     },
     {
+        "id": "machine",
+        "name": "Check this computer",
+        "covers": "Reads this computer (memory, graphics), and which steps of the retrieval "
+        "engine run here and which fall back to something simpler.",
+        "paid": False,
+    },
+    {
         "id": "difference",
         "name": "See the difference",
         "covers": "One request answered twice by Claude Code on this computer, without and "
@@ -83,6 +90,14 @@ GATES: list[dict[str, Any]] = [
         "kind": "watch",
         "source": "brain check",
         "pillar": "management",
+    },
+    {
+        "id": "machine.steps_named",
+        "name": "Each step runs here or names its fallback",
+        "bar": {"op": ">=", "value": 1.0},
+        "kind": "hard",
+        "source": "BL 5.11.15",
+        "pillar": "retrieval",
     },
     {
         "id": "eval.must_recall.holdout",
@@ -130,6 +145,108 @@ def met(op: str, value: float, bar: float) -> bool:
 def engine_ready() -> bool:
     """Whether the local retrieval engine (build step 3b) is part of this install."""
     return importlib.util.find_spec("brainkit.engine") is not None
+
+
+def machine_ready() -> bool:
+    """Whether the engine's machine check (this computer, its setup, its models) is here."""
+    return importlib.util.find_spec("brainkit.machine") is not None
+
+
+def machine_overview() -> dict[str, Any] | None:
+    """What Settings > On this computer > Local models shows, or None when the engine's
+    machine module is not part of this install or cannot read this computer."""
+    if not machine_ready():
+        return None
+    try:
+        from brainkit import machine
+
+        found: dict[str, Any] = machine.overview()
+        return found
+    except Exception:  # the lock, the disk, a model service: say nothing rather than crash
+        log.warning("could not read this computer's model settings", exc_info=True)
+        return None
+
+
+def qualification(over: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Each retrieval step on this computer: whether it runs here or falls back to something
+    simpler (and what), its speed against the budget and the memory its model needs. Built from
+    the engine's machine overview (brain-logic plan 5.11.15); empty when there is none."""
+    if not over:
+        return []
+    roles = {r["role"]: r for r in over.get("roles") or []}
+    engine = over.get("engine") or {}
+    running = bool(engine.get("ready"))
+    why_not = str(engine.get("reason") or "the local model service is not running")
+    budget = over.get("budget_ms") or {}
+    named = [str(w) for w in over.get("fallbacks") or []]
+
+    def chosen(role: str) -> tuple[str, dict[str, Any]]:
+        found = roles.get(role) or {}
+        model = found.get("model")
+        option: dict[str, Any] = next(
+            (o for o in found.get("options") or [] if o.get("name") == model), {}
+        )
+        return (str(model) if model else "none"), option
+
+    def row(
+        step: str, role: str, budget_key: str | None, runs: bool, instead: str
+    ) -> dict[str, Any]:
+        model, option = chosen(role)
+        measured = option.get("measured") or {}
+        ram = option.get("ram_gb")
+        return {
+            "step": step,
+            "model": model,
+            "state": "on" if runs else "fallback",
+            "fallback": "" if runs else instead,
+            "speed_ms": measured.get("speed_ms"),
+            "budget_ms": budget.get(budget_key) if budget_key else None,
+            "peak_ram_mb": int(float(ram) * 1000) if ram else None,
+        }
+
+    def said(step_words: str, default: str) -> str:
+        found = next((w for w in named if step_words in w), "")
+        return found or default
+
+    simple = "the router's own scoring decides."
+    gate_off = said("for the gate", f"{why_not}: {simple}")
+    second_off = said("for the second pass", f"{why_not}: this step is skipped.")
+    agent_runs = bool(engine.get("agent"))
+    claude = bool(over.get("agent_claude_code"))
+    _model, embed_option = chosen("embed")
+    return [
+        row(
+            "Matching by meaning",
+            "embed",
+            None,
+            bool(embed_option.get("downloaded")),
+            "Matching by words only until its model is downloaded.",
+        ),
+        row("The relevance cut", "rerank", "cut", running, f"{why_not}: {simple}"),
+        row(
+            "The gate", "decide", "gate", running and not named_has(named, "for the gate"), gate_off
+        ),
+        row(
+            "The second pass",
+            "decide",
+            "second_pass",
+            running and not named_has(named, "for the second pass"),
+            second_off,
+        ),
+        row(
+            "The knowledge agent",
+            "agent",
+            None,
+            agent_runs,
+            "Claude Code on this computer does its work."
+            if claude
+            else "The knowledge agent is off.",
+        ),
+    ]
+
+
+def named_has(named: list[str], words: str) -> bool:
+    return any(words in w for w in named)
 
 
 class BuiltinChecks:
@@ -190,8 +307,8 @@ class BuiltinChecks:
             {
                 "suite": "The machine check",
                 "setup": "this computer",
-                "state": "ready" if engine else "waiting_step",
-                "note": "" if engine else WAITS_FOR_ENGINE,
+                "state": "ready" if machine_ready() else "waiting_step",
+                "note": "" if machine_ready() else WAITS_FOR_ENGINE,
             },
         ]
         return rows
@@ -214,7 +331,7 @@ class BuiltinChecks:
                 "ready": self.ready_matrix(),
                 "gates": GATES,
                 "labels": self.labels(),
-                "qualification": [],
+                "qualification": qualification(machine_overview()),
                 "lock": {"run": holder} if holder else None,
             }
         )
@@ -257,7 +374,25 @@ class BuiltinChecks:
                 "python": platform.python_version(),
                 "matching": matching,
                 "engine": engine_ready(),
+                "machine": self._machine_line(),
             },
+        }
+
+    @staticmethod
+    def _machine_line() -> dict[str, Any] | None:
+        over = machine_overview()
+        if not over:
+            return None
+        machine = over.get("machine") or {}
+        engine = over.get("engine") or {}
+        return {
+            "setup": over.get("setup_label"),
+            "ram_gb": machine.get("ram_gb"),
+            "gpu": machine.get("gpu") or "none found",
+            "models_ram_gb": over.get("ram_in_use_gb"),
+            "checked_at": over.get("checked_at"),
+            "engine_running": bool(engine.get("ready")),
+            "engine_reason": engine.get("reason") or "",
         }
 
     def running(self) -> dict[str, Any] | None:
@@ -748,3 +883,110 @@ class BuiltinChecks:
             [case],
             {"note": "One request, answered twice with Claude Code on this computer."},
         )
+
+    def _run_machine(self, emit: Callable[..., None], _request: str):  # type: ignore[no-untyped-def]
+        """Read this computer again and say which engine steps run here. It keeps what it found
+        in this computer's own model settings (the same as Local models' "check again"), never
+        in a Brain. With the model service running, it also times the reranker."""
+        if not machine_ready():
+            raise Conflict(f"{WAITS_FOR_ENGINE}. There is no machine check in this install yet.")
+        from brainkit import machine, models_client
+
+        settings = machine.check()
+        self._check_stop()
+        speed: dict[str, Any] = {}
+        found = models_client.status()
+        if found.ready:
+            emit("progress", message="Timing the reranker on this computer.")
+            speed = machine.check_speed(found)
+        over = machine_overview()
+        rows = qualification(over)
+        found_machine = settings.get("machine") or {}
+        facts = [
+            ("Memory", f"{found_machine.get('ram_gb')} GB"),
+            ("Graphics", found_machine.get("gpu") or "none found"),
+            ("Setup it gets", (over or {}).get("setup_label") or settings.get("setup") or ""),
+            ("Models in memory at once", f"{(over or {}).get('ram_in_use_gb')} GB"),
+            ("Local model service", "running" if found.ready else f"not running: {found.reason}"),
+        ]
+        cases: list[dict[str, Any]] = [
+            {
+                "id": "MC-computer",
+                "suite": "machine",
+                "kind": "table",
+                "title": "What was found on this computer",
+                "pass": True,
+                "gates": [],
+                "measures": {},
+                "view": {
+                    "columns": ["What", "Found"],
+                    "rows": [
+                        {"label": k, "expected": "", "got": str(v), "pass": True} for k, v in facts
+                    ],
+                },
+            }
+        ]
+        for index, step in enumerate(rows):
+            runs = step["state"] == "on"
+            slow = (
+                step["speed_ms"] is not None
+                and step["budget_ms"] is not None
+                and step["speed_ms"] > step["budget_ms"]
+            )
+            cases.append(
+                {
+                    "id": f"MC-step-{index + 1}",
+                    "suite": "machine",
+                    "kind": "table",
+                    "title": f"{step['step']}: " + ("runs here" if runs else "falls back"),
+                    "pass": None if not runs else not slow,
+                    "gates": ["machine.steps_named"],
+                    "why": step["fallback"],
+                    "measures": {"speed_ms": step["speed_ms"], "budget_ms": step["budget_ms"]},
+                    "view": {
+                        "columns": ["What", "Detail"],
+                        "rows": [
+                            {"label": "Model", "expected": "", "got": step["model"], "pass": True},
+                            {
+                                "label": "Here",
+                                "expected": "runs, or names what runs instead",
+                                "got": "runs here" if runs else step["fallback"],
+                                "pass": True,
+                            },
+                            {
+                                "label": "Speed",
+                                "expected": f"within {step['budget_ms']} ms"
+                                if step["budget_ms"]
+                                else "",
+                                "got": f"{step['speed_ms']} ms"
+                                if step["speed_ms"] is not None
+                                else "not measured yet",
+                                "pass": not slow,
+                            },
+                        ],
+                    },
+                }
+            )
+        named = sum(1 for s in rows if s["state"] == "on" or s["fallback"])
+        share = named / len(rows) if rows else 0.0
+        metrics: list[dict[str, Any]] = [
+            {
+                "id": "machine.steps_named",
+                "n": len(rows),
+                "value": share,
+                "gate": "machine.steps_named",
+                "met": bool(rows) and share >= 1.0,
+                "met_confident": bool(rows) and share >= 1.0,
+                "pillar": "retrieval",
+            },
+            {"id": "machine.ram_gb", "value": float(found_machine.get("ram_gb") or 0)},
+            {
+                "id": "machine.steps_running",
+                "n": len(rows),
+                "value": float(sum(1 for s in rows if s["state"] == "on")),
+            },
+        ]
+        extra: dict[str, Any] = {"note": "Read this computer; nothing in your Brain was changed."}
+        if speed:
+            extra["speed"] = speed
+        return metrics, cases, extra

@@ -65,6 +65,11 @@ export function ThisComputer({ state }: { state: State }) {
           <KeyValues
             rows={[
               ["System", computer.system],
+              ["Setup it gets", computer.machine?.setup ?? ""],
+              ["Memory", computer.machine?.ram_gb ? `${computer.machine.ram_gb} GB` : ""],
+              ["Graphics", computer.machine ? computer.machine.gpu : ""],
+              ["Models in memory at once", computer.machine?.models_ram_gb != null ? `${computer.machine.models_ram_gb} GB` : ""],
+              ["Local model service", computer.machine ? (computer.machine.engine_running ? "Running" : `Not running${computer.machine.engine_reason ? `: ${computer.machine.engine_reason}` : ""}`) : ""],
               ["Processors", computer.cpus ? String(computer.cpus) : ""],
               ["Matching by meaning", computer.matching.enabled === false ? "Off" : computer.matching.present ? `Ready (${computer.matching.model ?? "local model"})` : "Not downloaded yet"],
               ["Retrieval engine", computer.engine ? "Part of this install" : "Waits for build step 3b"],
