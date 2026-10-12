@@ -334,6 +334,37 @@ class QualifyingRunTests(unittest.TestCase):
             rig.stop()
 
 
+class ManualNotesTests(unittest.TestCase):
+    """A note loaded `manual` (the owner's goals) is opened by its id or found by a search,
+    never routed into a brief: by the engine no more than by the router. Found on the PC: the
+    real reranker scored a goals note 0.87 to 0.91 for unrelated requests."""
+
+    def test_a_note_loaded_manual_never_becomes_a_candidate(self):
+        from brainkit.api import Brain
+        from tests import fixture
+        from tests.test_engine import Rig, TableReranker, extra_notes, set_engine
+        vault = fixture.build()
+        meta, body = fixture.note("facts-goals-manual", "facts", "services", "company",
+                                  "Our goals: how headlines should be written, and why.")
+        meta["load"] = "manual"
+        extra_notes(vault, [(meta, body)])
+        set_engine(vault, floor=0.0)  # every note the caller may see would be a candidate
+        rig = Rig(reranker=TableReranker(None, "", {"rules-style-002": 0.95,
+                                                    "facts-goals-manual": 0.99}))
+        brain = Brain(vault, embeddings=False)
+        try:
+            res = brain.context("How should headlines be written?")
+            self.assertEqual(res.data["engine"]["mode"], "on")
+            rows = brain.ledger.decisions(res.data["packet_id"])
+            self.assertNotIn("facts-goals-manual", {r["item"] for r in rows})
+            self.assertNotIn("facts-goals-manual", res.data["note_ids"])
+            self.assertIn("rules-style-002", res.data["note_ids"])
+        finally:
+            brain.close()
+            rig.stop()
+            fixture.remove(vault)
+
+
 class KevInstallTests(unittest.TestCase):
     def test_a_missing_kev_points_at_the_runtime_never_at_pypi(self):
         pin = modellock.Pin(name="kev-0.8b", role="decide", repository="jaredpalmer/kev-0.8b",
