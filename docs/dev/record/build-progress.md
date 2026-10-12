@@ -697,6 +697,40 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   is now masked the way task cards are.
 - On the demo: all 30 endpoints the screens use answer; the screens I opened render.
 
+## Step 9 plan: the local engine on real models, out of the box without a 12 GB GPU (BL 5.11 and 17), branch `models-out-of-the-box`
+
+Started October 12, 2026 on the PC, at Rami's word: "I also want to ensure this can run out of
+the box without that 12gb GPU requirement." The PC has a GTX 1060 with 6 GB (Pascal, sm_61), a
+Ryzen 7 9700X and 62 GB of RAM on Windows 11. `machine.py` reads it as the laptop setup, so it is
+the testbed for the solo default on a small GPU and, forced to the CPU, on a Windows laptop
+without one. Checks per commit are targeted (the touched tests, ruff, mypy; web typecheck and
+tests when the web changes); the full suite and the report card run before the PR opens and
+after main is merged in.
+
+- [ ] Pins: Qwen3-Reranker-0.6B at `e61197ed`; Kev-0.8B at `9a45d25e` (the full revision), with
+      its base Qwen3.5-0.8B-Base at `dc7cdfe2` pinned in the same entry; Qwen3.5-4B as unsloth's
+      Q4_K_M GGUF at `e87f1764` (text only; the most used community build, checked by
+      checksum). The lock learns a base model per entry: verified, fingerprinted and downloaded
+      with it.
+- [ ] One command installs the runtime: a separate environment in the model home, pinned like
+      the lock: torch 2.8 (the CUDA 12.6 build on an NVIDIA GPU, which still runs Pascal; the CPU
+      build otherwise), transformers 5.17, Kev from github.com/jaredpalmer/kev at `fc4a17e`
+      (never PyPI's unrelated `kev`), llama-cpp-python 0.3.36 (the CUDA 12.5 build or the CPU
+      one). The app starts the model service in that environment.
+- [ ] Runs without a 12 GB GPU: each model goes where it fits (the GPU while its memory lasts,
+      else the CPU); a dtype per device (bf16 only where the GPU has it natively, else what
+      measures best); the reranker runs on the CPU (5.11.5 says a Windows laptop without a GPU
+      runs it there; the code refused); the agent falls back to the CPU when the GPU has no room.
+- [ ] Fixes: the Kev install message (it named PyPI's unrelated package).
+- [ ] Measured here: every model verified and loaded; speed per role on the GPU and on the CPU;
+      setups A to E with bge-small on the public demo set (`engine_compare.py --record`), results
+      beside `docs/evals/setups-a-to-e.md`; default cuts fitted on the tuning split; Kev-0.8B's
+      qualification on the demo set.
+- Next (step 10): the Qwen3-Embedding meaning-index backend; the knowledge agent compared on a
+  grown agent set (Qwen3.5-4B, 9B, Qwen3.6-35B-A3B, Qwen3.8-27B and Claude Code).
+- Waits for Rami: the private labels (his Brain's cuts, held-out numbers). The "PC with GPU"
+  speeds of 5.11.7 need a GPU with 12 GB or more to measure.
+
 ## Log
 
 - 2026-10-09 21:20: step 2 committed, 29211c7 on `measure-and-structure` (70 files). Checks:
@@ -784,3 +818,10 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   and pushed, unmerged and 25 commits behind main; the plans and this record copied into the
   repo under `docs/dev/` with every reference to his work Brain rewritten, plus
   `docs/dev/HANDOFF.md` for Claude Code on the PC. Development moves to the PC.
+- 2026-10-12, the PC's first session: cloned; `uv sync`, `npm install`, `npm run build`. Checks:
+  Python 1087 passed and 9 skipped (6 min 51 s), web 215 passed, typecheck, ruff, format and
+  mypy clean; retrieval_eval unchanged (75% recall, 71% precision, 48 cases); the report card ran
+  253 gate tests, none failing. With `BRAIN_TEST_MODELS` the semantic and speech tests pass (16).
+  The GPU is a GTX 1060 with 6 GB; torch 2.8.0 with CUDA 12.6 runs on it. Test the Brain had
+  already merged as rami-guzlan/Contxt#16 (6154848) before the move; the handoff said otherwise
+  and is corrected. Step 9 starts on `models-out-of-the-box`.

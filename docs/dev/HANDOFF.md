@@ -59,9 +59,8 @@ Positioning (the owner's direction, October 2026):
 
 ### On GitHub (this repository, private)
 
-- `main`: everything built through build step 8 (PRs #1 to #13, all merged). Start here.
-- `test-the-brain`: Settings > Test the Brain, unfinished, **not merged**, 25 commits behind
-  main (section 7.1).
+- `main`: everything built through build step 8 (PRs #1 to #13), the handoff docs (#14 and
+  #15) and Settings > Test the Brain (#16), all merged. Start here.
 - Every other branch is merged and kept only as history.
 
 ### In `docs/dev/` (copied in at the handoff, references to the owner's work Brain rewritten)
@@ -75,7 +74,7 @@ Positioning (the owner's direction, October 2026):
 | [record/build-progress.md](record/build-progress.md) | The build record: steps 2 to 8, checklists, what came out, a log entry per merge | Current |
 | [record/report-card-2026-10-10.md](record/report-card-2026-10-10.md) | Output of `scripts/report_card.py` | Current |
 | [record/walkthrough-script.md](record/walkthrough-script.md) | The owner's UX G walkthrough, screen by screen, with its bars | Waiting for him |
-| [record/test-the-brain-progress.md](record/test-the-brain-progress.md) | The Test the Brain branch's own record | Milestone 5 open |
+| [record/test-the-brain-progress.md](record/test-the-brain-progress.md) | The Test the Brain branch's own record | Merged as #16; screenshots wait for a signed-in browser |
 | [prompts/lab-chat-prompt-laptop.md](prompts/lab-chat-prompt-laptop.md) | The paste-ready prompt that starts the Lab's build chat | Written for the laptop: adapt paths and ports |
 | [prompts/test-the-brain-chat-prompt-laptop.md](prompts/test-the-brain-chat-prompt-laptop.md) | The prompt that started the Test the Brain chat | Reference |
 
@@ -276,17 +275,10 @@ model's behavior is made yet.
 
 ### 7.1 Open work, nearest first
 
-1. **Finish Test the Brain** (branch `test-the-brain`; spec: Lab plan 10.1 and C.5). Milestones
-   1 to 4 are done. It reads the Lab's results contract and, with no Lab connected, runs the
-   engine's own checks. Left to do:
-   - merge `main` into it (25 commits);
-   - resolve `Settings.tsx` (both sides add tabs; keep each in its own file);
-   - point its built-in checks at what steps 3b to 8 added (per-layer scores, "why", the machine
-     check, the report card);
-   - run every check;
-   - open one PR.
-   Its record says screenshots were blocked because printing the sign-in link was refused.
-   That was correct: use a browser the owner signs in to, or skip the screenshots.
+1. **Test the Brain: done.** Merged as #16 on October 12 (spec: Lab plan 10.1 and C.5). It
+   reads the Lab's results contract and, with no Lab connected, runs the engine's own checks,
+   including the machine check. Only its screenshots are left: they need a browser the owner
+   signs in to, since printing the sign-in link is refused, correctly.
 2. **The owner's walkthrough (UX G and G4).** He walks [record/walkthrough-script.md](record/walkthrough-script.md)
    on the demo Brain, then lives a real day on his own Brain, tries a goal with the coach, runs
    the T-41 story, and has two interviewees try the coach and a goal page. Visual design starts
@@ -460,6 +452,11 @@ model's behavior is made yet.
   (`/c/...`) to Python.
 - **Never start anything hidden or at login.** Antivirus stops it silently, and nothing should
   be worked around.
+- **The Claude desktop app is a packaged (MSIX) app.** Files its shells write under
+  `AppData\Roaming` land in the app's private copy, invisible to the owner's own terminals (a
+  `pip install --user` there cannot be run from them). Put tools and caches on a project drive.
+- **A small system drive:** keep `UV_CACHE_DIR`, the npm cache, `HF_HOME` and
+  `BRAIN_MODEL_HOME` on a drive with room; the models alone take tens of GB.
 
 ## 11. Commands you will use
 
