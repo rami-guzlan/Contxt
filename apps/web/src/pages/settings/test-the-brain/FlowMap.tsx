@@ -48,9 +48,10 @@ export function FlowMap({ stages, replay = 0 }: { stages: StageDrawn[]; replay?:
   }, [stages, reduced, replay]);
 
   return (
+    <div className="ttb-flow-wrap">
     <ol className="ttb-flow" aria-label="The request, stage by stage">
       {stages.map((stage, index) => {
-        const waiting = stage.state === "waiting";
+        const waiting = stage.state !== "done";
         const reached = index < filled;
         const next = stages[index + 1];
         const dots = !waiting && reached ? dotsFor(stage.out) : 0;
@@ -63,11 +64,11 @@ export function FlowMap({ stages, replay = 0 }: { stages: StageDrawn[]; replay?:
               ) : (
                 <>
                   <p className="ttb-counts" aria-label={`${stage.in ?? "no"} in, ${stage.out ?? "no"} out`}>
-                    <span className="ttb-count">{stage.in ?? "–"}</span>
+                    <span className="ttb-count">{stage.in ?? "none"}</span>
                     <span aria-hidden="true" className="ttb-arrow">
                       →
                     </span>
-                    <span className="ttb-count">{stage.out ?? "–"}</span>
+                    <span className="ttb-count">{stage.out ?? "none"}</span>
                   </p>
                   <p className="muted small">{stage.ms !== null && stage.ms !== undefined ? time(stage.ms) : "time: not kept by this engine yet"}</p>
                   {stage.note ? <p className="small">{stage.note}</p> : null}
@@ -99,7 +100,7 @@ export function FlowMap({ stages, replay = 0 }: { stages: StageDrawn[]; replay?:
               ) : null}
             </div>
             {next ? (
-              <span className={`ttb-lane${waiting || next.state === "waiting" ? " is-dashed" : ""}`} aria-hidden="true">
+              <span className={`ttb-lane${waiting || next.state !== "done" ? " is-dashed" : ""}`} aria-hidden="true">
                 {Array.from({ length: dots }, (_, k) => (
                   <i key={k} className="ttb-dot" style={{ "--delay": `${-(k * 1.6) / Math.max(1, dots)}s`, "--dur": "1.6s" } as React.CSSProperties} />
                 ))}
@@ -109,5 +110,6 @@ export function FlowMap({ stages, replay = 0 }: { stages: StageDrawn[]; replay?:
         );
       })}
     </ol>
+    </div>
   );
 }

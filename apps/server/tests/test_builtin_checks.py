@@ -271,20 +271,60 @@ def test_watch_needs_a_real_request(owner, body):
 def test_the_engines_own_record_fills_the_stages_that_wait():
     from workspace_server import watch
 
+    # The shape the retrieval engine writes into a brief's data (its Audit.summary).
     engine = {
-        "mode": "engine",
-        "layers": {
-            "gate": {"in": 1, "out": 1, "ms": 12.5},
-            "relevance": {
-                "in": 40,
-                "out": 9,
-                "ms": 80.0,
-                "dropped": [{"id": "n1", "title": "Menu", "why": "below the cut"}],
-            },
-        },
+        "mode": "on",
+        "gate": {"yes": 0.91, "cut": 0.5, "passed": True},
+        "timings": {"gate": 12.5, "find": 30.0, "cut": 80.0, "second_pass": 41.0, "fit": 2.0},
+        "rounds": 2,
+        "candidates": 40,
+        "outcomes": {"body": 5, "pointer": 2, "out": 31, "held": 2},
     }
     filled = watch.engine_stages(engine)
     assert filled["gate"]["state"] == "done" and filled["gate"]["ms"] == 12.5
+    assert "probability 0.91" in filled["gate"]["note"]
     assert (filled["cut"]["in"], filled["cut"]["out"]) == (40, 9)
-    assert filled["cut"]["dropped"][0]["why"] == "below the cut"
-    assert watch.engine_stages(None) == {} and watch.engine_stages({"layers": "x"}) == {}
+    assert filled["second"]["note"] == "2 round(s) of the link loop."
+    assert filled["search"]["out"] == 40 and filled["fit"]["ms"] == 2.0
+    assert watch.engine_stages(None) == {} and watch.engine_stages({"mode": "fallback"}) == {}
+
+
+def test_the_stages_use_the_engines_record_and_say_why_it_did_not_run():
+    from workspace_server import watch
+
+    data = {
+        "mode": "lean",
+        "topics": ["a"],
+        "scope_chain": ["root"],
+        "note_ids": ["n1"],
+        "token_count": 100,
+        "trace": {"note_scores": [{"id": "n1"}], "decisions": []},
+    }
+    on = watch.from_trace(
+        dict(
+            data,
+            engine={
+                "mode": "on",
+                "gate": {"passed": True},
+                "timings": {"gate": 5.0, "cut": 9.0},
+                "candidates": 3,
+                "outcomes": {"body": 1, "out": 2},
+            },
+        ),
+        titles={"n1": "Note one"},
+        live_notes=10,
+        ms=1.0,
+    )
+    by_id = {s["id"]: s for s in on["stages"]}
+    assert on["engine"] is True and by_id["gate"]["state"] == "done" and by_id["cut"]["out"] == 1
+    assert by_id["second"]["state"] == "waiting", "a layer the engine gave no time for still waits"
+    off = watch.from_trace(
+        dict(data, engine={"mode": "fallback", "reason": "no verified model service is running"}),
+        titles={},
+        live_notes=10,
+        ms=1.0,
+    )
+    gate = {s["id"]: s for s in off["stages"]}["gate"]
+    assert (
+        gate["state"] == "waiting" and "not running here: no verified model service" in gate["note"]
+    )

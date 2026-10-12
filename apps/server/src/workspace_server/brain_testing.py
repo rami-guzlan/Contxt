@@ -449,6 +449,7 @@ class TestTheBrain:
         active = found["active"]
         if active and active["state"] == "running":
             return found
+        lab: Lab | None = None
         try:
             lab = self.lab()
             status = self._status(lab) if lab else None

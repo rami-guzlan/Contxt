@@ -1,9 +1,23 @@
 /* Settings > Test the Brain. The app's own tokens and themes; color only for state. Movement only
    where it explains (the flow of a request), and none with reduced motion. */
 
+/* Settings has seven tabs with this one: let the bar wrap on a phone instead of scrolling the page. */
+.settings > .tabs {
+  flex-wrap: wrap;
+}
+
 .ttb {
   display: grid;
   gap: 1rem;
+  min-width: 0;
+}
+
+.ttb > * {
+  min-width: 0;
+}
+
+.ttb-flow-wrap {
+  container-type: inline-size;
 }
 
 .ttb .lede {
@@ -497,6 +511,56 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .ttb-suites li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.15rem;
+  }
+}
+
+@media (max-width: 760px) {
+  /* A wide table becomes one card per row, each cell with its own label. */
+  .ttb-stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .ttb-stack,
+  .ttb-stack tbody,
+  .ttb-stack tr,
+  .ttb-stack th,
+  .ttb-stack td {
+    display: block;
+    width: 100%;
+  }
+
+  .ttb-stack tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    margin-bottom: 0.6rem;
+    padding: 0.35rem 0.65rem;
+  }
+
+  .ttb-stack th,
+  .ttb-stack td {
+    border: 0;
+    padding: 0.2rem 0;
+  }
+
+  .ttb-stack td[data-label]:not(:empty)::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+}
+
+@container (max-width: 1000px) {
   .ttb-flow {
     flex-direction: column;
     overflow-x: visible;
@@ -529,11 +593,6 @@
     left: -3px;
     top: 0;
     animation-name: ttb-flow-down;
-  }
-
-  .ttb-suites li {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.15rem;
   }
 }
 

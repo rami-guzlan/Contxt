@@ -596,3 +596,25 @@ def test_a_gate_opens_the_cases_behind_it_worst_first(owner, connected):
         owner.get(f"{PREFIX}/runs/{started['run']}/cases", params={"gate": "agent.precision"})
     )
     assert [c["id"] for c in again["cases"]] == ["OC-demo-1"], "a case that names its gates wins"
+
+
+def test_a_lab_that_breaks_after_it_was_connected_does_not_break_the_live_view(owner, connected):
+    os.remove(os.path.join(connected, "lab.contract.json"))
+    live = owner.ok(owner.get(f"{PREFIX}/live"))
+    assert live["active"] is None and live["events"] == []
+    for path in (f"{PREFIX}/runs", f"{PREFIX}/gates", f"{PREFIX}/overview"):
+        assert owner.get(path).status_code in (200, 422), path
+
+
+def test_a_run_started_outside_this_page_is_followed_through_the_labs_progress_file(
+    owner, connected
+):
+    started, _live = run_fast(owner)
+    status_path = os.path.join(connected, "results", "status.json")
+    with open(status_path, encoding="utf-8") as handle:
+        status = json.load(handle)
+    status["lock"] = {"run": started["run"]}  # as if the Lab's own pane had started it
+    write_json(status_path, status)
+    live = owner.ok(owner.get(f"{PREFIX}/live"))
+    assert live["active"]["ours"] is False and live["active"]["run"] == started["run"]
+    assert live["events"][0]["event"] == "start"

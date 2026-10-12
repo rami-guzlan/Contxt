@@ -20,7 +20,7 @@ export function Gates({ go }: { go: Go }) {
         Read only. A hard bar fails a run; a watch bar is tracked and never fails one. Bars change only in the Lab's own pane, with a reason.
       </p>
       <div className="table-wrap">
-        <table className="table ttb-gates">
+        <table className="table ttb-stack">
           <caption className="sr-only">Every bar, with its latest value</caption>
           <thead>
             <tr>
@@ -41,18 +41,18 @@ export function Gates({ go }: { go: Go }) {
                     {g.name}
                     <span className="muted small"> {g.kind === "hard" ? "hard" : "watch"}</span>
                   </th>
-                  <td>
+                  <td data-label="Value">
                     {shown(g.value, g.bar)}
                     {g.ci ? <span className="muted small"> ({interval(g.ci, g.bar)})</span> : null}
                   </td>
-                  <td>{barWords(g.bar)}</td>
-                  <td>
+                  <td data-label="Needs to be">{barWords(g.bar)}</td>
+                  <td data-label="Verdict">
                     <Chip tone={verdict.tone}>{verdict.text}</Chip>
                   </td>
-                  <td>
+                  <td data-label="Over runs">
                     <Sparkline values={g.trend} bar={g.bar} label={g.name} />
                   </td>
-                  <td className="small">
+                  <td className="small" data-label="Comes from">
                     {g.source || "Not stated"}{" "}
                     {g.run ? (
                       <button type="button" className="link small" onClick={() => go("cases", { run: g.run as string, gate: g.id })}>

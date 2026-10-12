@@ -29,20 +29,6 @@ STAGES = (
     ("second", "Second pass and link loop"),
     ("fit", "Fit"),
 )
-# The engine's layer names (brain-logic plan 5.11) as the stages above call them.
-ENGINE_NAMES = {
-    "gate": "gate",
-    "find": "search",
-    "search": "search",
-    "relevance": "cut",
-    "cut": "cut",
-    "second": "second",
-    "second_pass": "second",
-    "link": "second",
-    "links": "second",
-    "link_loop": "second",
-    "fit": "fit",
-}
 
 
 def stage(
@@ -84,36 +70,74 @@ def _reason_rows(decisions: list[str], titles: dict[str, str], *words: str) -> l
 
 
 def engine_stages(engine: Any) -> dict[str, dict[str, Any]]:
-    """The stages the local engine's own record fills, by stage id; {} when there is none.
+    """The stages the local engine's own record fills, by stage id; {} when it did not run.
 
-    The engine's summary (the brief's `engine` data) lists its layers with the count in and out
-    and the time of each; the names are matched to the System Map's stages."""
-    if not isinstance(engine, dict):
+    The engine writes a summary into the brief's data (`engine`): its mode, the gate's answer,
+    the time of each layer (`timings`: gate, find, cut, second_pass, fit), the link loop's
+    rounds, how many candidates it looked at and what became of them (`outcomes`)."""
+    if not isinstance(engine, dict) or engine.get("mode") != "on":
         return {}
-    layers = engine.get("layers") or engine.get("times")
-    if isinstance(layers, dict):
-        layers = [
-            dict(v, name=k) if isinstance(v, dict) else {"name": k, "ms": v}
-            for k, v in layers.items()
-        ]
+    timings = engine.get("timings") or {}
+    outcomes = engine.get("outcomes") or {}
+    total = int(engine.get("candidates") or sum(int(v) for v in outcomes.values()))
+    kept = max(0, total - int(outcomes.get("out", 0)))
+    gate = engine.get("gate") or {}
     out: dict[str, dict[str, Any]] = {}
-    for layer in layers or []:
-        if not isinstance(layer, dict):
-            continue
-        target = ENGINE_NAMES.get(str(layer.get("name") or layer.get("layer") or "").lower())
-        if target is None:
-            continue
-        out[target] = stage(
-            target,
-            "done",
-            in_=layer.get("in"),
-            out=layer.get("out"),
-            ms=layer.get("ms"),
-            note=str(layer.get("note") or ""),
-            dropped=list(layer.get("dropped") or []),
-            added=list(layer.get("added") or []),
+    if "gate" in timings:
+        passed = bool(gate.get("passed", True))
+        said = (
+            f" (probability {gate['yes']:.2f}, cut {gate['cut']:.2f})"
+            if "yes" in gate and "cut" in gate
+            else ""
         )
+        out["gate"] = stage(
+            "gate",
+            "done",
+            in_=1,
+            out=1 if passed else 0,
+            ms=timings["gate"],
+            note=(
+                "The Brain holds something for this request"
+                if passed
+                else "Nothing to send for this request"
+            )
+            + said
+            + ".",
+        )
+    if "find" in timings:
+        out["search"] = stage(
+            "search", "done", out=total, ms=timings["find"], note=f"{total} candidate(s) looked at."
+        )
+    if "cut" in timings:
+        out["cut"] = stage(
+            "cut",
+            "done",
+            in_=total,
+            out=kept,
+            ms=timings["cut"],
+            note=f"{kept} cleared the relevance cut.",
+        )
+    if "second_pass" in timings:
+        rounds = int(engine.get("rounds") or 0)
+        out["second"] = stage(
+            "second",
+            "done",
+            in_=kept,
+            out=kept,
+            ms=timings["second_pass"],
+            note=f"{rounds} round(s) of the link loop.",
+        )
+    if "fit" in timings:
+        out["fit"] = stage("fit", "done", ms=timings["fit"])
     return out
+
+
+def _fallback_note(engine: Any) -> str:
+    """Why the engine, though installed, did not decide this brief."""
+    if isinstance(engine, dict) and engine.get("mode") == "fallback":
+        why = str(engine.get("reason") or "no verified model service is running")
+        return f"The retrieval engine is part of this install but is not running here: {why}."
+    return ""
 
 
 def from_trace(
@@ -190,7 +214,16 @@ def from_trace(
         "second": _waiting("second"),
         "fit": fit,
     }
-    out.update(engine)  # the engine's record, where it has one, replaces a waiting stage
+    for stage_id, found in engine.items():  # the engine's record fills a waiting stage
+        if out[stage_id]["state"] == "waiting":
+            out[stage_id] = found
+        else:  # a stage main already draws keeps its counts and gains the engine's time
+            out[stage_id].update({k: v for k, v in found.items() if v not in (None, "", [])})
+    reason = _fallback_note(data.get("engine"))
+    if reason:
+        for stage_id in ("gate", "cut", "second"):
+            if out[stage_id]["state"] == "waiting":
+                out[stage_id]["note"] = reason
     delivered = [
         {
             "id": i,
@@ -266,9 +299,11 @@ def from_record(case: dict[str, Any]) -> dict[str, Any]:
         notes = view.get("notes") or []
         delivered = [n for n in notes if n.get("form") in ("body", "pointer")]
         missed = [n for n in notes if n.get("label") == "needed_missed"]
-        stages = [
-            stage("read", "done", in_=1, out=1, note="From the saved case; nothing was run again."),
-            stage(
+        by_id = {
+            "read": stage(
+                "read", "done", in_=1, out=1, note="From the saved case; nothing was run again."
+            ),
+            "fit": stage(
                 "fit",
                 "done",
                 in_=len(notes),
@@ -279,6 +314,10 @@ def from_record(case: dict[str, Any]) -> dict[str, Any]:
                     for n in missed
                 ],
             ),
+        }
+        stages = [
+            by_id.get(sid) or stage(sid, "skipped", note="Not in this saved case's record.")
+            for sid, _name in STAGES
         ]
     return {
         "test": True,

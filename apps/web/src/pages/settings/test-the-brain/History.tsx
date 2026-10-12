@@ -71,7 +71,7 @@ export function History({ go, a, b }: { go: Go; a?: string; b?: string }) {
         <p className="muted small">Tick two runs to compare them.</p>
       </div>
       <div className="table-wrap">
-        <table className="table">
+        <table className="table ttb-stack">
           <caption className="sr-only">Every run, newest first</caption>
           <thead>
             <tr>
@@ -89,7 +89,7 @@ export function History({ go, a, b }: { go: Go; a?: string; b?: string }) {
               const note = markers(r, runs[i + 1]);
               return (
                 <tr key={r.run}>
-                  <td>
+                  <td data-label="Compare">
                     <input type="checkbox" aria-label={`Compare ${r.run}`} checked={picked.includes(r.run)} onChange={() => toggle(r.run)} />
                   </td>
                   <th scope="row">
@@ -99,11 +99,11 @@ export function History({ go, a, b }: { go: Go; a?: string; b?: string }) {
                       {r.run}
                     </button>
                   </th>
-                  <td>{when(r.ended ?? r.started)}</td>
-                  <td>{seconds(r.cost.seconds)}</td>
-                  <td>{dollars(r.cost.usd_estimate)}</td>
-                  <td>{r.failing}</td>
-                  <td className="small">{note.length ? note.join("; ") : ""}</td>
+                  <td data-label="When">{when(r.ended ?? r.started)}</td>
+                  <td data-label="Took">{seconds(r.cost.seconds)}</td>
+                  <td data-label="Cost">{dollars(r.cost.usd_estimate)}</td>
+                  <td data-label="Failing">{r.failing}</td>
+                  <td className="small" data-label="What changed">{note.length ? note.join("; ") : ""}</td>
                 </tr>
               );
             })}
