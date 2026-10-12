@@ -60,7 +60,7 @@ Data, GitHub and artifacts:
     - never in the Contxt repo;
     - never on the dashboard, beyond ids, numbers and short titles I approved;
     - Lab code names no organization and no person;
-    - roundtable material never appears in shared output (rules-attribution-101).
+    - confidential partner material never appears in shared output (the attribution rule).
 15. Never print a sign-in link, an owner key or a token, the Lab's own included.
 16. Git:
     - push only `lab-v1`, and open one pull request at the end;

@@ -207,9 +207,9 @@ therefore looks for the Lab's traces, not for an unchanged Brain.
   for tokens, keys, sign-in links and passwords, and a hit blocks the commit.
 - **The workspace database copy is scrubbed.** It drops the sign-in, session and token tables,
   and the `secrets/` folder is never copied.
-- **Roundtable material stays out.** Under rule `rules-attribution-101`, roundtable insights and
+- **Confidential partner material stays out.** Under the owner's attribution rule, confidential partner insights and
   private participants never appear on the dashboard or in any shared output. Cases that touch
-  them carry `sensitive: roundtable`.
+  them carry `sensitive: partner`.
 - **No sign-in links or tokens are ever printed**, the Lab's own included.
 
 ### 3.3 Approvals are Rami's
@@ -552,7 +552,7 @@ suite: retrieval
 origin: real                   # real | old | nothing | memory | generated | seeded | demo
 source: {ledger_packet: pkt_..., at: 2026-09-28T14:02:00Z, client: claude-code}
 title: "LinkedIn invite for the November webinar"   # shown on the dashboard; he can edit it
-sensitive: none                # none | client | roundtable | personal
+sensitive: none                # none | client | partner | personal
 tags: [writing, linkedin]
 request: "Draft a LinkedIn post inviting the core audience to the November webinar"
 context: {project: q4-webinars, partition: null, turn: 1, earlier_turns: []}
@@ -1070,7 +1070,7 @@ the only one who can change them?
   - A seeded third exception to a rule within 90 days is flagged.
   - Seeded rubber-stamp approvals (seconds each, all passed) trigger the approval-health
     suggestion.
-- **Sealed scopes.** No client partition leaks into another, and roundtable material never
+- **Sealed scopes.** No client partition leaks into another, and confidential partner material never
   reaches a public draft.
 
 ### 6.7 Updating: the eight checks
@@ -1324,7 +1324,7 @@ grading by the final state.
 10. **Compaction mid-task**: the working context is restored from the resumption card.
 11. **Four quiet weeks**: weekly knowledge agent runs, stale notes, paced cards and agent goals
     trending. This is BL 10.6's soak, in small.
-12. **Sealed clients**: two client partitions with no leaks, and roundtable material kept out of
+12. **Sealed clients**: two client partitions with no leaks, and confidential partner material kept out of
     public drafts.
 
 **Where it runs.** On the laptop, scenarios 1 to 4 run at setup A with Claude only, to prove the
@@ -1802,7 +1802,7 @@ builds it now, beside the build chat, in its own worktree `Contxt-test-the-brain
 **Markers.** Every trend marks engine ref changes, snapshot refreshes and gate changes.
 
 **Privacy.** Only numbers, case ids and approved short titles. Never note bodies, requests that
-name clients, or roundtable material.
+name clients, or confidential partner material.
 
 **Publishing.**
 - The publish skill reads `results/runs/<run>/summary.json` and writes the rows.
@@ -2176,7 +2176,7 @@ Each row names the expected behavior and where it is tested. "Sc" means a scenar
 | RT08 | Two notes that contradict each other | Both, marked as disputed | R5 |
 | RT09 | A need reachable only through a link: project, then account row, then contact | Found by the loop | R6 |
 | RT10 | Sealed client partitions | Nothing crosses | R2, Sc12 |
-| RT11 | Roundtable material for a public-facing draft | Not delivered for attribution | R2, 6.6 |
+| RT11 | Confidential partner material for a public-facing draft | Not delivered for attribution | R2, 6.6 |
 | RT12 | "The deck", with an active project | The project's deck, as a pointer | R1 |
 | RT13 | A deep request across many topics | Over budget becomes pointers; nothing dropped | R1, S9 |
 | RT14 | A follow-up turn | Only what is new | S10 |

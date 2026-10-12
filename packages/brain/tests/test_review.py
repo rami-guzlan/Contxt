@@ -118,8 +118,8 @@ class ReviewTests(unittest.TestCase):
     def test_different_figures_for_the_same_thing_are_a_contradiction(self):
         from brainkit import review
         self.assertIn("different figures", review.contradiction(
-            "Studio delivers 600 hours of bespoke content each year.",
-            "Studio delivers 500 hours of bespoke content each year."))
+            "The workshop runs 40 sessions each year.",
+            "The workshop runs 30 sessions each year."))
         self.assertIsNone(review.contradiction("Croissants are baked at six.",
                                                "Instagram posts go out three mornings a week."))
         self.assertIn("different figures", review.contradiction(
