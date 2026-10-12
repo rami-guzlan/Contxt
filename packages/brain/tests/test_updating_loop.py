@@ -144,11 +144,13 @@ class LoopTest(unittest.TestCase):
             paths = []
             for name in ("a.md", "b.md"):
                 path = os.path.join(folder, name)
-                open(path, "w", encoding="utf-8").write(name)
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(name)
                 self.brain.record_output(path, title=name, session_id=session)
                 paths.append(path)
             other = os.path.join(folder, "c.md")
-            open(other, "w", encoding="utf-8").write("c")
+            with open(other, "w", encoding="utf-8") as handle:
+                handle.write("c")
             self.brain.record_output(other, title="c")
             found = loop.independent(self.brain, paths + [other])
             self.assertEqual((found["given"], found["independent"]), (3, 2))
