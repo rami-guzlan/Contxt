@@ -15,12 +15,14 @@ and noise hits, reported separately for tuning cases and held-out cases. "Listed
 counts notes the packet names under "Also relevant", which the agent can open with get_note. Old note ids are
 resolved through aliases.json, so renaming notes does not break a case.
 
-Runs on a throwaway session ledger; it never touches real conversation history.
+Runs on a throwaway session ledger; it never touches real conversation history, and the
+throwaway one (the requests and the briefs built from this brain) is removed when the run ends.
 """
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import time
 
@@ -42,13 +44,14 @@ def run(brain, path=None, holdout=None, verbose=False):
     # A throwaway ledger for the run; the brain's own comes back after, so a running app
     # that evaluates keeps its real history.
     real = brain._ledger
-    brain._ledger = Ledger(os.path.join(tempfile.mkdtemp(prefix="brain-eval-"),
-                                        "sessions.sqlite"), 30)
+    scratch = tempfile.mkdtemp(prefix="brain-eval-")
+    brain._ledger = Ledger(os.path.join(scratch, "sessions.sqlite"), 30)
     try:
         rows = _cases(brain, st, spec, holdout, verbose, aliases, style_topics, style_notes)
     finally:
         brain._ledger.close()
         brain._ledger = real
+        shutil.rmtree(scratch, ignore_errors=True)
     return summarize(rows, spec.get("thresholds") or {})
 
 

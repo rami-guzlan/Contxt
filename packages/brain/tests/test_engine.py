@@ -293,6 +293,26 @@ class EngineTests(unittest.TestCase):
         finally:
             brain.close()
 
+    def test_a_note_loaded_manual_never_becomes_a_candidate(self):
+        # The owner's goals load only when asked for, by the engine no more than by the router;
+        # on the PC a real reranker scored a goals note 0.87 to 0.91 for unrelated requests.
+        meta, body = fixture.note("facts-goals-manual", "facts", "services", "company",
+                                  "Our goals: how headlines should be written, and why.")
+        meta["load"] = "manual"
+        extra_notes(self.vault, [(meta, body)])
+        set_engine(self.vault, floor=0.0)  # every note the caller may see would be a candidate
+        brain = self.brain(reranker=TableReranker(None, "", {"rules-style-002": 0.95,
+                                                             "facts-goals-manual": 0.99}))
+        try:
+            res = brain.context("How should headlines be written?")
+            self.assertEqual(res.data["engine"]["mode"], "on")
+            rows = brain.ledger.decisions(res.data["packet_id"])
+            self.assertNotIn("facts-goals-manual", {r["item"] for r in rows})
+            self.assertNotIn("facts-goals-manual", res.data["note_ids"])
+            self.assertIn("rules-style-002", res.data["note_ids"])
+        finally:
+            brain.close()
+
     def test_there_is_no_count_cap_only_a_ceiling_for_speed(self):
         notes = [fixture.note(f"facts-palette-{i:03d}", "facts", "services", "company",
                               f"Palette study {i}: brand palettes for small companies, "
