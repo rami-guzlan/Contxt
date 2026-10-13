@@ -33,9 +33,9 @@ After any compaction: read this file, then the prompt (entry 170), then `git log
 
 ## Milestone 5: finish
 - [x] docs/test-the-brain.md
-- [ ] All AGENTS.md checks pass (running)
+- [x] All AGENTS.md checks pass
 - [ ] Screens (light, dark, phone) in `test-the-brain-screens\`: BLOCKED. The sign-in link is the owner's key and the harness denied printing it (credential rule). See the log.
-- [ ] Push `test-the-brain`, one PR against main
+- [x] Push `test-the-brain`, one PR against main: merged as rami-guzlan/Contxt#16 (6154848) on 2026-10-12, after main was merged in and the built-in checks pointed at step 3b's machine check and the engine's record (eefc181)
 
 ## Log
 
