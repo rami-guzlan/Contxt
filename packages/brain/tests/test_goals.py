@@ -58,6 +58,36 @@ class GoalsTests(unittest.TestCase):
         found = self.brain.search("run the studio without dropping client details").data
         self.assertIn(goals.GOALS_ID, [h["id"] for h in found["hits"]])
 
+    def test_a_goal_never_rides_into_a_brief_on_another_note(self):
+        """Goals are confidential and load only when asked for: not when a selected note names
+        them, and not as a newer value of a figure the brief carries."""
+        from brainkit.vault import Vault
+        self.brain.set_goals(ANSWERS, actor="person:alex")
+        self.brain.close()
+        v = Vault(self.vault)
+        levels = fixture.BRAIN["structure"]["scope_levels"]
+        kinds = fixture.BRAIN["structure"]["partition_kinds"]
+        for meta, body in [
+            fixture.note("facts-revenue-now", "facts", "services", "company",
+                         "Monthly studio revenue is 32,000 dollars. Where we want it to go is "
+                         f"in `{goals.GOALS_ID}`; it contradicts nothing here.",
+                         as_of="2026-08-01"),
+            fixture.note("facts-revenue-goal", "facts", "services", "person:alex",
+                         "Monthly studio revenue is 50,000 dollars by June.",
+                         load="manual", as_of="2026-10-01", classification="confidential")]:
+            v.write_note(v.note_path(meta, levels, kinds), dict(meta), body)
+        self.brain = Brain(self.vault, embeddings=False)
+        res = self.brain.context("What is our monthly studio revenue?",
+                                 principal="person:alex")
+        data = res.data
+        carried = (set(data.get("note_ids") or []) | set(data.get("related_ids") or [])
+                   | set(data.get("pointer_ids") or []))
+        self.assertIn("facts-revenue-now", carried)
+        self.assertNotIn("facts-revenue-goal", carried)
+        self.assertNotIn(goals.GOALS_ID, carried)
+        self.assertNotIn("50,000", res.text)
+        self.assertNotIn(ANSWERS["purpose"], res.text)
+
     def test_changing_them_is_one_undo_point(self):
         self.brain.set_goals(ANSWERS, actor="person:alex")
         changed = self.brain.set_goals(dict(ANSWERS, purpose="Help me grow the studio."),

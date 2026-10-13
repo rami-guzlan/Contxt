@@ -428,7 +428,10 @@ class Engine:
         router = self.router
         named = route.focus.id if route.focus is not None else None
         admitted = router.admitted_notes(route.chain, route.partitions)
-        on_demand = [n for n in admitted if not n.standing and n.id != named]
+        # A note loaded "manual" (the owner's goals) is never routed into a brief, as in the
+        # router: opened by its id or found by a search only.
+        on_demand = [n for n in admitted
+                     if not n.standing and n.id != named and n.load != "manual"]
         context = (f"{route.focus.title} {route.focus.note.index_line}"
                    if route.focus is not None else None)
         picks = {sc.item.id: "the router's pick" for sc in route.notes}
@@ -582,7 +585,8 @@ class Engine:
             body = str(getattr(c.item, "body", "") or "")
             for ref in dict.fromkeys(_NAMED.findall(body)):
                 note = admitted.get(ref)
-                if note is None or note.standing or ("note", ref) in seen:
+                if note is None or note.standing or note.load == "manual" \
+                        or ("note", ref) in seen:
                     continue
                 seen.add(("note", ref))
                 fresh.append(Candidate("note", note, found_by=f"linked from {c.id}",
