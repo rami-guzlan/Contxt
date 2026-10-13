@@ -112,7 +112,8 @@ def open_brain(vault: str, semantic: bool = False, rerank: bool = False):
     from .api import Brain
     from .sessions import Ledger
     brain = Brain(vault, embeddings=semantic, rerank=semantic and rerank)
-    scratch = tempfile.mkdtemp(prefix="brain-safeguards-ledger-")
+    # Beside the vault, in the scratch folder copy_vault made: removed with it.
+    scratch = tempfile.mkdtemp(prefix="ledger-", dir=os.path.dirname(os.path.abspath(vault)))
     brain._ledger = Ledger(os.path.join(scratch, "sessions.sqlite"), 30)
     return brain
 
