@@ -784,3 +784,17 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   and pushed, unmerged and 25 commits behind main; the plans and this record copied into the
   repo under `docs/dev/` with every reference to his work Brain rewritten, plus
   `docs/dev/HANDOFF.md` for Claude Code on the PC. Development moves to the PC.
+- 2026-10-12, the PC's first session: cloned; every check passes (Python 1087 passed and 9
+  skipped, web 215, typecheck, ruff, format and mypy clean, retrieval_eval unchanged, the report
+  card's 253 gate tests none failing). Test the Brain had already merged as
+  rami-guzlan/Contxt#16 before the move. Build step 9 (the local models on the PC's GTX 1060:
+  pinned, one-command install, run without a 12 GB GPU, setups A to E measured) went to the
+  `models-out-of-the-box` branch.
+- 2026-10-13: Rami deferred the local models (the step 9 branch is parked), asked that nothing
+  go on the C: drive, and set the direction: the rest of the architecture first with a model
+  router ready for later, Workflows replaced by a Knowledge Agent on the CLI model the person
+  chooses, an updated design to come (HANDOFF 7.0). On `fix-data-leaks`: the owner's goals
+  (loaded manual, confidential) reached briefs when a selected note named them or carried an
+  older value of a figure a goal sets, and through the engine's find step and link loop; and
+  eval, replay and bench ledgers, the requests and briefs built from a Brain, stayed in the temp
+  folder, as did hundreds of scratch Brains per test run. All fixed, with tests.

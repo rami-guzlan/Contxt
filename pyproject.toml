@@ -36,6 +36,8 @@ testpaths = [
     "apps/server/tests",
 ]
 addopts = ["--import-mode=importlib", "-ra"]
+# pytest's own tmp_path folders go when the run ends, like everything else a test makes.
+tmp_path_retention_policy = "none"
 filterwarnings = ["error::ResourceWarning"]
 
 [tool.ruff]

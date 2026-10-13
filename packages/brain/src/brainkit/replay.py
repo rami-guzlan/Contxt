@@ -80,8 +80,9 @@ def _rebuild(target, case: dict) -> dict:
     return result.data
 
 
-def _scratch_brain(brain, vault_dir: str):
-    """A brain over a scratch vault that shares the live brain's models and vector cache."""
+def _scratch_brain(brain, vault_dir: str, root: str):
+    """A brain over a scratch vault that shares the live brain's models and vector cache. Its
+    ledger lives in `root`, the scratch folder the replay removes when it ends."""
     from .api import Brain
     other = Brain(vault_dir, principal=brain.default_principal,
                   embeddings=brain.embedder is not None,
@@ -91,8 +92,9 @@ def _scratch_brain(brain, vault_dir: str):
         other.embedder.cache_path = brain.embedder.cache_path
     if brain.reranker is not None and other.reranker is not None:
         other.reranker.model_dir = brain.reranker.model_dir
-    other._ledger = Ledger(os.path.join(tempfile.mkdtemp(prefix="brain-replay-ledger-"),
-                                        "sessions.sqlite"), 30)
+    ledger = os.path.join(root, "ledger")
+    os.makedirs(ledger, exist_ok=True)
+    other._ledger = Ledger(os.path.join(ledger, "sessions.sqlite"), 30)
     return other
 
 
@@ -149,10 +151,11 @@ class Target:
         self.root = tempfile.mkdtemp(prefix="brain-replay-")
         try:
             if at:
-                self.target = _scratch_brain(brain, _vault_at(brain, at, self.root))
+                self.target = _scratch_brain(brain, _vault_at(brain, at, self.root), self.root)
                 self.label = f"at {at}"
                 return
-            self.target = _scratch_brain(brain, _vault_with(brain, proposal, self.root))
+            self.target = _scratch_brain(brain, _vault_with(brain, proposal, self.root),
+                                         self.root)
             outcome = self.target.approve(proposal, actor=self.target.state().config.owner)
             if outcome.is_error:
                 raise ValueError(f"The proposal could not be applied in a copy: {outcome.text}")

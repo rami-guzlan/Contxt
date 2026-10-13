@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import time
 
@@ -112,7 +113,18 @@ def run(brain, fixture_path=None, verbose=False, only=None):
     system_skill = brain.state().router.system_skill
     tmp = tempfile.mkdtemp(prefix="brain-bench-")
     brain.close()
+    real = brain._ledger
     brain._ledger = Ledger(os.path.join(tmp, "sessions.sqlite"), 30)
+    try:
+        return _run(brain, fixture, thresholds, owner, system_skill, verbose, only)
+    finally:
+        # The throwaway ledger holds the briefs built from this brain: never left behind.
+        brain._ledger.close()
+        brain._ledger = real
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _run(brain, fixture, thresholds, owner, system_skill, verbose, only):
     st = brain.state()
     route_keys = {n.id: n.route_key for n in st.index.notes.values()}
     metrics = {name: {"hit": 0, "required": 0, "good": 0, "total": 0} for name in

@@ -1072,9 +1072,10 @@ class Router:
     def _prefer_newer(self, route: Route) -> None:
         if route.mode in self.NO_DATED:
             return
+        # Never a note loaded "manual" (the owner's goals): a target is not a newer value.
         pool = [n for n in self.admitted_notes(route.chain, route.partitions)
                 if (n.as_of or n.kind == "state") and not self.config.is_focus(n)
-                and tension.measures(n.body)]
+                and n.load != "manual" and tension.measures(n.body)]
         if not pool:
             return
         if route.mode == "focus-only":
@@ -1885,8 +1886,10 @@ class Router:
     def _linked(self, route, selected, related, chosen, ranked):
         """Notes a selected note names by id. One it says it contradicts or conflicts with
         travels with it when the request touches it too (both are needed to answer "how
-        many learners do we reach?"); any other is listed, not sent."""
-        admitted = {n.id: n for n in self.admitted_notes(route.chain, route.partitions)}
+        many learners do we reach?"); any other is listed, not sent. A note loaded "manual"
+        (the owner's goals) is neither: naming it does not bring it."""
+        admitted = {n.id: n for n in self.admitted_notes(route.chain, route.partitions)
+                    if n.load != "manual"}
         relevance = {s.item.id: s.score for s in ranked}
         listed = {s.item.id for s in related}
         out = list(selected)
