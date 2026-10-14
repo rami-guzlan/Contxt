@@ -41,7 +41,7 @@ class Signal:
 
 
 def _older_than(stamp: str, days: int) -> bool:
-    found = util.parse_date(str(stamp or "")[:10])
+    found = util.day_of(stamp)
     return bool(found) and (util.today_date() - found).days > int(days)
 
 

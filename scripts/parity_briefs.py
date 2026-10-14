@@ -23,7 +23,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "packages", "brain", "src"))
 
-from brainkit import safeguards_eval  # noqa: E402
+import datetime as dt  # noqa: E402
+
+from brainkit import safeguards_eval, util  # noqa: E402
 
 EVALS = os.path.join(ROOT, "packages", "brain", "tests", "evals")
 BRAINS = os.path.join(ROOT, "brains")
@@ -54,7 +56,13 @@ def key(brain: str, request: str, partition: str | None) -> str:
 
 
 def briefs() -> dict[str, str]:
-    """{key: the brief's task context} for every eval request, engine off, by words."""
+    """{key: the brief's task context} for every eval request, engine off, by words. Dates are
+    read on a UTC clock, so the kept copy is the same on every machine."""
+    with util.zone(dt.UTC):
+        return _briefs()
+
+
+def _briefs() -> dict[str, str]:
     wanted = requests()
     out: dict[str, str] = {}
     for name in sorted({brain for brain, _r, _p in wanted}):

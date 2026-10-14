@@ -224,7 +224,7 @@ def _events(brain, sheet_id: str, row_id: str) -> list[dict]:
 
 
 def _age(stamp: str, today: dt.date) -> int | None:
-    found = util.parse_date(str(stamp or "")[:10])
+    found = util.day_of(stamp)
     return None if found is None else (today - found).days
 
 
@@ -765,7 +765,7 @@ def row_lines(found: Sheet, row: Row, *, since: str = "") -> list[str]:
         cell = row.cells.get(column.name)
         if cell is None or cell.value in (None, ""):
             continue
-        marks = [f"as of {(cell.as_of or cell.at)[:10]}"]
+        marks = [f"as of {util.day_text(cell.as_of or cell.at)}"]
         if cell.ai:
             marks.append("AI-filled")
         if cell.stale:

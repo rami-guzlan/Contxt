@@ -5,6 +5,7 @@ conservative character estimate is used otherwise, so the engine runs with no in
 """
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import hashlib
 import json
@@ -226,10 +227,25 @@ def now_iso() -> str:
     return now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+ZONE: _dt.tzinfo | None = None  # the owner's time zone: None is this machine's (see `zone`)
+
+
 def local(moment: _dt.datetime) -> _dt.datetime:
-    """`moment` on the owner's clock: the machine's time zone. Tests pin it to put the owner
-    in a time zone of their choosing."""
-    return moment.astimezone()
+    """`moment` on the owner's clock: the machine's time zone, unless `zone` names another.
+    Tests pin it to put the owner in a time zone of their choosing."""
+    return moment.astimezone(ZONE)
+
+
+@contextlib.contextmanager
+def zone(tz: _dt.tzinfo | None):
+    """Read the owner's clock in `tz` for a while: a comparison kept as text (the parity
+    briefs) reads UTC, so it is the same on every machine whatever its time zone."""
+    global ZONE
+    before, ZONE = ZONE, tz
+    try:
+        yield
+    finally:
+        ZONE = before
 
 
 def today() -> str:
@@ -257,6 +273,25 @@ def parse_date(value):
         return _dt.date.fromisoformat(str(value).strip()[:10])
     except (TypeError, ValueError):
         return None
+
+
+def day_of(value) -> _dt.date | None:
+    """The owner's day for a stored value: a moment the Brain stamped (`now_iso()`) read on the
+    owner's clock, or a date as written. Never a stamp cut to its first ten characters, which is
+    UTC's day: on a New York evening, tomorrow. None when it is neither."""
+    text = str(value or "").strip()
+    if len(text) > 10 and text[10] in "T ":
+        found = local_date(text)
+        if found is not None:
+            return found
+    return parse_date(text) if text else None
+
+
+def day_text(value) -> str:
+    """`day_of` as YYYY-MM-DD for showing, or the value's first ten characters when it is not
+    a date at all."""
+    found = day_of(value)
+    return found.isoformat() if found else str(value or "")[:10]
 
 
 # ------------------------------------------------------------------ files

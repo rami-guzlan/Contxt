@@ -189,12 +189,12 @@ def _focus_block(focus, compact=False, files=None) -> list[str]:
         if value:
             lines.append(f"{label}: {_clip(value, 40 if compact else 70)}")
     if state.get("updated"):
-        lines.append(f"Updated: {str(state['updated'])[:10]}")
+        lines.append(f"Updated: {util.day_text(state['updated'])}")
     recent = [u for u in focus.updates[-3:]][::-1]
     if recent and not compact:
         lines += ["", "Recent updates:"]
         for update in recent:
-            lines.append(f"- {update.at[:10]}: {_clip(update.summary, 30)}")
+            lines.append(f"- {util.day_text(update.at)}: {_clip(update.summary, 30)}")
     if files and not compact:
         lines += ["", "Files:"]
         for path, card in files[:8]:
@@ -216,7 +216,7 @@ def file_facts(card) -> list[str]:
     if meta.get("dated"):
         out.append(str(meta["dated"])[:10])
     elif str(meta.get("added") or "").strip():
-        out.append(f"filed {str(meta['added'])[:10]}")
+        out.append(f"filed {util.day_text(meta['added'])}")
     return out
 
 

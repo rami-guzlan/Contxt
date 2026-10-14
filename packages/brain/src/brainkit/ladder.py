@@ -117,7 +117,7 @@ def _period(note) -> int:
 
 
 def _age_days(stamp: str, today: dt.date) -> int | None:
-    found = util.parse_date(str(stamp or "")[:10])
+    found = util.day_of(stamp)
     return None if found is None else (today - found).days
 
 

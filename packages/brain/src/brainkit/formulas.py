@@ -23,6 +23,8 @@ import datetime as dt
 import re
 from typing import Any, Callable
 
+from . import util
+
 FUNCTIONS = ("TODAY", "CREATED", "UPDATED", "AGE", "COUNT", "SUM", "AVERAGE", "MIN", "MAX",
              "LOOKUP", "IF", "AND", "OR", "NOT", "JOIN", "DAYS", "ADD_DAYS", "ROUND")
 COLUMN = re.compile(r"\[([^\[\]]{1,80})\]")
@@ -34,13 +36,11 @@ class FormulaError(ValueError):
 
 
 def _date(value: Any) -> dt.date | None:
+    """A date column's value, or a row's own stamp (CREATED, UPDATED) read on the owner's
+    clock."""
     if isinstance(value, dt.date):
         return value
-    text = str(value or "").strip()[:10]
-    try:
-        return dt.date.fromisoformat(text)
-    except ValueError:
-        return None
+    return util.day_of(value)
 
 
 def _number(value: Any) -> float | None:
@@ -141,7 +141,8 @@ def evaluate(tree: ast.Expression, names: dict[str, str], row: Row,
              today: dt.date | None = None) -> Any:
     """The formula's value for one row; None when an input is missing or does not fit (a blank
     cell shows blank, never an error)."""
-    today = today or dt.date.today()
+    if today is None:
+        today = util.today_date()  # the owner's clock, as everywhere else in the Brain
     try:
         return _value(_eval(tree.body, names, row, today))
     except (TypeError, ValueError, ZeroDivisionError, OverflowError):
