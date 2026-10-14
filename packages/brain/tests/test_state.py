@@ -7,15 +7,20 @@ import datetime as dt
 import os
 import shutil
 import unittest
+from unittest import mock
 
-from brainkit import formulas, governance, state
+from brainkit import formulas, governance, state, util
 from brainkit import safeguards_eval as se
 from brainkit.api import Brain
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 BRAINS = os.path.join(ROOT, "brains")
-TODAY = dt.date.today()
+# The Brain's clock, pinned: midday UTC is the same date in nearly every time zone, and a run
+# that crosses midnight (CI once did, between collecting these tests and running them) still
+# counts days from one today.
+NOW = dt.datetime(2026, 10, 10, 12, 0, tzinfo=dt.timezone.utc)
+TODAY = util.local(NOW).date()
 
 
 def days(n: int) -> str:
@@ -24,6 +29,9 @@ def days(n: int) -> str:
 
 class StateTest(unittest.TestCase):
     def setUp(self):
+        clock = mock.patch.object(util, "now", return_value=NOW)
+        clock.start()
+        self.addCleanup(clock.stop)
         self.vault = se.copy_vault(os.path.join(BRAINS, "knowledge-company", "vault"))
         self.brain = Brain(self.vault, embeddings=False)
         self.owner = self.brain.state().config.owner
