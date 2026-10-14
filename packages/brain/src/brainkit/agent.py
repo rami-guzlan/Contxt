@@ -149,7 +149,7 @@ def _projects(st) -> list[dict]:
     for focus in st.index.focuses.values():
         state = focus.current()
         out.append({"id": focus.id, "title": focus.title, "status": focus.status,
-                    "active": focus.active, "updated": str(state.get("updated") or "")[:10],
+                    "active": focus.active, "updated": util.day_text(state.get("updated")),
                     "current": _clip(str(state.get("current") or ""), 240),
                     "next": _clip(str(state.get("next") or ""), 240)})
     out.sort(key=lambda p: (not p["active"], p["title"].lower()))
@@ -472,11 +472,11 @@ def _projects_to_check(brain, st) -> list[dict]:
         if not focus.active or focus.status.strip().lower() in RESTING:
             continue
         state = focus.current()
-        updated = str(state.get("updated") or "")[:10]
+        updated = util.day_text(state.get("updated"))
         quiet = not updated or updated < _day(QUIET_DAYS)
         if not quiet and str(state.get("next") or "").strip():
             continue
-        recent = "\n".join(f"- {u.at[:10]}: {_clip(u.summary, 200)}"
+        recent = "\n".join(f"- {util.day_text(u.at)}: {_clip(u.summary, 200)}"
                            for u in focus.updates[-3:]) or "- none"
         why = (f"no update since {updated or 'it began'}" if quiet else "no next steps")
         out.append({"kind": "project", "ids": [focus.id], "title": focus.title,

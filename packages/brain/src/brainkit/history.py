@@ -170,7 +170,7 @@ def versions(brain, note_id, *, limit=50, with_text=False) -> list[dict] | None:
                                      f"---\nid: {note_id}\n---\n{record['previous']}",
                                      with_text=with_text, committed=False,
                                      message=f"Before the {record.get('action')} on "
-                                             f"{str(record.get('at'))[:10]}"))
+                                             f"{util.day_text(record.get('at'))}"))
         rows[1:] = sorted(rows[1:], key=lambda r: r["at"], reverse=True)
     for index, row in enumerate(rows):
         older = rows[index + 1] if index + 1 < len(rows) else None

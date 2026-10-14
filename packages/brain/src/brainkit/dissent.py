@@ -97,7 +97,7 @@ def propose(brain, note_id, *, claim, evidence, source="", principal=None, sessi
     if before is not None:
         why = f": {before['reason']}" if before.get("reason") else ""
         return _result(
-            f"This challenge to {note.id} was turned down on {str(before.get('at'))[:10]}{why}. "
+            f"This challenge to {note.id} was turned down on {util.day_text(before.get('at'))}{why}. "
             "Raise it again with new evidence.",
             {"status": "refused", "id": note.id, "rejected_at": before.get("at")}, True)
     proposal_id = f"challenge-{note.id}-{util.short_hash(claim + util.now_iso(), 4)}"

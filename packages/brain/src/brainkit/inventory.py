@@ -104,8 +104,8 @@ def note_row(st, note, *, created=None, changes=0, use=None) -> dict:
         "baseline_marked": bool(fm.as_bool(note.meta.get("baseline"))),
         # when a changing value was true, and the last day it holds
         "as_of": note.as_of or None, "valid_until": note.valid_until or None,
-        "added": note.added, "updated": str(note.meta.get("updated") or "")[:10],
-        "revised": str(note.meta.get("revised") or "")[:10],
+        "added": note.added, "updated": util.day_text(note.meta.get("updated")),
+        "revised": util.day_text(note.meta.get("revised")),
         "verified": note.verified, "confidence": note.confidence,
         # a person confirmed it since it went live (`verified`), not only approved it
         "checked": bool(str(note.meta.get("verified") or "").strip()),

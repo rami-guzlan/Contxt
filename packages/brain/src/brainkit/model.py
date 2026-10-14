@@ -119,7 +119,7 @@ class Note:
     def dated(self) -> str:
         """When what it says was true: `as_of`, else when its text last changed, else when
         it was added."""
-        return self.as_of or str(self.meta.get("revised") or "")[:10] or self.added
+        return self.as_of or util.day_text(self.meta.get("revised")) or self.added
 
     def stale_reason(self, today, default_days: int = 0) -> str | None:
         """Why this note is stale on `today`, or None. Stale notes stay, ranked lower.

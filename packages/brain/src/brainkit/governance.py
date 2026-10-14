@@ -757,7 +757,7 @@ def inbox(brain, **_ignored):
     if not rows:
         return _result("The inbox is empty.", {"proposals": []})
     text = "\n".join(f"- `{r['id']}` [{r['kind']}] {r['route_key']} ({r['scope']}, "
-                     f"{r['created'][:10]}): {r['summary']}" for r in rows)
+                     f"{util.day_text(r['created'])}): {r['summary']}" for r in rows)
     return _result(f"{len(rows)} pending proposal(s):\n{text}", {"proposals": rows})
 
 
@@ -1267,7 +1267,7 @@ def restore(brain, note_id, ref, *, reason="", actor=None):
     if not same_text:
         meta["revised"] = util.now_iso()
     brain.vault.write_note(note.path, meta, text)
-    when = str(old.get("at") or "")[:10]
+    when = util.day_text(old.get("at"))
     record = {"at": util.now_iso(), "action": "restored", "by": who, "note": note.id,
               "path": note.path, "from": str(old.get("commit") or old["ref"]),
               "from_at": old.get("at"), "reason": str(reason or "").strip(),
