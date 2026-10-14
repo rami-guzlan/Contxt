@@ -40,6 +40,12 @@ This makes three folders inside `Contxt/` and a settings file:
 
 Git ignores all four in the Contxt repository: your Brain and your data never end up in it.
 
+Setup also fetches, once, the small model that matches requests by meaning (BAAI/bge-small-en-v1.5,
+about 70 MB, into `brain/vault/.brain/models`): matched by words alone, a Brain finds fewer of
+the notes a request needs (on the demo Brains, 75% of them against 85%). Without a network,
+setup makes the Brain anyway and says how to fetch the model later; `--offline` downloads
+nothing.
+
 `setup` starts from the empty Brain. To start from a demo instead, name it:
 `uv run contxt setup --brain programmer`. `uv run contxt starters` lists them all, and
 [brains/README.md](../brains/README.md) says what is in each. Setup never overwrites a Brain
@@ -97,22 +103,21 @@ progress on your projects, files you share. Projects and files go in at once wit
 point; what else your AI picks up waits for you in **Catch up** (Settings, Approval, says what
 waits).
 
-## 5. Match by meaning, and talk (optional)
+## 5. Talk (optional)
 
 ```bash
 uv run contxt models --download
 ```
 
-fetches two local models into `brain/vault/.brain/models`, once:
+fetches the speech model (faster-whisper `small.en`, about 480 MB) into
+`brain/vault/.brain/models`, once, so talk and recordings turn into text on this computer. On
+a 12-thread laptop CPU, 15 seconds of talk takes about 2 seconds. It also fetches the model that
+matches by meaning (about 70 MB) if setup could not, or ran with `--offline`.
 
-- a small embedding model (BAAI/bge-small-en-v1.5, about 70 MB), so your Brain matches a
-  request by what it means, not only the words it uses;
-- a speech model (faster-whisper `small.en`, about 480 MB), so talk and recordings turn into
-  text on this computer. On a 12-thread laptop CPU, 15 seconds of talk takes about 2 seconds.
-
-Nothing downloads on its own, not even when an AI app starts the Brain: without them the
-Brain matches by words, and talking is off. Settings, On this computer, has the same
-downloads. (`BRAIN_LOCAL_MODELS=0` lets the Brain fetch its embedding model on first use.)
+Nothing else downloads on its own, not even when an AI app starts the Brain: without the speech
+model, talking is off, and without the meaning model the Brain matches by words. Settings, On
+this computer, has the same downloads. (`BRAIN_LOCAL_MODELS=0` lets the Brain fetch its
+embedding model on first use.)
 
 ## 6. Start a project and add its files
 

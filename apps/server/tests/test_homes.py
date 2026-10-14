@@ -10,6 +10,7 @@ import pytest
 
 from brainkit import gitops
 from brainkit.api import Brain
+from brainkit.index import Embedder
 from workspace_connectors.providers import BRAIN_CLIENTS, brain_setup
 from workspace_server import cli, homes
 from workspace_server.settings import Settings
@@ -26,6 +27,22 @@ def git(folder, *args):
 def run(capsys, *argv):
     code = cli.main(["--env-file", "", *argv])
     return code, capsys.readouterr()
+
+
+@pytest.fixture
+def fetched(monkeypatch):
+    """The meaning model's download, stood in: a test never reaches the network."""
+    calls = []
+
+    def download(self):
+        calls.append(self.model_dir)
+        os.makedirs(
+            os.path.join(self.model_dir, "models--qdrant--bge-small-en-v1.5-onnx-q"), exist_ok=True
+        )
+        return {"available": True, "model": self.model_name, "reason": None, "loaded": False}
+
+    monkeypatch.setattr(Embedder, "download", download)
+    return calls
 
 
 def test_the_starters_are_the_empty_brain_and_four_demos():
@@ -139,7 +156,7 @@ def test_contxt_names_win_and_the_earlier_names_still_work(monkeypatch):
     assert settings.port == 9002 and settings.name == "Earlier"
 
 
-def test_setup_then_connect_from_the_command_line(tmp_path, capsys):
+def test_setup_then_connect_from_the_command_line(tmp_path, capsys, fetched):
     code, out = run(capsys, "--home", str(tmp_path), "setup", "--brain", "entrepreneur")
     assert code == 0 and "Made a Brain from the entrepreneur starter" in out.out
     assert "contxt" in out.out and "connect" in out.out
@@ -150,6 +167,34 @@ def test_setup_then_connect_from_the_command_line(tmp_path, capsys):
     assert code == 0 and "[mcp_servers.contxt]" in out.out and f"'{vault}'" in out.out
     code, out = run(capsys, "--home", str(tmp_path), "connect")
     assert code == 0 and all(f"== {label}" in out.out for label in BRAIN_CLIENTS.values())
+
+
+def test_setup_fetches_the_meaning_model_unless_offline(tmp_path, capsys, fetched):
+    # Recall falls from 85% to 75% on the demo set when the Brain matches by words alone.
+    code, out = run(capsys, "--home", str(tmp_path / "online"), "setup")
+    assert code == 0 and len(fetched) == 1
+    assert "Your Brain matches requests by meaning" in out.out
+    assert "models --download   also turn talk into text" in out.out
+    code, out = run(capsys, "--home", str(tmp_path / "offline"), "setup", "--offline")
+    assert code == 0 and len(fetched) == 1  # nothing more was fetched
+    assert "models --download   match by meaning" in out.out
+
+
+def test_setup_without_a_network_still_makes_the_brain(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(
+        Embedder,
+        "download",
+        lambda self: {
+            "available": False,
+            "model": self.model_name,
+            "reason": "no network",
+            "loaded": False,
+        },
+    )
+    code, out = run(capsys, "--home", str(tmp_path), "setup")
+    assert code == 0 and "Made a Brain from the empty starter" in out.out
+    assert "not set up yet (no network)" in out.out
+    assert "models --download   match by meaning" in out.out
 
 
 def test_connect_without_a_brain_says_how_to_make_one(tmp_path, capsys):

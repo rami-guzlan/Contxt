@@ -63,7 +63,14 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--brain", default="empty", help="the starter Brain (see: contxt starters)")
     p.add_argument("--name", help="what to call it (default: the starter's name)")
     p.add_argument("--port", type=int, help="the app's port (default: 8787, or the next free one)")
-    p.add_argument("--models", action="store_true", help="also download the local models")
+    p.add_argument(
+        "--models", action="store_true", help="also the speech model (about 480 MB, once)"
+    )
+    p.add_argument(
+        "--offline",
+        action="store_true",
+        help="download nothing: the Brain matches by words until contxt models --download",
+    )
     p = sub.add_parser("demo", help="try a demo Brain on a port of its own")
     p.add_argument("starter")
     p.add_argument("--port", type=int)
@@ -417,18 +424,56 @@ def _setup(args: argparse.Namespace) -> int:
     print(f"The app's data goes in {made['data']} and what your AI makes in {made['outputs']}.")
     print(f"Settings: {made['env']}\n")
     settings = Settings.from_env(home=home)
-    if args.models:
+    meaning = False
+    if args.offline:
+        print("Nothing was downloaded: your Brain matches requests by words for now.\n")
+    elif args.models:
         _models(settings, download=True)
+        meaning = True
+    else:
+        meaning = _meaning(settings)
     command = "uv run contxt" + (f' --home "{home}"' if args.home else "")
     print("Next:")
     if not webapp.built(webapp.location(settings.web_dist)):
         print(f"  {command} web --download   get the web app (or: npm install, npm run build)")
     print(f"  {command} serve      start the app (it prints your sign-in link)")
     print(f"  {command} connect    connect Claude Code, Claude Desktop, Codex or another AI app")
-    if not args.models:
+    if not meaning:
         print(f"  {command} models --download   match by meaning and transcribe speech, offline")
+    elif not args.models:
+        print(f"  {command} models --download   also turn talk into text, offline (about 480 MB)")
     print(f"  {command} check      see that everything works")
     return 0
+
+
+def _meaning(settings: Settings) -> bool:
+    """The small model that matches requests by meaning (about 70 MB, once), fetched at
+    setup: matching by words alone finds noticeably fewer of the notes a request needs (on
+    the demo Brains 75% against 85%). Without a network the Brain is made anyway and says how
+    to fetch it later."""
+    from brainkit.api import Brain
+
+    if not settings.brain_vault:
+        return False
+    brain = Brain(settings.brain_vault)
+    try:
+        embedder = brain.embedder
+        if embedder is None:
+            return False
+        reason = None
+        if not embedder.present():
+            print(f"Downloading {embedder.model_name} (about 70 MB, once) ...")
+            reason = embedder.download().get("reason")
+        if embedder.present():
+            print("Your Brain matches requests by meaning, on this computer.\n")
+            return True
+        print(
+            f"Matching by meaning is not set up yet ({reason or 'the download failed'}): your "
+            "Brain matches by words until contxt models --download fetches it.\n"
+        )
+        return False
+    finally:
+        brain.close()
 
 
 def _starters() -> int:
