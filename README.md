@@ -129,15 +129,17 @@ the app into the Brain when you approve it.
 
 ![Skills, each runnable from the app](docs/images/skills.png)
 
-## Local models (optional)
+## Local models
+
+`contxt setup` fetches, once, a small embedding model (about 70 MB) so your Brain matches
+requests by meaning, on your computer (`--offline` skips it, and the Brain matches by words).
 
 ```bash
 uv run contxt models --download
 ```
 
-downloads, once, a small embedding model (about 70 MB) so your Brain matches requests by
-meaning, and a speech model (about 480 MB) so talk and recordings become text on your
-computer. Without them the Brain matches by words and talking is off.
+adds, once, a speech model (about 480 MB) so talk and recordings become text on your
+computer. Without it, talking is off.
 
 ## Repository
 
