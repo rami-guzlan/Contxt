@@ -24,12 +24,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "packages", "brain", "src"))
 
 import datetime as dt  # noqa: E402
+from unittest import mock  # noqa: E402
 
 from brainkit import safeguards_eval, util  # noqa: E402
 
 EVALS = os.path.join(ROOT, "packages", "brain", "tests", "evals")
 BRAINS = os.path.join(ROOT, "brains")
 KEPT = os.path.join(EVALS, "parity_briefs.json")
+# The day the kept copy was written (commit 9d49127). A demo note added October 1 was new
+# then and is not two weeks later, so an unpinned clock changes briefs with the calendar.
+KEPT_AT = dt.datetime(2026, 10, 10, 12, 0, tzinfo=dt.UTC)
 CONTINUITY = "\n\n## Continuity"
 
 
@@ -57,8 +61,9 @@ def key(brain: str, request: str, partition: str | None) -> str:
 
 def briefs() -> dict[str, str]:
     """{key: the brief's task context} for every eval request, engine off, by words. Dates are
-    read on a UTC clock, so the kept copy is the same on every machine."""
-    with util.zone(dt.UTC):
+    read on a UTC clock stopped at KEPT_AT, so the kept copy is the same on every machine and
+    every day: what is new (14 days) or due is judged from the day the copy was kept."""
+    with util.zone(dt.UTC), mock.patch.object(util, "now", return_value=KEPT_AT):
         return _briefs()
 
 
