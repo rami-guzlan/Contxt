@@ -4,31 +4,46 @@
 
 | Change | Needs approval? | Where it goes |
 |---|---|---|
-| A note in the proposer's own person scope (preferences, personal facts) | no, applies at once | `knowledge/`, logged as `auto-applied` |
+| A note in the proposer's own person scope (preferences, personal facts) | no, applies at once (not under the regulated preset) | `knowledge/`, logged as `auto-applied` |
 | A new Focus in the proposer's own scope | no | `knowledge/projects/<slug>/` |
 | Focus progress | no, append-only | `journal/focus/<id>.jsonl` |
-| Company or team identity, rules, facts; another person's scope | yes | `inbox/` until the approver decides |
-| A skill in the proposer's own scope | no | `skills/<category>/<name>/` |
+| Company or team identity, rules, facts; another person's scope | yes, unless the capture policy lets that kind in from the owner's AI (below) | `inbox/` until the approver decides |
+| A skill in the proposer's own scope | no (not under regulated) | `skills/<category>/<name>/` |
 | A skill in a shared scope | yes | `inbox/`, files staged in `.brain/staging/` |
-| A document or asset from the owner (the app or the CLI), the owner's AI in a chat, or a sync folder | no by default (the capture policy below): filed at once as an undo point | `references/` (in a project: `references/projects/<project>/`) with its card in `knowledge/` |
+| A document or asset the owner adds in the app | no, under every preset: filed at once as an undo point | `references/` (in a project: `references/projects/<project>/`) with its card in `knowledge/` |
+| A document or asset from the owner's AI in a chat, the CLI (`brain add-file`, `brain intake`) or a swept folder | no, except under regulated (the capture policy below): filed at once as an undo point | as above |
 | A document or asset from anyone else, or when the capture policy says `wait` | yes | `inbox/`, files staged in `.brain/staging/` |
-| Anything found by scout or filed by intake | yes, always | `inbox/` |
+| Anything found by `brain scout` | yes, always | `inbox/` |
+| What the app's AI work proposes: Find what to remember, Moving in, reconcile and merge, skill drafts, the knowledge agent | yes, always | `inbox/`, grouped by the work that made it |
 | Review cadences, auto-apply rules, proposal limit, delivery detail kept, default owner | the owner, through `set_policies` (the workspace's Policies page): an undo point | `brain.json`, journal, git |
 | Scopes, partitions, budgets, routing policy | owner edits `brain.json` / `routing.json` directly | git |
 
-Change it in `brain.json` under `governance`: `auto_apply_own_scope`, `auto_apply_scopes`
-(fnmatch patterns such as `dept:marketing`), `approver`, `approvers`,
-`max_proposals_per_session` (default 12), `default_owner`, `review_days`, and `capture`.
+Change it in `brain.json` under `governance`: `preset` (`personal`, `careful` or
+`regulated`; careful when none is set), `auto_apply_own_scope` (on, except under regulated),
+`auto_apply_scopes` (fnmatch patterns such as `dept:marketing`), `approver`, `approvers`,
+`max_proposals_per_session` (default 12), `default_owner`, `review_days`, `redact_cloud`, and
+`capture`.
 
 **The capture policy** (`governance.capture`, set through `set_policies`) says what the
 owner's own captures do, by what is captured and where it came from: `apply` (in at once,
 with an undo point) or `wait` (in the review queue). Origins are `app` (the owner, in the
-workspace or the CLI), `chat` (the owner's AI, in a conversation) and `folder` (a swept
-folder). Defaults: files, facts, decisions and progress apply; rules, preferences,
-conventions and changes to existing entries wait when an AI made them. Only what differs from
-the defaults is kept in `brain.json`. Anyone else's changes to shared knowledge follow the
-scope rules above and wait for the approver. Files use it today; notes follow it next. How proposals arise
-without anyone asking, and how uploads are gated and staged, is in
+workspace), `chat` (the owner's AI, in a conversation; the CLI's `add-file` and `intake`
+count as chat) and `folder` (a swept folder). The Brain's preset (`governance.preset`) sets
+where it starts, and `governance.capture` keeps only what differs from it:
+
+| Preset | A file from a chat, the CLI or a folder | A note from the owner's AI in a chat, in a shared scope | A note in the owner's own scope |
+|---|---|---|---|
+| careful (the default when none is set) | applies | waits | applies |
+| personal | applies | facts, decisions and progress apply; the rest waits | applies |
+| regulated | waits | waits | waits |
+
+Under every preset a file the owner adds in the app applies, and rules, preferences,
+conventions and changes to existing entries from a chat or a folder wait (the owner can let
+one kind in at a time). Even where the policy says apply, a note waits when it may contradict
+a live note, nearly repeats one (0.75), replaces one, holds misplaced text, or would change a
+baseline entry (a rule, identity, a must-hold, a standing note, or one in heavy use). Anyone
+else's changes to shared knowledge follow the scope rules above and wait for the approver.
+How proposals arise without anyone asking, and how uploads are gated and staged, is in
 [Automatic capture](CAPTURE.md). Where every entry came from, how it changed and where it
 went is in [The context supply chain](SUPPLY_CHAIN.md).
 

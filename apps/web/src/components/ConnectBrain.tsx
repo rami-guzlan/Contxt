@@ -34,6 +34,15 @@ export function ConnectBrain() {
         <CopyBlock label={client.file ? `Add to ${client.file}` : "Add to the app's MCP settings"} text={client.config ?? ""} />
       )}
       <p className="muted small">{client.note}</p>
+      {client.instruction ? (
+        <>
+          <CopyBlock label={`Then add to ${client.instruction_where ?? "the app's instructions"}`} text={client.instruction} />
+          <p className="muted small">
+            A model reads your Brain only when it asks, and it forgets most on follow-ups. This line in the app's standing instructions makes it
+            ask first.
+          </p>
+        </>
+      ) : null}
       <p className="muted small">
         The app then shows a server called <code>{data.server}</code>. It reads your Brain from <code>{data.vault}</code> on this computer: no
         account, no token, nothing sent anywhere but to the AI app you connect.
