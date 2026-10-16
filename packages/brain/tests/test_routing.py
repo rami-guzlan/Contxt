@@ -52,6 +52,29 @@ class RoutingTests(unittest.TestCase):
             for note_id in data["related_ids"]:
                 self.assertGreaterEqual(scores[note_id]["adj"], floor, (request, note_id))
 
+    def test_a_note_past_the_budget_is_named_never_dropped(self):
+        """Nothing is silently left out: a selected note that does not fit the brief's budget
+        comes in short, or is named under "Did not fit" for the model to open."""
+        from unittest import mock
+        request = "Write a headline for our web design service page"
+        selected = self.ctx(request).data["note_ids"]
+        self.assertGreater(len(selected), 1)
+        for budget in (1, 40, 90, 160):
+            with mock.patch("brainkit.packets.note_budget", return_value=budget):
+                res = self.ctx(request, explain=True)
+            named = set(res.data["note_ids"]) | set(res.data["related_ids"])
+            for note_id in selected:
+                self.assertIn(note_id, named, budget)
+                self.assertIn(note_id, res.text.split("# Task context", 1)[1], budget)
+            skipped = [d for d in res.data["trace"]["decisions"] if "skipped" in d]
+            self.assertEqual(skipped, [], budget)
+        with mock.patch("brainkit.packets.note_budget", return_value=1):
+            res = self.ctx(request)
+        self.assertEqual(res.data["note_ids"], [])
+        self.assertEqual(res.data["unfit_ids"], selected)
+        self.assertIn("## Did not fit", res.text)
+        self.assertIn('get_note(id="...")', res.text.split("## Did not fit", 1)[1])
+
     def test_a_topic_gate_yields_to_a_request_that_names_the_note(self):
         # facts/clients asks for a client's name; naming what the note says is as good.
         named = self.ctx("Which screens need WCAG AA contrast?", partition="client:globex",

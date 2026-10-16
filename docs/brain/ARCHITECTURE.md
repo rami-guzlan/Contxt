@@ -103,6 +103,7 @@ memory (sync proposes the drop folders again), nothing else.
 4. Journals and the decision log are append-only.
 5. Every packet is explainable (`--explain`, the UI's Context tab).
 6. Nothing is silently omitted: a body is withheld only when the same session already holds
-   the same text, and the packet says so.
+   the same text, and the packet says so. What the budget cannot carry is named instead: a
+   note under "Did not fit", a part of a file under "Also in your files".
 7. Where a note is filed never decides whether it can be found: every admitted note is scored
    on its own, so new knowledge in a new topic is used on the next relevant request.

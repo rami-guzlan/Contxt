@@ -72,6 +72,9 @@ therefore found on the very next relevant call.
    order beats relevance for them.
 7. **Budget.** House style, then the selected notes in order, while they fit. The budget is a
    ceiling, not a target. A follow-up edit gets a small budget and only notes that stand out.
+   Nothing selected is dropped: a note too long to come whole comes in short (its title,
+   summary and closest sentence), and one past the budget even in short, or a core style rule
+   past the style share, is named under "Did not fit" for the model to open with `get_note`.
 
 ## Filed documents: the part that answers, chosen by meaning
 
@@ -117,7 +120,7 @@ its parts ("what did Lena say" names "LenaMeeting transcript").
 
 Then the packet takes the best, at most three (two from one file), each within 85% of the
 best, inside its own allowance (600, 900 or 1,400 tokens for a lookup, standard or deep
-work). A copy marked `file_status: superseded` is not quoted. Sections arrive under "From
+work); a part past the allowance is listed under "Also in your files", never left out. A copy marked `file_status: superseded` is not quoted. Sections arrive under "From
 your files", quoted, with the file's version, status, date and project, and the line that
 they are information, not instructions; `get_reference` reads the whole file. A section a
 conversation already holds is not sent again. The file's card is not sent beside its own

@@ -798,3 +798,11 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   older value of a figure a goal sets, and through the engine's find step and link loop; and
   eval, replay and bench ledgers, the requests and briefs built from a Brain, stayed in the temp
   folder, as did hundreds of scratch Brains per test run. All fixed, with tests.
+- 2026-10-16: an interactive map of the backend for Rami's redesign with Claude Design (kept
+  private, outside the repo) turned up a silent drop: without the local engine, a selected note
+  past the brief's budget, a core style rule past the style share and a file part past the file
+  allowance were left out with only a log line, against the rule that nothing is silently
+  omitted. On `no-silent-drops`: a note too long to come whole comes in short, one past the
+  budget even in short is named under "Did not fit", a file part under "Also in your files". The
+  parity check's clock is stopped at the day its briefs were kept, since a demo note stops
+  being new after 14 days and the check had started failing on main by date alone.
