@@ -814,4 +814,14 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   careful. Fixed in GOVERNANCE, CAPTURE, CONFIG and SUPPLY_CHAIN. Push before the model asks
   is not set up by any connect path, so at Rami's word ("I'll just tell users to add a global
   instruction to their models") `contxt connect` and Settings, AI apps now give every app one
-  standing instruction to paste into its own instructions, and say where it goes.
+  standing instruction to paste into its own instructions, and say where it goes. Merged as
+  rami-guzlan/Contxt#21.
+- 2026-10-16, `agent-any-model`: at Rami's word (the knowledge agent "should be able to connect
+  to any model the user chooses defaulting to their CLI connected ai"), the agent's router in
+  `models.py` takes Codex and Gemini CLI beside Claude Code, Ollama and the pinned local
+  model. Any model a CLI offers can be named (`gemini:gemini-2.5-flash`). With nothing chosen,
+  the first CLI here that can answer does the work. Each CLI is asked with nothing but the
+  prompt: an empty folder, none of the person's MCP servers. Gemini CLI's flags were checked
+  against 0.1.10 on the PC (it reads stdin only without `-p`); Codex is not installed here, so
+  its `codex exec` flags follow its documentation. Checks, digests and See the difference still
+  run on Claude Code only.
