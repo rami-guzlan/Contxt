@@ -395,6 +395,6 @@ def test_the_qualification_table_reads_the_engines_machine_overview():
     assert rows["The gate"]["budget_ms"] == 60 and rows["The gate"]["peak_ram_mb"] == 1500
     assert rows["The second pass"]["state"] == "fallback"
     assert "it is skipped" in rows["The second pass"]["fallback"]
-    assert rows["The knowledge agent"]["fallback"] == "Claude Code on this computer does its work."
+    assert rows["The knowledge agent"]["fallback"].startswith("Your AI CLI on this computer")
     assert rows["Matching by meaning"]["state"] == "on"
     assert builtin_checks.qualification(None) == []

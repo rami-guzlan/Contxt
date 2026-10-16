@@ -4806,6 +4806,15 @@ button.big,
   opacity: 0.6;
 }
 
+.agent-model-name {
+  margin: 0.15rem 0 0.5rem 1.6rem;
+  gap: 0.5rem;
+}
+
+.agent-model-name input {
+  max-width: 16rem;
+}
+
 .agent-models-group {
   margin: 0.5rem 0 0.1rem;
   color: var(--muted);

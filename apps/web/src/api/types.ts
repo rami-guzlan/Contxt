@@ -1953,7 +1953,8 @@ export interface BackupMade {
 export interface AgentModel {
   id: string;
   label: string;
-  /** cli: Claude Code; local: through Ollama; pinned: the app's own model service. */
+  /** cli: an AI CLI here (Claude Code, Codex, Gemini CLI; its id may name one of the CLI's
+   * models after a colon); local: through Ollama; pinned: the app's own model service. */
   kind: "cli" | "local" | "pinned";
   available: boolean;
   detail: string;

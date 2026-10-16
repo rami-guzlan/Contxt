@@ -63,7 +63,8 @@ export function LocalModels() {
           disabled={act.isPending}
           onChange={(event) => act.mutate({ action: "claude_code", on: event.target.checked })}
         />
-        Let the knowledge agent use Claude Code. It uses your own plan, and the agent's work then leaves this computer.
+        Let the knowledge agent use your AI command-line tools (Claude Code, Codex, Gemini CLI). They use your own plans, and the agent's work
+        then leaves this computer.
       </label>
       <div className="row">
         <button type="button" disabled={act.isPending} onClick={() => act.mutate({ action: "check" })}>

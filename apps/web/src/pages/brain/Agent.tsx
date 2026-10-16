@@ -1,9 +1,11 @@
-// The Brain's knowledge agent: the model it works through (Claude Code on this computer, or a
-// local model), its actions with what each did last, the questions it has for you, what it
+// The Brain's knowledge agent: the model it works through (any AI CLI on this computer, Claude
+// Code, Codex or Gemini CLI, with any model it offers, or a local model), its actions with what
+// each did last, the questions it has for you, what it
 // suggests as the Brain changes, the map of the Brain it reads (made by code), and the
 // procedures it follows. Every change it suggests waits for your yes.
 
 import { Bot } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
 
 import { useAgent, useAgentMap, useAgentSettings, useAgentSkills, useAgentSuggestions, useLoopRuns, useRunAgentAction } from "../../api/hooks";
@@ -84,30 +86,77 @@ function AgentGoals({ goals }: { goals: NonNullable<AgentOverview["goals"]> }) {
   );
 }
 
+/** A CLI's own model named after its id ("gemini:gemini-2.5-flash"), or "" for its default. */
+function cliModel(model: AgentModel, value: string): string | null {
+  if (model.kind !== "cli") return value === model.id ? "" : null;
+  if (value === model.id) return "";
+  return value.startsWith(`${model.id}:`) ? value.slice(model.id.length + 1) : null;
+}
+
+/** The model name a CLI is asked to use; blank leaves it to the CLI's own default. */
+function CliModelName({ model, name }: { model: AgentModel; name: string }) {
+  const settings = useAgentSettings();
+  const [typed, setTyped] = useState(name);
+  const wanted = typed.trim();
+  return (
+    <form
+      className="row agent-model-name"
+      onSubmit={(event) => {
+        event.preventDefault();
+        settings.mutate({ model: wanted ? `${model.id}:${wanted}` : model.id });
+      }}
+    >
+      <input
+        id={`agent-model-name-${model.id}`}
+        aria-label={`Model for ${model.label}`}
+        placeholder="its own default"
+        value={typed}
+        onChange={(event) => setTyped(event.target.value)}
+      />
+      <button type="submit" disabled={settings.isPending || wanted === name}>
+        Use this model
+      </button>
+    </form>
+  );
+}
+
 function Models({ models, value, suggestions }: { models: AgentModel[]; value: string; suggestions: boolean }) {
   const settings = useAgentSettings();
   const local = models.filter((m) => m.kind === "local");
-  const choice = (m: AgentModel, detail: string) => (
-    <label key={m.id} className={m.available ? "agent-model" : "agent-model unavailable"}>
-      <input
-        type="radio"
-        name="agent-model"
-        value={m.id}
-        checked={m.id === value}
-        disabled={!m.available || settings.isPending}
-        onChange={() => settings.mutate({ model: m.id })}
-      />
-      <span>
-        <strong>{m.label.replace(/ \(local\)$/, "")}</strong>
-        <span className="muted small"> {detail}</span>
-      </span>
-    </label>
-  );
+  const clis = models.filter((m) => m.kind === "cli");
+  const choice = (m: AgentModel, detail: string) => {
+    const named = cliModel(m, value);
+    return (
+      <div key={m.id}>
+        <label className={m.available ? "agent-model" : "agent-model unavailable"}>
+          <input
+            type="radio"
+            name="agent-model"
+            value={m.id}
+            checked={named !== null}
+            disabled={!m.available || settings.isPending}
+            onChange={() => settings.mutate({ model: m.id })}
+          />
+          <span>
+            <strong>{m.label.replace(/ \(local\)$/, "")}</strong>
+            <span className="muted small"> {detail}</span>
+          </span>
+        </label>
+        {m.kind === "cli" && named !== null && m.available ? <CliModelName key={value} model={m} name={named} /> : null}
+      </div>
+    );
+  };
   return (
     <Section title="The model it works through">
       <fieldset className="agent-models">
         <legend className="sr-only">Model</legend>
-        {models.filter((m) => m.kind !== "local").map((m) => choice(m, m.detail))}
+        {models.filter((m) => m.kind === "pinned").map((m) => choice(m, m.detail))}
+        {clis.length ? (
+          <p className="agent-models-group small">
+            Your AI command-line tools, each on your own plan. Name any model the tool offers, or leave it to the tool's own default.
+          </p>
+        ) : null}
+        {clis.map((m) => choice(m, m.detail))}
         {local.length ? (
           <>
             <p className="agent-models-group small">

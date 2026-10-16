@@ -9,11 +9,13 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from workspace_core.errors import Conflict
 from workspace_server import runners as runners_module
 from workspace_server.app import create_app
 from workspace_server.runners import Runners
 
 FAKE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_cli.py")
+FAKE_OTHER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_other_cli.py")
 
 
 def mcp(client, token, method, params=None):
@@ -82,16 +84,18 @@ def wait_for_report(owner, run_id, seconds=30):
 
 
 def test_each_cli_says_whether_it_is_installed_and_signed_in(owner, model):
-    claude, codex = owner.ok(owner.get("/api/runners"))
+    claude, codex, gemini = owner.ok(owner.get("/api/runners"))
     assert (claude["id"], claude["installed"], claude["signed_in"]) == ("claude", True, True)
     assert claude["version"] == "9.9.9 (Claude Code)" and claude["actor_id"] == model.actor_id
     assert (codex["installed"], codex["one_click"]) == (False, False)
     assert codex["install"] == "npm install -g @openai/codex" and codex["sign_in"] == "codex login"
+    assert (gemini["id"], gemini["installed"], gemini["one_click"]) == ("gemini", False, False)
+    assert gemini["install"] == "npm install -g @google/gemini-cli"
 
 
 def test_a_signed_out_cli_says_how_to_sign_in(owner, ready_task, monkeypatch):
     monkeypatch.setenv("FAKE_CLI_SIGNED_IN", "0")
-    (claude, _codex) = owner.ok(owner.get("/api/runners", params={"refresh": "true"}))
+    (claude, _codex, _gemini) = owner.ok(owner.get("/api/runners", params={"refresh": "true"}))
     assert claude["signed_in"] is False and "claude auth login" in claude["detail"]
     refused = owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]})
     assert refused.status_code == 409 and "claude auth login" in refused.text
@@ -210,6 +214,58 @@ def test_one_answer_is_asked_for_with_no_tools_and_says_so(client, runtime):
     assert argv[argv.index("--output-format") + 1] == "json" and "--restricted" in argv
     assert seen["config"] == {"mcpServers": {}} and seen["prompt"] == "Draft the update"
     assert not os.path.exists(seen["cwd"])  # its empty folder is gone
+
+
+def other_resolve(spec):
+    """Codex and Gemini CLI stand in; Claude Code is not here."""
+    return [sys.executable, FAKE_OTHER, spec.id] if spec.id in ("codex", "gemini") else None
+
+
+def test_codex_and_gemini_answer_from_the_prompt_alone(runtime, monkeypatch):
+    """The knowledge agent's other CLIs, asked for one answer: in an empty folder that goes,
+    with none of the person's MCP servers, told to answer from the prompt alone, a model the
+    person names passed on; only the answer comes back, without what the CLI prints beside."""
+    runners = Runners(
+        runtime.ws, runtime.templates, base_url="http://127.0.0.1:8787", resolve=other_resolve
+    )
+    owner = runtime.ws.owner()
+    codex = json.loads(runners.ask(owner, "Judge these.", runner="codex", model="gpt-5.1-codex"))
+    argv = codex["argv"]
+    assert argv[0] == "exec" and argv[-1] == "-"  # the prompt comes on stdin
+    assert argv[argv.index("--sandbox") + 1] == "read-only" and "--skip-git-repo-check" in argv
+    assert argv[argv.index("-c") + 1] == "mcp_servers={}"
+    assert argv[argv.index("--model") + 1] == "gpt-5.1-codex"
+    assert codex["prompt"].startswith(runners_module.ANSWER_ONLY)
+    assert codex["prompt"].endswith("Judge these.")
+    assert not os.path.exists(codex["cwd"])
+    gemini = json.loads(runners.ask(owner, "Judge these.", runner="gemini"))
+    argv = gemini["argv"]
+    assert argv[argv.index("--allowed-mcp-server-names") + 1] == "none"
+    assert argv[argv.index("--extensions") + 1] == "none"
+    # Gemini CLI 0.1 reads stdin only when no -p is given: the whole prompt goes there.
+    assert "-p" not in argv and "--model" not in argv
+    assert gemini["prompt"].endswith("Judge these.") and not os.path.exists(gemini["cwd"])
+    monkeypatch.setenv("FAKE_CLI_MODE", "fail")
+    with pytest.raises(Conflict, match="quota exceeded"):
+        runners.ask(owner, "Judge these.", runner="gemini")
+    with pytest.raises(Conflict, match="not installed"):
+        runners.ask(owner, "Judge these.", runner="claude")
+
+
+def test_gemini_counts_as_signed_in_by_its_saved_login_or_a_key(tmp_path, monkeypatch):
+    for name in ("HOME", "USERPROFILE"):
+        monkeypatch.setenv(name, str(tmp_path))
+    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    spec = runners_module.RUNNERS["gemini"]
+    unknown = runners_module.detect(spec, other_resolve)
+    assert (unknown.installed, unknown.version, unknown.signed_in) == (True, "0.9.9", None)
+    monkeypatch.setenv("GEMINI_API_KEY", "a key")
+    assert runners_module.detect(spec, other_resolve).signed_in is True
+    monkeypatch.delenv("GEMINI_API_KEY")
+    (tmp_path / ".gemini").mkdir()
+    (tmp_path / ".gemini" / "oauth_creds.json").write_text("{}", encoding="utf-8")
+    assert runners_module.detect(spec, other_resolve).signed_in is True
 
 
 def test_what_claude_code_used_is_counted_in_the_cost_report(owner, model, ready_task, runtime):

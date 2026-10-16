@@ -1,15 +1,18 @@
-"""The models the app asks one question of, for the knowledge agent.
+"""The models the app asks one question of, for the knowledge agent: any the person chooses.
 
-- Claude Code on this computer, the default: the same ask the baseline check uses (no tools,
-  no MCP server, an empty folder, restricted), so it knows only what the prompt says.
+- The AI CLIs on this computer: Claude Code, Codex (ChatGPT) and Gemini CLI, each on the
+  person's own plan, asked with nothing but the prompt (an empty folder, none of the person's
+  MCP servers, told to answer from the prompt alone). Any model the CLI offers can be named
+  (`codex:gpt-5.1-codex`, `gemini:gemini-2.5-flash`); without one, the CLI's own default.
+  With nothing chosen, the agent works through the first of them that can answer here.
 - Local models through Ollama, when Ollama runs on this computer: free, private and quick, but
   small, so they get the short map and fewer candidates, and their answers are read like any
   other: what cannot be read is kept as nothing.
 - The pinned local model (brain-logic plan 17), when the app's model service runs it: verified
   against the lock, its answers bound to a JSON schema. When it is here it is the default, and
-  Claude Code becomes an opt-in (Settings, On this computer): it uses the person's own plan,
-  and the agent's work then leaves the machine. Where no local model is here yet, Claude Code
-  stays the agent unless the person turned it off.
+  the CLIs become an opt-in (Settings, On this computer): they use the person's own plans,
+  and the agent's work then leaves the machine. Where no local model is here yet, the CLIs
+  stay on unless the person turned them off.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 from brainkit import machine as brain_machine
@@ -35,11 +38,14 @@ from .runners import RUNNERS, Runners
 OLLAMA = os.environ.get("CONTXT_OLLAMA_URL") or "http://127.0.0.1:11434"
 LIST_SECONDS = 30  # how long the list of local models is reused
 THINKING = re.compile(r"<think>.*?</think>", re.S)
+CLIS = ("claude", "codex", "gemini")  # the AI CLIs the agent can work through, in this order
+MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$")  # a model a CLI offers
 
 
 @dataclass(frozen=True)
 class ModelChoice:
-    id: str  # "claude", "ollama:<name>", "local:<name>"
+    id: str  # "claude", "codex", "gemini" (each may name a model: "codex:<model>"),
+    # "ollama:<name>", "local:<name>"
     label: str
     kind: str  # "cli" | "local" (Ollama) | "pinned" (the app's model service)
     available: bool
@@ -101,20 +107,49 @@ class Models:
             return None, ""
         return (found, found.agent) if found.agent else (None, "")
 
-    def claude_allowed(self, pinned: str) -> bool:
-        """Claude Code for the agent: the person's opt-in once a local model is here; until
-        then it stays on unless they turned it off."""
+    def cli_allowed(self, pinned: str) -> bool:
+        """The AI CLIs for the agent: the person's opt-in once a local model is here; until
+        then they stay on unless the person turned them off (the machine setting keeps its
+        first name, `agent_claude_code`)."""
         on = getattr(self, "settings", brain_machine.load)().get("agent_claude_code")
         return on is True or (on is None and not pinned)
 
     def default(self) -> str:
         """The agent's model when the owner chose none: the pinned local model when it is
-        here, else Claude Code."""
+        here, else the first AI CLI here that can answer (Claude Code, Codex, Gemini CLI),
+        else a local model through Ollama, else Claude Code, which then says how to set it
+        up."""
         _service, pinned = self._pinned()
-        return f"local:{pinned}" if pinned else "claude"
+        if pinned:
+            return f"local:{pinned}"
+        ready = [m for m in self.list() if m.available]
+        first = next((m for m in ready if m.kind == "cli"), None) or next(iter(ready), None)
+        return first.id if first is not None else "claude"
+
+    def _cli(self, cli: str, allowed: bool) -> ModelChoice:
+        spec = RUNNERS[cli]
+        status = self.runners.status(spec)
+        why = (
+            "Off for the knowledge agent: turn the CLIs on in Settings, On this computer"
+            if not allowed
+            else f"Not installed: {spec.install}"
+            if not status.installed
+            else f"Not signed in: sign in with `{status.sign_in}` first"
+            if status.signed_in is False
+            else f"{spec.label} {status.version or ''} on this computer, on your own plan".strip()
+        )
+        return ModelChoice(
+            id=cli,
+            label=spec.label,
+            kind="cli",
+            available=allowed and bool(status.installed) and status.signed_in is not False,
+            detail=why,
+            brief=False,
+        )
 
     def list(self) -> list[ModelChoice]:
-        """Every model the agent could use here, the ones that can answer now first."""
+        """Every model the agent could use here: the pinned local model, the AI CLIs, then
+        the local models Ollama serves."""
         out = []
         _service, pinned = self._pinned()
         if pinned:
@@ -129,28 +164,8 @@ class Models:
                     brief=True,
                 )
             )
-        claude = RUNNERS["claude"]
-        status = self.runners.status(claude)
-        allowed = self.claude_allowed(pinned)
-        why = (
-            "Off for the knowledge agent: turn it on in Settings, On this computer"
-            if not allowed
-            else f"Not installed: {claude.install}"
-            if not status.installed
-            else "Not signed in: sign in to Claude Code first"
-            if status.signed_in is False
-            else f"Claude Code {status.version or ''} on this computer".strip()
-        )
-        out.append(
-            ModelChoice(
-                id="claude",
-                label="Claude Code (your CLI)",
-                kind="cli",
-                available=allowed and bool(status.installed) and status.signed_in is not False,
-                detail=why,
-                brief=False,
-            )
-        )
+        allowed = self.cli_allowed(pinned)
+        out += [self._cli(cli, allowed) for cli in CLIS]
         for model in sorted(self._ollama_models(), key=lambda m: int(m.get("size") or 0)):
             name = str(model["name"])
             size = int(model.get("size") or 0)
@@ -171,7 +186,18 @@ class Models:
         return out
 
     def choose(self, wanted: str) -> ModelChoice:
-        """The model to use: the one named, which must be able to answer now."""
+        """The model to use: the one named, which must be able to answer now. An AI CLI may
+        name one of its models after a colon (`gemini:gemini-2.5-flash`)."""
+        cli, _, name = wanted.partition(":")
+        if cli in CLIS and name:
+            if not MODEL_NAME.match(name):
+                raise ValidationFailed(
+                    f"{name!r} is not a model name: use the name the CLI knows it by, "
+                    "without spaces.",
+                    field="model",
+                )
+            base = self.choose(cli)
+            return replace(base, id=wanted, label=f"{base.label}, {name}")
         found = next((m for m in self.list() if m.id == wanted), None)
         if found is None:
             if wanted.startswith("local:"):
@@ -201,8 +227,11 @@ class Models:
     ) -> str:
         """One answer to one prompt; what it used is counted under `job` in the cost report
         (a local model's tokens cost nothing, but they are counted too)."""
-        if choice.id == "claude":
-            return self.runners.ask(who, prompt, timeout=timeout, job=job)
+        cli, _, name = choice.id.partition(":")
+        if cli in CLIS:
+            return self.runners.ask(
+                who, prompt, timeout=timeout, job=job, runner=cli, model=name or None
+            )
         if choice.id.startswith("local:"):
             who.require("workspace.admin")
             service, pinned = self._pinned()

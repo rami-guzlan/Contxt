@@ -7,8 +7,14 @@ import os
 import sys
 import time
 
+import pytest
+
+from workspace_core.errors import Conflict, ValidationFailed
 from workspace_server.knowledge_agent import AgentWork
 from workspace_server.models import ModelChoice, Models
+from workspace_server.runners import Runners
+
+FAKE_OTHER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_other_cli.py")
 
 BRAIN_PACKAGE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "packages", "brain")
@@ -204,7 +210,42 @@ def test_local_models_come_from_ollama_and_their_thinking_is_left_out(runtime):
     def down(url, body=None, *, timeout=2.0):
         raise OSError("refused")
 
-    assert [m.kind for m in Models(runtime.runners, fetch=down).list()] == ["cli"]
+    assert [m.kind for m in Models(runtime.runners, fetch=down).list()] == ["cli"] * 3
+
+
+def test_the_agent_runs_on_any_cli_here_and_starts_on_the_first_one_signed_in(runtime):
+    """Claude Code, Codex and Gemini CLI are all choices; with none chosen, the agent uses the
+    first one here that can answer, and any model the CLI offers can be named."""
+    from brainkit import models_client
+
+    def none(url, body=None, *, timeout=2.0):
+        raise OSError("no Ollama here")
+
+    gemini_only = Runners(
+        runtime.ws,
+        runtime.templates,
+        base_url="http://127.0.0.1:8787",
+        resolve=lambda spec: [sys.executable, FAKE_OTHER, spec.id] if spec.id == "gemini" else None,
+    )
+    models = Models(gemini_only, fetch=none, service=models_client.Status, settings=lambda: {})
+    assert [m.id for m in models.list()] == ["claude", "codex", "gemini"]
+    assert [m.available for m in models.list()] == [False, False, True]
+    assert models.default() == "gemini"
+    named = models.choose("gemini:gemini-2.5-flash")
+    assert (named.id, named.kind) == ("gemini:gemini-2.5-flash", "cli")
+    assert "gemini-2.5-flash" in named.label
+    seen = json.loads(models.ask(runtime.ws.owner(), named, "Judge.", json_only=True))
+    assert seen["argv"][seen["argv"].index("--model") + 1] == "gemini-2.5-flash"
+    assert seen["prompt"].endswith("Judge.")
+    with pytest.raises(Conflict, match="Not installed"):
+        models.choose("codex")
+    with pytest.raises(ValidationFailed):
+        models.choose("gemini:two words")
+    nothing = Runners(
+        runtime.ws, runtime.templates, base_url="http://127.0.0.1:8787", resolve=lambda s: None
+    )
+    alone = Models(nothing, fetch=none, service=models_client.Status, settings=lambda: {})
+    assert alone.default() == "claude"  # nothing can answer here: the usual first choice
 
 
 def test_the_pinned_local_model_is_the_default_when_it_is_here(runtime):
@@ -253,9 +294,12 @@ def test_the_pinned_local_model_is_the_default_when_it_is_here(runtime):
     )
     claude = next(m for m in opted.list() if m.id == "claude")
     assert not claude.detail.startswith("Off for the knowledge agent")
-    gone = Models(runtime.runners, fetch=none, service=models_client.Status, settings=lambda: {})
+    no_cli = Runners(
+        runtime.ws, runtime.templates, base_url="http://127.0.0.1:8787", resolve=lambda s: None
+    )
+    gone = Models(no_cli, fetch=none, service=models_client.Status, settings=lambda: {})
     assert gone.default() == "claude"  # no local model here: Claude Code, as before
-    assert [m.kind for m in gone.list()] == ["cli"]
+    assert [m.kind for m in gone.list()] == ["cli"] * 3
 
 
 def test_suggestions_and_setting_one_aside(owner, runtime, brain_vault):

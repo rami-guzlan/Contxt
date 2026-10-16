@@ -60,6 +60,11 @@ const turnId = () => `t${Date.now()}-${(counter += 1)}`;
 export function ModelPicker({ models, value, compact = false }: { models: AgentModel[]; value: string; compact?: boolean }) {
   const settings = useAgentSettings();
   const usable = models.filter((m) => m.available || m.id === value);
+  // A CLI's own model, named in the agent's settings ("claude:claude-haiku-5-5"), is a choice too.
+  const cli = models.find((m) => m.kind === "cli" && value.startsWith(`${m.id}:`));
+  if (cli && !usable.some((m) => m.id === value)) {
+    usable.push({ ...cli, id: value, label: `${cli.label}, ${value.slice(cli.id.length + 1)}` });
+  }
   return (
     <label className={compact ? "inline-select model-pick compact" : "inline-select model-pick"}>
       <span className="muted small">Model</span>
