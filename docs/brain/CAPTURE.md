@@ -8,8 +8,9 @@ the last one writes anything live.
 notice    capture.py flags durable statements in a message      (never writes)
 propose   the agent calls propose_note / propose_skill / add_file (writes a proposal)
 stage     uploaded files wait in vault/.brain/staging/<id>/      (not in git)
-decide    policy applies own-scope notes and skills at once;
-          everything shared, and every file, waits for the owner  (the only live write)
+decide    policy applies own-scope notes and skills, the owner's
+          files and what the preset lets in at once, each as an
+          undo point; everything else waits for the owner        (the only live write)
 ```
 
 ## 1. Notice
@@ -81,10 +82,16 @@ Before anything is staged, an upload passes these gates:
 
 | Proposal | Applies |
 |---|---|
-| a note or skill in the proposer's own person scope | at once, logged as `auto-applied` |
-| a note or skill in any shared scope | after the owner approves it |
-| a document or asset, in any scope | after the owner approves it: a file is not an owner |
+| a note or skill in the proposer's own person scope | at once, logged as `auto-applied` (not under the regulated preset) |
+| a note from the owner's AI in a chat, in a shared scope | by the capture policy: under personal, facts, decisions and progress at once; otherwise after the owner approves it |
+| any other note or skill in a shared scope | after the owner approves it |
+| the owner's document or asset (the app, a chat, the CLI, a swept folder) | at once, as an undo point; from a chat, the CLI or a folder it waits under regulated |
+| anyone else's document or asset | after the owner approves it: a file is not an owner |
+| what the app's AI work proposes (Find what to remember, Moving in, the knowledge agent) | after the owner approves it |
 | Focus progress | at once, append-only |
+
+The preset is `governance.preset` in brain.json: careful when none is set. The capture policy
+and its conditions are in [Governance](GOVERNANCE.md).
 
 The owner decides in the review UI (Inbox tab: file list, document preview, placement
 fields) or the CLI (`brain inbox`). See [Governance](GOVERNANCE.md).
@@ -102,8 +109,10 @@ fields) or the CLI (`brain inbox`). See [Governance](GOVERNANCE.md).
   says where it came from; the owner can still make it a rule. This is the gap memory
   injection works through.
 - **Evidence must be real**: a quote an AI attributes to the person is checked against the
-  requests the ledger logged in that conversation. A quote that is not there marks the
-  statement inferred, and it waits, with a card line saying so.
+  requests the ledger logged in that conversation (the last 200). A quote that is not there
+  marks the statement inferred, and it waits, with a card line saying so. It needs the
+  conversation's session id: what the app's AI work proposes names its run instead, and all
+  of it waits for review anyway.
 - **The circular-evidence rule**: a statement that only repeats a note from the brief an output
   was made from cannot be promoted from that output (`record_output` links the file to its
   conversation, the ledger to what that conversation was handed).
@@ -118,9 +127,10 @@ fields) or the CLI (`brain inbox`). See [Governance](GOVERNANCE.md).
   packet lists first; find sensitive spans (emails, phone numbers, card, account and ID
   numbers).
 - **Redaction**: those spans are replaced (`[email]`, `[phone]`, ...) in what a cloud model
-  reads, on under the careful and regulated presets, off under personal unless turned on
-  (`governance.redact_cloud`, a switch in Approval). The person always sees the text as
-  written.
+  reads of a capture in the app's AI work, on under the careful and regulated presets, off
+  under personal unless turned on (`governance.redact_cloud`, a switch in Approval). The
+  person always sees the text as written. Briefs from the Brain and filed documents are not
+  redacted: what is filed was already let in.
 - **Triage**, off until it is measured: a cheaper model (Claude Code, a local model or Ollama,
   chosen beside the model for AI work) names the parts worth distilling; only those reach the
   distilling model, and a capture with none makes no distillation call. Under a redacting
@@ -140,7 +150,8 @@ Automatic capture must not bury the owner in proposals:
   numbers: "$4,500" and "$3,500" are different facts.
 - **A budget per conversation.** `governance.max_proposals_per_session` (default 12) caps
   the proposals and decisions one session can generate; the next call is refused with
-  status `limit`.
+  status `limit`. A call without a session id is not counted (the app's AI work and Moving in
+  pass none; everything they propose waits for review).
 - **One skill proposal at a time.** A second proposal for a skill that already has one
   waiting points to the first.
 
@@ -175,11 +186,9 @@ brain propose-skill path/to/skill-folder
   phrasings from real chats that an earlier version missed.
 - `tests/test_uploads.py`: staging, gates, approval and rejection, duplicates, the session
   budget, the packet's Capture section, the hook, and sync.
-- `tools/capture_check.py`: an end-to-end check with a real model in the loop. It copies the
-  vault to a sandbox, runs scripted conversations through `claude -p` with the hook and the
-  MCP server, and checks what each one proposed. It needs a signed-in Claude Code CLI.
+- `tests/test_presets.py` and `tests/test_ingestion.py`: what each preset lets in, and the
+  checks at the door.
 
-```bash
-python tools/capture_check.py
-python tools/capture_check.py --only standing-rule --keep
-```
+An end-to-end check with a real model in the loop (scripted conversations through `claude -p`
+with the hook and the MCP server) lived in the earlier brain-kit repository and is not part of
+this one yet.

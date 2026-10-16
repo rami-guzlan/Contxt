@@ -25,9 +25,10 @@ Do it step by step, and show the person each result.
    never delete or move one to get past that. Ask the person. Setup fetches the small model
    that matches requests by meaning (about 70 MB, once); tell them, and use `--offline` if
    they want nothing downloaded.
-5. `uv run contxt connect <app>` prints how to connect their AI app. Show it to them. Adding
-   it to their AI app's settings changes their configuration: ask before you run it or edit
-   any settings file for them.
+5. `uv run contxt connect <app>` prints how to connect their AI app, and one instruction to
+   add to that app's own instructions so its model asks the Brain first. Show both to them.
+   Adding either changes their configuration: ask before you run it or edit any settings or
+   instructions file for them.
 6. `uv run contxt serve` starts the app and prints a sign-in link. That link is the owner's
    key: tell them where to find it, but never paste it into a chat, a log or a file.
 7. `uv run contxt check` confirms it all works and names the fix for anything missing. Show

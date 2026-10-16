@@ -5,9 +5,11 @@ location (file, page, paragraph), drops what the brain already knows, and files 
 candidate as a PENDING proposal with that location as evidence. Scout findings never apply
 on their own, even in the caller's own scope: a document is not an owner.
 
-INTAKE (`brain intake <file>`) proposes one source document as a reference with a
-pointer note (see uploads.add_file): staged outside the vault until the owner approves, then
-filed under `references/` as Markdown with the original bytes kept in the runtime library.
+INTAKE (`brain intake <file>`) files one source document as a reference with a pointer note
+(see uploads.add_file), under `references/` as Markdown with the original bytes kept in the
+runtime library. The capture policy treats it as a file from a chat: filed at once as an undo
+point, except under the regulated preset, where it is staged outside the vault until the
+owner approves.
 
 Gates run before anything is read: an explicit folder that is not a drive root, excluded
 names (keys, credentials, .env, private folders), a size ceiling, supported formats only,
@@ -621,11 +623,12 @@ def scout(brain, folder, *, dry_run=False, scope=None, limit=25, principal=None)
 # ------------------------------------------------------------------ intake
 
 def intake(brain, file_path, *, title=None, topic=None, principal=None):
-    """Propose one document as a reference with a pointer note; it waits for review."""
+    """File one document as a reference with a pointer note, by the capture policy for a file
+    from a chat: at once as an undo point, or waiting for review under regulated."""
     from . import uploads
     path = os.path.abspath(file_path)
     if os.path.isfile(path) and not path.lower().endswith(SUPPORTED):
-        return _result("Intake supports .md .txt .html .docx .pptx .pdf only.",
+        return _result("Intake supports .md .txt .html .docx .pptx .pdf .vtt .srt only.",
                        {"status": "unsupported"}, True)
     res = uploads.add_file(brain, source_path=path, title=title, topic=topic,
                            principal=principal, purpose="reference",

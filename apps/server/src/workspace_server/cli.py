@@ -514,7 +514,9 @@ def _connect(settings: Settings, client: str | None) -> int:
             print(setup["command"])
         else:
             print(f"In {setup['file']}:\n{setup['config']}")
-        print(setup["note"] + "\n")
+        print(setup["note"])
+        print(f"Then add this to {setup['instruction_where']}, so it asks your Brain first:")
+        print(setup["instruction"] + "\n")
     return 0
 
 

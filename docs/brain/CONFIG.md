@@ -42,7 +42,7 @@ Everything below lives in the vault. The engine supplies a default for every key
   "partitions": {"client:acme": {"owner": "person:alex"}},
   "budgets": {"kernel_tokens": 6000, "note_tokens": {"micro": 900, "standard": 2400,
               "deep": 3400, "followup": 350}, "skill_allowance": 600, "portfolio_tokens": 1200},
-  "governance": {"approver": "person:alex", "auto_apply_own_scope": true,
+  "governance": {"preset": "careful", "approver": "person:alex", "auto_apply_own_scope": true,
                  "auto_apply_scopes": [], "max_proposals_per_session": 12,
                  "default_owner": "person:alex", "review_days": {"state": 30}},
   "sync": {"drop": ["drop"], "skills": []},

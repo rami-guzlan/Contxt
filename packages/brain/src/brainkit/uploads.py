@@ -19,9 +19,11 @@ Approval moves the files into place and commits them; rejection deletes the stag
 
 FILES APPLY BY POLICY. A document or asset from the owner, or from the owner's AI in a
 conversation, or from a folder the brain sweeps, is filed at once when the capture policy
-says so (governance.captures_apply; by default it does), as one undo point. Anyone else's
-file, and skills always, wait for review. A filed document is information: packets quote it
-as source material, never as instructions.
+says so (governance.captures_apply: from the app under every preset, from a chat or a folder
+except under regulated), as one undo point. Anyone else's file waits for review. Skills follow
+scopes: one in the proposer's own scope applies at once (not under regulated), a shared one
+waits. A filed document is information: packets quote it as source material, never as
+instructions.
 
 GATES, before anything is staged: relative paths only (no `..`, no drive letters, no absolute
 paths), a name deny-list (keys, credentials, environment files, private folders), a type

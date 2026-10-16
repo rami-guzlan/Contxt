@@ -137,6 +137,27 @@ BRAIN_CLIENTS: dict[str, str] = {
     "other": "Other MCP app",
 }
 
+# A model reads the Brain only when it calls get_task_context, and it forgets to most often on
+# a follow-up. The Brain's own MCP instructions say to call it first, but an app may not show
+# those to its model, so the person adds this line to the app's standing instructions too. It
+# asks only when the tools are there: the same file is read by runs that have none (the app's
+# own one-answer asks of Claude Code, say), which must not stall on a tool they cannot call.
+BRAIN_INSTRUCTION = (
+    "Before you answer, if the contxt tools are available, call get_task_context with my "
+    "message as I wrote it. Call it again for every later message that asks for something "
+    "new, passing the session_id it returned. Follow the must-holds and rules it returns: they "
+    "outrank the request. When I state a lasting rule, preference, decision or fact, propose it "
+    "with propose_note."
+)
+# Where each app keeps the instructions it follows in every conversation.
+INSTRUCTION_PLACES: dict[str, str] = {
+    "claude-code": "~/.claude/CLAUDE.md, your instructions for every project",
+    "claude-desktop": "Settings > Profile, under personal preferences",
+    "codex": "~/.codex/AGENTS.md, your instructions for every project",
+    "cursor": "Cursor Settings > Rules, under User Rules",
+    "other": "your app's custom or system instructions",
+}
+
 
 def brain_command(python: str, vault: str) -> list[str]:
     """The local command that serves one Brain over MCP: the engine's own `mcp` command."""
@@ -169,12 +190,19 @@ def brain_setup(
     client: str, *, python: str, vault: str, platform: str | None = None
 ) -> dict[str, Any]:
     """How one AI app connects to the Brain at `vault`, run by `python` (the Contxt
-    environment's interpreter): a command to run once, or a block for its settings file."""
+    environment's interpreter): a command to run once, or a block for its settings file; then
+    the standing instruction that makes its model ask the Brain first, and where it goes."""
     label = BRAIN_CLIENTS.get(client, BRAIN_CLIENTS["other"])
     command = brain_command(python, vault)
     entry = {"command": command[0], "args": command[1:]}
     servers = json.dumps({"mcpServers": {BRAIN_SERVER_NAME: entry}}, indent=2)
-    setup: dict[str, Any] = {"client": client, "label": label, "server": BRAIN_SERVER_NAME}
+    setup: dict[str, Any] = {
+        "client": client,
+        "label": label,
+        "server": BRAIN_SERVER_NAME,
+        "instruction": BRAIN_INSTRUCTION,
+        "instruction_where": INSTRUCTION_PLACES.get(client, INSTRUCTION_PLACES["other"]),
+    }
     if client == "claude-code":
         setup["command"] = f"claude mcp add --scope user {BRAIN_SERVER_NAME} -- " + " ".join(
             _shell(part) for part in command
