@@ -384,6 +384,32 @@ class RoutingTests(ProjectFilesBase):
         self.assertEqual(res.data["section_ids"], [f"{self.path}#2"])
         self.assertNotIn(self.card().id, res.data["note_ids"])  # quoted instead of its card
 
+    def test_a_part_past_the_file_allowance_is_listed_never_dropped(self):
+        """Parts that answer the request but do not fit the file allowance are listed with
+        their file, for the model to open; none is left out in silence."""
+        import dataclasses
+
+        from brainkit import packets
+        from brainkit.router import Scored
+        st = self.brain.state()
+        chain, partitions = self.brain.caller("person:ana", st=st)
+        route = st.router.route("Tighten the LinkedIn section of the spring launch proposal",
+                                chain, partitions)
+        parts = st.index.file_sections(self.path)
+        self.assertGreater(len(parts), 2)
+        route.sections = [Scored(part, 0.9) for part in parts]
+        route.policy = dataclasses.replace(route.policy, section_tokens=160,
+                                           section_tokens_micro=160, section_tokens_deep=160)
+        packet = packets.build(route, config=st.config, index=st.index, delivered={},
+                               fresh=False, session_id="sess-test", explain=True)
+        quoted, listed = packet.data["section_ids"], packet.data["section_pointer_ids"]
+        self.assertTrue(quoted)
+        self.assertEqual(quoted + listed, [part.id for part in parts])
+        self.assertIn("## Also in your files", packet.text)
+        for part in parts[len(quoted):]:
+            self.assertIn(part.label, packet.text.split("## Also in your files", 1)[1])
+        self.assertFalse([d for d in packet.data["trace"]["decisions"] if "skipped" in d])
+
     def test_a_question_reaches_the_part_that_answers_it_without_naming_the_file(self):
         res = self.ctx("What budget did we propose for the podcast sponsorship?")
         self.assertIn("Local Eats", res.text)

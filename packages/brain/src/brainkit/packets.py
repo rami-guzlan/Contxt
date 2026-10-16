@@ -121,14 +121,15 @@ def pointer_text(note, request: str) -> str:
     return said
 
 
-def _place_notes(route, place, total, holds=lambda note: False):
+def _place_notes(route, place, total, holds=lambda note: False, name=lambda note, why: None):
     """Place what the router selected, in its order, inside the budget.
 
     THE BUDGET IS A CEILING, NOT A TARGET. The router already decided which notes are
     specific to this request; nothing is added here to use up room. House-style rules (for
     a writing task) go first, up to `house_style_share` of the budget, because they govern
     every sentence; a style rule as relevant as the selected notes goes in even past the
-    share. Then the selected notes, most useful first, while they fit. An edit of
+    share; a core rule past the share is named, never left out in silence (`name`). Then the
+    selected notes, most useful first, while they fit. An edit of
     text the session holds adds only notes that clear the packet-wide floor on their own; a
     continuation is placed like any request (what the session holds is never sent twice).
     """
@@ -160,11 +161,14 @@ def _place_notes(route, place, total, holds=lambda note: False):
             place(scored.item, f"house style for this request, relevance "
                                f"{scored.detail['rel']:.2f}")
             continue
-        if spent and spent + cost > share:
-            continue
         if not scored.detail.get("core") and not scored.detail.get("format_fits", True):
             # Spare share is not a reason to send a rule for another format (the LinkedIn
             # post architecture in a proposal's opening paragraph).
+            continue
+        if spent and spent + cost > share:
+            if scored.detail.get("core"):
+                # The owner's core writing rules all matter: one past the share is named.
+                name(scored.item, "house style past its share of the budget")
             continue
         spent += cost
         place(scored.item, f"house style, score {scored.detail.get('blend', 0):.2f}")
@@ -270,6 +274,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
     budget = note_budget(config, route)
     chosen = []            # notes in the packet, whole or in short
     held = []              # notes relevant but already held by this session
+    unfit = []             # notes selected but past the budget even in short: named, not sent
     decisions = []
     why = {}               # note id -> why it went in, recorded with the delivery
     shorts: dict = {}      # note id -> the note in short (title, summary, closest sentence)
@@ -283,7 +288,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
 
     def place(note, reason, mandatory=False, fit=None):
         nonlocal budget, bodies
-        if any(n.id == note.id for n in chosen) or any(n.id == note.id for n in held):
+        if any(n.id == note.id for n in chosen + held + unfit):
             return
         if already_held(note):
             held.append(note)
@@ -320,8 +325,20 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             return
         text = None if whole else pointer_text(note, route.request)
         cost = note.tokens + 8 if whole else util.tokens(text) + 2
-        if cost > budget and (chosen or not mandatory):
-            decisions.append(f"{note.id}: skipped, needs {cost} tokens and {budget} are left")
+        over = cost > budget and (chosen or not mandatory)
+        if over and text is None and tools:
+            # Too long to come whole: in short, which the model opens when it needs the rest.
+            if record and record.get("hash") == "pointer:" + note.body_hash:
+                held.append(note)
+                decisions.append(f"{note.id}: already given in short in this session")
+                return
+            text = pointer_text(note, route.request)
+            cost = util.tokens(text) + 2
+            over = cost > budget and (chosen or not mandatory)
+        if over:
+            # Nothing is silently left out: past the budget even in short, it is named under
+            # "Did not fit" for the model to open.
+            name(note, f"needs {cost} tokens and {budget} are left")
             return
         chosen.append(note)
         if text is not None:
@@ -331,6 +348,17 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         budget -= cost
         decisions.append(f"{note.id}: {reason}" + (" (in short)" if text is not None else ""))
         why[note.id] = reason
+
+    def name(note, reason):
+        """A note chosen for this request that the brief cannot carry: named, not sent."""
+        if any(n.id == note.id for n in chosen + held + unfit):
+            return
+        if already_held(note):
+            held.append(note)
+            decisions.append(f"{note.id}: already delivered in this session")
+            return
+        unfit.append(note)
+        decisions.append(f"{note.id}: named, not sent: {reason}")
 
     # ---------------------------------------------------------------- mode-specific bodies
     focus = route.focus
@@ -357,13 +385,13 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                 place(scored.item, f"above the engine's cut ({scored.score:.2f})",
                       fit=engine_fit.get(scored.item.id, "body"))
         else:
-            _place_notes(route, place, note_budget(config, route), already_held)
+            _place_notes(route, place, note_budget(config, route), already_held, name)
 
     # Sections of filed documents: their own allowance, quoted, never sent twice to one
     # conversation while unchanged.
     quoted = []            # (section, text, clipped, reason)
     held_sections = []
-    section_pointers = []  # the engine's document parts past the allowance: listed, not quoted
+    section_pointers = []  # document parts past the allowance: listed, not quoted
     policy = route.policy
     room = int({"micro": getattr(policy, "section_tokens_micro", 600),
                 "deep": getattr(policy, "section_tokens_deep", 1400)}.get(
@@ -376,11 +404,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             decisions.append(f"{section.id}: already delivered in this session")
             continue
         if room < 120 and quoted:
-            if engine_fit is not None:
-                section_pointers.append(section)
-                decisions.append(f"{section.id}: past the file allowance, a pointer")
-                continue
-            decisions.append(f"{section.id}: skipped, the file allowance is used")
+            section_pointers.append(section)
+            decisions.append(f"{section.id}: past the file allowance, listed")
             continue
         text, clipped = _quote(section.text, max(120, room - 30))
         room -= util.tokens(text) + 30
@@ -426,9 +451,9 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             lines.append(f"- Also must hold here; open each with get_note before you act: "
                          f"{names}.")
         lines.append("")
-    loaded = bool(chosen or held or route.portfolio or route.system_docs or route.candidates
-                  or route.skill or route.references or route.standing_answer or focus
-                  or quoted or held_sections or must)
+    loaded = bool(chosen or held or unfit or route.portfolio or route.system_docs
+                  or route.candidates or route.skill or route.references or route.standing_answer
+                  or focus or quoted or held_sections or section_pointers or must)
     if loaded:
         scope_line = " > ".join(route.chain)
         if partition:
@@ -515,6 +540,15 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             lines += ["### In short", "",
                       'Open one with get_note(id="...") when the task needs all of it.', ""]
             lines += [shorts[n.id] for n in in_short] + [""]
+    if unfit:
+        lines += ["## Did not fit", "",
+                  "Chosen for this request, but past this brief's budget even in short"
+                  + (': open one with get_note(id="...") when the task needs it.' if tools
+                     else ", so not included here."), ""]
+        for note in unfit:
+            name = note.title if note.meta.get("title") else note.id
+            lines.append(f"- {name} (`{note.id}`, {note.route_key})")
+        lines.append("")
     # Older values of what a note above gives as current: named, never handed over as if
     # they still held.
     older = [(o, n) for o, n in getattr(route, "older", None) or []
@@ -555,7 +589,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                 lines += [f'Whole file: get_reference(path="{path}"){size}.', ""]
     if section_pointers:
         lines += ["## Also in your files", "",
-                  "Relevant too, past this brief's allowance: open the file with get_reference.",
+                  "Relevant too, past this brief's allowance"
+                  + (": open the file with get_reference." if tools else ", so not quoted here."),
                   ""]
         lines += [f"- {index.file_title(s.path)}: {s.label} (`{s.path}`)"
                   for s in section_pointers] + [""]
@@ -604,7 +639,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             size = f", about {ref.tokens:,} tokens" if ref is not None else ""
             lines.append(f'- {path}{title}: read with get_reference(path="{path}"){size}.')
         lines.append("")
-    chosen_ids = {n.id for n in chosen} | {n.id for n in held}
+    chosen_ids = {n.id for n in chosen + held + unfit}
     related = [r for r in route.related if r.item.id not in chosen_ids]
     # Notes it would open by name: listed only for a model that can open them.
     listed = related if tools else []
@@ -662,10 +697,11 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                      "If you expected the brain to know this, try search_notes in other words; "
                      "otherwise answer from general knowledge and say that the brain had "
                      "nothing on it.")
-    elif route.signals.edit and not chosen and not held:
+    elif route.signals.edit and not chosen and not held and not unfit:
         next_line = ("Nothing new for this edit: work from the context this session already "
                      "holds.")
-    elif route.signals.continuation and not chosen and not quoted and (held or held_sections):
+    elif (route.signals.continuation and not chosen and not unfit and not quoted
+          and (held or held_sections)):
         # True whether or not the request really continues the conversation: a short new
         # question ("what's the capital of Portugal?") reads the same as an elliptical one.
         next_line = ("The brain has nothing for this beyond what this conversation already "
@@ -690,6 +726,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             lines += [f"- {m.note.must_text.rstrip(' .')} (`{m.note.id}`)." for m in must]
             lines.append("")
         chosen, shorts, quoted, held, held_sections = [], {}, [], [], []
+        unfit, section_pointers = [], []
         focus = None
     text = "\n".join(lines).rstrip() + "\n"
 
@@ -733,12 +770,17 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         "must_hold_ids": [m.note.id for m in must],
         "older_ids": [o.id for o, _n in older],
         "must_hold_listed": [m.note.id for m in overflow],
-        "related_ids": [r.item.id for r in related],
+        # Every note the brief names without sending: the ones past its budget first, then
+        # the ones listed as also relevant.
+        "related_ids": [n.id for n in unfit] + [r.item.id for r in related],
+        # Selected for this request but past the budget even in short: named under "Did not
+        # fit", never dropped.
+        "unfit_ids": [n.id for n in unfit],
         "held_ids": [n.id for n in held],
         "standing_ids": [s.item.id for s in route.standing_answer],
         "reference_paths": list(route.references),
         "section_ids": [section.id for section, *_rest in quoted],
-        # The engine's document parts past the allowance, listed for the model to open.
+        # Document parts past the allowance, listed for the model to open.
         "section_pointer_ids": [section.id for section in section_pointers],
         "held_section_ids": [s.id for s in held_sections],
         "file_paths": list(dict.fromkeys(section.path for section, *_rest in quoted)),
