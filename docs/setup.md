@@ -93,6 +93,11 @@ shows the same under **Settings, AI apps**.
   open it again.
 - **Codex**: a block for `~/.codex/config.toml`. Start a new Codex session.
 
+Then add the instruction it prints to that app's own instructions: `~/.claude/CLAUDE.md` for
+Claude Code, `~/.codex/AGENTS.md` for Codex, User Rules in Cursor's settings, personal
+preferences in Claude Desktop's profile. A model reads your Brain only when it asks, and it
+forgets most often on a follow-up; that line makes it ask first, every time.
+
 The connection is a local command beside your Brain folder (MCP over stdio): no account, no
 token, and nothing goes anywhere but to the AI app you connect. The app does not need to be
 running for your AI apps to use the Brain.

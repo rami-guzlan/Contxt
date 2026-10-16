@@ -69,7 +69,8 @@ uv run contxt connect claude-code
 
 prints one command. Run it once, and every Claude Code session has your Brain. The same works
 for `claude-desktop`, `codex`, `cursor` and `other`, and the app shows it under **Settings, AI
-apps**:
+apps**. Each also prints one line to add to that app's own instructions (for Claude Code,
+`~/.claude/CLAUDE.md`), so its model asks the Brain before every answer:
 
 ![Connecting an AI app to the Brain](docs/images/connect.png)
 

@@ -944,6 +944,10 @@ export interface BrainClientSetup {
   file?: string;
   config?: string;
   note: string;
+  /** The standing instruction that makes the app's model ask the Brain first. */
+  instruction?: string;
+  /** Where the app keeps the instructions it follows in every conversation. */
+  instruction_where?: string;
 }
 
 export interface BrainConnect {

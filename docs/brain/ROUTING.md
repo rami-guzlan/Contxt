@@ -180,6 +180,14 @@ Pushed briefs are logged with `delivery: push`, so the report weighs push agains
 router exactly as `get_task_context` runs it, a few seconds while the embedding model loads)
 or `off`; `BRAIN_HOOK_PUSH=0` turns it off for a process.
 
+The hook runs only where it is configured. Everywhere else the model has to ask, and the
+Brain's MCP instructions say so, but an app may not show those to its model. So connecting an
+app (`contxt connect`, or Settings, AI apps) also gives one standing instruction to paste into
+that app's own instructions (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, Cursor's User Rules,
+Claude Desktop's personal preferences): call `get_task_context` first with the message as
+written, again with the `session_id` for every new ask, follow the must-holds and rules, and
+propose lasting statements (`BRAIN_INSTRUCTION` in `workspace_connectors.providers`).
+
 The task section of every brief opens with the project's objective when the request works in
 one (its summary until it has an objective), then the request, then that the rules outrank it.
 

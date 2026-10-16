@@ -92,7 +92,8 @@ point, journal action `policy`), these settings in `brain.json`:
 |---|---|---|
 | `review_days` | `governance.review_days`, by area or kind (`{"state": 30}`); between an entry's area and kind the shorter wins; an entry's own `review_days` wins over both | none |
 | `default_owner` | `governance.default_owner` | the approver |
-| `auto_apply_own_scope`, `auto_apply_scopes` | `governance` | true, none |
+| `preset` | `governance` | careful |
+| `auto_apply_own_scope`, `auto_apply_scopes` | `governance` | true (false under regulated), none |
 | `max_proposals_per_session` | `governance` | 12 |
 | `retention_days` | `sessions.retention_days` | 90 |
 
