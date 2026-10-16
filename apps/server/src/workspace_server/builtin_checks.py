@@ -238,7 +238,7 @@ def qualification(over: dict[str, Any] | None) -> list[dict[str, Any]]:
             "agent",
             None,
             agent_runs,
-            "Claude Code on this computer does its work."
+            "Your AI CLI on this computer (Claude Code, Codex or Gemini CLI) does its work."
             if claude
             else "The knowledge agent is off.",
         ),

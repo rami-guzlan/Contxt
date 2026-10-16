@@ -285,10 +285,13 @@ model's behavior is made yet.
   (`docs/evals/setups-a-to-e.md` there): no setup with the small local models beat words and
   meaning.
 - **Workflows go; a Knowledge Agent replaces them**: a customizable agent that manages the
-  Brain, running on the CLI model the person chooses (Gemini CLI, Claude Code, Codex for GPT),
-  local models later through the same router. The server's `models.py` (Claude Code, Ollama,
-  the pinned local model) is where that router starts; Codex is only a "Run now" runner today
-  and Gemini CLI is not supported yet.
+  Brain, running on the model the person chooses, by default the AI CLI they have here,
+  local models later through the same router. The router is the server's `models.py`: Claude
+  Code, Codex and Gemini CLI (each with any model it offers, `gemini:gemini-2.5-flash`), Ollama
+  and the pinned local model; with nothing chosen, the first CLI here that can answer
+  (Oct 16). Codex's `codex exec` flags are from its documentation (it is not installed on the
+  PC); Gemini CLI's were checked against 0.1.10, installed here. Other AI work (checks,
+  digests, See the difference) still runs on Claude Code only.
 - **An updated design comes first**, and the owner has other ideas that take precedence. Wait
   for it before building items 3 and 4 below.
 

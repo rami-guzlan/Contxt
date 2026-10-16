@@ -7,7 +7,7 @@ import { AgentPage } from "../../pages/brain/Agent";
 import { Flashcards } from "../Flashcards";
 import { mockApi, renderAt } from "../../test/render";
 import { AgentProvider } from "./AgentContext";
-import { AgentDock, AgentPanel } from "./AgentPanel";
+import { AgentDock, AgentPanel, ModelPicker } from "./AgentPanel";
 import { AgentStrip } from "./AgentStrip";
 
 afterEach(() => {
@@ -100,6 +100,41 @@ describe("the knowledge agent", () => {
     await user.click(within(card).getByRole("button", { name: "Run it" }));
     expect(await within(card).findByText("One pair says the same thing.")).toBeInTheDocument();
     expect(within(card).getByRole("link", { name: "Catch up" })).toHaveAttribute("href", "/catch-up");
+  });
+
+  it("works through any AI CLI here, with any model it offers", async () => {
+    const withClis: AgentOverview = {
+      ...overview,
+      model: "gemini:gemini-2.5-flash",
+      models: [
+        { id: "claude", label: "Claude Code", kind: "cli", available: true, detail: "On your own plan", brief: false },
+        { id: "codex", label: "ChatGPT (Codex CLI)", kind: "cli", available: false, detail: "Not installed", brief: false },
+        { id: "gemini", label: "Gemini CLI", kind: "cli", available: true, detail: "On your own plan", brief: false },
+        { id: "ollama:qwen3:1.7b", label: "qwen3:1.7b (local)", kind: "local", available: true, detail: "Through Ollama", brief: true },
+      ],
+    };
+    const calls = mockApi({
+      "GET /api/brain/agent": withClis,
+      "GET /api/brain/agent/suggestions": [],
+      "PUT /api/brain/agent/settings": { ...withClis, model: "gemini:gemini-2.5-pro" },
+    });
+    const user = userEvent.setup();
+    renderAt(<AgentPage />, { path: "/brain/agent", route: "/brain/agent" });
+    expect(await screen.findByRole("radio", { name: /Gemini CLI/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Codex/ })).toBeDisabled();
+    const name = screen.getByRole("textbox", { name: "Model for Gemini CLI" });
+    expect(name).toHaveValue("gemini-2.5-flash");
+    await user.clear(name);
+    await user.type(name, "gemini-2.5-pro");
+    await user.click(screen.getByRole("button", { name: "Use this model" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ model: "gemini:gemini-2.5-pro" }));
+  });
+
+  it("names the model the side panel works through, a CLI's own model too", async () => {
+    mockApi({ "GET /api/brain/agent": { ...overview, model: "claude:claude-haiku-5-5" }, "GET /api/brain/agent/suggestions": [] });
+    renderAt(<ModelPicker models={overview.models} value="claude:claude-haiku-5-5" />);
+    expect(await screen.findByRole("combobox")).toHaveValue("claude:claude-haiku-5-5");
+    expect(screen.getByRole("option", { name: "Claude Code (your CLI), claude-haiku-5-5" })).toBeInTheDocument();
   });
 
   it("answers a question in one tap", async () => {

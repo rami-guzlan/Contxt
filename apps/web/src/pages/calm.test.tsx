@@ -1027,7 +1027,7 @@ describe("settings", () => {
     await waitFor(() =>
       expect(calls.some((c) => c.method === "POST" && c.path === "/api/brain/local-models" && JSON.stringify(c.body).includes("qwen3.5-9b"))).toBe(true),
     );
-    await user.click(screen.getByRole("checkbox", { name: /Let the knowledge agent use Claude Code/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Let the knowledge agent use your AI command-line tools/ }));
     await waitFor(() => expect(calls.some((c) => JSON.stringify(c.body ?? {}).includes("claude_code"))).toBe(true));
   });
 

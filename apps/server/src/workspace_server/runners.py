@@ -158,8 +158,37 @@ RUNNERS: dict[str, RunnerSpec] = {
             sign_in=("login",),
             one_click=False,
         ),
+        # Gemini CLI signs in on its first run (Login with Google), so signing in opens it.
+        RunnerSpec(
+            id="gemini",
+            label="Gemini CLI",
+            provider="gemini",
+            executable="gemini",
+            install="npm install -g @google/gemini-cli",
+            sign_in=(),
+            one_click=False,
+        ),
     )
 }
+
+# Codex and Gemini CLI have tools of their own and no switch that takes them all away, so a
+# one-answer ask runs them in an empty folder, without the person's MCP servers, and says this
+# first. (Claude Code takes NO_TOOLS as its system prompt, and has no tools at all.)
+ANSWER_ONLY = (
+    "Answer from this prompt alone: run no commands, open no files, call no tools. Reply "
+    "once, with the finished answer only."
+)
+# What Gemini CLI prints on stdout beside its answer.
+GEMINI_NOISE = ("Loaded cached credentials.",)
+
+
+def gemini_signed_in() -> bool | None:
+    """Gemini CLI is signed in when it keeps a Google login or a key is set; else it cannot be
+    told without starting it, which may ask the person to sign in."""
+    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+        return True
+    saved = os.path.join(os.path.expanduser("~"), ".gemini", "oauth_creds.json")
+    return True if os.path.isfile(saved) else None
 
 
 @dataclass(frozen=True)
@@ -272,6 +301,8 @@ def detect(spec: RunnerSpec, resolve: Resolve = resolve_on_path) -> RunnerStatus
     elif spec.id == "codex":
         status = _call([*command, "login", "status"])
         signed_in = status.returncode == 0 if status else None
+    elif spec.id == "gemini":
+        signed_in = gemini_signed_in()
     detail = {
         True: "Signed in and ready.",
         False: f"Not signed in. Sign in with `{sign_in}`.",
@@ -694,29 +725,141 @@ class Runners:
         timer.start()
         return run
 
-    def ask(self, who: Principal, prompt: str, *, timeout: float = 180.0, job: str = "ask") -> str:
-        """One answer from Claude Code on this computer, with no tools and no MCP server at
-        all, and told so, so it knows only what the prompt says: one side of a comparison with
-        and without the Brain, or a follow-up question in the goals interview. In an empty
-        temporary folder, restricted, with no saved session. What it used is counted under
-        `job` (a check, a comparison, the knowledge agent) in the Brain's cost report."""
-        found = self.ask_json(who, prompt, timeout=timeout)
+    def ask(
+        self,
+        who: Principal,
+        prompt: str,
+        *,
+        timeout: float = 180.0,
+        job: str = "ask",
+        runner: str = "claude",
+        model: str | None = None,
+    ) -> str:
+        """One answer from a CLI on this computer (Claude Code unless `runner` names Codex or
+        Gemini CLI), knowing only what the prompt says: one side of a comparison with and
+        without the Brain, a follow-up question in the goals interview, a step of the
+        knowledge agent. In an empty temporary folder that goes afterwards, with none of the
+        person's MCP servers and no saved session. `model` is one the CLI offers (blank: its
+        own default). What it used is counted under `job` (a check, a comparison, the
+        knowledge agent) in the Brain's cost report."""
+        if runner != "claude":
+            return self._ask_other(who, self._spec(runner), prompt, timeout, job, model)
+        found = self.ask_json(who, prompt, timeout=timeout, model=model)
         spent = usage_of(found)
         if spent is not None:
             self.count_usage(job, spent)
         return str(found.get("result") or "").strip()
 
-    def ask_json(self, who: Principal, prompt: str, *, timeout: float = 180.0) -> dict[str, Any]:
-        """`ask`, returning Claude Code's whole final message (the answer in `result`, and
-        `usage`) without counting it anywhere."""
-        who.require("workspace.admin")
-        spec = RUNNERS["claude"]
+    def _ready(self, spec: RunnerSpec) -> list[str]:
+        """The CLI's command, once it is here and not signed out."""
         status = self.status(spec)
         command = self.resolve(spec)
         if not status.installed or not command:
             raise Conflict(f"{spec.label} is not installed on this computer: {spec.install}")
         if status.signed_in is False:
             raise Conflict(f"{spec.label} is not signed in. Sign in first: {status.sign_in}")
+        return command
+
+    def _ask_other(
+        self,
+        who: Principal,
+        spec: RunnerSpec,
+        prompt: str,
+        timeout: float,
+        job: str,
+        model: str | None,
+    ) -> str:
+        """`ask` of Codex (`codex exec`: read-only sandbox, no MCP servers, the last message
+        kept in a file) or Gemini CLI (no MCP servers, no extensions, the prompt on stdin,
+        which version 0.1 reads only when no `-p` is given)."""
+        who.require("workspace.admin")
+        command = self._ready(spec)
+        folder = tempfile.mkdtemp(prefix="workspace-ask-")
+        last = os.path.join(folder, "answer.txt")
+        named = ["--model", model] if model else []
+        if spec.id == "codex":
+            argv = [
+                *command,
+                "exec",
+                "--skip-git-repo-check",
+                "--sandbox",
+                "read-only",
+                "--color",
+                "never",
+                "-c",
+                "mcp_servers={}",
+                "--output-last-message",
+                last,
+                *named,
+                "-",
+            ]
+        else:
+            argv = [
+                *command,
+                "--allowed-mcp-server-names",
+                "none",
+                "--extensions",
+                "none",
+                *named,
+            ]
+        started = time.monotonic()
+        try:
+            try:
+                proc = self.popen(
+                    argv,
+                    cwd=folder,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    **_quiet(),
+                )
+            except OSError as exc:
+                raise Conflict(f"Could not start {spec.label}: {exc}") from exc
+            try:
+                out, err = proc.communicate(f"{ANSWER_ONLY}\n\n{prompt}", timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                _kill(proc)
+                raise Conflict(f"{spec.label} took too long to answer.") from exc
+            if proc.returncode:
+                reason = (err or out or "it stopped").strip().splitlines() or ["it stopped"]
+                raise Conflict(f"{spec.label} could not answer: {reason[-1][:200]}")
+            if spec.id == "codex":
+                try:
+                    with open(last, encoding="utf-8") as handle:
+                        answer = handle.read()
+                except OSError as exc:
+                    raise Conflict(f"{spec.label} gave no answer.") from exc
+            else:
+                answer = "\n".join(
+                    line for line in (out or "").splitlines() if line.strip() not in GEMINI_NOISE
+                )
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+        # Neither says what it used in this mode: the call is counted, its tokens estimated
+        # from the text (characters / 4) and priced from the table, if it knows the model.
+        self.count_usage(
+            job,
+            {
+                "model": f"{spec.id}:{model}" if model else spec.id,
+                "tokens_in": len(prompt) // 4,
+                "tokens_out": len(answer) // 4,
+                "ms": int((time.monotonic() - started) * 1000) or None,
+                "measured": False,
+            },
+        )
+        return answer.strip()
+
+    def ask_json(
+        self, who: Principal, prompt: str, *, timeout: float = 180.0, model: str | None = None
+    ) -> dict[str, Any]:
+        """`ask` of Claude Code, returning its whole final message (the answer in `result`,
+        and `usage`) without counting it anywhere."""
+        who.require("workspace.admin")
+        spec = RUNNERS["claude"]
+        command = self._ready(spec)
         folder = tempfile.mkdtemp(prefix="workspace-ask-")
         config = os.path.join(folder, "mcp.json")
         with open(config, "w", encoding="utf-8") as handle:
@@ -737,6 +880,7 @@ class Runners:
             "--no-session-persistence",
             "--append-system-prompt",
             NO_TOOLS,
+            *(["--model", model] if model else []),
         ]
         try:
             try:
