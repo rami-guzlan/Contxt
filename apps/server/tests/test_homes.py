@@ -241,7 +241,7 @@ def test_connect_prints_the_instruction_to_add(tmp_path, capsys, fetched):
     code, out = run(capsys, "--home", str(tmp_path), "connect", "codex")
     assert code == 0
     assert "Then add this to ~/.codex/AGENTS.md" in out.out
-    assert "call the contxt tool get_task_context" in out.out
+    assert "call get_task_context with my message as I wrote it" in out.out
 
 
 def test_the_app_shows_the_same_connection(owner, brain_vault):

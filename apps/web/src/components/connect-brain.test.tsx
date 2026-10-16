@@ -19,7 +19,7 @@ const connect = {
       server: "contxt",
       command: 'claude mcp add --scope user contxt -- python -m brainkit --vault "C:\\Contxt\\brain\\vault" mcp',
       note: "Run this once in a terminal.",
-      instruction: "Before you answer, call the contxt tool get_task_context with my message as I wrote it.",
+      instruction: "Before you answer, if the contxt tools are available, call get_task_context with my message as I wrote it.",
       instruction_where: "~/.claude/CLAUDE.md, your instructions for every project",
     },
     {
@@ -48,7 +48,7 @@ describe("connecting an AI app to the Brain", () => {
   it("gives the instruction that makes the app ask the Brain first, and where it goes", async () => {
     mockApi({ "GET /api/brain/connect": connect });
     renderAt(<ConnectBrain />);
-    expect(await screen.findByText(/call the contxt tool get_task_context/)).toBeInTheDocument();
+    expect(await screen.findByText(/call get_task_context with my message/)).toBeInTheDocument();
     expect(screen.getByText("Then add to ~/.claude/CLAUDE.md, your instructions for every project")).toBeInTheDocument();
   });
 

@@ -805,4 +805,13 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   omitted. On `no-silent-drops`: a note too long to come whole comes in short, one past the
   budget even in short is named under "Did not fit", a file part under "Also in your files". The
   parity check's clock is stopped at the day its briefs were kept, since a demo note stops
-  being new after 14 days and the check had started failing on main by date alone.
+  being new after 14 days and the check had started failing on main by date alone. Merged as
+  rami-guzlan/Contxt#20.
+- 2026-10-16, `docs-match-governance`: the governance docs had fallen behind the code. They
+  said every file waits and intake always waits, and they gave the personal preset's capture
+  defaults as everyone's. The code files the owner's documents at once (except from a chat,
+  the CLI or a folder under regulated), treats intake as a file from a chat, and starts from
+  careful. Fixed in GOVERNANCE, CAPTURE, CONFIG and SUPPLY_CHAIN. Push before the model asks
+  is not set up by any connect path, so at Rami's word ("I'll just tell users to add a global
+  instruction to their models") `contxt connect` and Settings, AI apps now give every app one
+  standing instruction to paste into its own instructions, and say where it goes.

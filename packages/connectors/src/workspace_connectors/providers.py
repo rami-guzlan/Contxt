@@ -139,13 +139,15 @@ BRAIN_CLIENTS: dict[str, str] = {
 
 # A model reads the Brain only when it calls get_task_context, and it forgets to most often on
 # a follow-up. The Brain's own MCP instructions say to call it first, but an app may not show
-# those to its model, so the person adds this line to the app's standing instructions too.
+# those to its model, so the person adds this line to the app's standing instructions too. It
+# asks only when the tools are there: the same file is read by runs that have none (the app's
+# own one-answer asks of Claude Code, say), which must not stall on a tool they cannot call.
 BRAIN_INSTRUCTION = (
-    "Before you answer, call the contxt tool get_task_context with my message as I wrote it. "
-    "Call it again for every later message that asks for something new, passing the "
-    "session_id it returned. Follow the must-holds and rules it returns: they outrank the "
-    "request. When I state a lasting rule, preference, decision or fact, propose it with "
-    "propose_note."
+    "Before you answer, if the contxt tools are available, call get_task_context with my "
+    "message as I wrote it. Call it again for every later message that asks for something "
+    "new, passing the session_id it returned. Follow the must-holds and rules it returns: they "
+    "outrank the request. When I state a lasting rule, preference, decision or fact, propose it "
+    "with propose_note."
 )
 # Where each app keeps the instructions it follows in every conversation.
 INSTRUCTION_PLACES: dict[str, str] = {
