@@ -67,9 +67,11 @@ class SelectionEvidenceTest(unittest.TestCase):
                       detail={"adj": 0.8, "cos_raw": 0.8})
         strong = Scored(SimpleNamespace(id="answer", route_key="b/two"), 0.6,
                         detail={"adj": 0.6, "cos_raw": 0.96})
-        selected, related = router._select(route, [weak, strong], [], set())
+        next_match = Scored(SimpleNamespace(id="additional", route_key="c/three"), 0.58,
+                            detail={"adj": 0.58, "cos_raw": 0.96})
+        selected, related = router._select(route, [weak, strong, next_match], [], set())
         self.assertEqual([s.item.id for s in selected], ["answer"])
-        self.assertEqual([s.item.id for s in related], ["incidental"])
+        self.assertEqual([s.item.id for s in related], ["incidental", "additional"])
         # Filtering must still return nothing when every candidate fails the same bar.
         selected, related = router._select(route, [weak], [], set())
         self.assertEqual(selected, [])
