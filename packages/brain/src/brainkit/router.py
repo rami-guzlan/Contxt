@@ -599,6 +599,24 @@ def _reports_progress(sig: Signals) -> bool:
     return any(_phrase(sig.norm, phrase) for phrase in FOCUS_UPDATE_PHRASES)
 
 
+def _focus_overview(sig: Signals, focus) -> bool:
+    """Only a general project overview can skip ordinary knowledge retrieval.
+
+    A status cue like "current" also occurs in questions about specific facts. Remove
+    only the project's names, not its body, before checking for those extra subjects.
+    """
+    if not sig.status_cue and not re.match(r"^what(?: is|\'s) left|^what remains", sig.text):
+        return False
+    names = set(util.terms(" ".join([focus.id, focus.slug, focus.title] + focus.aliases)))
+    overview = {"where", "how", "what", "whats", "hows", "are", "is", "we", "it", "with",
+                "does", "the", "this", "that", "our", "my", "on", "of", "for", "about",
+                "please", "can", "could", "would", "you", "me", "tell", "give", "show",
+                "get", "bring", "up", "to", "speed", "a", "an", "and", "in", "project",
+                "going", "doing", "overview", "summary", "overall", "steps", "actions",
+                "left", "before", "remains"}
+    return not (sig.wordset - names - overview - STATUS_WORDS)
+
+
 def _produces(sig: Signals) -> bool:
     """Does the request ask for one of its artifacts to be made, rather than mention one?
 
@@ -801,6 +819,7 @@ class Router:
         self.system_skill = routing.system_skill
         self._sims: dict[str, dict] = {}
         self._focus_terms_cache: dict[str, set] = {}
+        self._project_members: dict[str, set[str]] = {}
         self._hand = set(overrides) & {"lean_floor", "note_abs_floor", "topic_note_floor"}
         self._calibration = None
 
@@ -840,6 +859,36 @@ class Router:
     def admitted_skills(self, chain, partitions):
         return [s for s in self.index.skills.values()
                 if Scopes.admits(s.scope, s.partition, chain, partitions)]
+
+    def _project_fact_pointers(self, route: Route, notes) -> list:
+        """Make separately filed facts reachable without promoting them to answers.
+
+        Membership is cached for this immutable index. Admission is applied on every
+        request, so a previous caller cannot make a private note visible to another.
+        """
+        focus = route.focus
+        if focus.id not in self._project_members:
+            names = [focus.title] + focus.aliases
+            pinned = set(focus.pinned_notes)
+            self._project_members[focus.id] = {
+                n.id for n in self.index.notes.values()
+                if n.id in pinned or n.topic in (focus.id, focus.slug)
+                or (n.area == "projects" and n.route_key == focus.note.route_key)
+                or str(n.meta.get("project_id") or "") == focus.id
+                or any(_phrase(util.normalize(f"{n.title} {n.summary} {n.body}"), name)
+                       for name in names)
+            }
+        sig = route.signals
+        candidates = [n for n in notes if n.id in self._project_members[focus.id]
+                      and n.id != focus.id and not n.standing and not n.must_hold
+                      and n.route_key not in sig.exclude_topics
+                      and (sig.only_topics is None or n.route_key in sig.only_topics)]
+        ranked = self.score_notes(sig.request, candidates)
+        calibrated = self.calibrated("note_abs_floor")
+        pointers = [s for s in ranked if (self.evidence(s) > self.share("related")
+                    if calibrated else s.score >= self.policy.note_abs_floor)]
+        route.log(f"project facts: {min(len(pointers), self.policy.related_count)} pointer(s)")
+        return pointers[:self.policy.related_count]
 
     def admitted_focuses(self, chain, partitions):
         return [f for f in self.index.focuses.values()
@@ -1414,6 +1463,8 @@ class Router:
                     and classify(route) not in ("planning", "writing", "code"):
                 route.mode, route.focus_mode = "focus-only", "focus-only"
                 route.scale = "micro" if route.scale != "deep" else route.scale
+                if not _focus_overview(sig, focus):
+                    route.related = self._project_fact_pointers(route, notes)
                 if not sig.status_cue:
                     # A question about the project's content ("what budget did we set for
                     # podcasts in the spring launch?") may be answered in one of its files.
