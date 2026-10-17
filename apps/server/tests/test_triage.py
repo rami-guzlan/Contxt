@@ -50,3 +50,15 @@ def test_the_triage_model_reads_numbered_parts_redacted_when_asked():
 def test_a_short_text_or_a_bad_answer_reads_everything():
     assert Triage(Stub('{"keep": []}'), who=object()).keep("claude", "Just one line.") is None
     assert Triage(Stub("I cannot do that."), who=object()).keep("claude", TEXT) is None
+
+
+def test_under_regulated_a_cloud_model_always_triages_redacted_text():
+    from workspace_server.triage import redacts
+
+    assert redacts("claude", {"preset": "careful", "redact_cloud": True})
+    assert not redacts("claude", {"preset": "personal", "redact_cloud": False})
+    # The switch cannot turn it off under regulated: only a local model reads it as written.
+    assert redacts("gemini", {"preset": "regulated", "redact_cloud": False})
+    assert not redacts("ollama:qwen3:1.7b", {"preset": "regulated", "redact_cloud": True})
+    assert not redacts("local:qwen3.5-4b", {"preset": "regulated"})
+    assert redacts("claude", None)  # policies that cannot be read: the careful default

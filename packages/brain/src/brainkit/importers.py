@@ -606,9 +606,12 @@ def scout(brain, folder, *, dry_run=False, scope=None, limit=25, principal=None)
     proposed = []
     target_scope = scope or (chain[-2] if len(chain) > 1 else chain[0])
     for finding in findings:
+        # A document's word, whoever runs scout: an instruction in it is reported, never kept
+        # as a rule (brain-logic plan 7.1).
+        found_in = os.path.relpath(finding["path"], folder).replace(os.sep, "/")
         res = governance.propose_note(
             brain, area=finding["layer"], topic=finding["topic"], text=finding["text"],
-            scope=target_scope, principal=who,
+            scope=target_scope, principal=who, origin=f"file:{found_in}",
             source=f"scout: {finding['path']} ({finding['location']})",
             evidence=f"sha256 {finding['sha256']}; closest existing note "
                      f"{finding['closest']} ({finding['closest_score']:.2f})",

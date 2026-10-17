@@ -23,7 +23,9 @@ class DoorTest(unittest.TestCase):
         self.assertEqual(door("meeting:kickoff"), "person")
         self.assertEqual(door("run:task_1"), "agent")
         self.assertEqual(door("import:instructions"), "owner")  # Moving in: the owner's file
-        self.assertEqual(door("import:chatgpt"), "owner-ai")  # a model's reading of a history
+        # An AI app's exported history gives the person's own messages, read by code.
+        self.assertEqual(door("import:chatgpt"), "owner")
+        self.assertEqual(door("import:claude"), "owner")
         self.assertEqual(door(None, "app"), "owner")
         self.assertEqual(door(None, "chat"), "owner-ai")
         self.assertEqual(door(None, "folder"), "document")

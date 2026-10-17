@@ -481,8 +481,9 @@ def hand_off(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[str, 
 
 
 def redacting(ws: Workspace, who: Principal) -> bool:
-    """Does a model reading through these tools get what was brought in redacted? A model is
-    a cloud model here unless its connection says it runs on this computer (Ollama)."""
+    """Does a model reading through these tools get what was brought in redacted? Yes when
+    the Brain's switch says so: a connection does not say where its model runs, so every
+    model reading here is taken for a cloud model."""
     if who.is_human:
         return False
     try:

@@ -6,6 +6,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -59,7 +60,7 @@ from .runners import Runners
 from .settings import Settings
 from .speech import Speech
 from .templates import TemplateLibrary, find_templates_dir
-from .triage import Triage
+from .triage import Triage, redacts
 
 
 @dataclass
@@ -136,12 +137,11 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
 
     def triager(model_id: str, text: str) -> list[int] | None:
         # A cloud model triages redacted text when the preset says so (decisions 7 and 13).
-        local = model_id.startswith(("local:", "ollama:"))
         try:
-            hidden = bool(ws.rt.brain.policies().get("redact_cloud", True)) and not local
+            policies: dict[str, Any] | None = ws.rt.brain.policies()
         except (OSError, ValueError, RuntimeError, KeyError):
-            hidden = not local
-        return triage.keep(model_id, text, redacting=hidden)
+            policies = None
+        return triage.keep(model_id, text, redacting=redacts(model_id, policies))
 
     ws.distill.triager = triager
     return Runtime(

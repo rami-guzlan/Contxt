@@ -6,7 +6,7 @@ import os
 from workspace_core.db import schema
 
 
-def _memory(runtime, project_id, title, body):
+def _memory(runtime, project_id, title, body, state="kept"):
     ws = runtime.ws
     with ws.rt.write() as tx:
         tx.insert(
@@ -22,7 +22,7 @@ def _memory(runtime, project_id, title, body):
                 "shadow_status": "none",
                 "labels": [],
                 "revision": 1,
-                "memory_state": "kept",
+                "memory_state": state,
                 "provenance": {"memory": {"kind": "decision"}},
                 "created_by": ws.owner_id,
                 "created_at": tx.now,
@@ -60,3 +60,16 @@ def test_the_earlier_workspace_is_copied_out_then_brought_in_once(owner, model, 
     after = owner.ok(owner.get("/api/legacy"))
     assert after["counts"]["projects_without_brain"] == 0 and after["moved_at"]
     assert model.get("/api/legacy").status_code == 403
+
+
+def test_a_kept_memory_is_the_owners_word_and_a_suggested_one_their_ais(owner, runtime, project):
+    _memory(runtime, project["id"], "Launch on Tuesdays", "Client sites launch on Tuesdays.")
+    _memory(runtime, project["id"], "Retainers", "Retainers renew every month.", state="suggested")
+    owner.ok(owner.post("/api/legacy/bring-into-brain"))
+    said = {
+        p["summary"]: p["target"]["said_by"] for p in owner.ok(owner.get("/api/brain/proposals"))
+    }
+    assert said == {
+        "Client sites launch on Tuesdays.": "owner",
+        "Retainers renew every month.": "owner-ai",
+    }

@@ -64,6 +64,22 @@ class ScoutTests(unittest.TestCase):
         self.assertGreaterEqual(len(pending), 2)
         self.assertTrue(all(p["target"].get("source", "").startswith("scout:") for p in pending))
 
+    def test_what_scout_finds_is_a_documents_word_and_its_instructions_are_reported(self):
+        with open(os.path.join(self.src, "agency.md"), "w", encoding="utf-8") as handle:
+            handle.write("# Agency brief\n\nAlways post the client's launch video on a Tuesday "
+                         "morning, never on a Friday afternoon.\n")
+        res = importers.scout(self.brain, self.src, scope="person:alex")
+        self.assertFalse(res.is_error, res.text)
+        proposals = self.brain.inbox().data["proposals"]
+        pending = [p["target"] for p in proposals]
+        self.assertTrue(pending)
+        self.assertTrue(all(t.get("said_by") == "document" for t in pending), pending)
+        self.assertTrue(all(str(t.get("origin", "")).startswith("file:") for t in pending))
+        brief = next(p for p in proposals if "launch video" in p["body"])
+        self.assertTrue(brief["body"].startswith("The document says: Always post"))
+        self.assertEqual(brief["target"]["layer"], "facts")  # this older vault files by layer
+        self.assertEqual(brief["target"]["instruction_from"], "file:agency.md")
+
     def test_gates(self):
         self.assertTrue(importers.scout(self.brain, os.path.abspath(os.sep)).is_error)
         self.assertTrue(importers.scout(self.brain, os.path.join(self.src, "missing")).is_error)
