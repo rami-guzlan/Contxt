@@ -100,3 +100,50 @@ class CalibratedRoutingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(os.path.isdir(MODELS or "-"), "needs BRAIN_TEST_MODELS with bge-small")
+class TiersTest(unittest.TestCase):
+    """Whole notes only when the Brain is confident; the rest as pointers (plan 3.4)."""
+
+    def setUp(self):
+        self.vault = se.copy_vault(os.path.join(GENERAL, "lawfirm", "vault"), MODELS)
+        evalkit.zero_config(self.vault)
+        self.brain = se.open_brain(self.vault, semantic=True)
+
+    def tearDown(self):
+        self.brain.close()
+        shutil.rmtree(os.path.dirname(self.vault), ignore_errors=True)
+
+    def test_whole_notes_are_the_confident_top_and_the_next_ones_are_pointers(self):
+        request = "Draft a reply to a client asking what we charge for a naturalization case"
+        router = self.brain.state().router
+        data = self.brain.context(request, record=False, include_kernel=False,
+                                  explain=True).data
+        scores = {s["id"]: s for s in data["trace"]["note_scores"]}
+        whole = data["note_ids"]
+        self.assertTrue(whole)
+        best = max(scores[i]["adj"] for i in whole)
+        for note_id in whole:
+            self.assertGreaterEqual(scores[note_id]["adj"],
+                                    router.policy.whole_relative * best - 0.051)
+        self.assertTrue(data["related_ids"])
+        self.assertFalse(set(whole) & set(data["related_ids"]))
+
+
+class PointerTest(unittest.TestCase):
+    def test_a_pointer_says_what_its_note_holds(self):
+        vault = se.copy_vault(os.path.join(HERE, "..", "..", "..", "brains",
+                                           "knowledge-company", "vault"))
+        try:
+            brain = se.open_brain(vault)
+            try:
+                res = brain.context("Draft the newsletter intro for this month", record=False)
+            finally:
+                brain.close()
+            pointers = res.text.split("## Also relevant (not included)", 1)
+            self.assertEqual(len(pointers), 2)
+            first = pointers[1].strip().splitlines()[0]
+            self.assertRegex(first, r"^- .+ \(`[^`]+`, [^)]+\): .{10,}")
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)

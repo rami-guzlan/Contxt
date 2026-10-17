@@ -137,6 +137,12 @@ class Policy:
     nothing_share: float = 0.95           # the best note must beat this, or nothing is sent
     note_share: float = 0.95              # a note is sent only when its own match beats this
     related_share: float = 0.90           # ...and listed as also relevant when it beats this
+    # THREE TIERS (plan 3.4), with calibrated bars: a note goes whole only within this share
+    # of the best note's score; the next ones that clear related_share are pointers, at most
+    # related_count. On the generated tuning Brains (October 16, 2026): needed notes sit at
+    # rank 1 for 45% of needs, in the top 3 for 74% and the top 8 for 89%, so whole notes
+    # within 0.90 of the best (69% precision) and pointers to rank 8 reach what is needed.
+    whole_relative: float = 0.90
     # Without an embedding model the evidence is words only, which cannot tell a short real
     # request that hits one rare word from an unrelated one that does the same: on a small
     # Brain most unrelated requests match no word at all, so any one shared word clears a
@@ -1199,9 +1205,11 @@ class Router:
         if sig.continuation and route.subject:
             words |= util.stems(util.terms(route.subject))
             norm = f"{util.normalize(route.subject)} {norm}"
+        # Pointers count: with the tiers, a note the Brain is less sure of is listed, not
+        # sent, and the rule for its area still has to come with the brief.
         reached = set(route.topics) | set(route.forced_topics) | {
             s.item.route_key for s in list(route.notes) + list(route.style_notes)
-            + list(route.standing_answer)}
+            + list(route.standing_answer) + list(route.related)}
         if route.focus is not None:
             reached.add(route.focus.note.route_key)
         if route.skill is not None:
@@ -2087,8 +2095,11 @@ class Router:
         best = max(s.detail["adj"] - (p.fresh_boost if s.detail.get("fresh") else 0.0)
                    for s in pool)
         micro_lookup = route.task_type == "knowledge" and route.scale == "micro"
-        factor = p.micro_relative if micro_lookup else p.select_relative
         calibrated = self.calibrated("note_abs_floor")
+        if calibrated:
+            factor = p.whole_relative
+        else:
+            factor = p.micro_relative if micro_lookup else p.select_relative
         threshold = best * factor if calibrated else max(p.note_abs_floor, best * factor)
         route.select_threshold = threshold
         cap = {"micro": p.per_topic_micro, "deep": p.per_topic_deep}.get(
@@ -2133,7 +2144,9 @@ class Router:
         chosen = {s.item.id for s in selected}
         # "Also relevant" means relevant: a note under the floor no selection would take is
         # not listed either, however low the bar for this request went.
-        related_bar = (threshold * p.related_factor if calibrated
+        # Calibrated, a pointer is any next note that clears the related bar: the tiers
+        # put what is not confident enough to send whole here, one get_note away.
+        related_bar = (0.0 if calibrated
                        else max(p.note_abs_floor, threshold * p.related_factor))
         related = [s for s in pool if s.item.id not in chosen
                    and s.detail["adj"] >= related_bar
