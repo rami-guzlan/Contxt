@@ -722,6 +722,7 @@ class Route:
     notes: list = field(default_factory=list)          # [Scored(note)] selected, in order
     style_notes: list = field(default_factory=list)    # [Scored(note)] house-style rules
     related: list = field(default_factory=list)        # [Scored(note)] listed, not sent
+    related_pool: list = field(default_factory=list)   # qualified overflow for unused slots
     standing_answer: list = field(default_factory=list)  # [Scored(note)]
     references: list = field(default_factory=list)     # reference paths
     sections: list = field(default_factory=list)       # [Scored(section)] quoted from files
@@ -1112,7 +1113,38 @@ class Router:
                             task_type_override=task_type_override, previous=previous)
         self._prefer_newer(route)
         self._attach_must_holds(route)
+        self._complete_related(route)
         return route
+
+    def _complete_related(self, route: Route) -> None:
+        """Use pointer slots for context the packet does not already carry.
+
+        Refill only from the admitted candidates that passed the original related bar.
+        Newly reached areas keep their must-holds, including when a rule itself was
+        the pointer that reached the area. Reached areas grow, so this loop is bounded
+        by the finite candidate pool; neither the note nor pointer threshold changes.
+        """
+        if not route.related_pool:
+            return
+        by_id = {}
+        for scored in route.related + route.related_pool:
+            by_id.setdefault(scored.item.id, scored)
+        pool = list(by_id.values())
+        limit = max(self.policy.related_count, len(route.related))
+        covered = {s.item.id for s in route.notes + route.style_notes + route.standing_answer}
+        covered |= {old.id for old, _new in route.older}
+        covered |= {self.index.cards[s.item.path].id for s in route.sections
+                    if s.item.path in self.index.cards}
+        reached = {s.item.route_key for s in route.related}
+        rules = {m.note.id for m in route.must_holds + route.must_overflow}
+        while True:
+            route.related = [s for s in pool if s.item.id not in covered | rules][:limit]
+            reached |= {s.item.route_key for s in route.related}
+            self._attach_must_holds(route, reached_extra=reached)
+            current = {m.note.id for m in route.must_holds + route.must_overflow}
+            if current <= rules:
+                return
+            rules |= current
 
     # ------------------------------------------------------------------ dated values
     # Two dated notes that give a figure for the same thing (a monthly total, a count, a
@@ -1192,7 +1224,7 @@ class Router:
     # missing one costs the answer.
     NO_MUST_HOLDS = ("focus-update", "portfolio", "system", "exact-note")
 
-    def _attach_must_holds(self, route: Route) -> None:
+    def _attach_must_holds(self, route: Route, reached_extra=()) -> None:
         if route.mode in self.NO_MUST_HOLDS:
             return
         notes = [n for n in self.admitted_notes(route.chain, route.partitions) if n.must_hold]
@@ -1210,6 +1242,7 @@ class Router:
         reached = set(route.topics) | set(route.forced_topics) | {
             s.item.route_key for s in list(route.notes) + list(route.style_notes)
             + list(route.standing_answer) + list(route.related)}
+        reached.update(reached_extra)
         if route.focus is not None:
             reached.add(route.focus.note.route_key)
         if route.skill is not None:
@@ -1261,9 +1294,11 @@ class Router:
         # Critical ones first, then those the request or the route names outright.
         picks.sort(key=lambda m: (not m.note.critical,
                                   m.why.startswith("this request is about"), m.note.id))
+        previous = [m.note.id for m in route.must_holds + route.must_overflow]
         route.must_holds = picks[:p.must_hold_max]
         route.must_overflow = picks[p.must_hold_max:]
-        route.log("must hold: " + "; ".join(f"{m.note.id} ({m.why})" for m in picks))
+        if previous != [m.note.id for m in picks]:
+            route.log("must hold: " + "; ".join(f"{m.note.id} ({m.why})" for m in picks))
 
     def _close_topics(self, request) -> dict:
         """The request's best two topic matches, when they clear their must-hold bars:
@@ -2159,10 +2194,11 @@ class Router:
         related = [s for s in pool if s.item.id not in chosen
                    and s.detail["adj"] >= related_bar
                    and (not calibrated or self.evidence(s) > self.share("related"))
-                   ][:p.related_count]
+                   ]
+        route.related_pool = related
         route.log(f"selected {len(selected)} note(s) at or above {threshold:.2f}; "
-                  f"{len(related)} related listed")
-        return selected, related
+                  f"{min(len(related), p.related_count)} related listed")
+        return selected, related[:p.related_count]
 
     def _rerank(self, route, request, ranked) -> list:
         """Let the cross-encoder reread the best candidates and shift their scores.

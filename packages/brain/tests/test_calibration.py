@@ -78,6 +78,44 @@ class SelectionEvidenceTest(unittest.TestCase):
         self.assertEqual([s.item.id for s in related], ["incidental"])
 
 
+class PointerCoverageTest(unittest.TestCase):
+    def test_rules_already_carried_do_not_consume_pointer_slots(self):
+        def scored(note_id, topic):
+            return Scored(SimpleNamespace(id=note_id, route_key=topic), 0.6)
+
+        rule = scored("existing-rule", "work/rules")
+        first = scored("first-reference", "work/facts")
+        next_rule = scored("new-area-rule", "new/rules")
+        last = scored("next-reference", "new/facts")
+        older = scored("old-value", "work/facts")
+        current = scored("current-value", "work/facts")
+        linked = Scored(first.item, first.score, detail={"linked_from": "current-value"})
+        route = SimpleNamespace(
+            related=[rule, linked], related_pool=[rule, first, older, next_rule, last],
+            notes=[current], style_notes=[], standing_answer=[], sections=[],
+            older=[(older.item, current.item)], must_holds=[], must_overflow=[])
+        router = Router.__new__(Router)
+        router.policy = Policy(related_count=2)
+        router.index = SimpleNamespace(cards={})
+        router._route = lambda *args, **kwargs: route
+        router._prefer_newer = lambda _: None
+
+        def attach(found, reached_extra=()):
+            reached = set(reached_extra) | {s.item.route_key for s in found.related}
+            found.must_holds = [SimpleNamespace(note=rule.item)]
+            if any(topic.startswith("new/") for topic in reached):
+                found.must_holds.append(SimpleNamespace(note=next_rule.item))
+
+        router._attach_must_holds = attach
+        found = router.route("Prepare the project summary", [])
+        self.assertEqual([s.item.id for s in found.related],
+                         ["first-reference", "next-reference"])
+        self.assertEqual(found.related[0].detail.get("linked_from"), "current-value")
+        self.assertEqual({m.note.id for m in found.must_holds},
+                         {"existing-rule", "new-area-rule"})
+        self.assertNotIn("old-value", [s.item.id for s in found.related])
+
+
 MODELS = os.environ.get("BRAIN_TEST_MODELS", "")
 
 
