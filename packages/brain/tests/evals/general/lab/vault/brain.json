@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Varga Lab Brain",
+  "description": "Dr. Elena Varga's lab: protocols, safety, grants and ordering, the team, publishing and data rules.",
+  "starter": "test",
+  "owner": "person:elena",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "me": {
+        "label": "Me",
+        "order": 1,
+        "description": "who Elena is and how she wants work done"
+      },
+      "bench": {
+        "label": "Bench",
+        "order": 2,
+        "description": "protocols, shared equipment and the fish facility"
+      },
+      "safety": {
+        "label": "Safety",
+        "order": 3,
+        "description": "biosafety, chemical handling and waste"
+      },
+      "grants": {
+        "label": "Grants",
+        "order": 4,
+        "description": "grant budgets, ordering reagents and reports to funders"
+      },
+      "team": {
+        "label": "Team",
+        "order": 5,
+        "description": "lab members, onboarding and lab meetings"
+      },
+      "research": {
+        "label": "Research",
+        "order": 6,
+        "description": "authorship, publishing and data management"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:elena": {
+      "parent": "company",
+      "label": "Elena"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:elena",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

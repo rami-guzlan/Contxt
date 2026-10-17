@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Jordan Pike's Brain",
+  "description": "Jordan Pike's working context: listings, buyers, deals under contract, compliance, marketing and the Port Wren market.",
+  "starter": "test",
+  "owner": "person:jordan",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "practice": {
+        "label": "Practice",
+        "order": 1,
+        "description": "who Jordan is, the small team and the people Jordan relies on, and how the assistant helps"
+      },
+      "listings": {
+        "label": "Listings",
+        "order": 2,
+        "description": "the seller side: pricing, photos, write-ups and launch timing"
+      },
+      "buyers": {
+        "label": "Buyers",
+        "order": 3,
+        "description": "buyer clients: first replies, tours and what they need before looking"
+      },
+      "deals": {
+        "label": "Deals",
+        "order": 4,
+        "description": "offers, contract dates, escrow and closing day"
+      },
+      "compliance": {
+        "label": "Compliance",
+        "order": 5,
+        "description": "fair housing, seller disclosures and the rules a licensed agent must follow"
+      },
+      "marketing": {
+        "label": "Marketing",
+        "order": 6,
+        "description": "posts, ads, postcards, signs and Sunday open houses"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight: active listings and pending sales"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge on the local market and the neighborhoods"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:jordan": {
+      "parent": "company",
+      "label": "Jordan"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:jordan",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

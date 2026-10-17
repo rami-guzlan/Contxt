@@ -1,0 +1,283 @@
+# Requests unrelated to anyone's work or life notes: what a Brain's best match reaches for
+# these sets that Brain's bar for "nothing here" (relevance.py). One request per line.
+# Keep them general: trivia, history, geography, language, arts, sports, animals, the sky,
+# arithmetic, puzzles and small talk. Nothing a whole kind of Brain is about (cooking, home,
+# health, money, travel, coding): those would raise the bar for that kind of Brain.
+# Scored apart: tests/evals/general/off_topic.json, never this file.
+What is the capital of Australia?
+Who built the pyramids of Giza?
+What is the capital of Mongolia?
+Write a limerick about a sleepy cat.
+How far is the moon from the earth?
+Who painted the ceiling of the Sistine Chapel?
+What year did the Berlin Wall fall?
+Why is the sky blue?
+What is the boiling point of water at high altitude?
+How do tides work?
+What causes the northern lights?
+Who wrote Pride and Prejudice?
+What is the longest river in Africa?
+How many players are on a rugby union team?
+When did the first person walk on the moon?
+What is the speed of light in a vacuum?
+Which planet has the most moons?
+What is the difference between weather and climate?
+Who invented the printing press?
+What is the tallest mountain in South America?
+How many time zones does Russia have?
+What language is spoken in Brazil?
+Summarize the plot of Moby Dick in two sentences.
+What is the population of Canada, roughly?
+Why do cats purr?
+What is the Pythagorean theorem?
+Explain the theory of relativity like I am twelve.
+What is a black hole?
+Who was the first emperor of Rome?
+What happened at the Battle of Hastings?
+What are the three states of matter?
+How does a rainbow form?
+What is the chemical symbol for gold?
+How long does light from the sun take to reach us?
+Which ocean is the deepest?
+Who composed the Four Seasons?
+What is the meaning of the word ephemeral?
+Translate "good morning, how are you" into French.
+How do you say thank you in Japanese?
+Is it "affect" or "effect" in this sentence: the rain will ___ the game?
+What rhymes with orange?
+Give me a synonym for happy.
+What is an oxymoron? Give two examples.
+Explain the difference between "their", "there" and "they're".
+What does the idiom "break the ice" mean?
+How many letters are in the Greek alphabet?
+What is 17 times 23?
+Convert 72 degrees Fahrenheit to Celsius.
+What is 15 percent of 240?
+Solve for x: 3x plus 7 equals 22.
+How many seconds are in a day?
+What is the square root of 196?
+If I drive 300 kilometers at 100 kilometers an hour, how long does it take?
+What is 2 to the power of 10?
+Convert 5 miles to kilometers.
+Round 3.14159 to two decimal places.
+What is the area of a circle with a radius of 4?
+What is the next prime number after 31?
+How many minutes are in three and a half hours?
+What is the sum of the angles in a triangle?
+Divide 1,000 by 8.
+Tell me a joke about penguins.
+Give me a fun fact about octopuses.
+What should I name my new goldfish?
+Tell me a riddle.
+Write a haiku about autumn leaves.
+What is your favorite color?
+Hi, how are you today?
+Good morning!
+Thanks, that was helpful.
+Can you tell me something interesting?
+I'm bored, any ideas?
+Who would win in a race, a cheetah or a greyhound?
+What is the best way to learn juggling?
+How do I solve a Rubik's cube?
+What are the rules of chess castling?
+How many squares are on a chessboard?
+Who won the first soccer World Cup?
+How long is a marathon?
+What is a hat trick in hockey?
+How many rings are on the Olympic flag?
+How do I tie a bowline knot?
+Recommend a classic science fiction novel.
+What are some good board games for four players?
+Suggest a movie for a rainy Sunday.
+Who directed the movie Jaws?
+What is the best-selling album of all time?
+What instruments are in a string quartet?
+What is the difference between jazz and blues?
+Recommend a podcast about history.
+What is a sonnet?
+Who sculpted The Thinker?
+What is the time difference between London and Tokyo?
+What are the seven wonders of the ancient world?
+What is the smallest country in the world?
+Which country has the most islands?
+What is the largest desert on earth?
+What is the coldest place on earth?
+What is the highest waterfall in the world?
+Name the Great Lakes.
+What do giraffes eat?
+How long do elephants live?
+Why do leaves change color in the fall?
+How do birds know where to migrate?
+What is the largest animal that ever lived?
+Are tomatoes a fruit or a vegetable?
+How do earthquakes happen?
+What is a volcano made of?
+How hot is the center of the sun?
+What is the difference between an asteroid and a comet?
+How many stars are in the Milky Way?
+What is the Fibonacci sequence?
+What is pi used for?
+Who was Ada Lovelace?
+What did Marie Curie discover?
+Who was Nelson Mandela?
+What was the Renaissance?
+Why did the Titanic sink?
+What were the causes of World War One?
+What is the Magna Carta?
+When was the internet invented?
+How do airplanes stay in the air?
+How does a refrigerator keep food cold?
+How do solar panels make electricity?
+How does GPS know where I am?
+What is the difference between AC and DC current?
+How do noise cancelling headphones work?
+What is the ozone layer?
+Spell "necessary" for me.
+What is the longest word in English?
+How many words are in the average novel?
+What is the origin of the word quarantine?
+What is the difference between a simile and a metaphor?
+Write a short poem about the ocean.
+Write a tongue twister.
+Make up a name for a fantasy dragon.
+Describe a sunset in one sentence.
+Write a two-line story about a robot who loves gardening.
+What would happen if the earth stopped spinning?
+Could humans live on Mars?
+What is the fastest land animal?
+How do chameleons change color?
+What is the loudest animal?
+How deep is the Mariana Trench?
+What is the oldest tree on earth?
+What day of the week was January 1, 2000?
+How many weeks are in a year?
+What is a leap year and why do we have it?
+Why do we have time zones?
+What time is it in New York when it is noon in Paris?
+What is daylight saving time?
+Who was the 16th president of the United States?
+What does the Supreme Court do, in general?
+How does a bill become law, in general terms?
+What is the United Nations?
+How many countries are in the European Union?
+What is the difference between a republic and a democracy?
+What is the largest city in India?
+What is the national animal of Scotland?
+Why is Venice built on water?
+How tall is the Eiffel Tower?
+What is the Great Barrier Reef?
+How do I make a paper airplane that flies far?
+How do magnets work?
+Why does ice float?
+What is static electricity?
+Give me a word that means very tired.
+What is the opposite of generous?
+What does "carpe diem" mean?
+What does "deja vu" mean?
+What is a palindrome? Give an example.
+How many syllables are in the word "beautiful"?
+Who founded the first modern Olympic Games?
+What is a decathlon?
+How do you score in tennis?
+How long is a cricket test match?
+What is the offside rule in soccer?
+How many holes are in a round of golf?
+Is a hot dog a sandwich?
+Would you rather fly or be invisible?
+If you could have dinner with anyone in history, who would it be?
+What is the meaning of life, in a sentence?
+Do you dream?
+What is your name?
+Are you a robot?
+Tell me about yourself.
+What can you do?
+Explain how a rainbow gets its colors to a five-year-old.
+How do I whistle with my fingers?
+What is the difference between latitude and longitude?
+How do compasses point north?
+What is the equator?
+What are the primary colors?
+What color do blue and yellow make?
+What is a haiku?
+How many keys are on a piano?
+What is middle C?
+What is a time signature in music?
+How do I tune a guitar without a tuner?
+Who invented the telephone?
+Who discovered penicillin?
+What did Isaac Newton discover?
+What is gravity?
+What is an atom made of?
+What is the periodic table?
+How many elements are there?
+What is the most common gas in the air we breathe?
+Who was the first woman to fly solo across the Atlantic?
+What is the largest moon of Saturn?
+Who wrote the Odyssey?
+What is the national flower of Japan?
+Which river runs through Cairo?
+How many strings does a violin have?
+Who painted The Starry Night?
+What is the longest-running Broadway show?
+Who was Cleopatra?
+What is the capital of Canada?
+Which country gave the Statue of Liberty to the United States?
+What is the Rosetta Stone?
+How long did the Hundred Years' War last?
+Who discovered America according to Norse sagas?
+What are the rings of Saturn made of?
+What is a light year?
+Why does the moon have phases?
+How many moons does Mars have?
+What is the closest star to the sun?
+What is a supernova?
+Name three Greek gods and what they ruled.
+Who is Thor in Norse myths?
+What is the story of Icarus?
+Tell me the legend of King Arthur in three sentences.
+What is the difference between a crocodile and an alligator?
+How fast can a hummingbird flap its wings?
+Why do zebras have stripes?
+How do whales communicate?
+What is the largest species of penguin?
+Do owls really turn their heads all the way around?
+How many legs does a spider have?
+What is the rarest bird in the world?
+What is the most spoken language in the world?
+Where does the word robot come from?
+What is the difference between "fewer" and "less"?
+Is it "who" or "whom" in this sentence: ___ did you call?
+What is a portmanteau? Give an example.
+What does the phrase "the whole nine yards" mean?
+What is an anagram of the word listen?
+Write a riddle about the moon.
+Give me a fun fact about the Roman Empire.
+What is a crossword clue for "large body of water", five letters?
+How many squares are in a sudoku grid?
+What is the highest score in a game of bowling?
+How long is a basketball game?
+What is a birdie in golf?
+Who holds the record for the fastest 100 meters?
+How many players are on a baseball team on the field?
+What is the Tour de France?
+How many points is a touchdown worth?
+Who wrote the Iliad?
+What is the most visited museum in the world?
+Who wrote the play Hamlet?
+What is the difference between an opera and a musical?
+What is a symphony?
+Who wrote the novel One Hundred Years of Solitude?
+What is surrealism in painting?
+Who invented the light bulb?
+What was the Silk Road?
+Who was Genghis Khan?
+What is the Great Wall of China made of?
+When was the first photograph taken?
+How did the dinosaurs go extinct?
+What is the biggest volcano in the solar system?
+Good evening, how is your day going?
+Thanks a lot, have a nice weekend.
+Can you say something nice to cheer me up?
+What's a fun fact I can share at lunch?
+Tell me a knock knock joke.
+Write a short poem about the stars.

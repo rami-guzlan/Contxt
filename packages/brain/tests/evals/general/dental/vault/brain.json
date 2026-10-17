@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Nadia's Practice Brain",
+  "description": "Dr. Nadia Okafor's working context for Brightwater Family Dental: patients, team, insurance, marketing and what is in flight.",
+  "starter": "test",
+  "owner": "person:nadia",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "assistant": {
+        "label": "Assistant",
+        "order": 1,
+        "description": "how the AI drafts, writes and reports for Nadia"
+      },
+      "practice": {
+        "label": "Practice",
+        "order": 2,
+        "description": "the office itself: who runs it, opening times, restocking and spending"
+      },
+      "patients": {
+        "label": "Patients",
+        "order": 3,
+        "description": "booking, health history, privacy and how we talk with patients"
+      },
+      "team": {
+        "label": "Team",
+        "order": 4,
+        "description": "the hygienists, the front desk, the office dog and staff policies"
+      },
+      "insurance": {
+        "label": "Insurance and billing",
+        "order": 5,
+        "description": "dental plans, fees, estimates and the in-house membership club"
+      },
+      "marketing": {
+        "label": "Marketing",
+        "order": 6,
+        "description": "the practice's online posts, reviews and reputation"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight, like the Saturday clinic and the new imaging sensors"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge that belongs to no single area, like outside vendors"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:nadia": {
+      "parent": "company",
+      "label": "Nadia"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:nadia",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Tallyline Support",
+  "description": "Priya Raghavan's Brain for running customer support at Tallyline: policies, replies, incidents, metrics and bugs.",
+  "starter": "test",
+  "owner": "person:priya",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "team": {
+        "label": "Team",
+        "order": 1,
+        "description": "Priya, the support team, hours and onboarding"
+      },
+      "policies": {
+        "label": "Policies",
+        "order": 2,
+        "description": "refunds, escalation, service levels and privacy"
+      },
+      "replies": {
+        "label": "Replies",
+        "order": 3,
+        "description": "customer replies, macros and help center writing"
+      },
+      "incidents": {
+        "label": "Incidents",
+        "order": 4,
+        "description": "outages, engineering on-call and incident write-ups"
+      },
+      "metrics": {
+        "label": "Metrics",
+        "order": 5,
+        "description": "the weekly report and support targets"
+      },
+      "product": {
+        "label": "Product",
+        "order": 6,
+        "description": "plans, limits and bug priorities with product"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:priya": {
+      "parent": "company",
+      "label": "Priya"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:priya",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}
