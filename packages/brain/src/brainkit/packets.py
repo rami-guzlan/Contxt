@@ -660,7 +660,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             named = (f", named by `{scored.detail['linked_from']}`"
                      if scored.detail.get("linked_from") else "")
             if note.meta.get("title"):
-                lines.append(f"- {note.title} (`{note.id}`, {note.route_key}{named})")
+                gist = f": {util.excerpt(note.summary, 110)}" if note.summary else ""
+                lines.append(f"- {note.title} (`{note.id}`, {note.route_key}{named}){gist}")
             else:
                 lines.append(f"- `{note.id}` ({note.route_key}): "
                              f"{util.excerpt(note.index_line, 110)}")

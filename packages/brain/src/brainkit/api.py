@@ -123,6 +123,7 @@ class Brain:
         # routing is unchanged.
         self.reranker = Reranker(self.vault.runtime_dir) if (embeddings and rerank) else None
         self._state: State | None = None
+        self._state_writes = -1
         self._lock = threading.RLock()
         self._ledger: Ledger | None = None
         self._deferred: Deferred | None = None  # a batch of writes in progress
@@ -148,7 +149,9 @@ class Brain:
         listing = self.vault.listing()
         fingerprint = self.vault.fingerprint(listing)
         with self._lock:
-            if self._state is None or self._state.fingerprint != fingerprint:
+            writes = self.vault.writes
+            if (self._state is None or self._state.fingerprint != fingerprint
+                    or self._state_writes != writes):
                 cfg = config_mod.load(self.vault.root)
                 snapshot = self.vault.scan(listing)
                 index = Index(snapshot, cfg, self.embedder)
@@ -156,6 +159,7 @@ class Brain:
                 router = Router(index, cfg, scopes, systemdocs.load(),
                                 reranker=self.reranker)
                 self._state = State(snapshot.fingerprint, cfg, snapshot, index, scopes, router)
+                self._state_writes = writes
             if deferred is not None:
                 deferred.seen = self.vault.writes
             return self._state

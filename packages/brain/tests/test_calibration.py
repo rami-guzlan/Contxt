@@ -6,9 +6,11 @@ import json
 import os
 import shutil
 import unittest
+from types import SimpleNamespace
 
 from brainkit import calibration, evalkit
 from brainkit import safeguards_eval as se
+from brainkit.router import Policy, Router, Scored
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GENERAL = os.path.join(HERE, "evals", "general")
@@ -50,6 +52,30 @@ class EvidenceTest(unittest.TestCase):
 
     def test_the_bank_is_shipped_with_the_engine(self):
         self.assertGreaterEqual(len(calibration.null_bank()), 250)
+
+
+class SelectionEvidenceTest(unittest.TestCase):
+    def test_a_match_that_fails_the_evidence_bar_cannot_hide_a_qualified_match(self):
+        router = Router.__new__(Router)
+        router.policy = Policy()
+        router._hand = set()
+        router.index = SimpleNamespace(semantic_ready=lambda: True)
+        router._calibration = calibration.Calibration(cos=[0.5] * 19 + [0.9], bm=[])
+        route = SimpleNamespace(task_type="combined", scale="standard",
+                                signals=SimpleNamespace(include_topics=[]), log=lambda _: None)
+        weak = Scored(SimpleNamespace(id="incidental", route_key="a/one"), 0.8,
+                      detail={"adj": 0.8, "cos_raw": 0.8})
+        strong = Scored(SimpleNamespace(id="answer", route_key="b/two"), 0.6,
+                        detail={"adj": 0.6, "cos_raw": 0.96})
+        next_match = Scored(SimpleNamespace(id="additional", route_key="c/three"), 0.58,
+                            detail={"adj": 0.58, "cos_raw": 0.96})
+        selected, related = router._select(route, [weak, strong, next_match], [], set())
+        self.assertEqual([s.item.id for s in selected], ["answer"])
+        self.assertEqual([s.item.id for s in related], ["incidental", "additional"])
+        # Filtering must still return nothing when every candidate fails the same bar.
+        selected, related = router._select(route, [weak], [], set())
+        self.assertEqual(selected, [])
+        self.assertEqual([s.item.id for s in related], ["incidental"])
 
 
 MODELS = os.environ.get("BRAIN_TEST_MODELS", "")
@@ -100,3 +126,50 @@ class CalibratedRoutingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(os.path.isdir(MODELS or "-"), "needs BRAIN_TEST_MODELS with bge-small")
+class TiersTest(unittest.TestCase):
+    """Whole notes only when the Brain is confident; the rest as pointers (plan 3.4)."""
+
+    def setUp(self):
+        self.vault = se.copy_vault(os.path.join(GENERAL, "lawfirm", "vault"), MODELS)
+        evalkit.zero_config(self.vault)
+        self.brain = se.open_brain(self.vault, semantic=True)
+
+    def tearDown(self):
+        self.brain.close()
+        shutil.rmtree(os.path.dirname(self.vault), ignore_errors=True)
+
+    def test_whole_notes_are_the_confident_top_and_the_next_ones_are_pointers(self):
+        request = "Draft a reply to a client asking what we charge for a naturalization case"
+        router = self.brain.state().router
+        data = self.brain.context(request, record=False, include_kernel=False,
+                                  explain=True).data
+        scores = {s["id"]: s for s in data["trace"]["note_scores"]}
+        whole = data["note_ids"]
+        self.assertTrue(whole)
+        best = max(scores[i]["adj"] for i in whole)
+        for note_id in whole:
+            self.assertGreaterEqual(scores[note_id]["adj"],
+                                    router.policy.whole_relative * best - 0.051)
+        self.assertTrue(data["related_ids"])
+        self.assertFalse(set(whole) & set(data["related_ids"]))
+
+
+class PointerTest(unittest.TestCase):
+    def test_a_pointer_says_what_its_note_holds(self):
+        vault = se.copy_vault(os.path.join(HERE, "..", "..", "..", "brains",
+                                           "knowledge-company", "vault"))
+        try:
+            brain = se.open_brain(vault)
+            try:
+                res = brain.context("Draft the newsletter intro for this month", record=False)
+            finally:
+                brain.close()
+            pointers = res.text.split("## Also relevant (not included)", 1)
+            self.assertEqual(len(pointers), 2)
+            first = pointers[1].strip().splitlines()[0]
+            self.assertRegex(first, r"^- .+ \(`[^`]+`, [^)]+\): .{10,}")
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
