@@ -11,5 +11,18 @@ load: on-demand
 added: 2026-06-18
 source: Devon Pryce, in conversation
 supersedes: none
+asked_as:
+  - Make next week's staff schedule
+  - How many cooks do we need on a Friday?
+  - What's the most hours a cook can work?
+  - When does the rota have to be posted?
+  - Someone wants to swap a shift, who handles it?
+  - Is the labor cost on this schedule okay?
+applies_when: Drafting and posting the weekly staff rota.
+not_when: Temporary cover while Luis is away, or tip calculations.
+role: procedure
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 94945f3c52179b5c
 ---
 1) On Wednesday, pull next week's covers and any group bookings. 2) Fill the template: three cooks plus Hana or Marco on weeknights, four cooks on Friday and Saturday, two cooks and three front of house for Sunday brunch. 3) Every cook gets two days off together and nobody goes past 45 hours. 4) Marco checks the total against the labor budget of 32% of sales. 5) Post it in the staff group chat by Thursday 3 pm; swaps after that go through Devon.

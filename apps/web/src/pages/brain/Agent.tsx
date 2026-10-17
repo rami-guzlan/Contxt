@@ -8,7 +8,7 @@ import { Bot } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { useAgent, useAgentMap, useAgentSettings, useAgentSkills, useAgentSuggestions, useLoopRuns, useRunAgentAction } from "../../api/hooks";
+import { useAgent, useAgentMap, useAgentSettings, useAgentSkills, useAgentSuggestions, useAgentJob, useEnrichWaiting, useLoopRuns, useRunAgentAction, useRunEnrich } from "../../api/hooks";
 import type { AgentAction, AgentModel, AgentOverview, AgentRun, LoopRun } from "../../api/types";
 import { useAgentPanel } from "../../components/agent/AgentContext";
 import { ActionTurn } from "../../components/agent/AgentPanel";
@@ -44,6 +44,7 @@ export function AgentPage() {
           {agent.actions.map((action) => (
             <ActionCard key={action.id} action={action} last={agent.runs.find((r) => r.action === action.id)} />
           ))}
+          <EnrichCard />
         </div>
       </Section>
       <Section title="Questions for you">
@@ -206,6 +207,46 @@ function ActionCard({ action, last }: { action: AgentAction; last?: AgentRun }) 
       </div>
       <ErrorNote error={run.error} />
       {run.data ? <ActionTurn key={run.data.id} jobId={run.data.id} action={action} /> : null}
+    </article>
+  );
+}
+
+/** Write how each note is asked for (what finds it), one model call per note, for the
+ * notes that have none yet or whose text changed. */
+function EnrichCard() {
+  const waiting = useEnrichWaiting();
+  const run = useRunEnrich();
+  const job = useAgentJob(run.data?.id ?? null);
+  const count = waiting.data?.waiting ?? 0;
+  const result = job.data?.result as unknown as { enriched?: number; failed?: unknown[]; left?: number } | undefined;
+  return (
+    <article className="agent-action" aria-label="Write how notes are found">
+      <h3>Write how notes are found</h3>
+      <p className="muted small">
+        For each note, the ways people would ask for it and the work it is for, so a request finds it in other words.
+        {" "}
+        {count ? `${plural(count, "note")} waiting.` : "Every note has them."}
+      </p>
+      <div className="row">
+        <button type="button" className="primary" disabled={run.isPending || !count} onClick={() => run.mutate()}>
+          Run it
+        </button>
+      </div>
+      <ErrorNote error={run.error} />
+      {job.data?.status === "failed" ? (
+        <p className="error" role="alert">
+          {job.data.error}
+        </p>
+      ) : null}
+      {job.data && result && job.data.status === "done" ? (
+        <p className="small" role="status">
+          Wrote {plural(result.enriched ?? 0, "note")}; {plural(result.left ?? 0, "note")} still waiting.
+        </p>
+      ) : job.data && !["done", "failed"].includes(job.data.status) ? (
+        <p className="small muted" role="status">
+          Working through the waiting notes...
+        </p>
+      ) : null}
     </article>
   );
 }

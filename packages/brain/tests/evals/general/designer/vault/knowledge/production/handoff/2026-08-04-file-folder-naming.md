@@ -11,5 +11,19 @@ load: on-demand
 added: 2026-08-04
 source: Mia Laurent, in conversation
 supersedes: none
+asked_as:
+  - What should I call the new menu file?
+  - Can I name this file final?
+  - Which folders does a new project need?
+  - What's the code for the physio client?
+  - Where does the approved version go?
+  - Set up the folder structure for a new job
+  - How do I number versions?
+applies_when: Naming working files and setting up project folders
+not_when: What goes inside the developer handoff folder
+role: rule
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 93392b9ffd71fb39
 ---
 Working files are named CLIENTCODE_project_vNN_YYYY-MM-DD, for example ORB_menu-boards_v03_2026-10-14. Client codes: ORB (Orchard Row Bakery), KLP (Kestrel Lane Physio), HAL (Halden Ceramics). Never put "final" in a file name; the approved version is copied into 04_Approved instead. Every project has the same folders: 01_Brief, 02_Research, 03_Design, 04_Approved, 05_Handoff.

@@ -2,7 +2,9 @@
 
 Each tick expires runs whose lease ran out (their tasks go back in the queue), wakes recurring
 tasks whose next occurrence has arrived, hands AI work that waited for a model to the one
-that can now take it, and applies the Brain's scheduled revisions whose time has come. The
+that can now take it, applies the Brain's scheduled revisions whose time has come, and, when
+the owner chose a model for the knowledge agent, has it write how newly approved entries are
+asked for (a few at a time; general-retrieval plan 3.1). The
 bus also expires and wakes lazily when a model asks for work, so a missed tick never loses
 anything.
 """
@@ -13,11 +15,14 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
+from typing import Any
 
 from workspace_core.workspace import Workspace
 
 log = logging.getLogger("workspace.worker")
 GOAL_CHECK_SECONDS = 600  # how often the worker looks for goal checks that are due
+ENRICH_SECONDS = 300  # how often it looks for entries waiting to be enriched
+ENRICH_BATCH = 10  # entries enriched per look, so a backfill never floods the model
 
 
 @dataclass
@@ -28,12 +33,33 @@ class Tick:
 
 
 class Worker:
-    def __init__(self, ws: Workspace, interval: float = 15.0) -> None:
+    _enrich_job: Any
+
+    def _enrich(self, system: Any) -> None:
+        """Have the chosen model write how waiting entries are asked for: only when the owner
+        chose a model (each entry is one call on it), one batch at a time."""
+        running = self._enrich_job is not None and self._enrich_job.status in (
+            "waiting",
+            "running",
+        )
+        if self.agent is None or running or not self.ws.agent.chosen_model():
+            return
+        try:
+            if not self.ws.rt.brain.enrichment_pending(1):
+                return
+            self._enrich_job = self.agent.start_enrich(system, limit=ENRICH_BATCH)
+        except Exception:  # no model answering now: the next look tries again
+            log.warning("entries could not be enriched", exc_info=True)
+
+    def __init__(self, ws: Workspace, interval: float = 15.0, agent: Any = None) -> None:
         self.ws = ws
+        self.agent = agent  # the knowledge agent's work (AgentWork), for enrichment
         self.interval = max(1.0, float(interval))
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._goals_at = 0.0  # when goal checks last looked for what is due
+        self._enrich_at = 0.0  # when it last looked for entries to enrich
+        self._enrich_job = None
 
     def tick(self) -> Tick:
         expired = self.ws.bus.expire_leases()
@@ -57,6 +83,9 @@ class Worker:
                 checked = []
             if checked:
                 log.info("%d goal check(s) ran", len(checked))
+        if time.monotonic() - self._enrich_at >= ENRICH_SECONDS:
+            self._enrich_at = time.monotonic()
+            self._enrich(system)
         if expired or woke or assigned:
             log.info(
                 "expired %d lease(s), %d task(s) came due, %d waiting request(s) assigned",

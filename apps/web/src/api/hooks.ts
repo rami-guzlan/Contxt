@@ -383,6 +383,24 @@ export function useBrainDecisions() {
   });
 }
 
+/** Say in your own words how an entry is asked for. */
+export function useAskedAs(entryId: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (lines: string[]) => put<{ text: string }>(`/api/brain/entries/${encodeURIComponent(entryId)}/asked-as`, { lines }),
+    onSettled: () => invalidate(keys.brain, keys.events),
+  });
+}
+
+/** Use the trigger words a model suggested for a must-hold. */
+export function useAcceptTriggers(entryId: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: () => post<{ text: string }>(`/api/brain/entries/${encodeURIComponent(entryId)}/accept-triggers`),
+    onSettled: () => invalidate(keys.brain, keys.events),
+  });
+}
+
 /** Take one batch of decisions back (an undo point's own undo redoes it). */
 export function useBrainUndo() {
   const invalidate = useInvalidate();
@@ -1114,6 +1132,19 @@ export function useRunAgentAction() {
   return useMutation({
     mutationFn: ({ action, model }: { action: string; model?: string }) =>
       post<AgentJob>(`/api/brain/agent/actions/${encodeURIComponent(action)}`, model ? { model } : {}),
+    onSettled: () => invalidate(agentKey),
+  });
+}
+
+/** How many entries wait for a model to write how they are asked for. */
+export const useEnrichWaiting = () =>
+  useQuery({ queryKey: [...agentKey, "enrich"], queryFn: () => get<{ waiting: number }>("/api/brain/agent/enrich") });
+
+/** Write how each waiting entry is asked for, through the chosen model, in the background. */
+export function useRunEnrich() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: () => post<AgentJob>("/api/brain/agent/enrich", {}),
     onSettled: () => invalidate(agentKey),
   });
 }

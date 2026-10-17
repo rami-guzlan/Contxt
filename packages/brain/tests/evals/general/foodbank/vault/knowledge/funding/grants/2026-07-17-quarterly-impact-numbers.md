@@ -11,5 +11,19 @@ load: on-demand
 added: 2026-07-17
 source: Marcus Hale, in conversation
 supersedes: none
+asked_as:
+  - How do I calculate meals served from pounds?
+  - Steps to put together this quarter's impact stats
+  - When are the quarterly figures due to Marcus?
+  - What do we leave out when counting pounds distributed?
+  - Where do household counts come from?
+  - Break down last quarter's distribution by food type
+  - Who double checks the quarterly totals?
+applies_when: Compiling the quarterly pounds, meals and households figures for development.
+not_when: Rules on how figures appear in a funder report, or grant due dates.
+role: procedure
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 346ed25862ce905c
 ---
 1. Export pounds shipped by agency for the quarter from the inventory system, leaving out transfers and discards. 2. Total households and individuals from the agency monthly reports (Denise's spreadsheet). 3. Meals equal pounds divided by 1.2. 4. Break pounds into produce, protein, dairy and shelf-stable. 5. Tomas checks the totals against the dock logs, then the numbers go to Marcus by the 8th of the month after the quarter ends.

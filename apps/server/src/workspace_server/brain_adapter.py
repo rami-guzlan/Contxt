@@ -1821,6 +1821,33 @@ class BrainKitAdapter:
     def record_episode(self, **fields: Any) -> None:
         self.brain.record_episode(**fields)
 
+    def enrichment_pending(self, limit: int | None = None) -> list[dict[str, Any]]:
+        with self._lock:
+            return list(self.brain.enrichment_pending(limit))
+
+    def enrich_note(self, entry_id: str, answer: str, *, by: str) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.enrich_note(entry_id, answer, by=by)
+        return {"ok": not result.is_error, "text": result.text, **dict(result.data)}
+
+    def _governed(self, result: Any) -> dict[str, Any]:
+        if result.is_error:
+            status = result.data.get("status")
+            if status == "missing":
+                raise NotFound(result.text)
+            if status == "invalid":
+                raise ValidationFailed(result.text)
+            raise Conflict(result.text)
+        return {"text": result.text, **dict(result.data)}
+
+    def set_asked_as(self, entry_id: str, lines: list[str]) -> dict[str, Any]:
+        with self._lock:
+            return self._governed(self.brain.set_asked_as(entry_id, lines))
+
+    def accept_triggers(self, entry_id: str) -> dict[str, Any]:
+        with self._lock:
+            return self._governed(self.brain.accept_triggers(entry_id))
+
     def loop_status(self) -> dict[str, Any]:
         return dict(self.brain.loop_status().data)
 

@@ -318,3 +318,82 @@ def test_suggestions_and_setting_one_aside(owner, runtime, brain_vault):
     )
     kinds = {s["kind"] for s in owner.ok(owner.get("/api/brain/agent/suggestions"))}
     assert "stale" not in kinds
+
+
+ASKED = json.dumps(
+    {
+        "asked_as": [
+            "how should this sound",
+            "what tone do we use here",
+            "rules for writing this up",
+        ],
+        "applies_when": "writing anything for a client",
+        "not_when": "internal notes",
+        "role": "style",
+    }
+)
+
+
+def test_the_agent_writes_how_waiting_entries_are_asked_for(owner, runtime):
+    waiting = owner.ok(owner.get("/api/brain/agent/enrich"))["waiting"]
+    assert waiting >= 3
+    models = stub(runtime, ASKED, ASKED)
+    job = owner.ok(owner.post("/api/brain/agent/enrich", json={"limit": 2}), 201)
+    done = finish(owner, job["id"])
+    assert done["status"] == "done", done
+    assert done["result"]["enriched"] == 2 and done["result"]["left"] == waiting - 2
+    assert all(a["json"] for a in models.asked) and len(models.asked) == 2
+    rows = owner.ok(owner.get("/api/brain/inventory"))
+    found = [r for r in rows if r.get("asked_as")]
+    assert len(found) == 2
+    assert found[0]["applies_when"] == "writing anything for a client"
+    assert found[0]["enriched"]
+
+
+def test_unusable_answers_stop_the_job_and_say_why(owner, runtime):
+    models = stub(runtime, "No JSON here.", "Still none.", "Nope.", ASKED)
+    job = owner.ok(owner.post("/api/brain/agent/enrich", json={"limit": 5}), 201)
+    done = finish(owner, job["id"])
+    assert done["status"] == "failed"
+    assert len(done["result"]["failed"]) == 3 and len(models.asked) == 3
+    assert "could not be used" in done["error"]
+
+
+def test_the_owner_rewords_how_an_entry_is_asked_for(owner, runtime):
+    entry = owner.ok(owner.get("/api/brain/inventory"))[0]["id"]
+    lines = ["who signs off on a client post", "approval before publishing"]
+    owner.ok(owner.put(f"/api/brain/entries/{entry}/asked-as", json={"lines": lines}))
+    details = owner.ok(owner.get(f"/api/brain/entries/{entry}/details"))
+    assert details["asked_as"] == lines
+    missing = owner.post(f"/api/brain/entries/{entry}/accept-triggers")
+    assert missing.status_code == 404
+
+
+class _Agent:
+    def __init__(self):
+        self.started = []
+
+    def start_enrich(self, who, *, limit=None):
+        self.started.append(limit)
+
+        class Job:
+            status = "running"
+
+        return Job()
+
+
+def test_the_worker_enriches_new_entries_only_with_a_chosen_model(runtime, monkeypatch):
+    from workspace_server.worker import Worker
+
+    agent = _Agent()
+    worker = Worker(runtime.ws, agent=agent)
+    monkeypatch.setattr(runtime.ws.agent, "chosen_model", lambda: "")
+    worker.tick()
+    assert agent.started == []  # no model chosen: nothing spent
+    monkeypatch.setattr(runtime.ws.agent, "chosen_model", lambda: "claude")
+    worker._enrich_at = 0.0
+    worker.tick()
+    assert agent.started == [10]
+    worker._enrich_at = 0.0
+    worker.tick()  # the batch is still running: not a second one
+    assert agent.started == [10]

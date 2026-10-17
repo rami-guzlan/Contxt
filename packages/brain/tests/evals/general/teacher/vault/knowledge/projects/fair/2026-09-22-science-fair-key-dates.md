@@ -11,5 +11,18 @@ load: on-demand
 added: 2026-09-22
 source: Sam Whitaker, in conversation
 supersedes: none
+asked_as:
+  - When are science fair proposals due?
+  - What time does fair night start for families?
+  - When do projects need to be set up in the gym?
+  - Do 6th graders have to do a project?
+  - Which projects go on to the county competition?
+  - Make a fair timeline for my students
+applies_when: Planning around science fair deadlines and fair night timings.
+not_when: Project format rules, or current planning progress.
+role: knowledge
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: d7eb948527b1cb58
 ---
 The Ridgeview fair calendar for 2026-27: project proposals due Tuesday January 12, 2027, then check-ins every Friday. On March 11, displays go up in the gym from 3:30, judges start at 4:30, and families come from 5:00 to 8:00 pm. The top three projects in each grade go on to the county fair on Saturday April 10. Every 7th and 8th grader does a project, and 6th graders may enter if they want to.

@@ -11,5 +11,18 @@ load: on-demand
 added: 2026-06-12
 source: Teresa Alvarado, in conversation
 supersedes: none
+asked_as:
+  - How much do we charge for a citizenship case?
+  - Quote a fee for a spouse green card
+  - What's the price for an asylum case?
+  - Do we charge for an RFE we caused?
+  - What's our hourly rate?
+  - When did prices last change?
+applies_when: Quoting the firm's attorney fees for a type of case.
+not_when: Government filing fees or the consult price.
+role: knowledge
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 67e018387bb97e0a
 ---
 Attorney fees, before government fees: spouse green card package $3,800; other family petitions $2,400; naturalization $1,200; affirmative asylum $5,500; work permit renewal $450; RFE response $600 (free if the RFE came from a firm mistake); H-1B petition $3,000 billed to the employer. Prices last changed in January 2026. The rare hourly job is $275 an hour.

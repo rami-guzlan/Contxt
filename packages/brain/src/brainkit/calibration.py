@@ -81,7 +81,7 @@ class Calibration:
 def build(index, note_ids: list[str], domain_ids: list[str] = (),
           requests: list[str] | None = None) -> Calibration:
     """Score the bank against these notes and must-hold domains."""
-    from .index import QUERY_INSTRUCTIONS, cosine
+    from .index import QUERY_INSTRUCTIONS
     bank = list(requests or null_bank())
     if len(note_ids) > LARGE_BRAIN:
         bank = bank[:LARGE_SAMPLE]
@@ -89,17 +89,16 @@ def build(index, note_ids: list[str], domain_ids: list[str] = (),
           for r in bank]
     cos, domains, model = None, {}, ""
     if index.semantic_ready():
-        vectors = index._item_vectors() or {}
         model = index.embedder.model_name
         prefix = QUERY_INSTRUCTIONS.get(model, "")
         queries = index.embedder.embed([prefix + r for r in bank]) or []
-        keys = [vectors[f"note:{i}"] for i in note_ids if f"note:{i}" in vectors]
-        if queries and keys:
-            cos = [max(cosine(q, v) for v in keys) for q in queries]
+        keys = [f"note:{i}" for i in note_ids]
+        sims = [index.similarity_vector(q) for q in queries]
+        if sims and any(k in sims[0] for k in keys):
+            cos = [max(s.get(k, 0.0) for k in keys) for s in sims]
             for note_id in domain_ids:
-                vec = vectors.get(f"domain:{note_id}")
-                if vec is not None:
-                    domains[note_id] = [cosine(q, vec) for q in queries]
+                if f"domain:{note_id}" in sims[0]:
+                    domains[note_id] = [s[f"domain:{note_id}"] for s in sims]
     return Calibration(cos, bm, domains, len(note_ids), model)
 
 

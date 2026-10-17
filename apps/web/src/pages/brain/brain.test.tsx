@@ -1338,6 +1338,23 @@ describe("an entry's supply chain", () => {
     expect(screen.getByText("2 times in 30 days")).toBeInTheDocument();
   });
 
+  it("shows how it is found and saves your own wording", async () => {
+    const found = { ...details, asked_as: ["how plain should we be", "words to avoid"], applies_when: "writing for clients" };
+    const calls = mockApi({ ...base, "GET /api/brain/entries/rules-voice/details": found, "PUT /api/brain/entries/rules-voice/asked-as": { text: "ok" } });
+    const user = userEvent.setup();
+    renderAt(<EntryPage />, { path: "/brain/entries/:entryId", route: at });
+    expect(await screen.findByText("how plain should we be")).toBeInTheDocument();
+    expect(screen.getByText("writing for clients")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reword" }));
+    const box = screen.getByLabelText("Ways to ask for it");
+    await user.clear(box);
+    await user.type(box, "plain words please{enter}no jargon");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.path === "/api/brain/entries/rules-voice/asked-as")?.body).toEqual({ lines: ["plain words please", "no jargon"] }),
+    );
+  });
+
   it("changes its details as a decision", async () => {
     const calls = mockApi({
       ...base,

@@ -11,6 +11,19 @@ load: on-demand
 added: 2026-07-02
 source: Noor Haddad, in conversation
 supersedes: none
+asked_as:
+  - A customer wants all their data erased, what do I do?
+  - Who handles privacy deletion requests?
+  - How long do we have to confirm a deletion?
+  - Can we delete their old invoices too?
+  - Draft a reply confirming the account data was removed
+  - Which tag goes on an erasure request?
+applies_when: A customer asks for their account data to be deleted.
+not_when: Verifying who may see billing details, or cancelling an account for a refund.
+role: procedure
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 6854c9cabe1cc26a
 ---
 1. Verify the requester is the account owner (the admin check).
 2. Tag the ticket data-deletion and forward it to Noor Haddad, privacy lead, the same day.

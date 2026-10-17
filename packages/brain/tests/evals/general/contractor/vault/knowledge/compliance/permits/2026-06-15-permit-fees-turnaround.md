@@ -11,5 +11,18 @@ load: on-demand
 added: 2026-06-15
 source: Amy Dunlevy, in conversation
 supersedes: none
+asked_as:
+  - How much is a deck permit?
+  - How long does the town take to approve a permit?
+  - Do we mark up permit costs?
+  - Who pays for the electrical permit?
+  - Why is permit review slow in summer?
+  - Add permit fees to a remodel quote
+applies_when: Pricing permit fees and estimating review time.
+not_when: Whether a job needs a permit at all.
+role: knowledge
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: a86c926478832146
 ---
 Wrenfield fees as of June 2026: decks $185 plus $0.40 per square foot, kitchen or bath remodels $240 base; the subs pull and pay for their own trade permits. Review usually takes about 8 business days, stretching to 12 to 15 in June and July. Permit fees pass through to the homeowner at cost with no markup.

@@ -11,5 +11,18 @@ load: on-demand
 added: 2026-09-22
 source: Jordan Pike, in conversation
 supersedes: none
+asked_as:
+  - My buyer wants to replace the windows on a house near Front Street
+  - Can new owners paint an Old Harbor home any colour they like?
+  - How long does approval for a fence take in the old part of town?
+  - What should renovating buyers know before bidding on a historic home?
+  - When does the preservation board meet?
+  - Can they put a different roof on a historic house?
+applies_when: Advising buyers or sellers on exterior changes to homes in Old Harbor
+not_when: Flood zone or septic issues in other neighborhoods
+role: knowledge
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 882edc3c6760f10f
 ---
 Old Harbor (about 120 houses built 1820 to 1910 around Front and Water Streets) is a local historic district. Any exterior change, including windows, roofing material, fences and paint on street-facing sides, needs Historic Commission approval. The commission meets the second Tuesday of each month and approval usually takes six to eight weeks. Buyers who plan to renovate should hear this before they write an offer.

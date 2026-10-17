@@ -19,7 +19,10 @@ def test_a_backup_is_made_listed_and_downloaded(owner, model):
     assert model.get("/api/backups").status_code == 403
 
 
-def test_the_matching_model_is_fetched_only_when_the_owner_asks(owner, model, runtime):
+def test_the_matching_model_is_fetched_only_when_the_owner_asks(owner, model, runtime, monkeypatch):
+    # This test replaces the download itself. Do not mutate process-wide SSL state or
+    # make its background-job deadline depend on loading the OS certificate store.
+    monkeypatch.setattr("truststore.inject_into_ssl", lambda: None)
     state = owner.ok(owner.get("/api/brain/models"))["matching"]
     assert (state["enabled"], state["present"], state["downloading"]) == (True, False, False)
     assert model.post("/api/brain/models/download").status_code == 403

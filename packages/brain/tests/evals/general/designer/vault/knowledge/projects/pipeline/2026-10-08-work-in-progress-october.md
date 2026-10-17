@@ -11,5 +11,19 @@ load: on-demand
 added: 2026-10-08
 source: Mia Laurent, in conversation
 supersedes: none
+asked_as:
+  - What projects are on my plate right now?
+  - When does the Kestrel Lane site go live?
+  - How many retainer hours has Halden used so far?
+  - When do I need Orchard Row's spring signage done?
+  - Have we heard back from the library about the proposal?
+  - When is the content cutoff for the Kestrel build?
+  - Give me a quick status of all active jobs
+applies_when: Checking the status and key dates of current studio projects
+not_when: Finding when Mia is free to start a new project
+role: knowledge
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 7b0b9ead17ea0aad
 ---
 On 8 October 2026 the Kestrel Lane website is with Tomas for build, with content freeze on 29 October and launch on Thursday 12 November. The Halden retainer is in month two with 4 of 10 hours used. Orchard Row wants spring menu boards and window posters, designed by 20 February 2027. A proposal went to the Friends of Verlaine Library on 2 October (identity, Essentials at EUR 6,500), with an answer expected by 16 October.

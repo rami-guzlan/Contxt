@@ -336,7 +336,11 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     runtime.runners.sweep()  # credentials of runs a stopped server left behind
     host, port = args.host or settings.host, args.port or settings.port
     settings.host, settings.port = host, port
-    worker = None if args.no_worker else Worker(runtime.ws, settings.worker_interval)
+    worker = (
+        None
+        if args.no_worker
+        else Worker(runtime.ws, settings.worker_interval, agent=runtime.agent)
+    )
     transcriber = None if args.no_worker else TranscriptionWorker(runtime.ws, runtime.speech)
     digester = None if args.no_worker else DigestWorker(runtime.ws, runtime.runners)
     checker = None if args.no_worker else CheckWorker(runtime.ws, runtime.runners)

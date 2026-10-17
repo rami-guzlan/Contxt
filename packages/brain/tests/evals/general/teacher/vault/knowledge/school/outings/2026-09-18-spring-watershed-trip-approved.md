@@ -11,5 +11,18 @@ load: on-demand
 added: 2026-09-18
 source: Marcus Lindqvist, in conversation
 supersedes: none
+asked_as:
+  - When is the 7th grade field trip?
+  - How much does the creek trip cost per student?
+  - A family can't pay for the outing, what happens?
+  - What time do buses leave and come back?
+  - Is the trip approved yet?
+  - Write the field trip letter home
+applies_when: Details and approval of the 7th grade spring watershed outing.
+not_when: The general paperwork steps for any trip.
+role: knowledge
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 162595af12eb57f0
 ---
 Decided September 18, 2026: both 7th grade periods go to the Harlow Creek Watershed Center on Wednesday April 14, 2027, leaving at 8:15 and back by 2:15. The center charges $12 per student and the district covers the bus. The school scholarship fund pays for any student who cannot, and no family is asked why. Marcus Lindqvist approved it, and the final bus quote is still due by March 1.

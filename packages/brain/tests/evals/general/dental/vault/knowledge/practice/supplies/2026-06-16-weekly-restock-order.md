@@ -11,6 +11,19 @@ load: on-demand
 added: 2026-06-16
 source: Marisol Vega, in conversation
 supersedes: none
+asked_as:
+  - When does the supply order get placed?
+  - Gloves are backordered, can we swap brands?
+  - Who counts inventory each week?
+  - Where do packing slips get filed?
+  - Walk me through the weekly supply ordering
+  - What day will supplies arrive?
+applies_when: Running the weekly supply count, order and delivery check.
+not_when: Spending limits and who approves large orders.
+role: procedure
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: dd4836ae0cc9aec5
 ---
 1. Every Monday after the huddle, Marisol counts the supply closet and both hygiene carts and writes shortfalls on the clipboard by the sterilizer.
 2. Patrice turns that list into an order on the Harborline Dental Supply portal before Tuesday noon, so it arrives Thursday.

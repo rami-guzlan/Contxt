@@ -11,6 +11,19 @@ load: on-demand
 added: 2026-06-29
 source: Priya Raghavan, in conversation
 supersedes: none
+asked_as:
+  - Walk me through pulling Monday's numbers
+  - Which tickets do I leave out of the contact reason counts?
+  - Where do I check escalated bug status?
+  - When does Priya need the draft?
+  - How do I get the satisfaction responses for the week?
+  - Help me get the weekly stats ready this morning
+applies_when: Gathering the numbers for the weekly report on Monday morning.
+not_when: What the finished report must contain, or monthly results.
+role: procedure
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 9eff5d32341bc36c
 ---
 1. Pull the Weekly support report from the helpdesk for last Monday through Sunday.
 2. Export the week's CSAT responses from the survey tool.

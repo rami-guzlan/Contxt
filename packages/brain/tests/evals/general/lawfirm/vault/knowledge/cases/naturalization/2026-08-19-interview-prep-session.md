@@ -11,6 +11,19 @@ load: on-demand
 added: 2026-08-19
 source: Teresa Alvarado, in conversation
 supersedes: none
+asked_as:
+  - Help me prep a client for their naturalization interview
+  - What should the client bring to the interview?
+  - When should the mock interview happen?
+  - Who drills the civics questions?
+  - What do officers ask about most?
+  - Make a checklist for the interview prep meeting
+applies_when: Running a mock interview session before a client's citizenship interview.
+not_when: Checking whether someone is eligible to apply.
+role: procedure
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 4b18712f749eaa36
 ---
 1. Book a 60-minute prep session about two weeks before the interview date.
 2. Teresa walks through the filed N-400 line by line so the client confirms each answer is still true.

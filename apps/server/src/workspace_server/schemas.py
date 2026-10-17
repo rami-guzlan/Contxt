@@ -375,6 +375,15 @@ class AgentActionIn(Body):
     model: str | None = Field(default=None, max_length=140)
 
 
+class AgentEnrichIn(Body):
+    model: str | None = Field(default=None, max_length=140)
+    limit: int | None = Field(default=None, ge=1, le=5000)
+
+
+class AskedAsIn(Body):
+    lines: list[str] = Field(default_factory=list, max_length=10)
+
+
 class AgentTurn(Body):
     role: str = Field(pattern="^(user|agent)$")
     text: str = Field(max_length=8000)

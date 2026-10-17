@@ -749,6 +749,53 @@ class Brain:
             )
         return entry
 
+    def enrich_note(
+        self, who: Principal, entry_id: str, answer: str, *, model: str
+    ) -> dict[str, Any]:
+        """A model's answer becomes how an entry is asked for (general-retrieval plan 3.1)."""
+        who.require("brain.govern")
+        found = self.rt.brain.enrich_note(entry_id, answer, by=f"model:{model}")
+        if found.get("ok"):
+            with self.rt.write() as tx:
+                tx.emit(
+                    "brain.enriched",
+                    actor_id=who.actor_id,
+                    subject_type="brain_entry",
+                    subject_id=entry_id,
+                    data={"model": model, "asked_as": found.get("asked_as")},
+                )
+        return found
+
+    def set_asked_as(self, who: Principal, entry_id: str, lines: list[str]) -> dict[str, Any]:
+        """A person words how an entry is asked for, in place of what the model wrote."""
+        who.require("brain.govern")
+        if len(lines) > 10:
+            raise ValidationFailed("Keep it to ten ways of asking.", field="lines")
+        found = self.rt.brain.set_asked_as(entry_id, lines)
+        with self.rt.write() as tx:
+            tx.emit(
+                "brain.asked_as_changed",
+                actor_id=who.actor_id,
+                subject_type="brain_entry",
+                subject_id=entry_id,
+                data={"lines": len(lines)},
+            )
+        return found
+
+    def accept_triggers(self, who: Principal, entry_id: str) -> dict[str, Any]:
+        """A person says yes to the trigger words a model suggested for a must-hold."""
+        who.require("brain.govern")
+        found = self.rt.brain.accept_triggers(entry_id)
+        with self.rt.write() as tx:
+            tx.emit(
+                "brain.triggers_accepted",
+                actor_id=who.actor_id,
+                subject_type="brain_entry",
+                subject_id=entry_id,
+                data={"triggers": found.get("triggers")},
+            )
+        return found
+
     def mark(self, who: Principal, entry_id: str, state: str, *, reason: str) -> BrainEntry:
         """A person marks an entry stale or disputed; it stays, ranked lower and flagged."""
         who.require("brain.govern")

@@ -380,6 +380,13 @@ export interface InventoryItem {
   applies_to?: string[]; // a must-hold's domains: areas, area/topic pairs, project ids
   triggers?: string[]; // words that bring a must-hold's domain into play
   must_text?: string; // a must-hold's one line
+  /** How it is found: the ways people ask for it (written by a model, changed by you). */
+  asked_as?: string[];
+  applies_when?: string; // the work it is for
+  not_when?: string; // look-alike work it is not for
+  role?: string; // knowledge | rule | style | procedure | pointer
+  suggested_triggers?: string[]; // words a model suggested for a must-hold, waiting for you
+  enriched?: string; // the day a model wrote these
   critical?: boolean; // its line also goes in every session's startup context
   /** Why a change to it waits for a reason (a rule, a must-hold, confirmed, much used), or "". */
   baseline?: string;

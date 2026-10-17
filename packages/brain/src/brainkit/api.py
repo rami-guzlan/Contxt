@@ -909,6 +909,28 @@ class Brain:
         from . import governance
         return self._write(lambda: governance.verify(self, note_id, **kwargs))
 
+    def enrichment_pending(self, limit=None) -> list[dict]:
+        """The notes whose retrieval lines a model has yet to write, each with its prompt
+        (enrich.py), newest first."""
+        from . import enrich
+        return [{"id": n.id, "title": n.title, "prompt": enrich.prompt_for(n)}
+                for n in enrich.pending(self.state().index, limit)]
+
+    def enrich_note(self, note_id, answer, *, by) -> Result:
+        """Write one model answer into its note: how it is asked for, when it applies."""
+        from . import enrich
+        return self._write(lambda: enrich.apply(self, note_id, answer, by=by))
+
+    def set_asked_as(self, note_id, lines, **kwargs) -> Result:
+        """The owner's own wording of how a note is asked for."""
+        from . import enrich
+        return self._write(lambda: enrich.set_asked_as(self, note_id, lines, **kwargs))
+
+    def accept_triggers(self, note_id, **kwargs) -> Result:
+        """The owner's yes to the trigger words suggested for a must-hold."""
+        from . import enrich
+        return self._write(lambda: enrich.accept_triggers(self, note_id, **kwargs))
+
     def mark(self, note_id, state, **kwargs) -> Result:
         """The owner marks a note stale or disputed, with a reason; it stays, ranked lower."""
         from . import governance
