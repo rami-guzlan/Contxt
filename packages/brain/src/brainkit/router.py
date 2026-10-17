@@ -959,6 +959,7 @@ class Router:
         if not keys:
             return {}
         raw = bm25.scores(request, restrict=keys)
+        coverages = bm25.coverages(request, restrict=keys)
         top = max(raw.values(), default=0.0)
         sims = self.similarity(request)
         cosines = [sims.get(f"{kind}:{k}") for k in keys]
@@ -968,7 +969,7 @@ class Router:
                   if mean is not None else 0.0)
         out = {}
         for key in keys:
-            coverage = bm25.coverage(request, key)
+            coverage = coverages[key]
             relative = raw.get(key, 0.0) / top if top else 0.0
             lexical = 0.6 * coverage + 0.4 * relative
             semantic = self._semantic(sims, f"{kind}:{key}")
