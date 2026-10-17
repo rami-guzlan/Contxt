@@ -33,6 +33,8 @@ class Tick:
 
 
 class Worker:
+    _enrich_job: Any
+
     def _enrich(self, system: Any) -> None:
         """Have the chosen model write how waiting entries are asked for: only when the owner
         chose a model (each entry is one call on it), one batch at a time."""
@@ -57,7 +59,7 @@ class Worker:
         self._thread: threading.Thread | None = None
         self._goals_at = 0.0  # when goal checks last looked for what is due
         self._enrich_at = 0.0  # when it last looked for entries to enrich
-        self._enrich_job: Any = None
+        self._enrich_job = None
 
     def tick(self) -> Tick:
         expired = self.ws.bus.expire_leases()
