@@ -47,7 +47,9 @@ One-click runs for Codex come once they are tested against a real Codex install.
 A run is fenced in on purpose; the app starts the CLI like this:
 
 - in an empty temporary folder, in restricted mode (`--restricted`): none of your own Claude
-  Code settings files are read, so none of your hooks run
+  Code settings files are read, so none of your hooks run. A Claude Code from before
+  `--restricted` loads project settings only (`--setting-sources project`), which the empty
+  folder does not have; one with neither is refused, with how to update it
 - with only this app's MCP server (`--strict-mcp-config`), named `contxt-app`
   (Claude Code reserves the name `workspace` and silently skips a server that uses it)
 - with no built-in tools at all (`--tools ""`): no shell, no file reads or edits, no web; it
@@ -75,6 +77,8 @@ suggestions stand.
 | Message | What to do |
 |---|---|
 | not signed in | Sign in (Settings, AI apps), then *Check again* |
+| its login no longer works | Claude Code says it is signed in, but its saved login failed an answer: sign in again (`claude auth login`), then *Check again* |
+| cannot keep your own settings and hooks out | Update Claude Code (`npm install -g @anthropic-ai/claude-code`) |
 | not installed on this computer | Install it; the app looks for it on `PATH` |
 | assigned to another model | Use *Copy prompt* in that model's client, or choose this computer's model in Settings |
 | only a ready task can run | The request is still being set up; try again in a moment |

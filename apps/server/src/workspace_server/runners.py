@@ -5,8 +5,11 @@ task at once from the workspace: it launches the CLI as the task's model, stream
 does into the page, and keeps everything a run touches on a short leash:
 
 - the CLI starts in an empty temporary folder, in restricted mode (`--restricted`: none of the
-  person's own settings files, so none of their hooks), and loads only this workspace's MCP
-  server (`--strict-mcp-config`)
+  person's own settings files, so none of their hooks; an older Claude Code loads project
+  settings only, which that folder lacks), and loads only this workspace's MCP server
+  (`--strict-mcp-config`)
+- a login that fails an answer, though Claude Code says it is signed in, shows it signed out
+  with how to sign in again, until the person signs in or checks again
 - it may use the workspace's tools and nothing else: no built-in tools at all (`--tools ""`,
   so no shell, file access or web), and nothing needs asking (`--permission-mode dontAsk`)
 - it connects with a credential made for this run alone, scoped to the task's project and
@@ -41,7 +44,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import timedelta
 from typing import IO, Any
 
@@ -180,6 +183,38 @@ ANSWER_ONLY = (
 )
 # What Gemini CLI prints on stdout beside its answer.
 GEMINI_NOISE = ("Loaded cached credentials.",)
+# How a Claude Code keeps the person's own settings files, and so their hooks, out of what the
+# app starts: `--restricted` where it has it; before that, loading project settings only, which
+# the run's own folder does not have. Read from the CLI's help, once per command.
+FENCES = (
+    ("--restricted", ("--restricted",)),
+    ("--setting-sources", ("--setting-sources", "project")),
+)
+# A login that no longer works: Claude Code still says it is signed in (`auth status`), but
+# every answer fails to authenticate.
+AUTH_FAILED = re.compile(
+    r"authentication_error|failed to authenticate|oauth access token is invalid|invalid api key",
+    re.I,
+)
+
+
+def fence(help_text: str) -> list[str] | None:
+    """The options that keep the person's settings out, for the Claude Code whose help this
+    is; None when it has neither."""
+    return next((list(argv) for flag, argv in FENCES if flag in help_text), None)
+
+
+def error_line(*texts: str) -> str:
+    """What went wrong, from what a CLI printed: the line that names the error, not the last
+    frame of a stack trace."""
+    lines = [
+        line.strip()
+        for text in texts
+        for line in str(text or "").splitlines()
+        if line.strip() and not line.strip().startswith("at ")
+    ]
+    named = [line for line in lines if "error" in line.lower() and "occurred" not in line.lower()]
+    return (named or lines or ["it stopped"])[0][:200]
 
 
 def gemini_signed_in() -> bool | None:
@@ -472,11 +507,17 @@ class Runners:
         self._procs: dict[str, Any] = {}
         self._lock = threading.Lock()
         self._status: dict[str, tuple[float, RunnerStatus]] = {}
+        self._fences: dict[tuple[str, ...], list[str] | None] = {}  # per command, from its help
+        self._expired: set[str] = set()  # CLIs whose login failed an answer
 
     # ---------------------------------------------------------------- the CLIs
 
     def statuses(self, who: Principal, *, refresh: bool = False) -> list[RunnerStatus]:
+        """Each CLI's state. `refresh` is the person checking again: it also forgets a login
+        found not to work, in case they signed in since."""
         who.require("workspace.admin")
+        if refresh:
+            self._expired.clear()
         return [self.status(spec, refresh=refresh) for spec in RUNNERS.values()]
 
     def status(self, spec: RunnerSpec, *, refresh: bool = False) -> RunnerStatus:
@@ -486,8 +527,37 @@ class Runners:
         else:
             found = detect(spec, self.resolve)
             self._status[spec.id] = (time.monotonic(), found)
+        if spec.id in self._expired and found.installed:
+            # It says it is signed in, but its login failed an answer: signed out until the
+            # person signs in again (or checks again).
+            found = replace(
+                found,
+                signed_in=False,
+                detail=f"Its login no longer works: sign in again with `{found.sign_in}`.",
+            )
         actor = self._actor(spec)
         return RunnerStatus(**{**asdict(found), "actor_id": actor.id if actor else None})
+
+    def _fence(self, spec: RunnerSpec, command: list[str]) -> list[str]:
+        """How this Claude Code keeps the person's own settings out of what the app starts
+        (FENCES), read once from its help; refused, with how to update it, when it has no way."""
+        key = tuple(command)
+        if key not in self._fences:
+            found = _call([*command, "--help"])
+            self._fences[key] = fence(found.stdout if found and found.stdout else "")
+        argv = self._fences[key]
+        if argv is None:
+            raise Conflict(
+                f"This {spec.label} cannot keep your own settings and hooks out of the app's "
+                f"runs: update it ({spec.install})."
+            )
+        return argv
+
+    def _login_failed(self, spec: RunnerSpec) -> str:
+        """Mark the CLI signed out after an answer failed to authenticate; what to tell."""
+        self._expired.add(spec.id)
+        sign_in = " ".join((spec.executable, *spec.sign_in))
+        return f"{spec.label}'s login no longer works: sign in again with `{sign_in}`."
 
     def sign_in(self, who: Principal, runner_id: str) -> dict[str, Any]:
         """Open a terminal where the person signs in; the CLI keeps the login, never us."""
@@ -507,6 +577,7 @@ class Runners:
         except OSError:
             return {"opened": False, "command": text}
         self._status.pop(spec.id, None)
+        self._expired.discard(spec.id)
         return {"opened": True, "command": text}
 
     # ---------------------------------------------------------------- runs
@@ -575,6 +646,7 @@ class Runners:
             raise Conflict(f"{spec.label} is not installed on this computer: {spec.install}")
         if status.signed_in is False:
             raise Conflict(f"{spec.label} is not signed in. Sign in first: {status.sign_in}")
+        fenced = self._fence(spec, command)  # before anything is made for the run
         with self._lock:
             if any(r.task_id == task_id and r.status in ACTIVE for r in self.runs.values()):
                 raise Conflict("This task is already running here.")
@@ -641,7 +713,7 @@ class Runners:
             "--output-format",
             "stream-json",
             "--verbose",
-            "--restricted",
+            *fenced,
             "--tools",
             ",".join(FILE_TOOLS) if copying else ",".join(web),
             "--mcp-config",
@@ -824,8 +896,7 @@ class Runners:
                 _kill(proc)
                 raise Conflict(f"{spec.label} took too long to answer.") from exc
             if proc.returncode:
-                reason = (err or out or "it stopped").strip().splitlines() or ["it stopped"]
-                raise Conflict(f"{spec.label} could not answer: {reason[-1][:200]}")
+                raise Conflict(f"{spec.label} could not answer: {error_line(err, out)}")
             if spec.id == "codex":
                 try:
                     with open(last, encoding="utf-8") as handle:
@@ -860,6 +931,7 @@ class Runners:
         who.require("workspace.admin")
         spec = RUNNERS["claude"]
         command = self._ready(spec)
+        fenced = self._fence(spec, command)
         folder = tempfile.mkdtemp(prefix="workspace-ask-")
         config = os.path.join(folder, "mcp.json")
         with open(config, "w", encoding="utf-8") as handle:
@@ -869,7 +941,7 @@ class Runners:
             "-p",
             "--output-format",
             "json",
-            "--restricted",
+            *fenced,
             "--tools",
             "",
             "--mcp-config",
@@ -914,7 +986,10 @@ class Runners:
                 if isinstance(found, dict)
                 else "it stopped"
             )
+            if AUTH_FAILED.search(reason):
+                raise Conflict(self._login_failed(spec))
             raise Conflict(f"{spec.label} could not answer: {reason[:200]}")
+        self._expired.discard(spec.id)
         return found
 
     def get(self, who: Principal, run_id: str) -> LocalRun:
@@ -1077,6 +1152,8 @@ class Runners:
                 if source == "stderr":
                     if line.strip():
                         self._add(run, "stderr", text=line[:1000])
+                        if AUTH_FAILED.search(line):
+                            self._add(run, "status", text=self._login_failed(RUNNERS[run.runner]))
                     continue
                 try:
                     events = describe(line)
@@ -1089,6 +1166,9 @@ class Runners:
                         run.summary = str(event.get("text") or "")[:2000]
                         if event.get("usage"):
                             self.count_usage("run", event["usage"], run.id)
+                        if not event.get("ok") and AUTH_FAILED.search(run.summary):
+                            run.summary = self._login_failed(RUNNERS[run.runner])
+                            self._add(run, "status", text=run.summary)
         except (OSError, ValueError):
             pass  # the pipe closed under us (a stopped run)
         finally:

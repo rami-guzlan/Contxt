@@ -216,6 +216,49 @@ def test_one_answer_is_asked_for_with_no_tools_and_says_so(client, runtime):
     assert not os.path.exists(seen["cwd"])  # its empty folder is gone
 
 
+def test_an_older_claude_code_keeps_the_persons_settings_out_another_way(
+    owner, ready_task, runtime, monkeypatch
+):
+    """Before Claude Code had --restricted, loading project settings only keeps the person's
+    own settings (and so their hooks) out of a run: its empty folder has none. A Claude Code
+    with neither is refused, with how to update it, instead of failing in a second."""
+    monkeypatch.setenv("FAKE_CLI_FLAGS", "older")
+    argv = json.loads(runtime.runners.ask(runtime.ws.owner(), "Draft the update"))["argv"]
+    assert "--restricted" not in argv
+    assert argv[argv.index("--setting-sources") + 1] == "project"
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    argv = wait_for_report(owner, run["id"])["argv"]
+    assert "--restricted" not in argv and "--setting-sources" in argv
+    assert finish(owner, run["id"])["status"] == "succeeded"
+    monkeypatch.setenv("FAKE_CLI_FLAGS", "oldest")
+    oldest = Runners(
+        runtime.ws, runtime.templates, base_url="http://127.0.0.1:8787", resolve=fake_resolve
+    )
+    with pytest.raises(Conflict, match="npm install -g @anthropic-ai/claude-code"):
+        oldest.ask(runtime.ws.owner(), "Draft the update")
+
+
+def test_a_login_that_no_longer_works_says_sign_in_again(owner, ready_task, runtime, monkeypatch):
+    """Claude Code can say it is signed in while its saved login no longer works: the first
+    answer that fails to authenticate shows it signed out, with how to sign in again, until a
+    check finds it working."""
+    monkeypatch.setenv("FAKE_CLI_AUTH", "expired")
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    done = finish(owner, run["id"])
+    assert done["status"] == "failed"
+    assert any("claude auth login" in str(e.get("text")) for e in done["events"]), done["events"]
+    (claude, *_others) = owner.ok(owner.get("/api/runners"))
+    assert claude["signed_in"] is False and "sign in again" in claude["detail"]
+    refused = owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]})
+    assert refused.status_code == 409 and "claude auth login" in refused.text
+    with pytest.raises(Conflict, match="claude auth login"):
+        runtime.runners.ask(runtime.ws.owner(), "Draft the update")
+    monkeypatch.delenv("FAKE_CLI_AUTH")
+    (claude, *_others) = owner.ok(owner.get("/api/runners", params={"refresh": "true"}))
+    assert claude["signed_in"] is True
+    assert json.loads(runtime.runners.ask(runtime.ws.owner(), "Draft the update"))["prompt"]
+
+
 def other_resolve(spec):
     """Codex and Gemini CLI stand in; Claude Code is not here."""
     return [sys.executable, FAKE_OTHER, spec.id] if spec.id in ("codex", "gemini") else None
@@ -247,6 +290,10 @@ def test_codex_and_gemini_answer_from_the_prompt_alone(runtime, monkeypatch):
     assert gemini["prompt"].endswith("Judge these.") and not os.path.exists(gemini["cwd"])
     monkeypatch.setenv("FAKE_CLI_MODE", "fail")
     with pytest.raises(Conflict, match="quota exceeded"):
+        runners.ask(owner, "Judge these.", runner="gemini")
+    # A crash names its error line, not the last frame of its stack trace.
+    monkeypatch.setenv("FAKE_CLI_MODE", "crash")
+    with pytest.raises(Conflict, match="requires setting the GOOGLE_CLOUD_PROJECT"):
         runners.ask(owner, "Judge these.", runner="gemini")
     with pytest.raises(Conflict, match="not installed"):
         runners.ask(owner, "Judge these.", runner="claude")
