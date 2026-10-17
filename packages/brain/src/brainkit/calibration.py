@@ -16,7 +16,7 @@ unrelated ones (AUC 1.00 and 0.98 to 1.00), where today's relative score did not
 0.82 for coverage, and a top note always scoring at least 0.4 by words).
 
 The calibration is kept beside the embedding cache and redone when the number of on-demand
-notes moves by more than a tenth, or the model changes.
+notes moves by more than a tenth, the model changes, or the request bank changes.
 """
 from __future__ import annotations
 
@@ -41,6 +41,16 @@ def null_bank() -> list[str]:
             if line.strip() and not line.startswith("#")]
 
 
+def bank_fingerprint(requests: list[str]) -> str:
+    """Identity of the effective calibration input, independent of file line endings."""
+    return util.sha256(json.dumps(requests, ensure_ascii=False, separators=(",", ":")))
+
+
+def _requests(note_ids, requests=None) -> list[str]:
+    bank = list(null_bank() if requests is None else requests)
+    return bank[:LARGE_SAMPLE] if len(note_ids) > LARGE_BRAIN else bank
+
+
 def _share(ordered: list[float], value: float) -> float:
     return bisect.bisect_right(ordered, value) / len(ordered) if ordered else 0.0
 
@@ -48,12 +58,13 @@ def _share(ordered: list[float], value: float) -> float:
 class Calibration:
     def __init__(self, cos: list[float] | None, bm: list[float],
                  domains: dict[str, list[float]] | None = None, notes: int = 0,
-                 model: str = ""):
+                 model: str = "", bank: str = ""):
         self.cos = sorted(cos) if cos else None
         self.bm = sorted(bm)
         self.domains = {k: sorted(v) for k, v in (domains or {}).items()}
         self.notes = notes
         self.model = model
+        self.bank = bank
 
     def evidence(self, cos_raw: float | None, bm_raw: float | None) -> float:
         """The share of unrelated requests this match beats: by meaning when the Brain has
@@ -70,21 +81,20 @@ class Calibration:
 
     def to_dict(self) -> dict:
         return {"cos": self.cos, "bm": self.bm, "domains": self.domains,
-                "notes": self.notes, "model": self.model}
+                "notes": self.notes, "model": self.model, "bank": self.bank}
 
     @classmethod
     def from_dict(cls, data: dict) -> Calibration:
         return cls(data.get("cos"), data.get("bm") or [], data.get("domains") or {},
-                   int(data.get("notes") or 0), str(data.get("model") or ""))
+                   int(data.get("notes") or 0), str(data.get("model") or ""),
+                   str(data.get("bank") or ""))
 
 
 def build(index, note_ids: list[str], domain_ids: list[str] = (),
           requests: list[str] | None = None) -> Calibration:
     """Score the bank against these notes and must-hold domains."""
     from .index import QUERY_INSTRUCTIONS
-    bank = list(requests or null_bank())
-    if len(note_ids) > LARGE_BRAIN:
-        bank = bank[:LARGE_SAMPLE]
+    bank = _requests(note_ids, requests)
     bm = [max(index.note_bm25.scores(r, restrict=note_ids).values(), default=0.0)
           for r in bank]
     cos, domains, model = None, {}, ""
@@ -99,7 +109,7 @@ def build(index, note_ids: list[str], domain_ids: list[str] = (),
             for note_id in domain_ids:
                 if f"domain:{note_id}" in sims[0]:
                     domains[note_id] = [s[f"domain:{note_id}"] for s in sims]
-    return Calibration(cos, bm, domains, len(note_ids), model)
+    return Calibration(cos, bm, domains, len(note_ids), model, bank_fingerprint(bank))
 
 
 def for_index(index, note_ids: list[str], domain_ids: list[str] = ()) -> Calibration:
@@ -108,17 +118,20 @@ def for_index(index, note_ids: list[str], domain_ids: list[str] = ()) -> Calibra
     path = (os.path.join(os.path.dirname(embedder.cache_path), "calibration.json")
             if embedder is not None else None)
     model = embedder.model_name if embedder is not None and index.semantic_ready() else ""
+    bank = _requests(note_ids)
+    fingerprint = bank_fingerprint(bank)
     if path and os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as handle:
                 cached = Calibration.from_dict(json.load(handle))
             close = abs(cached.notes - len(note_ids)) <= DRIFT * max(1, cached.notes)
-            if close and cached.model == model and set(domain_ids) <= set(cached.domains) \
+            if close and cached.bank == fingerprint and cached.model == model \
+                    and set(domain_ids) <= set(cached.domains) \
                     | (set(domain_ids) if not model else set()):
                 return cached
         except (OSError, ValueError, TypeError):
             pass
-    found = build(index, note_ids, domain_ids)
+    found = build(index, note_ids, domain_ids, requests=bank)
     if path:
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)

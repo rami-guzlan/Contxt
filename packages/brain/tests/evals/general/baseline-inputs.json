@@ -1,0 +1,40 @@
+{
+  "about": "Both gates are required. A different bank defines a different measurement. Floors, labels, ranking, and SLACK were not relaxed to reconcile stage 5.",
+  "as_of": "2026-10-16T12:00:00+00:00",
+  "timezone": "UTC",
+  "runtime_measured": {
+    "python": "3.13.14",
+    "fastembed": "0.8.1",
+    "onnxruntime": "1.30.0",
+    "tokenizer": "tiktoken/o200k_base"
+  },
+  "model": {
+    "cache_folder": "models--Qdrant--bge-small-en-v1.5-onnx-Q",
+    "revision": "aa8f8b060edb00e03bfdd08813a2949946c8ba55",
+    "files": {
+      "config.json": "13582bcf2effc85b7bf3d3f5532e686bc1c9ce86bb009d10f0ec33cbe92299dd",
+      "model_optimized.onnx": "51f1bd0addd6e859e42c2c8021a5e5461385bb676a649f4b269aa445449f2431",
+      "special_tokens_map.json": "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a",
+      "tokenizer.json": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+      "tokenizer_config.json": "0b29c7bfc889e53b36d9dd3e686dd4300f6525110eaa98c76a5dafceb2029f53"
+    }
+  },
+  "baselines": [
+    {
+      "id": "historical-stage-5",
+      "source_commit": "c9373cb87ed93c955c33ce0bf36d9f4fb1147f0b",
+      "minimums_file": "minimums.json",
+      "bank_file": "calibration-bank-277.txt",
+      "bank_sha256": "9d1070d5c15c62a165b730e2812f68e6052dfcf0c780715d6fa0e7a05bbf64d5",
+      "fixtures_sha256": "a17463b258bfeddb6c22bc759f5b783246e3ae191ec70ee4d7a514ff91ed4960"
+    },
+    {
+      "id": "shipped-bank",
+      "source_commit": "c9373cb87ed93c955c33ce0bf36d9f4fb1147f0b",
+      "minimums_file": "minimums-current-bank.json",
+      "bank_file": null,
+      "bank_sha256": "7298e96c36afebd0c1a5adc308d233ad3e202510f9a79dd22471619bb3d24d21",
+      "fixtures_sha256": "a17463b258bfeddb6c22bc759f5b783246e3ae191ec70ee4d7a514ff91ed4960"
+    }
+  ]
+}
