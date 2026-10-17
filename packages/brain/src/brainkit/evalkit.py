@@ -37,7 +37,6 @@ import shutil
 import statistics
 import time
 from collections.abc import Callable, Iterable
-from importlib import resources
 
 from . import evaluate
 from . import safeguards_eval as se
@@ -116,10 +115,8 @@ def percentile(values: list[float], q: float) -> float | None:
 # ---------------------------------------------------------------------------- the Brains
 def null_requests() -> list[str]:
     """The calibration bank: requests unrelated to anyone's notes."""
-    text = resources.files("brainkit").joinpath("null_requests.txt").read_text(
-        encoding="utf-8")
-    return [line.strip() for line in text.splitlines()
-            if line.strip() and not line.startswith("#")]
+    from .calibration import null_bank
+    return null_bank()
 
 
 def off_topic_cases(path: str) -> list[dict]:

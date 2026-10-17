@@ -1,0 +1,102 @@
+"""Each Brain's own bar for "nothing here" (general-retrieval plan, stage 1): set against
+requests unrelated to anyone's notes, not by numbers fitted to one Brain."""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import unittest
+
+from brainkit import calibration, evalkit
+from brainkit import safeguards_eval as se
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+GENERAL = os.path.join(HERE, "evals", "general")
+
+
+class WordsOnlyTest(unittest.TestCase):
+    def test_a_brain_without_a_meaning_model_keeps_the_hand_set_floors(self):
+        vault = se.copy_vault(os.path.join(GENERAL, "lawfirm", "vault"))
+        try:
+            brain = se.open_brain(vault)
+            try:
+                router = brain.state().router
+                self.assertFalse(router.calibrated("lean_floor"))
+                self.assertIsNone(router._calibration)
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+
+
+class EvidenceTest(unittest.TestCase):
+    def test_evidence_is_the_share_of_unrelated_requests_a_match_beats(self):
+        cal = calibration.Calibration(cos=None, bm=[1.0, 2.0, 3.0, 4.0])
+        self.assertEqual(cal.evidence(None, 0.5), 0.0)
+        self.assertEqual(cal.evidence(None, 3.5), 0.75)
+        self.assertEqual(cal.evidence(None, 9.0), 1.0)
+
+    def test_meaning_decides_when_the_brain_has_it(self):
+        cal = calibration.Calibration(cos=[0.1, 0.2, 0.3, 0.4], bm=[1.0, 2.0, 3.0, 4.0])
+        self.assertEqual(cal.evidence(0.35, 0.0), 0.75)
+
+    def test_a_calibration_survives_a_round_trip(self):
+        cal = calibration.Calibration(cos=[0.3, 0.1], bm=[2.0], domains={"d": [0.2, 0.4]},
+                                      notes=7)
+        again = calibration.Calibration.from_dict(json.loads(json.dumps(cal.to_dict())))
+        self.assertEqual(again.cos, [0.1, 0.3])
+        self.assertEqual(again.domain_share("d", 0.3), 0.5)
+        self.assertEqual(again.notes, 7)
+
+    def test_the_bank_is_shipped_with_the_engine(self):
+        self.assertGreaterEqual(len(calibration.null_bank()), 250)
+
+
+MODELS = os.environ.get("BRAIN_TEST_MODELS", "")
+
+
+def _words_calibrated(vault):
+    with open(os.path.join(vault, "routing.json"), "w", encoding="utf-8") as handle:
+        json.dump({"policy": {"calibrated_words": True}}, handle)
+
+
+class CalibratedRoutingTest(unittest.TestCase):
+    """On a generated Brain nobody tuned: by meaning when the model is here (as CI's model
+    job runs it), else by words with the calibration asked for."""
+
+    def setUp(self):
+        self.vault = se.copy_vault(os.path.join(GENERAL, "lawfirm", "vault"),
+                                   MODELS if os.path.isdir(MODELS or "-") else None)
+        evalkit.zero_config(self.vault)
+        if not os.path.isdir(MODELS or "-"):
+            _words_calibrated(self.vault)
+        self.brain = se.open_brain(self.vault, semantic=os.path.isdir(MODELS or "-"))
+
+    def tearDown(self):
+        self.brain.close()
+        shutil.rmtree(os.path.dirname(self.vault), ignore_errors=True)
+
+    def _notes(self, request):
+        data = self.brain.context(request, record=False, include_kernel=False).data
+        return data.get("note_ids") or []
+
+    def test_a_general_question_that_shares_a_word_with_a_note_gets_nothing(self):
+        self.assertEqual(self._notes("What is the capital of Peru?"), [])
+        self.assertEqual(self._notes("How many strings does a violin have?"), [])
+
+    def test_a_request_about_the_work_still_gets_its_notes(self):
+        self.assertIn("trust-account-money",
+                      self._notes("A client wants to pay the full flat fee up front. "
+                                  "Where does that money go until the work is done?"))
+
+    def test_a_floor_set_by_hand_in_routing_json_still_decides(self):
+        with open(os.path.join(self.vault, "routing.json"), "w", encoding="utf-8") as h:
+            json.dump({"policy": {"lean_floor": 0.0, "note_abs_floor": 0.0,
+                                  "calibrated_words": True}}, h)
+        self.brain.close()
+        self.brain = se.open_brain(self.vault)
+        self.assertNotEqual(self._notes("What is the capital of Peru?"), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
