@@ -379,17 +379,32 @@ def _cased(word: str, texts: list[str]) -> str | None:
     return word.capitalize() if capital > total / 2 else word.lower()
 
 
-def note_search_text(note) -> str:
+def note_vector_text(note) -> str:
+    """What a note's own vector reads: where it is filed, its title, summary and text."""
     topic_words = note.topic.replace("-", " ")
     title = str(note.meta.get("title") or "").strip()
     return f"{topic_words} {title} {note.summary} {note.body}"
+
+
+def note_search_text(note) -> str:
+    """What a note is found by in words: its own text and how people ask for it."""
+    asked = " ".join(note.asked_as)
+    return f"{note_vector_text(note)} {asked} {note.applies_when}".strip()
+
+
+def note_ask_lines(note) -> list[str]:
+    """The lines matched by meaning one by one besides the note's own text: each way a
+    person would ask for it, and the work it is for. A note scores by its closest one."""
+    return [*note.asked_as, *([note.applies_when] if note.applies_when else [])]
 
 
 def must_hold_search_text(note) -> str:
     """What a must-hold's domain is about, read as one passage: where it applies, the words
     that bring it into play, and its rule. Matched by meaning against each request."""
     targets = " ".join(t.replace("/", " ").replace("-", " ") for t in note.applies_to)
-    return f"{targets}. {', '.join(note.triggers)}. {note.title}. {note.must_text}"
+    when = f" {note.applies_when}." if note.applies_when else ""
+    return (f"{targets}. {', '.join(note.triggers)}. {note.title}. {note.must_text}"
+            f"{when}")
 
 
 def skill_search_text(skill) -> str:
@@ -636,7 +651,9 @@ class Index:
         with self._vector_lock:
             if self._vectors is not None:
                 return self._vectors
-            items = [(f"note:{nid}", note_search_text(n)[:2000]) for nid, n in self.notes.items()]
+            items = [(f"note:{nid}", note_vector_text(n)[:2000]) for nid, n in self.notes.items()]
+            items += [(f"ask:{nid}:{i}", line) for nid, n in self.notes.items()
+                      for i, line in enumerate(note_ask_lines(n))]
             items += [(f"skill:{name}", skill_search_text(s)[:2000])
                       for name, s in self.skills.items()]
             items += [(f"topic:{key}", text) for key, text in self.topic_texts.items()]
@@ -667,4 +684,21 @@ class Index:
         qv = self.embedder.embed_query(request)
         if not qv:
             return {}
-        return {key: cosine(qv, vec) for key, vec in vectors.items()}
+        return self.similarity_vector(qv)
+
+    def similarity_vector(self, qv) -> dict:
+        """Cosine of one query vector to every item. A note scores by the closest of its
+        own text and the lines it is asked by (`ask:` keys, folded into `note:`)."""
+        out: dict = {}
+        asks: dict = {}
+        for key, vec in (self._item_vectors() or {}).items():
+            value = cosine(qv, vec)
+            if key.startswith("ask:"):
+                note_key = "note:" + key[4:].rsplit(":", 1)[0]
+                asks[note_key] = max(asks.get(note_key, -1.0), value)
+            else:
+                out[key] = value
+        for note_key, value in asks.items():
+            if note_key in out and value > out[note_key]:
+                out[note_key] = value
+        return out

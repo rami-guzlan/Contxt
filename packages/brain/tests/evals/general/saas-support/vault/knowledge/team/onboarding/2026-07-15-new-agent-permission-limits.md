@@ -11,5 +11,18 @@ load: on-demand
 added: 2026-07-15
 source: Priya Raghavan, in conversation
 supersedes: none
+asked_as:
+  - Can a brand new agent issue a credit?
+  - Our new hire wants to change someone's plan, allowed?
+  - Does a new agent need replies checked?
+  - Who takes enterprise tickets from new starters?
+  - When does a new agent get billing write access?
+  - What's off limits for someone in their first weeks?
+applies_when: Deciding what an agent in their first three weeks may handle.
+not_when: The day by day plan for a new agent's first week.
+role: rule
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: f187dc07b7e9237a
 ---
 First 3 weeks: no refunds, no credits, no plan changes and no replies on tickets tagged enterprise; pass those to Marisol. First 2 weeks: a second person reads every outgoing reply. Write access in the billing console comes only after Priya signs off at the end of week 3.

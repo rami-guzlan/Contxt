@@ -202,14 +202,31 @@ def zero_config(vault: str) -> None:
     se.set_meta(vault, with_triggers, triggers=None)
 
 
+ENRICHMENT = ("asked_as", "applies_when", "not_when", "role", "suggested_triggers", "enriched",
+              "enriched_by", "enriched_hash")
+
+
+def strip_enrichment(vault: str) -> None:
+    """Make a scratch copy as a Brain without a model would be: no enrichment fields."""
+    enriched = []
+    for note_id, path in se._note_files(vault).items():
+        with open(path, encoding="utf-8") as handle:
+            if "\nasked_as:" in handle.read():
+                enriched.append(note_id)
+    se.set_meta(vault, enriched, **{key: None for key in ENRICHMENT})
+
+
 def run_brain(entry: dict, *, models_dir: str | None = None, configured: bool = False,
-              extra: Iterable[dict] = (), prepare: Callable | None = None) -> dict:
+              extra: Iterable[dict] = (), prepare: Callable | None = None,
+              enriched: bool = True) -> dict:
     """Score one Brain on its labeled requests plus `extra` (off-topic sets), on a scratch
     copy. `prepare(vault)` may change the copy first (a stage's experiment)."""
     vault = se.copy_vault(entry["vault"], models_dir)
     try:
         if not configured:
             zero_config(vault)
+        if not enriched:
+            strip_enrichment(vault)
         if prepare is not None:
             prepare(vault)
         cases = [c for c in entry["cases"] if c.get("labeled", True)] + list(extra)
@@ -283,14 +300,14 @@ def counts(rows: list[dict], must_holds: list[str]) -> dict:
 def run_suite(entries: list[dict], *, models_dir: str | None = None,
               configured: bool = False, off_topic: list[dict] | None = None,
               null_bank: bool = False, prepare: Callable | None = None,
-              progress: Callable | None = None) -> list[dict]:
+              progress: Callable | None = None, enriched: bool = True) -> list[dict]:
     extra = list(off_topic or []) + (null_cases() if null_bank else [])
     results = []
     for entry in entries:
         if progress:
             progress(entry["name"])
         results.append(run_brain(entry, models_dir=models_dir, configured=configured,
-                                 extra=extra, prepare=prepare))
+                                 extra=extra, prepare=prepare, enriched=enriched))
     return results
 
 

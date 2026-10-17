@@ -11,5 +11,18 @@ load: on-demand
 added: 2026-06-09
 source: Patrice Dumont, in conversation
 supersedes: none
+asked_as:
+  - What time do we open on Fridays?
+  - Are phones answered during lunch?
+  - Latest I can book a cleaning on a full day?
+  - Update the website with our weekday hours
+  - When is the office closed midday?
+  - Are we open Friday afternoon?
+applies_when: Answering or publishing weekday office hours and the lunch closure.
+not_when: The Saturday clinic schedule.
+role: knowledge
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 75f3053870322402
 ---
 Doors open Monday to Thursday 8:00 to 5:00 and Friday 7:30 to 1:00. We close for lunch 12:30 to 1:30 Monday to Thursday, and the phones roll to the answering service during that hour. The last hygiene appointment of a full day starts at 4:00. The Saturday clinic is separate and lives in the projects notes.

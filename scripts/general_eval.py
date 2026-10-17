@@ -77,6 +77,8 @@ def main(argv=None) -> int:
     parser.add_argument("--configured", action="store_true",
                         help="also run each Brain as configured, beside zero-config")
     parser.add_argument("--null", action="store_true", help="ask the calibration bank too")
+    parser.add_argument("--no-enrichment", action="store_true",
+                        help="score each Brain as without a model: no enrichment fields")
     parser.add_argument("--quick", action="store_true", help="the CI quick set")
     parser.add_argument("--only", help="comma-separated generated Brain names")
     parser.add_argument("--misses", action="store_true",
@@ -107,7 +109,7 @@ def main(argv=None) -> int:
             continue
         results = evalkit.run_suite(
             chosen, models_dir=args.models, configured=configured, off_topic=off_topic,
-            null_bank=args.null,
+            null_bank=args.null, enriched=not args.no_enrichment,
             progress=lambda name, label=label: print(f"  {label}: {name}", file=sys.stderr,
                                                      flush=True))
         took = time.perf_counter() - started

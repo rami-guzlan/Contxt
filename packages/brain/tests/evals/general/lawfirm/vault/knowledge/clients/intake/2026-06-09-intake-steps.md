@@ -11,6 +11,19 @@ load: on-demand
 added: 2026-06-09
 source: Ben Okafor, in conversation
 supersedes: none
+asked_as:
+  - A new person wants to hire us, what are the steps?
+  - When do we run the conflict check?
+  - When does the intake questionnaire go out?
+  - Can I open the file before the engagement letter is signed?
+  - Book a consult for a Spanish speaker
+  - What do we send after the first consult?
+applies_when: Taking on a new client, from conflict check to opening the file.
+not_when: Consult price and credit terms.
+role: procedure
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 79ed28711b00cb15
 ---
 1. Before booking, Ben runs a conflict check in DocketLeaf on every name involved (client, spouse, petitioner, employer).
 2. Book the consult and take the fee by card at booking.

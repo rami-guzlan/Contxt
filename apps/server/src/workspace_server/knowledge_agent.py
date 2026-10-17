@@ -89,6 +89,68 @@ class AgentWork:
         ).start()
         return job
 
+    def start_enrich(
+        self, who: Principal, *, model: str | None = None, limit: int | None = None
+    ) -> AgentJob:
+        """Write how each waiting entry is asked for (general-retrieval plan 3.1), one model
+        call per entry, in the background."""
+        who.require("workspace.admin")
+        choice = self._model(model)
+        job = AgentJob(
+            id=new_id("ajob", self.ws.rt.clock.now()),
+            kind="enrich",
+            model=choice.id,
+            model_label=choice.label,
+            started_at=iso(self.ws.rt.clock.now()),
+        )
+        self._keep(job)
+        threading.Thread(
+            target=self._run_enrich,
+            args=(who, job, choice, limit),
+            daemon=True,
+            name="agent-enrich",
+        ).start()
+        return job
+
+    def _run_enrich(
+        self, who: Principal, job: AgentJob, choice: ModelChoice, limit: int | None
+    ) -> None:
+        try:
+            waiting = self.ws.rt.brain.enrichment_pending(limit)
+            job.status = "running"
+            done, failed, misses = 0, [], 0
+            for item in waiting:
+                try:
+                    with self._turn:
+                        answer = self.models.ask(
+                            who, choice, item["prompt"], json_only=True, job="enrich"
+                        )
+                    found = self.ws.brain.enrich_note(who, item["id"], answer, model=choice.id)
+                except WorkspaceError as exc:
+                    found = {"ok": False, "text": str(exc)}
+                if found.get("ok"):
+                    done, misses = done + 1, 0
+                else:
+                    failed.append({"id": item["id"], "why": found.get("text") or ""})
+                    misses += 1
+                    if misses >= 3:  # the model is not answering: stop, say so
+                        break
+            job.result = {
+                "enriched": done,
+                "failed": failed,
+                "left": len(self.ws.rt.brain.enrichment_pending()),
+            }
+            job.status = "done" if done or not failed else "failed"
+            if job.status == "failed":
+                job.error = f"The model's answers could not be used: {failed[-1]['why']}"
+        except WorkspaceError as exc:
+            job.status, job.error = "failed", str(exc)
+        except Exception as exc:  # a job never takes the server down
+            log.warning("writing how entries are asked for failed", exc_info=True)
+            job.status, job.error = "failed", f"It stopped: {exc}"
+        finally:
+            job.finished_at = iso(self.ws.rt.clock.now())
+
     def start_chat(
         self,
         who: Principal,

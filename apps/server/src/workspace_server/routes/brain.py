@@ -16,6 +16,7 @@ from workspace_core.services.brain import MAX_FILE
 from ..deps import WS, Who
 from ..movein_files import UploadReader
 from ..schemas import (
+    AskedAsIn,
     BrainDecisionIn,
     BrainProjectIn,
     BuiltinSkillsIn,
@@ -84,6 +85,18 @@ def mark(entry_id: str, body: MarkIn, who: Who, ws: WS) -> dict[str, Any]:
     """Mark an entry stale (it needs an update) or disputed, saying why; it stays, ranked
     lower and flagged in packets."""
     return asdict(ws.brain.mark(who, entry_id, body.state, reason=body.reason))
+
+
+@router.put("/entries/{entry_id}/asked-as")
+def asked_as(entry_id: str, body: AskedAsIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Say in your own words how an entry is asked for (what finds it)."""
+    return ws.brain.set_asked_as(who, entry_id, body.lines)
+
+
+@router.post("/entries/{entry_id}/accept-triggers")
+def accept_triggers(entry_id: str, who: Who, ws: WS) -> dict[str, Any]:
+    """Use the trigger words suggested for a must-hold."""
+    return ws.brain.accept_triggers(who, entry_id)
 
 
 # ------------------------------------------------------------------------- supply chain

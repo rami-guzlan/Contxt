@@ -11,5 +11,19 @@ load: on-demand
 added: 2026-08-12
 source: Jordan Pike, in conversation
 supersedes: none
+asked_as:
+  - Write a social post for my new listing
+  - Can I post a photo of my buyers with their keys?
+  - What has to be on my flyer?
+  - How many hashtags should I use?
+  - What do I post on Friday?
+  - Can I share the sale price of a closed deal?
+  - What time should posts go out?
+applies_when: Making any post, ad or flyer for Jordan
+not_when: Choosing words that avoid fair housing problems in listing copy
+role: rule
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: a6cf3583a5d777b8
 ---
 Every post, ad and flyer shows "Wrenhaven Realty" and Jordan's license number RS-48213, with the brokerage name at least as large as Jordan's. No client names, faces, addresses they bought or sale prices unless that client signed the brokerage media release. Three hashtags at most. The weekly rhythm is Monday a market number, Wednesday a listing, Friday a spot in town and Sunday the open house, each around 7:30pm.

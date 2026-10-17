@@ -98,6 +98,13 @@ def note_row(st, note, *, created=None, changes=0, use=None) -> dict:
         "triggers": note.triggers if note.must_hold else [],
         "must_text": note.must_text if note.must_hold else "",
         "critical": bool(note.must_hold and note.critical),
+        # how it is found (enrich.py): the ways people ask for it, when it applies and when
+        # not, its part, and trigger words a model suggested for a must-hold
+        "asked_as": note.asked_as, "applies_when": note.applies_when,
+        "not_when": note.not_when, "role": note.role,
+        "suggested_triggers": [str(t) for t in note.meta.get("suggested_triggers") or []]
+        if note.must_hold else [],
+        "enriched": str(note.meta.get("enriched") or ""),
         # why a change to it waits for a reason (baseline.py), or ""; marked by the owner
         "baseline": (baseline.why(note, config, int(use.get("d30") or 0)) or "")
         if note.live else "",

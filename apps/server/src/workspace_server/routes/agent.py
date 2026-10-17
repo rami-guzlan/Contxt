@@ -15,6 +15,7 @@ from ..schemas import (
     AgentAnswerIn,
     AgentChatIn,
     AgentDismissIn,
+    AgentEnrichIn,
     AgentKeepIn,
     AgentSettingsIn,
 )
@@ -87,6 +88,20 @@ def procedures(who: Who, ws: WS) -> list[dict[str, Any]]:
 def run_action(action: str, body: AgentActionIn, request: Request, who: Who) -> dict[str, Any]:
     """Run one upkeep action through the chosen model, in the background."""
     return work(request).start_action(who, action, model=body.model).to_dict()
+
+
+@router.get("/enrich")
+def enrich_waiting(who: Who, ws: WS) -> dict[str, Any]:
+    """How many entries wait for a model to write how they are asked for."""
+    who.require("brain.read")
+    return {"waiting": len(ws.rt.brain.enrichment_pending())}
+
+
+@router.post("/enrich", status_code=201)
+def enrich(body: AgentEnrichIn, request: Request, who: Who) -> dict[str, Any]:
+    """Write how each waiting entry is asked for, through the chosen model, in the
+    background; poll /api/brain/agent/jobs/{id}."""
+    return work(request).start_enrich(who, model=body.model, limit=body.limit).to_dict()
 
 
 @router.post("/chat", status_code=201)

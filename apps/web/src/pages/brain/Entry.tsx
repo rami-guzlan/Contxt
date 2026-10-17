@@ -11,6 +11,8 @@ import {
   keys,
   useBrainActivity,
   useBrainCatalog,
+  useAcceptTriggers,
+  useAskedAs,
   useBrainDecisions,
   useBrainEntry,
   useBrainHistory,
@@ -333,6 +335,7 @@ function About({
           ) : null}
         </Section>
         {details ? <WhenItApplies details={details} onDecided={onDecided} /> : null}
+        {details ? <FoundWhen details={details} /> : null}
         {summary?.file ? (
           <Section title="Filed document">
             <p>
@@ -504,6 +507,89 @@ function WhenItApplies({ details, onDecided }: { details: InventoryItem; onDecid
           ]}
         />
       )}
+    </Section>
+  );
+}
+
+/** How this note is found: the ways people ask for it, when it applies and when not, which a
+ * model wrote when it was approved and you can reword (one line each). A must-hold's
+ * suggested trigger words wait here for your yes. */
+function FoundWhen({ details }: { details: InventoryItem }) {
+  const save = useAskedAs(details.id);
+  const accept = useAcceptTriggers(details.id);
+  const asked = details.asked_as ?? [];
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(asked.join("\n"));
+  const suggested = details.suggested_triggers ?? [];
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+    save.mutate(lines, { onSuccess: () => setOpen(false) });
+  }
+
+  return (
+    <Section
+      title="Found when you ask"
+      actions={
+        !open ? (
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              setText(asked.join("\n"));
+              setOpen(true);
+            }}
+          >
+            Reword
+          </button>
+        ) : null
+      }
+    >
+      {open ? (
+        <form className="stack" onSubmit={submit} aria-label="How this note is asked for">
+          <Field label="Ways to ask for it" hint="One per line, in the words you would use. A request close to one of these finds this note.">
+            <textarea rows={6} value={text} onChange={(event) => setText(event.target.value)} />
+          </Field>
+          <div className="row">
+            <button type="submit" className="primary" disabled={save.isPending}>
+              Save
+            </button>
+            <button type="button" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </div>
+          <ErrorNote error={save.error} />
+        </form>
+      ) : asked.length ? (
+        <ul className="plain">
+          {asked.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">
+          Not written yet: it is found by its own words. The knowledge agent writes these when a model is chosen.
+        </p>
+      )}
+      <KeyValues
+        rows={[
+          ["It is for", details.applies_when || null],
+          ["Not for", details.not_when || null],
+          ["Written", details.enriched ? `${day(details.enriched)}, by a model` : null],
+        ]}
+      />
+      {suggested.length ? (
+        <div className="stack">
+          <p>Suggested words that bring this rule in: {suggested.join(", ")}</p>
+          <div className="row">
+            <button type="button" onClick={() => accept.mutate()} disabled={accept.isPending}>
+              Use these words
+            </button>
+          </div>
+          <ErrorNote error={accept.error} />
+        </div>
+      ) : null}
     </Section>
   );
 }

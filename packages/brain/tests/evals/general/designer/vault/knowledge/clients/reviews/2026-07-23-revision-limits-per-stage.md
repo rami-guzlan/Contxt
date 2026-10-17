@@ -11,5 +11,18 @@ load: on-demand
 added: 2026-07-23
 source: Mia Laurent, in conversation
 supersedes: none
+asked_as:
+  - The client wants a third round of changes
+  - How many rounds of edits are included?
+  - They approved the design but now want a tweak
+  - Do I charge for fixing a typo?
+  - What does an extra revision cost?
+  - Write a reply explaining the extra round fee
+applies_when: Handling client change requests beyond what a stage includes
+not_when: How to run a review cycle and gather feedback
+role: rule
+enriched: 2026-10-16
+enriched_by: model:claude-test-data
+enriched_hash: 5230d3420dab3e18
 ---
 Each stage (concepts, design development, website pages) includes two rounds of changes. A third round costs EUR 450 and needs the client's written OK before work starts. Anything asked for after the client has approved a stage is new scope with its own small quote, however minor it sounds. Typos and Mia's own mistakes are always fixed free.

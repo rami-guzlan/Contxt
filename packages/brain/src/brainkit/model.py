@@ -189,6 +189,25 @@ class Note:
         or `*` for every task. A must-hold that names none covers its own area."""
         return listish(self.meta.get("applies_to")) or [self.area]
 
+    # ---------------------------------------------------------------- enrichment
+    # How a person would ask for this note, when it applies and when not, and its part
+    # (enrich.py): written by a model when the note is approved, edited by the owner.
+    @property
+    def asked_as(self) -> list[str]:
+        return [str(x).strip() for x in listish(self.meta.get("asked_as")) if str(x).strip()]
+
+    @property
+    def applies_when(self) -> str:
+        return " ".join(str(self.meta.get("applies_when") or "").split())
+
+    @property
+    def not_when(self) -> str:
+        return " ".join(str(self.meta.get("not_when") or "").split())
+
+    @property
+    def role(self) -> str:
+        return str(self.meta.get("role") or "").strip().lower()
+
     @property
     def triggers(self) -> list[str]:
         """Words and phrases that put this must-hold's domain in play when a request uses
