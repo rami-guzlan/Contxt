@@ -36,7 +36,7 @@ or the calibrated evidence thresholds.
 | exact-skill | `/name`, or a skill's exact name or alias | the procedure pointer plus the knowledge its `loads` name |
 | portfolio | "what is active", "orient me in the brain" | every visible Focus, active first |
 | system | questions about the brain itself ("brain MCP", "routing gap") | engine docs; the `system_skill` for deep work |
-| focus-update | a request naming a Focus and stating progress ("X approved the outline") | the Focus and an instruction to call `record_focus_update` |
+| focus-update | a request naming a Focus and reporting progress ("X approved the outline"), or explicitly asking to record it | the Focus and an instruction to call `record_focus_update`; questions and drafting requests about an approval are not progress reports |
 | focus-only | a question about a named Focus, or a status question ("latest on ...") | its current state, baseline and files; for a question about its content, the file parts that answer it |
 | focus-aware | work on a named Focus | the Focus, its pinned notes, its project folder, its files, and standard routing |
 | standing | "may I publish/send ..." or a lookup the kernel already answers | pointers to the standing notes that answer it |

@@ -500,7 +500,6 @@ def analyze(request: str, routing, overrides=None) -> Signals:
     sig.imperative = bool(re.match(r"\s*(please\s+)?(" + "|".join(CLASSIFY_VERBS) + r")\b",
                                    text))
     sig.permission = _is_permission(text)
-    sig.focus_update = any(_phrase(norm, p) for p in FOCUS_UPDATE_PHRASES)
     sig.status_cue = any(p in text for p in STATUS_PHRASES) or bool(wordset & STATUS_WORDS)
     sig.work_cue = bool(wordset & FOCUS_CUE_WORDS)
     artifact_terms = ARTIFACT_TERMS | {t.lower() for t in routing.artifact_terms}
@@ -518,6 +517,7 @@ def analyze(request: str, routing, overrides=None) -> Signals:
         or any(_phrase(norm, p) for p in ("two sentences", "one line", "two lines",
                                           "one sentence", "short note", "quick note")))
     sig.produces = _produces(sig)
+    sig.focus_update = _reports_progress(sig)
     sig.asks_allowed = bool(ASKS_ALLOWED.search(text))
     sig.style_question = bool((sig.question or "?" in text) and wordset & STYLE_QUESTION_WORDS
                               and sig.artifacts)
@@ -575,6 +575,28 @@ def analyze(request: str, routing, overrides=None) -> Signals:
     if not fixed_scale:
         sig.scale, sig.scale_reason = _scale(sig)
     return sig
+
+
+def _reports_progress(sig: Signals) -> bool:
+    """Progress wording in a question or requested artifact is not a new update.
+
+    An explicit recording instruction still counts, including a polite question such
+    as "Could you record that ...?". Matching a quoted approval phrase alone does not.
+    """
+    if re.search(r"(?:^|[.!?;,]\s*)(?:please\s+)?(?:(?:can|could|would|will)\s+"
+                 r"(?:you|we)\s+)?(?:please\s+)?record\s+(?:that|an? update)\b", sig.text):
+        return True
+    reading = re.match(r"^(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+)?"
+                       r"(?:please\s+)?(?:explain|tell|remind|show|give|find|retrieve|"
+                       r"list|summarize|describe)\b", sig.text)
+    work = re.match(r"^(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+)?"
+                    r"(?:please\s+)?(?:" + "|".join(sorted(PRODUCTION_VERBS)) + r")\b", sig.text)
+    # A noun at the start can make _produces true ("the report is complete"). A
+    # progress report needs no new artifact merely because it names an existing one.
+    if sig.question or "?" in sig.text or reading or work or sig.imperative \
+            or WANT_FRAME.search(sig.text):
+        return False
+    return any(_phrase(sig.norm, phrase) for phrase in FOCUS_UPDATE_PHRASES)
 
 
 def _produces(sig: Signals) -> bool:
