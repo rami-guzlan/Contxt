@@ -449,7 +449,7 @@ def _setup(args: argparse.Namespace) -> int:
 def _meaning(settings: Settings) -> bool:
     """The small model that matches requests by meaning (about 70 MB, once), fetched at
     setup: matching by words alone finds noticeably fewer of the notes a request needs (on
-    the demo Brains 75% against 85%). Without a network the Brain is made anyway and says how
+    the demo Brains 77% against 88%). Without a network the Brain is made anyway and says how
     to fetch it later."""
     from brainkit.api import Brain
 

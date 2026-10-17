@@ -831,3 +831,17 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   the run), and a run may propose 40 at most. The circular-evidence rule looked outputs up by
   file path, and the workspace names them by id; now a proposal citing a file the app's AI
   work made names that run's session, and the Brain checks it against what the run was handed.
+- 2026-10-16, `hardening`: Rami asked that ingestion, distillation and retrieval be "rock solid"
+  before the redesign's features are built.
+  - The ingestion audit's attribution findings are fixed:
+    - `brain scout`'s finds are a document's word, so their instructions are reported;
+    - an exported ChatGPT or Claude history is the owner's own messages;
+    - an earlier-workspace memory that was only suggested is the owner's AI's;
+    - regulated always redacts what a cloud model triages.
+  - Retrieval: "review" and "audit" stay among a request's words, since a code review checklist
+    or an audit trail is what such a request is about. Recall on the labeled requests rose
+    from 85% to 88% by meaning and from 75% to 77% by words. False nothing fell from 10% to 8%
+    and from 8% to 5%. Held-out results and must-hold recall and decoys are unchanged.
+  - Precision drops a point. By words alone, "Review the plumbing launch plan" now also pulls
+    the investor-update rule ("Riley reviews and sends it"); by meaning it does not. Two kept
+    parity briefs changed and were rewritten.

@@ -42,7 +42,7 @@ Git ignores all four in the Contxt repository: your Brain and your data never en
 
 Setup also fetches, once, the small model that matches requests by meaning (BAAI/bge-small-en-v1.5,
 about 70 MB, into `brain/vault/.brain/models`): matched by words alone, a Brain finds fewer of
-the notes a request needs (on the demo Brains, 75% of them against 85%). Without a network,
+the notes a request needs (on the demo Brains, 77% of them against 88%). Without a network,
 setup makes the Brain anyway and says how to fetch the model later; `--offline` downloads
 nothing.
 

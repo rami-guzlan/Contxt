@@ -75,8 +75,11 @@ ACTION_VERBS = frozenset({
     "publish", "generate", "format", "implement", "turn", "develop", "perform", "record",
     "revise", "rewrite", "tighten", "sharpen", "prepare", "compose", "continue", "finish",
     "plan", "outline", "summarize", "shorten", "expand", "polish", "fix", "refactor",
-    "review", "audit", "translate", "convert", "add", "remove", "change",
+    "translate", "convert", "add", "remove", "change",
 })
+# Not "review" or "audit": a review or an audit is as often what a request is about (a code
+# review checklist, an audit trail) as what it asks to do. Kept as words, recall on the labeled
+# requests rose from 85% to 88% by meaning (75% to 77% by words), held-out results unchanged.
 
 
 def terms(text) -> list[str]:
