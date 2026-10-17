@@ -2092,15 +2092,23 @@ class Router:
             return [], []
         # The bar is set by relevance. Freshness lifts a new note into the packet; it does not
         # raise the bar under everything else (a just-edited rule pushing out its neighbours).
-        best = max(s.detail["adj"] - (p.fresh_boost if s.detail.get("fresh") else 0.0)
-                   for s in pool)
         micro_lookup = route.task_type == "knowledge" and route.scale == "micro"
         calibrated = self.calibrated("note_abs_floor")
+        eligible = [s for s in pool if not calibrated or (
+            self.evidence(s) > self.share("note")
+            and (not s.detail.get("gated") or s.detail["adj"] >= p.note_abs_floor))]
+        best = max((s.detail["adj"] - (p.fresh_boost if s.detail.get("fresh") else 0.0)
+                    for s in pool), default=0.0)
         if calibrated:
             factor = p.whole_relative
         else:
             factor = p.micro_relative if micro_lookup else p.select_relative
         threshold = best * factor if calibrated else max(p.note_abs_floor, best * factor)
+        # A rejected top match must not make the whole brief empty when a qualified
+        # candidate remains. Recover only the strongest qualifying score; lowering
+        # the cutoff for a whole new group adds unnecessary context. Others stay pointers.
+        if calibrated and eligible and not any(s.detail["adj"] >= threshold for s in eligible):
+            threshold = max(s.detail["adj"] for s in eligible)
         route.select_threshold = threshold
         cap = {"micro": p.per_topic_micro, "deep": p.per_topic_deep}.get(
             route.scale, p.per_topic_standard)

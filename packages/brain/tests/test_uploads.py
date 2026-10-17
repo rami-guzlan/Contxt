@@ -255,6 +255,21 @@ class FileUploadTests(Base):
         self.assertFalse(approved.is_error, approved.text)
         return approved.data["pointer"]
 
+    def test_a_same_size_write_is_visible_even_when_the_file_timestamp_does_not_move(self):
+        self.file_menu(4)
+        path = self.path("references", "winter-menu.md")
+        self.assertIn("4 dollars", self.brain.reference("references/winter-menu.md").text)
+        stamp = os.stat(path)
+        before = self.brain.vault.fingerprint()
+        text = util.read_text(path).replace("4 dollars", "5 dollars")
+        self.brain.vault.touch(path)
+        util.atomic_write(path, text)
+        os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+        self.assertEqual(self.brain.vault.fingerprint(), before)
+        self.assertIn("5 dollars", self.brain.reference("references/winter-menu.md").text)
+        # Subsequent reads must keep the rebuilt state, not only repair the first response.
+        self.assertIn("5 dollars", self.brain.reference("references/winter-menu.md").text)
+
     def test_a_new_version_replaces_the_reference_and_keeps_its_pointer(self):
         from brainkit import checkpoints
         pointer = self.file_menu(4)
