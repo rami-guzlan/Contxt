@@ -485,6 +485,7 @@ class Index:
                                   for sid, s in self.sections.items()}, fold=self.fold,
                                  unseen_idf=1.0)
         self._vectors: dict[str, list] | None = None
+        self._vector_norms: dict[str, float] | None = None
         self._vector_lock = threading.RLock()
         self._centrality: dict[str, float] | None = None
         self._labels: dict[str, str] = {}
@@ -694,10 +695,23 @@ class Index:
     def similarity_vector(self, qv) -> dict:
         """Cosine of one query vector to every item. A note scores by the closest of its
         own text and the lines it is asked by (`ask:` keys, folded into `note:`)."""
+        vectors = self._item_vectors() or {}
+        # Item vectors belong to this immutable snapshot. Their magnitudes do not
+        # change between requests; the query's magnitude is shared by every pair.
+        if self._vector_norms is None:
+            with self._vector_lock:
+                if self._vector_norms is None:
+                    self._vector_norms = {
+                        key: math.sqrt(math.sumprod(vec, vec)) if vec else 0.0
+                        for key, vec in vectors.items()}
+        norms = self._vector_norms
+        query_norm = math.sqrt(math.sumprod(qv, qv)) if qv else 0.0
         out: dict = {}
         asks: dict = {}
-        for key, vec in (self._item_vectors() or {}).items():
-            value = cosine(qv, vec)
+        for key, vec in vectors.items():
+            norm = norms[key]
+            value = (math.sumprod(qv, vec) / (query_norm * norm)
+                     if query_norm and norm and len(qv) == len(vec) else 0.0)
             if key.startswith("ask:"):
                 note_key = "note:" + key[4:].rsplit(":", 1)[0]
                 asks[note_key] = max(asks.get(note_key, -1.0), value)
