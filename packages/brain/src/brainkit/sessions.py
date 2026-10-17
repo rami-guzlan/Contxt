@@ -251,8 +251,22 @@ class Ledger:
         self._record(session_id, HOOK, items, "packet")
 
     # ------------------------------------------------------------------ deliveries
+    @staticmethod
+    def _delivery_version(digest: str) -> str:
+        # Packets distinguish exact excerpts, complete sections, and legacy pointers.
+        # Group only consecutive deliveries of the same source version: reverting a
+        # source after an intervening edit must make its evidence available again.
+        parts = digest.split(":")
+        if len(parts) > 1 and parts[0] in {"excerpt", "section", "pointer"}:
+            return parts[1]
+        return digest
+
     def delivered(self, session_id: str) -> dict:
-        """{(kind, item): {"hash", "packet_id", "at"}} for everything this session holds."""
+        """Latest delivery plus all rendered hashes of its current source version.
+
+        Partial views remain held across turns, but never across a source change or a
+        session refresh. The latest hash/packet/time fields retain their existing meaning.
+        """
         out = {}
         if not session_id:
             return out
@@ -260,10 +274,17 @@ class Ledger:
             epoch = self._epoch(conn, session_id)
             for row in conn.execute(
                     "SELECT kind, item, hash, packet_id, at FROM deliveries "
-                    "WHERE session_id = ? AND COALESCE(epoch, 0) = ? ORDER BY at",
+                    "WHERE session_id = ? AND COALESCE(epoch, 0) = ? ORDER BY at, rowid",
                     (session_id, epoch)):
-                out[(row["kind"], row["item"])] = {
-                    "hash": row["hash"], "packet_id": row["packet_id"], "at": row["at"]}
+                key = (row["kind"], row["item"])
+                previous = out.get(key)
+                hashes = set()
+                if (previous and self._delivery_version(previous["hash"])
+                        == self._delivery_version(row["hash"])):
+                    hashes = previous["hashes"]
+                hashes.add(row["hash"])
+                out[key] = {"hash": row["hash"], "packet_id": row["packet_id"],
+                            "at": row["at"], "hashes": hashes}
         return out
 
     def record(self, session_id: str, packet_id: str, request: str, mode: str, text: str,
