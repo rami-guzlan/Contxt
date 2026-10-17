@@ -215,6 +215,44 @@ class PointerTest(unittest.TestCase):
             shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
 
 
+class CalibrationContentCacheTest(unittest.TestCase):
+    def test_editing_content_recalibrates_even_when_the_note_count_and_ids_are_unchanged(self):
+        from brainkit.index import BM25
+        with tempfile.TemporaryDirectory() as folder:
+            index = SimpleNamespace(
+                embedder=SimpleNamespace(cache_path=os.path.join(folder, "embeddings.sqlite")),
+                semantic_ready=lambda: False, note_bm25=BM25({"n": "sailing"}))
+            with mock.patch.object(calibration, "null_bank", return_value=["astronomy"]):
+                first = calibration.for_index(index, ["n"])
+                index.note_bm25 = BM25({"n": "astronomy"})
+                second = calibration.for_index(index, ["n"])
+                self.assertEqual(first.bm, [0.0])
+                self.assertGreater(second.bm[0], 0.0)
+                with mock.patch.object(calibration, "build", side_effect=AssertionError("unchanged content rebuilt")):
+                    self.assertEqual(calibration.for_index(index, ["n"]).to_dict(), second.to_dict())
+
+
+class CalibrationHintBoundariesTest(unittest.TestCase):
+    def test_regrouping_the_same_words_into_different_hints_invalidates_meaning_calibration(self):
+        from brainkit.index import BM25, note_search_text
+        from brainkit.model import Note
+        note = Note("n", "knowledge", "topic", "company", "approved", "on-demand",
+                    "The current content.", "n.md", {"asked_as": ["alpha beta", "gamma"]})
+        with tempfile.TemporaryDirectory() as folder:
+            index = SimpleNamespace(
+                notes={"n": note}, semantic_ready=lambda: True,
+                embedder=SimpleNamespace(cache_path=os.path.join(folder, "embeddings.sqlite"),
+                                         model_name="test", embed=lambda _: [[1.0]]),
+                note_bm25=BM25({"n": note_search_text(note)}),
+                similarity_vector=lambda q: {"note:n": len(note.asked_as[0]) / 100})
+            with mock.patch.object(calibration, "null_bank", return_value=["request"]):
+                first = calibration.for_index(index, ["n"])
+                note.meta["asked_as"] = ["alpha", "beta gamma"]
+                second = calibration.for_index(index, ["n"])
+            self.assertEqual(first.cos, [0.1])
+            self.assertEqual(second.cos, [0.05])
+
+
 class CalibrationBankCacheTest(unittest.TestCase):
     def test_changing_the_bank_rebuilds_a_cached_calibration_even_at_the_same_size(self):
         with tempfile.TemporaryDirectory() as folder:

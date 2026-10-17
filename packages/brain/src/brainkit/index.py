@@ -20,6 +20,7 @@ import struct
 import threading
 from collections import Counter
 
+from . import enrich
 from . import sections as sections_mod
 from . import util
 from .model import Focus
@@ -388,13 +389,14 @@ def note_vector_text(note) -> str:
 
 def note_search_text(note) -> str:
     """What a note is found by in words: its own text and how people ask for it."""
-    asked = " ".join(note.asked_as)
-    return f"{note_vector_text(note)} {asked} {note.applies_when}".strip()
+    return f"{note_vector_text(note)} {' '.join(note_ask_lines(note))}".strip()
 
 
 def note_ask_lines(note) -> list[str]:
     """The lines matched by meaning one by one besides the note's own text: each way a
     person would ask for it, and the work it is for. A note scores by its closest one."""
+    if not enrich.current(note):
+        return []
     return [*note.asked_as, *([note.applies_when] if note.applies_when else [])]
 
 
@@ -402,7 +404,7 @@ def must_hold_search_text(note) -> str:
     """What a must-hold's domain is about, read as one passage: where it applies, the words
     that bring it into play, and its rule. Matched by meaning against each request."""
     targets = " ".join(t.replace("/", " ").replace("-", " ") for t in note.applies_to)
-    when = f" {note.applies_when}." if note.applies_when else ""
+    when = f" {note.applies_when}." if note.applies_when and enrich.current(note) else ""
     return (f"{targets}. {', '.join(note.triggers)}. {note.title}. {note.must_text}"
             f"{when}")
 
@@ -514,7 +516,7 @@ class Index:
             else:
                 ordered = sorted(notes, key=lambda n: n.id)
                 out[key] = " ".join([words, *(n.title for n in ordered),
-                                     *(n.applies_when for n in ordered if n.applies_when)])
+                                     *(n.applies_when for n in ordered if n.applies_when and enrich.current(n))])
         return out
 
     # ------------------------------------------------------------------ files

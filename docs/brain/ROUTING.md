@@ -9,6 +9,25 @@ model's measured similarity scale. A server process (`local_models`) only uses a
 already in `vault/.brain/models` and never downloads one; without a model, routing uses
 words alone.
 
+## Retrieval hints follow the note's version
+
+The Knowledge Agent can write `asked_as` and `applies_when` lines to help find a note.
+Those lines are additional search evidence, not a guarantee that the note answers a request.
+When the note's title, summary or body changes, versioned hints stop contributing to words,
+meaning, generated topic descriptions and must-hold domain descriptions until refreshed.
+The note's current text is still searchable, and its old hints remain stored for review.
+Legacy owner-written hints without a recorded content hash continue to work.
+
+An enrichment job carries the note version it read. If either the content or the owner's
+metadata changes during the model call, its answer is rejected instead of overwriting the
+new version. Retrying reads the current note. Rewording `asked_as` after a content edit does
+not reactivate the old model's applicability fields.
+
+Calibration is reused only while its bank, model and retrieval inputs match. Editing a note
+or its hints can change the meaning distribution even when the note count stays constant,
+so those changes invalidate calibration. This changes cache freshness, not ranking formulas
+or the calibrated evidence thresholds.
+
 ## Order of precedence
 
 | Mode | Triggered by | Delivers |

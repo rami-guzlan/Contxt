@@ -750,11 +750,19 @@ class Brain:
         return entry
 
     def enrich_note(
-        self, who: Principal, entry_id: str, answer: str, *, model: str
+        self,
+        who: Principal,
+        entry_id: str,
+        answer: str,
+        *,
+        model: str,
+        expected_version: str | None = None,
     ) -> dict[str, Any]:
         """A model's answer becomes how an entry is asked for (general-retrieval plan 3.1)."""
         who.require("brain.govern")
-        found = self.rt.brain.enrich_note(entry_id, answer, by=f"model:{model}")
+        found = self.rt.brain.enrich_note(
+            entry_id, answer, by=f"model:{model}", expected_version=expected_version
+        )
         if found.get("ok"):
             with self.rt.write() as tx:
                 tx.emit(

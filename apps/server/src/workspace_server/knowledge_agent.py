@@ -125,7 +125,9 @@ class AgentWork:
                         answer = self.models.ask(
                             who, choice, item["prompt"], json_only=True, job="enrich"
                         )
-                    found = self.ws.brain.enrich_note(who, item["id"], answer, model=choice.id)
+                    found = self.ws.brain.enrich_note(
+                        who, item["id"], answer, model=choice.id, expected_version=item["version"]
+                    )
                 except WorkspaceError as exc:
                     found = {"ok": False, "text": str(exc)}
                 if found.get("ok"):

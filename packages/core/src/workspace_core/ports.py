@@ -752,11 +752,13 @@ class BrainPort(Protocol):
         ...
 
     def enrichment_pending(self, limit: int | None = None) -> list[dict[str, Any]]:
-        """Entries whose retrieval lines a model has yet to write: id, title and the prompt
+        """Entries whose retrieval lines a model has yet to write: id, title, prompt and version
         (general-retrieval plan 3.1)."""
         ...
 
-    def enrich_note(self, entry_id: str, answer: str, *, by: str) -> dict[str, Any]:
+    def enrich_note(
+        self, entry_id: str, answer: str, *, by: str, expected_version: str | None = None
+    ) -> dict[str, Any]:
         """Write one model answer into its entry; `ok` false, with `text`, when unusable."""
         ...
 
@@ -1216,7 +1218,9 @@ class NoBrain:
     def enrichment_pending(self, limit: int | None = None) -> list[dict[str, Any]]:
         return []
 
-    def enrich_note(self, entry_id: str, answer: str, *, by: str) -> dict[str, Any]:
+    def enrich_note(
+        self, entry_id: str, answer: str, *, by: str, expected_version: str | None = None
+    ) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain.")
 
     def set_asked_as(self, entry_id: str, lines: list[str]) -> dict[str, Any]:

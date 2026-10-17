@@ -66,6 +66,18 @@ def text_hash(note) -> str:
     return util.sha256(f"{note.title}\n{note.summary}\n{note.body}")[:16]
 
 
+def version(note) -> str:
+    """A model response must not overwrite either edited text or an owner's new hints."""
+    return util.sha256(json.dumps({"meta": note.meta, "body": note.body},
+                                  sort_keys=True, ensure_ascii=False, default=str))
+
+
+def current(note) -> bool:
+    """Owner-written legacy hints remain usable; generated hints belong to one text version."""
+    recorded = str(note.meta.get("enriched_hash") or "")
+    return not recorded or recorded == text_hash(note)
+
+
 def needs(note) -> bool:
     """No retrieval lines yet, or the note's text changed since they were written."""
     if not note.live or note.standing:
@@ -142,13 +154,19 @@ def fields_for(note, found: dict, *, by: str) -> dict:
     return meta
 
 
-def apply(brain, note_id: str, answer: str, *, by: str) -> dict:
+def apply(brain, note_id: str, answer: str, *, by: str,
+          expected_version: str | None = None) -> dict:
     """Read one model answer and write it into the note: one undo point."""
     from . import governance
     note = brain.state().index.note(note_id)
     if note is None or not note.live:
         return governance._result(f"No live note {note_id!r} to enrich.",
                                   {"status": "missing"}, True)
+    if expected_version is not None and expected_version != version(note):
+        return governance._result(
+            "This note changed while its retrieval lines were being written. "
+            "Try again with the current note.",
+            {"status": "changed", "id": note_id}, True)
     try:
         found = parse(answer, must_hold=note.must_hold)
     except ValueError as exc:
@@ -171,6 +189,9 @@ def set_asked_as(brain, note_id: str, lines, *, actor=None) -> dict:
         return governance._result(f"No live note {note_id!r}.", {"status": "missing"}, True)
     asked = list(dict.fromkeys(c for c in (_clean(x) for x in lines or []) if c))[:MAX_ASKED]
     meta = dict(note.meta)
+    if not current(note):
+        for key in ("applies_when", "not_when", "role"):
+            meta.pop(key, None)
     if asked:
         meta["asked_as"] = asked
         meta["enriched_hash"] = text_hash(note)
