@@ -104,6 +104,10 @@ FIELD_LIMITS = {  # characters; other fields take 200
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,80}$")  # a version: a commit, or "current"
 MAX_TEXT = 60_000  # characters in one entry a person writes or edits
 SUMMARY_LIMIT = 200  # characters in the one line a list shows for an entry
+# What one run of AI work may propose, at most: a conversation's cap (12) is for what a chat
+# notices on the side; a run asked to find what to remember reads up to 20 captures, so its
+# cap is wider, but a run that goes on and on still stops and says so.
+RUN_PROPOSAL_LIMIT = 40
 MAX_DECISIONS = 200
 TOPIC = re.compile(r"^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9-]*$")
 DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -329,6 +333,23 @@ def _origin(given: Any, run_id: str | None, sources: list[str], who: Principal) 
         if kind in SOURCE_ORIGINS and ident:
             return f"{SOURCE_ORIGINS[kind]}:{ident}"
     return "you:" if who.is_human else "workspace:"
+
+
+def _run_proposals(tx: Any, run_id: str) -> int:
+    """How many proposals a run has made that reached the Brain (pending or applied)."""
+    events = schema.events
+    return int(
+        tx.scalar(
+            sa.select(sa.func.count())
+            .select_from(events)
+            .where(
+                events.c.type == "brain.proposed",
+                events.c.data["run_id"].as_string() == run_id,
+                events.c.data["status"].as_string().in_(("pending", "applied")),
+            )
+        )
+        or 0
+    )
 
 
 def _task_of(row: dict[str, Any]) -> str | None:
@@ -1315,6 +1336,22 @@ class Brain:
             )
         return self.rt.brain.preview(text, project=str(project or "").strip() or None, tools=tools)
 
+    def _made_by(self, sources: list[str], origin: str | None) -> list[str]:
+        """The runs that made the outputs a proposal cites (`artifact:<id>` among its sources,
+        or `output:<id>` as its origin), as the Brain's ledger names them (`work:<run>`): what
+        each was handed is what an output of it cannot vouch for."""
+        cited = [s.partition(":")[2] for s in sources if s.startswith("artifact:")]
+        if str(origin or "").startswith("output:"):
+            cited.append(str(origin).partition(":")[2])
+        cited = [c.strip() for c in cited if c.strip()]
+        if not cited:
+            return []
+        with self.rt.read() as tx:
+            rows = tx.rows(
+                sa.select(schema.artifacts.c.run_id).where(schema.artifacts.c.id.in_(cited))
+            )
+        return list(dict.fromkeys(f"work:{r['run_id']}" for r in rows if r["run_id"]))
+
     def propose(
         self,
         who: Principal,
@@ -1394,14 +1431,29 @@ class Brain:
             )
         sources = [str(s) for s in sources or []]
         task_id = project_id = None
+        heard: list[str] | None = None
         if run_id:
             with self.rt.read() as tx:
                 run = tx.one(schema.task_runs, run_id, "run")
                 if run["actor_id"] != who.actor_id:
                     raise PermissionDenied("That run belongs to someone else.", run_id=run_id)
                 task = tx.one(schema.tasks, run["task_id"], "task")
+                used = _run_proposals(tx, run_id)
+            if used >= RUN_PROPOSAL_LIMIT:
+                raise Conflict(
+                    f"This run has made {used} proposals, its limit is {RUN_PROPOSAL_LIMIT}: "
+                    "finish with what is most worth keeping, and list the rest as left out."
+                )
             task_id, project_id = task["id"], task["project_id"]
             sources += [s for s in (f"task:{task_id}", f"run:{run_id}") if s not in sources]
+            # What the run read: the quotes in its evidence must come from there (the same
+            # door a chat's quotes pass, checked against what the person said).
+            heard = [
+                str(i.get("text") or "")
+                for i in (run["packet"] or {}).get("inputs") or []
+                if str(i.get("text") or "").strip()
+            ]
+        made_by = self._made_by(sources, origin)
         origin = _origin(origin, run_id, sources, who)
         extra: dict[str, Any] = {}
         goal = " ".join(str(goal or "").split())[:120]
@@ -1490,6 +1542,8 @@ class Brain:
             revises=revises,
             summary=summary,
             origin=origin,
+            heard=heard,
+            made_by=made_by,
             **({"extra": extra} if extra else {}),
         )
         data: dict[str, Any] = {

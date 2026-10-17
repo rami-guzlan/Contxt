@@ -189,20 +189,28 @@ def capture_policy(config) -> dict:
 OUTPUT_REF = re.compile(r"\boutput:([^\s,;]+)")
 
 
-def circular(brain, st, text, origin=None, source="") -> str | None:
+def circular(brain, st, text, origin=None, source="", made_by=()) -> str | None:
     """The note a statement only repeats from the brief its source output was made from, or
     None (brain-logic plan 7.2, decision 11). The links come from `record_output` (the
-    conversation that made the file) and the ledger (what that conversation was handed)."""
+    conversation that made a file, by its path) and the ledger (what that conversation was
+    handed); for an output the workspace's AI work made, the caller names that work's session
+    (`made_by`: `work:<run>`, where the run's handouts are recorded)."""
     from . import review
     from .activity import normal_path
     paths = [m.group(1) for m in OUTPUT_REF.finditer(str(source or ""))]
     if str(origin or "").startswith("output:"):
         paths.insert(0, str(origin)[len("output:"):].strip())  # a path may hold spaces
+    sessions = [str(s) for s in made_by or () if str(s).strip()]
     for path in dict.fromkeys(p for p in paths if p):
         try:
             made = brain.ledger.output(normal_path(path))
-            given = [item for kind_, item, *_rest in brain.ledger.session_items(
-                made["session_id"])] if made else []
+        except Exception:  # an unreadable ledger links nothing
+            made = None
+        if made:
+            sessions.append(made["session_id"])
+    for session in dict.fromkeys(sessions):
+        try:
+            given = [item for kind_, item, *_rest in brain.ledger.session_items(session)]
         except Exception:  # an unreadable ledger links nothing
             given = []
         for note_id in dict.fromkeys(given):
@@ -333,7 +341,7 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
                  extra=None, session_id=None, force_pending=False, layer=None,
                  index_line=None, conflicts=None, origin=None, capture_origin=None,
                  applies_to=None, triggers=None, must_text=None, critical=None,
-                 as_of=None, valid_until=None, **_ignored):
+                 as_of=None, valid_until=None, heard=None, made_by=None, **_ignored):
     """Propose a new note, a change to one (`target_id`), or its retirement (`archive`).
 
     `kind` is the proposal kind (note.create, note.update, ...); `note_kind` is what the note
@@ -348,6 +356,10 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     apply it at once (see PRESETS). `as_of` is the day a changing value was true (a total, a
     count, a version) and `valid_until` the last day it holds; a newer dated value for the
     same thing is an update, not a disagreement.
+
+    AI work outside a conversation (a run the workspace started) has no conversation to check
+    its quotes against: `heard` is what it read instead (the run's inputs), and `made_by`
+    names the runs behind the outputs it cites (`work:<run>`), for the circular-evidence rule.
     """
     st = brain.state()
     config = st.config
@@ -403,24 +415,29 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
                             area)
             extra["instruction_from"] = str(origin or said)
     if kind == "note.create" and text:
-        echoed = circular(brain, st, text, origin, source)
+        echoed = circular(brain, st, text, origin, source, made_by)
         if echoed:
             problems.append(
                 f"it repeats `{echoed}`, which the brief behind that output gave: an AI output "
                 "built from a brief cannot count as evidence for the notes in that brief (the "
                 "circular-evidence rule)")
-    if kind == "note.create" and session_id and Ledger.valid(session_id) \
+    in_chat = bool(session_id and Ledger.valid(session_id))
+    if kind == "note.create" and (heard is not None or in_chat) \
             and statements.quotes(evidence):
-        # Evidence must be real: a quote of the person is checked against what they said in
-        # that conversation; one that is not there makes the statement inferred, and it waits.
-        try:
-            heard = [str(r.get("request") or "")
-                     for r in brain.ledger.requests(session=session_id, limit=200)]
-        except Exception:  # an unreadable ledger cannot vouch for a quote
-            heard = []
-        missing = statements.unheard(evidence, heard)
+        # Evidence must be real: a quote is checked against what the person said in that
+        # conversation, or against what the AI work read; one that is not there makes the
+        # statement inferred, and it waits.
+        where = "work" if heard is not None else "conversation"
+        if heard is None:
+            try:
+                heard = [str(r.get("request") or "")
+                         for r in brain.ledger.requests(session=session_id, limit=200)]
+            except Exception:  # an unreadable ledger cannot vouch for a quote
+                heard = []
+        missing = statements.unheard(evidence, [str(t) for t in heard])
         if missing:
-            extra = dict(extra or {}, confidence="inferred", unheard_quote=missing[0][:300])
+            extra = dict(extra or {}, confidence="inferred", unheard_quote=missing[0][:300],
+                         unheard_in=where)
             force_pending = True
     if area not in config.areas:
         problems.append(f"area must be one of {', '.join(config.area_order())}")

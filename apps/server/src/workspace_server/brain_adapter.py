@@ -1395,6 +1395,8 @@ class BrainKitAdapter:
         summary: str | None = None,
         origin: str | None = None,
         extra: dict[str, Any] | None = None,
+        heard: list[str] | None = None,
+        made_by: list[str] | None = None,
     ) -> BrainProposal:
         source = f"{WORKSPACE_SOURCE}{proposer}"
         if sources:
@@ -1442,6 +1444,8 @@ class BrainKitAdapter:
                 target_id=revises or None,
                 origin=origin,
                 extra=extra or None,
+                heard=heard,
+                made_by=made_by or None,
                 **must_fields,
                 **dated,
             )

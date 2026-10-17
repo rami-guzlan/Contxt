@@ -109,13 +109,14 @@ fields) or the CLI (`brain inbox`). See [Governance](GOVERNANCE.md).
   says where it came from; the owner can still make it a rule. This is the gap memory
   injection works through.
 - **Evidence must be real**: a quote an AI attributes to the person is checked against the
-  requests the ledger logged in that conversation (the last 200). A quote that is not there
-  marks the statement inferred, and it waits, with a card line saying so. It needs the
-  conversation's session id: what the app's AI work proposes names its run instead, and all
-  of it waits for review anyway.
+  requests the ledger logged in that conversation (the last 200); a quote in what the app's AI
+  work proposes (Find what to remember, say) is checked against what its run read, the
+  inputs stored on the run. A quote that is not there marks the statement inferred, and it
+  waits, with a card line saying so.
 - **The circular-evidence rule**: a statement that only repeats a note from the brief an output
-  was made from cannot be promoted from that output (`record_output` links the file to its
-  conversation, the ledger to what that conversation was handed).
+  was made from cannot be promoted from that output. In a chat, `record_output` links the file
+  to its conversation (cite it as `output:<path>` in `source`); a file the app's AI work made
+  links to its run; the ledger keeps what either was handed.
 
 ## Before a model reads (brain-logic plan 7.2)
 
@@ -150,8 +151,10 @@ Automatic capture must not bury the owner in proposals:
   numbers: "$4,500" and "$3,500" are different facts.
 - **A budget per conversation.** `governance.max_proposals_per_session` (default 12) caps
   the proposals and decisions one session can generate; the next call is refused with
-  status `limit`. A call without a session id is not counted (the app's AI work and Moving in
-  pass none; everything they propose waits for review).
+  status `limit`. A run of the app's AI work has its own cap of 40 proposals (it may read up
+  to 20 captures); the next is refused with what to do instead. Moving in and bringing in the
+  earlier workspace are the owner's own batches, with no cap, and everything they propose
+  waits for review.
 - **One skill proposal at a time.** A second proposal for a skill that already has one
   waiting points to the first.
 
