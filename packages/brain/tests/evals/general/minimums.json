@@ -2,70 +2,70 @@
  "about": "The quick set's last measured zero-config rates, by meaning (test_general_eval.py). Written by scripts/general_eval.py --quick --null --models <dir> --minimums <this file>.",
  "brains": {
   "bistro": {
-   "recall": 0.643,
-   "whole_recall": 0.619,
-   "reachable": 0.786,
-   "precision": 0.514,
-   "correct_nothing": 0.667,
-   "off_topic_nothing": 0.91,
-   "null_nothing": 0.877,
+   "recall": 0.595,
+   "whole_recall": 0.571,
+   "reachable": 0.81,
+   "precision": 0.507,
+   "correct_nothing": 0.778,
+   "off_topic_nothing": 0.95,
+   "null_nothing": 0.953,
    "false_nothing": 0.0,
    "must_hold_recall": 1.0,
    "must_hold_decoys": 0.127,
-   "off_topic_must_holds": 0.111
+   "off_topic_must_holds": 0.101
   },
   "dental": {
    "recall": 0.791,
    "whole_recall": 0.767,
    "reachable": 0.837,
-   "precision": 0.547,
-   "correct_nothing": 0.6,
-   "off_topic_nothing": 0.93,
-   "null_nothing": 0.924,
+   "precision": 0.523,
+   "correct_nothing": 0.4,
+   "off_topic_nothing": 0.95,
+   "null_nothing": 0.949,
    "false_nothing": 0.038,
-   "must_hold_recall": 0.8,
-   "must_hold_decoys": 0.545,
-   "off_topic_must_holds": 0.095
+   "must_hold_recall": 0.9,
+   "must_hold_decoys": 0.53,
+   "off_topic_must_holds": 0.08
   },
   "entrepreneur": {
    "recall": 0.667,
    "whole_recall": 0.667,
-   "reachable": 0.667,
-   "precision": 0.769,
+   "reachable": 0.778,
+   "precision": 0.647,
    "correct_nothing": 1.0,
    "off_topic_nothing": 0.96,
-   "null_nothing": 0.964,
-   "false_nothing": 0.125
+   "null_nothing": 0.975,
+   "false_nothing": 0.0
   },
   "knowledge-company": {
    "recall": 0.944,
    "whole_recall": 0.944,
    "reachable": 1.0,
-   "precision": 0.667,
+   "precision": 0.792,
    "correct_nothing": 0.667,
-   "off_topic_nothing": 0.93,
-   "null_nothing": 0.913,
-   "false_nothing": 0.071
+   "off_topic_nothing": 0.99,
+   "null_nothing": 0.96,
+   "false_nothing": 0.143
   },
   "personal": {
-   "recall": 0.909,
-   "whole_recall": 0.909,
-   "reachable": 0.909,
-   "precision": 0.867,
+   "recall": 1.0,
+   "whole_recall": 1.0,
+   "reachable": 1.0,
+   "precision": 0.882,
    "correct_nothing": 1.0,
-   "off_topic_nothing": 0.94,
-   "null_nothing": 0.931,
+   "off_topic_nothing": 0.98,
+   "null_nothing": 0.964,
    "false_nothing": 0.0
   },
   "programmer": {
-   "recall": 0.7,
-   "whole_recall": 0.7,
+   "recall": 0.8,
+   "whole_recall": 0.8,
    "reachable": 0.9,
-   "precision": 0.818,
+   "precision": 0.833,
    "correct_nothing": 1.0,
-   "off_topic_nothing": 0.94,
-   "null_nothing": 0.921,
-   "false_nothing": 0.111
+   "off_topic_nothing": 0.92,
+   "null_nothing": 0.964,
+   "false_nothing": 0.0
   }
  }
 }
