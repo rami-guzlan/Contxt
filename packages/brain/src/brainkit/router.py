@@ -282,8 +282,9 @@ PORTFOLIO_PHRASES = ("up to speed", "orient me", "orientation", "what is active"
 # Someone new, or anyone, asking for the lay of the land rather than one thing in it.
 NEWCOMER = re.compile(
     r"\b(?:i'?m new|i am new|just joined|new here|new to (?:the team|this|the company)|"
-    r"first (?:day|week)|lay of the land|(?:quick |a )?tour of|give me a tour|onboard me|"
-    r"what (?:do|should) i (?:need to )?know (?:before|about (?:us|this|the company|the team)|"
+    r"my first (?:day|week)|lay of the land|(?:quick |a )?tour of|give me a tour|onboard me|"
+    r"what (?:do|should) i (?:need to )?know (?:before (?:i start|getting started)|"
+    r"about (?:us|this|the company|the team)|"
     r"here)|what (?:do )?you know about (?:us|me|this)|walk me through what you know)\b")
 # "Get me up to speed" and "orient me" stay the owner's portfolio of active work.
 SYSTEM_PHRASES = (
@@ -521,7 +522,11 @@ def analyze(request: str, routing, overrides=None) -> Signals:
     sig.style_question = bool((sig.question or "?" in text) and wordset & STYLE_QUESTION_WORDS
                               and sig.artifacts)
     sig.portfolio = _is_portfolio(text, norm, wordset)
-    sig.orientation = bool(NEWCOMER.search(norm))
+    # An onboarding topic or a newcomer introduction must not replace a concrete
+    # creation task with a general map of the Brain.
+    # The expression is natural language and needs single-letter pronouns and apostrophes;
+    # the search-normalized text intentionally removes them.
+    sig.orientation = not sig.produces and bool(NEWCOMER.search(text))
     system_phrases = SYSTEM_PHRASES + tuple(routing.system_phrases)
     sig.system = (not sig.portfolio) and (
         any(_phrase(norm, p) for p in system_phrases)
