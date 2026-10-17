@@ -1,0 +1,71 @@
+{
+ "about": "The quick set's last measured zero-config rates, by meaning (test_general_eval.py). Written by scripts/general_eval.py --quick --null --models <dir> --minimums <this file>.",
+ "brains": {
+  "bistro": {
+   "recall": 0.643,
+   "whole_recall": 0.619,
+   "reachable": 0.786,
+   "precision": 0.514,
+   "correct_nothing": 0.667,
+   "off_topic_nothing": 0.91,
+   "null_nothing": 0.877,
+   "false_nothing": 0.0,
+   "must_hold_recall": 1.0,
+   "must_hold_decoys": 0.127,
+   "off_topic_must_holds": 0.111
+  },
+  "dental": {
+   "recall": 0.791,
+   "whole_recall": 0.767,
+   "reachable": 0.837,
+   "precision": 0.547,
+   "correct_nothing": 0.6,
+   "off_topic_nothing": 0.93,
+   "null_nothing": 0.924,
+   "false_nothing": 0.038,
+   "must_hold_recall": 0.8,
+   "must_hold_decoys": 0.545,
+   "off_topic_must_holds": 0.095
+  },
+  "entrepreneur": {
+   "recall": 0.667,
+   "whole_recall": 0.667,
+   "reachable": 0.667,
+   "precision": 0.769,
+   "correct_nothing": 1.0,
+   "off_topic_nothing": 0.96,
+   "null_nothing": 0.964,
+   "false_nothing": 0.125
+  },
+  "knowledge-company": {
+   "recall": 0.944,
+   "whole_recall": 0.944,
+   "reachable": 1.0,
+   "precision": 0.667,
+   "correct_nothing": 0.667,
+   "off_topic_nothing": 0.93,
+   "null_nothing": 0.913,
+   "false_nothing": 0.071
+  },
+  "personal": {
+   "recall": 0.909,
+   "whole_recall": 0.909,
+   "reachable": 0.909,
+   "precision": 0.867,
+   "correct_nothing": 1.0,
+   "off_topic_nothing": 0.94,
+   "null_nothing": 0.931,
+   "false_nothing": 0.0
+  },
+  "programmer": {
+   "recall": 0.7,
+   "whole_recall": 0.7,
+   "reachable": 0.9,
+   "precision": 0.818,
+   "correct_nothing": 1.0,
+   "off_topic_nothing": 0.94,
+   "null_nothing": 0.921,
+   "false_nothing": 0.111
+  }
+ }
+}
