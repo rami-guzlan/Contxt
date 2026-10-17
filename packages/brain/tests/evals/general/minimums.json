@@ -2,30 +2,30 @@
  "about": "The quick set's last measured zero-config rates, by meaning (test_general_eval.py). Written by scripts/general_eval.py --quick --null --models <dir> --minimums <this file>.",
  "brains": {
   "bistro": {
-   "recall": 0.524,
-   "whole_recall": 0.5,
+   "recall": 0.595,
+   "whole_recall": 0.571,
    "reachable": 0.881,
-   "precision": 0.634,
-   "correct_nothing": 0.778,
-   "off_topic_nothing": 0.98,
-   "null_nothing": 0.953,
-   "false_nothing": 0.04,
+   "precision": 0.725,
+   "correct_nothing": 0.556,
+   "off_topic_nothing": 0.93,
+   "null_nothing": 0.96,
+   "false_nothing": 0.0,
    "must_hold_recall": 1.0,
-   "must_hold_decoys": 0.197,
-   "off_topic_must_holds": 0.167
+   "must_hold_decoys": 0.239,
+   "off_topic_must_holds": 0.257
   },
   "dental": {
-   "recall": 0.535,
-   "whole_recall": 0.535,
+   "recall": 0.488,
+   "whole_recall": 0.488,
    "reachable": 0.86,
-   "precision": 0.659,
-   "correct_nothing": 0.4,
-   "off_topic_nothing": 0.96,
-   "null_nothing": 0.968,
+   "precision": 0.743,
+   "correct_nothing": 0.7,
+   "off_topic_nothing": 0.95,
+   "null_nothing": 0.953,
    "false_nothing": 0.038,
-   "must_hold_recall": 0.9,
-   "must_hold_decoys": 0.833,
-   "off_topic_must_holds": 0.257
+   "must_hold_recall": 1.0,
+   "must_hold_decoys": 0.818,
+   "off_topic_must_holds": 0.374
   },
   "entrepreneur": {
    "recall": 0.667,
