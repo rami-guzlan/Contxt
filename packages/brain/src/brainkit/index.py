@@ -73,6 +73,7 @@ class BM25:
         self.fold = fold or util.phrase_folder()
         self.docs = {}
         self.lengths = {}
+        self._postings: dict = {}
         df = Counter()
         for key, text in documents.items():
             words = [util.stem(w) for w in util.terms(self.fold(text))
@@ -81,6 +82,8 @@ class BM25:
             self.docs[key] = counts
             self.lengths[key] = len(words)
             df.update(counts.keys())
+            for term, frequency in counts.items():
+                self._postings.setdefault(term, {})[key] = frequency
         self.n = max(1, len(self.docs))
         self.avg = (sum(self.lengths.values()) / self.n) if self.docs else 1.0
         self.idf = {t: math.log(1 + (self.n - f + 0.5) / (f + 0.5)) for t, f in df.items()}
@@ -114,22 +117,35 @@ class BM25:
     def scores(self, query, restrict=None) -> dict:
         """Raw BM25 score per document with a non-zero score."""
         qterms = self.query_terms(query) if isinstance(query, str) else list(query)
+        keys = self.docs.keys() if restrict is None else list(restrict)
+        allowed = None if restrict is None else set(keys)
         out = {}
-        keys = self.docs.keys() if restrict is None else [k for k in restrict if k in self.docs]
-        for key in keys:
-            counts = self.docs[key]
-            length = self.lengths[key] or 1
-            score = 0.0
-            for term in qterms:
-                freq = counts.get(term)
-                if not freq:
+        # Add in the original query-term order so scores remain bit-for-bit equal.
+        # Terms absent from a document do no work; they contributed zero before.
+        for term in qterms:
+            idf = self.idf.get(term, 0.0)
+            for key, freq in self._postings.get(term, {}).items():
+                if allowed is not None and key not in allowed:
                     continue
-                idf = self.idf.get(term, 0.0)
-                score += idf * freq * (self.k1 + 1) / (
+                length = self.lengths[key] or 1
+                value = idf * freq * (self.k1 + 1) / (
                     freq + self.k1 * (1 - self.b + self.b * length / self.avg))
-            if score > 0:
-                out[key] = score
-        return out
+                out[key] = out.get(key, 0.0) + value
+        # Callers use insertion order to break ties; retain their original order.
+        return {key: out[key] for key in keys if out.get(key, 0.0) > 0}
+
+    def coverages(self, query, restrict=None) -> dict:
+        """Weighted query coverage for a group, visiting only matching postings."""
+        keys = self.docs.keys() if restrict is None else list(restrict)
+        out = {key: [] for key in keys}
+        _terms, weights, total = self._query(query)
+        for term, weight in weights:
+            for key in self._postings.get(term, {}):
+                if key in out:
+                    out[key].append(weight)
+        # Use the same sum implementation as individual coverage (compensated
+        # float summation on Python 3.12+), with the same query-term order.
+        return {key: sum(values) / total for key, values in out.items()}
 
     def matched(self, query, key) -> int:
         """How many of the query's distinct terms one document contains."""
