@@ -1848,6 +1848,14 @@ class BrainKitAdapter:
         with self._lock:
             return self._governed(self.brain.accept_triggers(entry_id))
 
+    def learn_from_use(self, days: int = 30) -> dict[str, Any]:
+        with self._lock:
+            return dict(self.brain.learn_from_use(days=days).data)
+
+    def accept_asked_as(self, entry_id: str) -> dict[str, Any]:
+        with self._lock:
+            return self._governed(self.brain.accept_asked_as(entry_id))
+
     def loop_status(self) -> dict[str, Any]:
         return dict(self.brain.loop_status().data)
 

@@ -23,6 +23,7 @@ log = logging.getLogger("workspace.worker")
 GOAL_CHECK_SECONDS = 600  # how often the worker looks for goal checks that are due
 ENRICH_SECONDS = 300  # how often it looks for entries waiting to be enriched
 ENRICH_BATCH = 10  # entries enriched per look, so a backfill never floods the model
+LEARN_SECONDS = 3600  # how often it teaches searched-for entries how they were asked for
 
 
 @dataclass
@@ -57,6 +58,7 @@ class Worker:
         self._thread: threading.Thread | None = None
         self._goals_at = 0.0  # when goal checks last looked for what is due
         self._enrich_at = 0.0  # when it last looked for entries to enrich
+        self._learn_at = 0.0  # when it last learned from what conversations searched for
         self._enrich_job: Any = None
 
     def tick(self) -> Tick:
@@ -81,6 +83,19 @@ class Worker:
                 checked = []
             if checked:
                 log.info("%d goal check(s) ran", len(checked))
+        if time.monotonic() - self._learn_at >= LEARN_SECONDS:
+            self._learn_at = time.monotonic()
+            try:  # code only: no model is asked
+                learned = self.ws.rt.brain.learn_from_use()
+            except Exception:  # a Brain that cannot write now: the next look tries again
+                log.warning("could not learn from use", exc_info=True)
+                learned = {}
+            if learned.get("learned") or learned.get("suggested"):
+                log.info(
+                    "learned how %d entr(ies) are asked for; %d wait for the owner",
+                    len(learned.get("learned") or []),
+                    len(learned.get("suggested") or []),
+                )
         if time.monotonic() - self._enrich_at >= ENRICH_SECONDS:
             self._enrich_at = time.monotonic()
             self._enrich(system)

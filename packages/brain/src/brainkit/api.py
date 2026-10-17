@@ -927,6 +927,19 @@ class Brain:
         from . import enrich
         return self._write(lambda: enrich.accept_triggers(self, note_id, **kwargs))
 
+    def learn_from_use(self, *, days=30) -> Result:
+        """Teach each note a conversation had to search for the words it was asked in."""
+        from . import learn
+        found = self._write(lambda: Result("learned", learn.from_gaps(self, days=days)))
+        data = found.data
+        return Result(f"Learned {len(data.get('learned') or [])} way(s) to ask; "
+                      f"{len(data.get('suggested') or [])} wait for you.", data)
+
+    def accept_asked_as(self, note_id, **kwargs) -> Result:
+        """The owner's yes to ways of asking learned from other people's conversations."""
+        from . import learn
+        return self._write(lambda: learn.accept_asked_as(self, note_id, **kwargs))
+
     def mark(self, note_id, state, **kwargs) -> Result:
         """The owner marks a note stale or disputed, with a reason; it stays, ranked lower."""
         from . import governance

@@ -11,6 +11,7 @@ import {
   keys,
   useBrainActivity,
   useBrainCatalog,
+  useAcceptAskedAs,
   useAcceptTriggers,
   useAskedAs,
   useBrainDecisions,
@@ -517,6 +518,8 @@ function WhenItApplies({ details, onDecided }: { details: InventoryItem; onDecid
 function FoundWhen({ details }: { details: InventoryItem }) {
   const save = useAskedAs(details.id);
   const accept = useAcceptTriggers(details.id);
+  const learned = useAcceptAskedAs(details.id);
+  const waiting = details.suggested_asked_as ?? [];
   const asked = details.asked_as ?? [];
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(asked.join("\n"));
@@ -579,6 +582,17 @@ function FoundWhen({ details }: { details: InventoryItem }) {
           ["Written", details.enriched ? `${day(details.enriched)}, by a model` : null],
         ]}
       />
+      {waiting.length ? (
+        <div className="stack">
+          <p>Asked for this way in other people's conversations: {waiting.join("; ")}</p>
+          <div className="row">
+            <button type="button" onClick={() => learned.mutate()} disabled={learned.isPending}>
+              Use these ways to ask
+            </button>
+          </div>
+          <ErrorNote error={learned.error} />
+        </div>
+      ) : null}
       {suggested.length ? (
         <div className="stack">
           <p>Suggested words that bring this rule in: {suggested.join(", ")}</p>

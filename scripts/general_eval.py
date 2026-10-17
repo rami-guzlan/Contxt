@@ -86,6 +86,8 @@ def main(argv=None) -> int:
     parser.add_argument("--markdown", help="write the report to this file too")
     parser.add_argument("--json", help="write the numbers (no private rows) to this file")
     parser.add_argument("--scale", help="measure latency at these Brain sizes, e.g. 50,500")
+    parser.add_argument("--learning", action="store_true",
+                        help="measure learning from use (stage 4) instead")
     parser.add_argument("--minimums", help="write each Brain's zero-config rates to this "
                         "file, as the quick set's floor (tests/evals/general/minimums.json)")
     args = parser.parse_args(argv)
@@ -96,6 +98,24 @@ def main(argv=None) -> int:
                 handle.write(text)
         return 0
     entries = suite(args)
+    if args.learning:
+        lines = ["## Learning from use", "", "| Brain | Split | Learned | Asked half: before, "
+                 "after | Other half: before, after |", "| --- | --- | --- | --- | --- |"]
+        for entry in entries:
+            if entry["private"] or entry["split"] == "demo":
+                continue
+            r = evalkit.learning_effect(entry, models_dir=args.models)
+            lines.append(f"| {r['name']} | {r['split']} | {r['learned']} | "
+                         f"{evalkit._cell(r['asked']['before'])}, "
+                         f"{evalkit._cell(r['asked']['after'])} | "
+                         f"{evalkit._cell(r['other']['before'])}, "
+                         f"{evalkit._cell(r['other']['after'])} |")
+            print(lines[-1], flush=True)
+        text = "\n".join(lines) + "\n"
+        if args.markdown:
+            with open(args.markdown, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(text)
+        return 0
     off_topic = evalkit.off_topic_cases(os.path.join(GENERAL, "off_topic.json"))
     matching = "words and meaning" if args.models else "words only"
     sections = [f"# Retrieval across Brains ({matching})", ""]
