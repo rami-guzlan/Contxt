@@ -254,7 +254,11 @@ def analyze(brain, **_ignored):
                 f"An instruction found in {found_in}: kept as what it says, not as your rule. "
                 "Make it a rule only if it is yours.")
         unheard = str(proposal.target.get("unheard_quote") or "").strip()
-        if unheard:
+        if unheard and proposal.target.get("unheard_in") == "work":
+            row["problems"].append(
+                f"The quote “{unheard}” is not in what that work read: it is kept as the AI's "
+                "inference, not its source's words.")
+        elif unheard:
             row["problems"].append(
                 f"The quote “{unheard}” is not in what you said in that conversation: it is "
                 "kept as the AI's inference, not your words.")

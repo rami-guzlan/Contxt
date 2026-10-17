@@ -824,4 +824,10 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   prompt: an empty folder, none of the person's MCP servers. Gemini CLI's flags were checked
   against 0.1.10 on the PC (it reads stdin only without `-p`); Codex is not installed here, so
   its `codex exec` flags follow its documentation. Checks, digests and See the difference still
-  run on Claude Code only.
+  run on Claude Code only. Merged as rami-guzlan/Contxt#22.
+- 2026-10-16, `door-checks`: the map's two open gaps, at Rami's word ("fix the two open gaps").
+  What the app's AI work proposes carries a run, not a session, so it skipped the evidence check
+  and the proposal cap. Now its quotes are checked against what the run read (the inputs on
+  the run), and a run may propose 40 at most. The circular-evidence rule looked outputs up by
+  file path, and the workspace names them by id; now a proposal citing a file the app's AI
+  work made names that run's session, and the Brain checks it against what the run was handed.

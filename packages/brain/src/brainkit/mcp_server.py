@@ -150,7 +150,11 @@ AGENT_TOOLS = [
                    "dated value for the same thing updates the older one in briefs."},
          "valid_until": {"type": "string", "description": "The last day it holds, "
                          "YYYY-MM-DD; after it, the note is flagged for a check."},
-         "evidence": _STR, "source": _STR,
+         "evidence": _STR,
+         "source": {"type": "string", "description": "Where it came from. When that is a "
+                    "file an AI made (one recorded with record_output), name it as "
+                    "output:<its full path>: what only repeats the brief that file was made "
+                    "from is refused."},
          "supersedes": {"type": "string", "description": "Note ids this one replaces; they "
                         "retire when it is approved. With target_id, a merge: the changed note "
                         "now covers what they said."},
