@@ -66,3 +66,5 @@ and the 5,000-note latency target are also outstanding. Passing regression CI al
 does not turn these requirements green.
 
 Local full-suite validation and merge status are recorded in the PR.
+
+Full local CI found one intentional output change in the 180-brief parity fixture: a bedtime request no longer carries travel preferences through a tentative pointer. The sleep rule remains. Only that travel line is removed from that one stored brief; all other snapshot bytes and all quantitative quality gates remain unchanged.
