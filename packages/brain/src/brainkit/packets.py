@@ -263,6 +263,16 @@ def _quote(text: str, max_tokens: int) -> tuple[str, bool]:
     return quoted, clipped
 
 
+def _excerpt_hash(source_hash: str, text: str) -> str:
+    """A partial delivery proves only this rendering of this source version was seen."""
+    return "excerpt:" + source_hash + ":" + util.sha256(text)
+
+
+def _holds(record, digest: str) -> bool:
+    return bool(record and (record.get("hash") == digest
+                            or digest in record.get("hashes", ())))
+
+
 def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str,
           partition: str | None = None, explain: bool = False, tools: bool = True) -> Packet:
     """The packet for one route. Without `tools`, for a model that cannot call the brain at
@@ -284,7 +294,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
 
     def already_held(note) -> bool:
         record = delivered.get(("note", note.id))
-        return bool(record and record.get("hash") == note.body_hash)
+        return _holds(record, note.body_hash)
 
     def place(note, reason, mandatory=False, fit=None):
         nonlocal budget, bodies
@@ -302,11 +312,11 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             cost = note.tokens + 8
             if tools and (fit == "pointer" or cost > budget):
                 record = delivered.get(("note", note.id))
-                if record and record.get("hash") == "pointer:" + note.body_hash:
+                text = pointer(note)
+                if _holds(record, _excerpt_hash(note.body_hash, text)):
                     held.append(note)
                     decisions.append(f"{note.id}: already given in short in this session")
                     return
-                text = pointer(note)
                 cost = util.tokens(text) + 2
             chosen.append(note)
             if text is not None:
@@ -319,20 +329,20 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         # short, which a model that can open notes asks for when it needs more.
         whole = not tools or mandatory or note.kind in constraint or bodies < limit
         record = delivered.get(("note", note.id))
-        if not whole and record and record.get("hash") == "pointer:" + note.body_hash:
+        text = None if whole else pointer_text(note, route.request)
+        if text is not None and _holds(record, _excerpt_hash(note.body_hash, text)):
             held.append(note)
             decisions.append(f"{note.id}: already given in short in this session")
             return
-        text = None if whole else pointer_text(note, route.request)
         cost = note.tokens + 8 if whole else util.tokens(text) + 2
         over = cost > budget and (chosen or not mandatory)
         if over and text is None and tools:
             # Too long to come whole: in short, which the model opens when it needs the rest.
-            if record and record.get("hash") == "pointer:" + note.body_hash:
+            text = pointer_text(note, route.request)
+            if _holds(record, _excerpt_hash(note.body_hash, text)):
                 held.append(note)
                 decisions.append(f"{note.id}: already given in short in this session")
                 return
-            text = pointer_text(note, route.request)
             cost = util.tokens(text) + 2
             over = cost > budget and (chosen or not mandatory)
         if over:
@@ -399,7 +409,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
     for scored in route.sections:
         section = scored.item
         record = delivered.get(("section", section.id))
-        if record and record.get("hash") == section.body_hash:
+        # Legacy bare hashes might be clipped; only the new full marker proves full delivery.
+        if _holds(record, "section:" + section.body_hash):
             held_sections.append(section)
             decisions.append(f"{section.id}: already delivered in this session")
             continue
@@ -408,6 +419,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             decisions.append(f"{section.id}: past the file allowance, listed")
             continue
         text, clipped = _quote(section.text, max(120, room - 30))
+        if clipped and _holds(record, _excerpt_hash(section.body_hash, text)):
+            held_sections.append(section)
+            decisions.append(f"{section.id}: this excerpt already delivered in this session")
+            continue
         room -= util.tokens(text) + 30
         reason = f"file section, relevance {scored.score:.2f}" + (
             ", in the project it names" if scored.detail.get("project") else "")
@@ -668,8 +683,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         lines += ["", 'Open one with get_note(id="...") if the task needs it; for anything '
                   "else missing, search_notes in your own words.", ""]
     if held or held_sections:
-        names = [n.id for n in held] + [f"{index.file_title(s.path)}: {s.label}"
-                                        for s in held_sections]
+        names = [n.id + ("" if already_held(n) else " (excerpt only)") for n in held]
+        names += [f"{index.file_title(s.path)}: {s.label}" + (
+            "" if _holds(delivered.get(("section", s.id)), "section:" + s.body_hash)
+            else " (excerpt only)") for s in held_sections]
         lines += ["## Already in this conversation", "",
                   "Delivered earlier in this session and unchanged: "
                   + ", ".join(names)
@@ -731,9 +748,9 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         focus = None
     text = "\n".join(lines).rstrip() + "\n"
 
-    # A note sent in short is recorded with a hash of its own: a later packet that needs the
-    # whole note still sends it, and the same note in short is not sent twice.
-    items = [("note", n.id, "pointer:" + n.body_hash if n.id in shorts else n.body_hash,
+    # Remember the exact short rendering as well as its source version. A new excerpt or
+    # the whole note can still be sent; the same excerpt is not sent twice.
+    items = [("note", n.id, _excerpt_hash(n.body_hash, shorts[n.id]) if n.id in shorts else n.body_hash,
               util.tokens(shorts[n.id]) if n.id in shorts else n.tokens,
               ("in short; " if n.id in shorts else "")
               + _reason(why.get(n.id), n, route, index))
@@ -743,8 +760,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
     items += [("must", m.note.id, util.sha256(m.note.must_text), util.tokens(m.note.must_text),
                f"must hold: {m.why}") for m in must]
     items += [("system", s.item.id, s.item.body_hash, s.item.tokens) for s in route.system_docs]
-    items += [("section", section.id, section.body_hash, util.tokens(text), reason)
-              for section, text, _clipped, reason in quoted]
+    items += [("section", section.id,
+               _excerpt_hash(section.body_hash, text) if clipped else "section:" + section.body_hash,
+               util.tokens(text), reason)
+              for section, text, clipped, reason in quoted]
     if focus is not None:
         items.append(("focus", focus.id, util.sha256(str(focus.current())), 0))
     if included is not None:
