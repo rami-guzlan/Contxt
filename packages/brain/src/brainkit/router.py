@@ -128,6 +128,26 @@ class Policy:
     # a must-hold's domain passage puts it in play. 0.57 is raw cosine 0.58 on bge-small:
     # half the tuning requests clear it, no decoy and 3% of other must-holds' requests do.
     must_hold_semantic_bar: float = 0.57
+    # CALIBRATED BARS (calibration.py): the share of the Brain's unrelated requests a match
+    # must beat. They stand in for lean_floor, note_abs_floor and topic_note_floor, each
+    # unless routing.json `policy` sets it by hand. Set on the
+    # generated tuning Brains (October 16, 2026): at 0.95 by meaning, 99% of real requests
+    # kept something and 96% of off-topic ones got nothing.
+    calibrated: bool = True
+    nothing_share: float = 0.95           # the best note must beat this, or nothing is sent
+    note_share: float = 0.95              # a note is sent only when its own match beats this
+    related_share: float = 0.90           # ...and listed as also relevant when it beats this
+    # Without an embedding model the evidence is words only, which cannot tell a short real
+    # request that hits one rare word from an unrelated one that does the same: on a small
+    # Brain most unrelated requests match no word at all, so any one shared word clears a
+    # bar. Words-only Brains keep the floors above unless `calibrated_words` is set; its
+    # bars are lower (at 0.85, 98% of real requests kept something and 80% of off-topic
+    # ones got nothing on the generated tuning Brains, but short real requests on the demo
+    # Brains lost their notes).
+    calibrated_words: bool = False
+    words_nothing_share: float = 0.85
+    words_note_share: float = 0.85
+    words_related_share: float = 0.75
 
     @classmethod
     def from_config(cls, data: dict | None):
@@ -747,6 +767,36 @@ class Router:
         self.system_skill = routing.system_skill
         self._sims: dict[str, dict] = {}
         self._focus_terms_cache: dict[str, set] = {}
+        self._hand = set(overrides) & {"lean_floor", "note_abs_floor", "topic_note_floor"}
+        self._calibration = None
+
+    # ------------------------------------------------------------------ calibration
+    def calibrated(self, floor: str) -> bool:
+        """Does this floor come from the Brain's calibration (not set by hand)?"""
+        if not self.policy.calibrated or floor in self._hand:
+            return False
+        return self.policy.calibrated_words or self.index.semantic_ready()
+
+    @property
+    def calibration(self):
+        if self._calibration is None:
+            from . import calibration
+            cards = {c.id for c in self.index.cards.values()}
+            notes = [n.id for n in self.index.notes.values()
+                     if not n.standing and n.id not in cards]
+            domains = [n.id for n in self.index.notes.values() if n.must_hold]
+            self._calibration = calibration.for_index(self.index, notes, domains)
+        return self._calibration
+
+    def share(self, bar: str) -> float:
+        """The bar (nothing, note, related) for this Brain's kind of evidence."""
+        words = self.calibration.cos is None
+        return getattr(self.policy, f"{'words_' if words else ''}{bar}_share")
+
+    def evidence(self, scored) -> float:
+        """The share of the Brain's unrelated requests this note's match beats."""
+        return self.calibration.evidence(scored.detail.get("cos_raw"),
+                                         scored.detail.get("bm_raw"))
 
     # ------------------------------------------------------------------ admission
     def admitted_notes(self, chain, partitions):
@@ -848,7 +898,8 @@ class Router:
                 hybrid = max(hybrid, self.policy.semantic_alone * semantic)
             out[key] = (round(min(1.0, hybrid), 4), {
                 "coverage": round(coverage, 3), "bm25": round(raw.get(key, 0.0), 3),
-                "semantic": None if semantic is None else round(semantic, 3)})
+                "semantic": None if semantic is None else round(semantic, 3),
+                "bm_raw": raw.get(key, 0.0), "cos_raw": sims.get(f"{kind}:{key}")})
         return out
 
     def score_skills(self, request, sig: Signals, skills) -> list:
@@ -1176,6 +1227,9 @@ class Router:
                     return f"this task touches {target}"
             if sims is None:
                 sims = self.similarity(sig.request)     # {} without an embedding model
+            # Not calibrated against unrelated requests: another part of the same Brain's
+            # work beats 99% of them too (must-hold decoys rose from 13% to 39% on a tuning
+            # Brain). Stage 3's applies_when and generated triggers take this on.
             meaning = self._semantic(sims, f"domain:{note.id}")
             if meaning is not None and meaning >= p.must_hold_semantic_bar:
                 return f"this request is about its domain (meaning {meaning:.2f})"
@@ -1596,9 +1650,22 @@ class Router:
         # Nothing required and no note clears the lean floor: say so rather than pad. A file
         # part overrides that only when the request names its file or the part answers it
         # closely (see UNBACKED_SEMANTIC).
-        unbacked = (not domains and route.focus is None and route.skill is None
-                    and not route.candidates and not style and best_on_demand < p.lean_floor)
-        if unbacked and route.sections:
+        if self.calibrated("lean_floor"):
+            # Knowledge decides: a filed document's card has its own bars for being quoted.
+            cards = {c.id for c in self.index.cards.values()}
+            best_evidence = max((self.evidence(s) for s in ranked_on_demand
+                                 if s.item.id not in cards), default=0.0)
+            weak = best_evidence <= self.share("nothing")
+            why_weak = f"best match beats {best_evidence:.0%} of unrelated requests"
+        else:
+            weak = best_on_demand < p.lean_floor
+            why_weak = f"best note {best_on_demand:.2f} < {p.lean_floor}"
+        alone = (not domains and route.focus is None and route.skill is None
+                 and not route.candidates and not style)
+        unbacked = alone and weak
+        # Quoting a file part that nothing else backs keeps its own measured bar: the parts
+        # that answer alone are kept when the best note is under lean_floor, calibrated or not.
+        if alone and best_on_demand < p.lean_floor and route.sections:
             kept = [s for s in route.sections if _answers_alone(s)]
             if len(kept) < len(route.sections):
                 route.log("sections: nothing else backs this request; kept "
@@ -1614,8 +1681,7 @@ class Router:
             route.related = self._point_to_files(
                 route, [s for s in ranked_on_demand if s.score >= p.near_floor][:p.near_count],
                 ranked_on_demand, p.near_count)
-            route.log(f"lean: best note {best_on_demand:.2f} < {p.lean_floor}; "
-                      f"{len(route.related)} near match(es) listed")
+            route.log(f"lean: {why_weak}; {len(route.related)} near match(es) listed")
             return
 
         selected, related = self._select(route, pool, domains,
@@ -2022,7 +2088,8 @@ class Router:
                    for s in pool)
         micro_lookup = route.task_type == "knowledge" and route.scale == "micro"
         factor = p.micro_relative if micro_lookup else p.select_relative
-        threshold = max(p.note_abs_floor, best * factor)
+        calibrated = self.calibrated("note_abs_floor")
+        threshold = best * factor if calibrated else max(p.note_abs_floor, best * factor)
         route.select_threshold = threshold
         cap = {"micro": p.per_topic_micro, "deep": p.per_topic_deep}.get(
             route.scale, p.per_topic_standard)
@@ -2030,6 +2097,11 @@ class Router:
         for scored in pool:
             if scored.detail["adj"] < threshold:
                 break
+            if calibrated and self.evidence(scored) <= self.share("note"):
+                continue
+            # A topic gate is hand configuration: a gated note still needs the hand-set floor.
+            if calibrated and scored.detail.get("gated") and scored.detail["adj"] < p.note_abs_floor:
+                continue
             topic = scored.item.route_key
             if per_topic.get(topic, 0) >= cap:
                 continue
@@ -2047,7 +2119,11 @@ class Router:
             members = [s for s in pool if s.item.route_key == domain]
             if not members:
                 continue
-            if max(s.score for s in members) < p.topic_note_floor and domain not in named:
+            if self.calibrated("topic_note_floor"):
+                weak = max(self.evidence(s) for s in members) <= self.share("note")
+            else:
+                weak = max(s.score for s in members) < p.topic_note_floor
+            if weak and domain not in named:
                 route.log(f"{domain}: declared, but no note is specific to this request")
                 continue
             picks = members[:2 if domain in named else 1]
@@ -2057,9 +2133,12 @@ class Router:
         chosen = {s.item.id for s in selected}
         # "Also relevant" means relevant: a note under the floor no selection would take is
         # not listed either, however low the bar for this request went.
-        related_bar = max(p.note_abs_floor, threshold * p.related_factor)
+        related_bar = (threshold * p.related_factor if calibrated
+                       else max(p.note_abs_floor, threshold * p.related_factor))
         related = [s for s in pool if s.item.id not in chosen
-                   and s.detail["adj"] >= related_bar][:p.related_count]
+                   and s.detail["adj"] >= related_bar
+                   and (not calibrated or self.evidence(s) > self.share("related"))
+                   ][:p.related_count]
         route.log(f"selected {len(selected)} note(s) at or above {threshold:.2f}; "
                   f"{len(related)} related listed")
         return selected, related
