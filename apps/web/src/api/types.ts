@@ -387,6 +387,7 @@ export interface InventoryItem {
   role?: string; // knowledge | rule | style | procedure | pointer
   suggested_triggers?: string[]; // words a model suggested for a must-hold, waiting for you
   enriched?: string; // the day a model wrote these
+  suggested_asked_as?: string[]; // ways to ask learned from other people's conversations
   critical?: boolean; // its line also goes in every session's startup context
   /** Why a change to it waits for a reason (a rule, a must-hold, confirmed, much used), or "". */
   baseline?: string;

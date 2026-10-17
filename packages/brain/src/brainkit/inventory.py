@@ -105,6 +105,8 @@ def note_row(st, note, *, created=None, changes=0, use=None) -> dict:
         "suggested_triggers": [str(t) for t in note.meta.get("suggested_triggers") or []]
         if note.must_hold else [],
         "enriched": str(note.meta.get("enriched") or ""),
+        # ways to ask learned from other people's conversations, waiting for the owner
+        "suggested_asked_as": [str(x) for x in note.meta.get("suggested_asked_as") or []],
         # why a change to it waits for a reason (baseline.py), or ""; marked by the owner
         "baseline": (baseline.why(note, config, int(use.get("d30") or 0)) or "")
         if note.live else "",

@@ -768,6 +768,15 @@ class BrainPort(Protocol):
         """The owner's yes to the trigger words suggested for a must-hold."""
         ...
 
+    def learn_from_use(self, days: int = 30) -> dict[str, Any]:
+        """Teach each entry a conversation had to search for the words it was asked in
+        (general-retrieval plan 3.5): learned, suggested (waiting for the owner), skipped."""
+        ...
+
+    def accept_asked_as(self, entry_id: str) -> dict[str, Any]:
+        """The owner's yes to ways of asking learned from other people's conversations."""
+        ...
+
     def loop_status(self) -> dict[str, Any]:
         """What the updating loop asks of the owner now (brainkit/loop.py)."""
         ...
@@ -1214,6 +1223,12 @@ class NoBrain:
         raise Conflict("This workspace has no Brain.")
 
     def accept_triggers(self, entry_id: str) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain.")
+
+    def learn_from_use(self, days: int = 30) -> dict[str, Any]:
+        return {"learned": [], "suggested": [], "skipped": 0}
+
+    def accept_asked_as(self, entry_id: str) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain.")
 
     def loop_status(self) -> dict[str, Any]:

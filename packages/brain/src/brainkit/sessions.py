@@ -990,6 +990,16 @@ class Ledger:
                 "SELECT * FROM model_daily WHERE day >= ? ORDER BY day, job, model",
                 (str(since_day)[:10],))]
 
+    def opened_notes(self, since: str) -> dict[str, set]:
+        """{note id: the conversations that opened it after a brief} since an ISO moment."""
+        out: dict[str, set] = {}
+        with self._connect() as conn:
+            for row in conn.execute(
+                    "SELECT session_id, item FROM deliveries WHERE kind = 'note' AND "
+                    "packet_id = ? AND at >= ?", (FOLLOWUP, since)):
+                out.setdefault(row["item"], set()).add(row["session_id"])
+        return out
+
     def packet_rows(self, since: str) -> list[dict]:
         """Every packet since an ISO moment, oldest first: its session, request, tokens and
         data (the request type, the notes it carried), for the cost and quality report."""

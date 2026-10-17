@@ -796,6 +796,20 @@ class Brain:
             )
         return found
 
+    def accept_asked_as(self, who: Principal, entry_id: str) -> dict[str, Any]:
+        """A person says yes to ways of asking learned from other people's conversations."""
+        who.require("brain.govern")
+        found = self.rt.brain.accept_asked_as(entry_id)
+        with self.rt.write() as tx:
+            tx.emit(
+                "brain.asked_as_changed",
+                actor_id=who.actor_id,
+                subject_type="brain_entry",
+                subject_id=entry_id,
+                data={"learned": True},
+            )
+        return found
+
     def mark(self, who: Principal, entry_id: str, state: str, *, reason: str) -> BrainEntry:
         """A person marks an entry stale or disputed; it stays, ranked lower and flagged."""
         who.require("brain.govern")

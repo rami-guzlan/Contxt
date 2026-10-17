@@ -452,3 +452,45 @@ def public(result: dict) -> dict:
     if not result.get("private"):
         return result
     return {k: v for k, v in result.items() if k != "rows"}
+
+
+# ---------------------------------------------------------------------------- learning
+def learning_effect(entry: dict, *, models_dir: str | None = None) -> dict:
+    """Stage 4's measure: half the work requests are asked, and for each needed note the
+    brief neither carried nor listed the conversation opens it (as an AI that searched
+    would); the Brain learns from those gaps. Both halves are asked again: the first half
+    shows what was learned, the second whether it carries to other requests."""
+    from . import learn
+    work = [c for c in entry["cases"] if c.get("must") and c.get("labeled", True)]
+    halves = (work[0::2], work[1::2])
+    vault = se.copy_vault(entry["vault"], models_dir)
+    try:
+        zero_config(vault)
+        brain = se.open_brain(vault, semantic=bool(models_dir))
+        try:
+            def reach(cases, tag):
+                hit = total = 0
+                for i, case in enumerate(cases):
+                    data = brain.context(case["request"], session_id=f"sess-{tag}-{i:03d}").data
+                    got = set(data.get("note_ids") or []) | set(data.get("related_ids") or [])
+                    got |= set(data.get("must_hold_ids") or [])
+                    total += len(case["must"])
+                    hit += sum(bool(got & set(g)) for g in case["must"])
+                return [hit, total]
+            before = [reach(halves[0], "a0"), reach(halves[1], "b0")]
+            for i, case in enumerate(halves[0]):
+                session = f"sess-learn-{i:03d}"
+                data = brain.context(case["request"], session_id=session).data
+                got = set(data.get("note_ids") or []) | set(data.get("related_ids") or [])
+                for group in case["must"]:
+                    if not got & set(group):
+                        brain.note(group[0], session_id=session)
+            learned = learn.from_gaps(brain)
+            after = [reach(halves[0], "a1"), reach(halves[1], "b1")]
+        finally:
+            brain.close()
+    finally:
+        shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+    return {"name": entry["name"], "split": entry["split"], "learned": len(learned["learned"]),
+            "asked": {"before": before[0], "after": after[0]},
+            "other": {"before": before[1], "after": after[1]}}

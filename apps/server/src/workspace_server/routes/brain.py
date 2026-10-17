@@ -93,6 +93,12 @@ def asked_as(entry_id: str, body: AskedAsIn, who: Who, ws: WS) -> dict[str, Any]
     return ws.brain.set_asked_as(who, entry_id, body.lines)
 
 
+@router.post("/entries/{entry_id}/accept-asked-as")
+def accept_asked_as(entry_id: str, who: Who, ws: WS) -> dict[str, Any]:
+    """Use the ways of asking learned from other people's conversations."""
+    return ws.brain.accept_asked_as(who, entry_id)
+
+
 @router.post("/entries/{entry_id}/accept-triggers")
 def accept_triggers(entry_id: str, who: Who, ws: WS) -> dict[str, Any]:
     """Use the trigger words suggested for a must-hold."""

@@ -397,3 +397,14 @@ def test_the_worker_enriches_new_entries_only_with_a_chosen_model(runtime, monke
     worker._enrich_at = 0.0
     worker.tick()  # the batch is still running: not a second one
     assert agent.started == [10]
+
+
+def test_the_worker_learns_from_use_without_a_model(runtime, monkeypatch):
+    from workspace_server.worker import Worker
+
+    calls = []
+    monkeypatch.setattr(runtime.ws.rt.brain, "learn_from_use", lambda: calls.append(1) or {})
+    worker = Worker(runtime.ws)
+    worker.tick()
+    worker.tick()  # not an hour yet
+    assert calls == [1]

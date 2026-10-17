@@ -392,6 +392,15 @@ export function useAskedAs(entryId: string) {
   });
 }
 
+/** Use the ways of asking learned from other people's conversations. */
+export function useAcceptAskedAs(entryId: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: () => post<{ text: string }>(`/api/brain/entries/${encodeURIComponent(entryId)}/accept-asked-as`),
+    onSettled: () => invalidate(keys.brain, keys.events),
+  });
+}
+
 /** Use the trigger words a model suggested for a must-hold. */
 export function useAcceptTriggers(entryId: string) {
   const invalidate = useInvalidate();
