@@ -350,6 +350,27 @@ def test_the_agent_writes_how_waiting_entries_are_asked_for(owner, runtime):
     assert found[0]["enriched"]
 
 
+def test_an_inflight_model_answer_cannot_overwrite_the_owners_new_retrieval_lines(
+    owner, runtime, monkeypatch
+):
+    brain = runtime.ws.rt.brain.brain
+    item = brain.enrichment_pending(1)[0]
+    models = stub(runtime, ASKED)
+    lines = ["the owner's new way of asking for this entry"]
+
+    def edit_then_answer(*args, **kwargs):
+        result = brain.set_asked_as(item["id"], lines, actor=brain.state().config.owner)
+        assert not result.is_error
+        return ASKED
+
+    monkeypatch.setattr(models, "ask", edit_then_answer)
+    job = owner.ok(owner.post("/api/brain/agent/enrich", json={"limit": 1}), 201)
+    done = finish(owner, job["id"])
+    assert done["result"]["enriched"] == 0
+    assert "changed" in done["result"]["failed"][0]["why"]
+    assert brain.state().index.note(item["id"]).asked_as == lines
+
+
 def test_unusable_answers_stop_the_job_and_say_why(owner, runtime):
     models = stub(runtime, "No JSON here.", "Still none.", "Nope.", ASKED)
     job = owner.ok(owner.post("/api/brain/agent/enrich", json={"limit": 5}), 201)

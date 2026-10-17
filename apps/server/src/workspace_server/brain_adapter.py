@@ -1825,9 +1825,13 @@ class BrainKitAdapter:
         with self._lock:
             return list(self.brain.enrichment_pending(limit))
 
-    def enrich_note(self, entry_id: str, answer: str, *, by: str) -> dict[str, Any]:
+    def enrich_note(
+        self, entry_id: str, answer: str, *, by: str, expected_version: str | None = None
+    ) -> dict[str, Any]:
         with self._lock:
-            result = self.brain.enrich_note(entry_id, answer, by=by)
+            result = self.brain.enrich_note(
+                entry_id, answer, by=by, expected_version=expected_version
+            )
         return {"ok": not result.is_error, "text": result.text, **dict(result.data)}
 
     def _governed(self, result: Any) -> dict[str, Any]:

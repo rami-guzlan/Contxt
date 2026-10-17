@@ -91,6 +91,48 @@ class ApplyTest(unittest.TestCase):
         self.assertNotEqual(note.summary, self._note("consultation-fee").summary)
         self.assertTrue(enrich.needs(self._note("consultation-fee")))
 
+    def test_editing_a_note_stops_routing_by_its_old_model_written_context(self):
+        from brainkit.index import note_ask_lines, note_search_text
+        enrich.apply(self.brain, "consultation-fee", ANSWER, by="model:test")
+        se.set_meta(self.vault, ["consultation-fee"], summary="A completely different service.")
+        self.brain.close()
+        self.brain = se.open_brain(self.vault)
+        note = self._note("consultation-fee")
+        self.assertTrue(enrich.needs(note))
+        self.assertEqual(note_ask_lines(note), [])
+        self.assertNotIn("price for a naturalization case", note_search_text(note))
+        self.assertNotIn(note.applies_when, self.brain.state().index.topic_texts[note.route_key])
+        # Preserve the old hints for review; only the search projection stops using them.
+        self.assertIn("price for a naturalization case", note.asked_as)
+        enrich.apply(self.brain, "consultation-fee", ANSWER, by="model:test")
+        self.assertIn("price for a naturalization case", note_ask_lines(self._note("consultation-fee")))
+
+    def test_a_model_answer_for_an_older_note_version_cannot_replace_current_hints(self):
+        item = next(n for n in self.brain.enrichment_pending() if n["id"] == "consultation-fee")
+        se.set_meta(self.vault, ["consultation-fee"], summary="A new service, changed during the model call.")
+        result = self.brain.enrich_note("consultation-fee", ANSWER, by="model:test",
+                                       expected_version=item["version"])
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.data["status"], "changed")
+        self.assertEqual(self._note("consultation-fee").asked_as, [])
+        self.assertTrue(enrich.needs(self._note("consultation-fee")))
+
+    def test_owner_rewording_does_not_revalidate_obsolete_model_applicability(self):
+        enrich.apply(self.brain, "consultation-fee", ANSWER, by="model:test")
+        se.set_meta(self.vault, ["consultation-fee"], summary="This entry now covers different work.")
+        result = self.brain.set_asked_as("consultation-fee", ["our newly reviewed wording"],
+                                        actor=self.brain.state().config.owner)
+        self.assertFalse(result.is_error)
+        note = self._note("consultation-fee")
+        self.assertEqual(note.asked_as, ["our newly reviewed wording"])
+        self.assertEqual(note.applies_when, "")
+        self.assertEqual(note.not_when, "")
+
+    def test_owner_hints_without_a_generated_version_remain_searchable(self):
+        from brainkit.index import note_ask_lines
+        se.set_meta(self.vault, ["consultation-fee"], asked_as=["owner's legacy search wording"])
+        self.assertIn("owner's legacy search wording", note_ask_lines(self._note("consultation-fee")))
+
     def test_suggested_trigger_words_wait_for_the_owner(self):
         answer = ANSWER.replace('["ignored"]', '["asylum", "persecution", "filing late"]')
         enrich.apply(self.brain, "asylum-one-year-deadline", answer, by="model:test")

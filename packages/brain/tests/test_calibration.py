@@ -215,6 +215,23 @@ class PointerTest(unittest.TestCase):
             shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
 
 
+class CalibrationContentCacheTest(unittest.TestCase):
+    def test_editing_content_recalibrates_even_when_the_note_count_and_ids_are_unchanged(self):
+        from brainkit.index import BM25
+        with tempfile.TemporaryDirectory() as folder:
+            index = SimpleNamespace(
+                embedder=SimpleNamespace(cache_path=os.path.join(folder, "embeddings.sqlite")),
+                semantic_ready=lambda: False, note_bm25=BM25({"n": "sailing"}))
+            with mock.patch.object(calibration, "null_bank", return_value=["astronomy"]):
+                first = calibration.for_index(index, ["n"])
+                index.note_bm25 = BM25({"n": "astronomy"})
+                second = calibration.for_index(index, ["n"])
+                self.assertEqual(first.bm, [0.0])
+                self.assertGreater(second.bm[0], 0.0)
+                with mock.patch.object(calibration, "build", side_effect=AssertionError("unchanged content rebuilt")):
+                    self.assertEqual(calibration.for_index(index, ["n"]).to_dict(), second.to_dict())
+
+
 class CalibrationBankCacheTest(unittest.TestCase):
     def test_changing_the_bank_rebuilds_a_cached_calibration_even_at_the_same_size(self):
         with tempfile.TemporaryDirectory() as folder:

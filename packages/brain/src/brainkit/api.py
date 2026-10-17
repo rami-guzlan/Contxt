@@ -913,13 +913,15 @@ class Brain:
         """The notes whose retrieval lines a model has yet to write, each with its prompt
         (enrich.py), newest first."""
         from . import enrich
-        return [{"id": n.id, "title": n.title, "prompt": enrich.prompt_for(n)}
+        return [{"id": n.id, "title": n.title, "prompt": enrich.prompt_for(n),
+                 "version": enrich.version(n)}
                 for n in enrich.pending(self.state().index, limit)]
 
-    def enrich_note(self, note_id, answer, *, by) -> Result:
+    def enrich_note(self, note_id, answer, *, by, expected_version=None) -> Result:
         """Write one model answer into its note: how it is asked for, when it applies."""
         from . import enrich
-        return self._write(lambda: enrich.apply(self, note_id, answer, by=by))
+        return self._write(lambda: enrich.apply(
+            self, note_id, answer, by=by, expected_version=expected_version))
 
     def set_asked_as(self, note_id, lines, **kwargs) -> Result:
         """The owner's own wording of how a note is asked for."""

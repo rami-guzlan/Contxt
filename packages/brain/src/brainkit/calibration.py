@@ -15,8 +15,9 @@ generated tuning Brains (October 16, 2026): raw cosine and raw BM25 tell real re
 unrelated ones (AUC 1.00 and 0.98 to 1.00), where today's relative score did not (0.77 to
 0.82 for coverage, and a top note always scoring at least 0.4 by words).
 
-The calibration is kept beside the embedding cache and redone when the number of on-demand
-notes moves by more than a tenth, the model changes, or the request bank changes.
+The calibration is kept beside the embedding cache and redone when its retrieval content,
+eligible note/domain ids, model, or request bank changes. Counts alone cannot detect an edit
+that changes what the Brain is about.
 """
 from __future__ import annotations
 
@@ -30,7 +31,6 @@ from . import util
 # A big Brain is calibrated on part of the bank: the bar barely moves, the cost does.
 LARGE_BRAIN = 2000
 LARGE_SAMPLE = 120
-DRIFT = 0.10
 
 
 def null_bank() -> list[str]:
@@ -51,6 +51,22 @@ def _requests(note_ids, requests=None) -> list[str]:
     return bank[:LARGE_SAMPLE] if len(note_ids) > LARGE_BRAIN else bank
 
 
+def corpus_fingerprint(index, note_ids, domain_ids) -> str:
+    """Hash the inputs used by calibration, including enrichment and the word index."""
+    from .index import note_search_text, must_hold_search_text
+    notes = getattr(index, "notes", {})
+    config = getattr(index, "config", None)
+    routing = getattr(config, "routing", None)
+    payload = {
+        "notes": {nid: note_search_text(n) for nid, n in notes.items()},
+        "domains": {nid: must_hold_search_text(notes[nid]) for nid in domain_ids if nid in notes},
+        "note_ids": sorted(note_ids), "domain_ids": sorted(domain_ids),
+        "words": getattr(index.note_bm25, "docs", {}),
+        "phrases": getattr(routing, "phrases", {}),
+    }
+    return util.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+
+
 def _share(ordered: list[float], value: float) -> float:
     return bisect.bisect_right(ordered, value) / len(ordered) if ordered else 0.0
 
@@ -58,13 +74,14 @@ def _share(ordered: list[float], value: float) -> float:
 class Calibration:
     def __init__(self, cos: list[float] | None, bm: list[float],
                  domains: dict[str, list[float]] | None = None, notes: int = 0,
-                 model: str = "", bank: str = ""):
+                 model: str = "", bank: str = "", corpus: str = ""):
         self.cos = sorted(cos) if cos else None
         self.bm = sorted(bm)
         self.domains = {k: sorted(v) for k, v in (domains or {}).items()}
         self.notes = notes
         self.model = model
         self.bank = bank
+        self.corpus = corpus
 
     def evidence(self, cos_raw: float | None, bm_raw: float | None) -> float:
         """The share of unrelated requests this match beats: by meaning when the Brain has
@@ -81,13 +98,13 @@ class Calibration:
 
     def to_dict(self) -> dict:
         return {"cos": self.cos, "bm": self.bm, "domains": self.domains,
-                "notes": self.notes, "model": self.model, "bank": self.bank}
+                "notes": self.notes, "model": self.model, "bank": self.bank, "corpus": self.corpus}
 
     @classmethod
     def from_dict(cls, data: dict) -> Calibration:
         return cls(data.get("cos"), data.get("bm") or [], data.get("domains") or {},
                    int(data.get("notes") or 0), str(data.get("model") or ""),
-                   str(data.get("bank") or ""))
+                   str(data.get("bank") or ""), str(data.get("corpus") or ""))
 
 
 def build(index, note_ids: list[str], domain_ids: list[str] = (),
@@ -109,23 +126,24 @@ def build(index, note_ids: list[str], domain_ids: list[str] = (),
             for note_id in domain_ids:
                 if f"domain:{note_id}" in sims[0]:
                     domains[note_id] = [s[f"domain:{note_id}"] for s in sims]
-    return Calibration(cos, bm, domains, len(note_ids), model, bank_fingerprint(bank))
+    return Calibration(cos, bm, domains, len(note_ids), model, bank_fingerprint(bank),
+                       corpus_fingerprint(index, note_ids, domain_ids))
 
 
 def for_index(index, note_ids: list[str], domain_ids: list[str] = ()) -> Calibration:
-    """The Brain's calibration, from its cache when the Brain has not moved much."""
+    """The Brain's calibration, cached only while its retrieval inputs are unchanged."""
     embedder = getattr(index, "embedder", None)
     path = (os.path.join(os.path.dirname(embedder.cache_path), "calibration.json")
             if embedder is not None else None)
     model = embedder.model_name if embedder is not None and index.semantic_ready() else ""
     bank = _requests(note_ids)
     fingerprint = bank_fingerprint(bank)
+    corpus = corpus_fingerprint(index, note_ids, domain_ids)
     if path and os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as handle:
                 cached = Calibration.from_dict(json.load(handle))
-            close = abs(cached.notes - len(note_ids)) <= DRIFT * max(1, cached.notes)
-            if close and cached.bank == fingerprint and cached.model == model \
+            if cached.corpus == corpus and cached.bank == fingerprint and cached.model == model \
                     and set(domain_ids) <= set(cached.domains) \
                     | (set(domain_ids) if not model else set()):
                 return cached
