@@ -1237,11 +1237,13 @@ class Router:
         if sig.continuation and route.subject:
             words |= util.stems(util.terms(route.subject))
             norm = f"{util.normalize(route.subject)} {norm}"
-        # Pointers count: with the tiers, a note the Brain is less sure of is listed, not
-        # sent, and the rule for its area still has to come with the brief.
+        # Qualified pointers count: their domain's rules must be available before
+        # opening them. A lean brief's near matches are only search suggestions and
+        # have not established that their domains are in play.
+        pointers = [] if route.mode == "lean" else route.related
         reached = set(route.topics) | set(route.forced_topics) | {
             s.item.route_key for s in list(route.notes) + list(route.style_notes)
-            + list(route.standing_answer) + list(route.related)}
+            + list(route.standing_answer) + list(pointers)}
         reached.update(reached_extra)
         if route.focus is not None:
             reached.add(route.focus.note.route_key)
