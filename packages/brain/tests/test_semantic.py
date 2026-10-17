@@ -18,7 +18,7 @@ from tests import test_layout  # noqa: E402
 from tests.test_files import PROPOSAL_V2  # noqa: E402
 
 MODELS = os.environ.get("BRAIN_TEST_MODELS", "")
-SMALL = "models--qdrant--bge-small-en-v1.5-onnx-q"
+SMALL = "models--Qdrant--bge-small-en-v1.5-onnx-Q"
 
 
 def _have_model() -> bool:
