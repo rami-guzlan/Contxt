@@ -47,6 +47,12 @@ A request names a Focus by an alias, by its full name plus a status or work word
 only that Focus uses, or by its distinctive name as a phrase ("30 60 90", "bank of china")
 when that phrase is rare in the brain.
 
+A command such as "Rewrite" inferred only from a project's summary is weaker evidence.
+When that command is the only distinctive match, the project must also pass the existing
+note relevance bar for the request's subject. Explicit names and owner-written aliases
+keep their existing behavior. A shared action alone does not assign unrelated work to a
+project.
+
 A factual project question can need an approved decision or fact stored separately from
 the project summary. The focus-only path now lists matching notes associated through the
 project folder or id, a pinned link, or its name or aliases in the note. The existing related

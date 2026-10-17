@@ -1115,7 +1115,20 @@ class Router:
                 distinct = {w for w in self._focus_index_terms(focus)
                             if len(term_owner.get(w, ())) == 1} & sig.wordset
                 if distinct:
-                    reason = "distinctive term " + ", ".join(sorted(distinct))
+                    declared = set(util.terms(" ".join([focus.title] + focus.aliases)))
+                    if distinct <= util.ACTION_VERBS and not distinct & declared:
+                        # A summary's command is weak identity evidence. The subject
+                        # must also qualify as ordinary context, using the same bar.
+                        # Query scoring already excludes these command words.
+                        scored = self.score_notes(sig.request, [focus.note])[0]
+                        fits = (self.evidence(scored) > self.share("note")
+                                if self.calibrated("note_abs_floor")
+                                else scored.score >= self.policy.note_abs_floor)
+                        if not fits:
+                            continue
+                        reason = f"distinctive description subject, relevance {scored.score:.2f}"
+                    else:
+                        reason = "distinctive term " + ", ".join(sorted(distinct))
             if reason:
                 named.append((focus, reason))
         if len(named) == 1:
