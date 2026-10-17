@@ -6,9 +6,11 @@ import json
 import os
 import shutil
 import unittest
+from types import SimpleNamespace
 
 from brainkit import calibration, evalkit
 from brainkit import safeguards_eval as se
+from brainkit.router import Policy, Router, Scored
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GENERAL = os.path.join(HERE, "evals", "general")
@@ -50,6 +52,30 @@ class EvidenceTest(unittest.TestCase):
 
     def test_the_bank_is_shipped_with_the_engine(self):
         self.assertGreaterEqual(len(calibration.null_bank()), 250)
+
+
+class SelectionEvidenceTest(unittest.TestCase):
+    def test_a_match_that_fails_the_evidence_bar_cannot_hide_a_qualified_match(self):
+        router = Router.__new__(Router)
+        router.policy = Policy()
+        router._hand = set()
+        router.index = SimpleNamespace(semantic_ready=lambda: True)
+        router._calibration = calibration.Calibration(cos=[0.5] * 19 + [0.9], bm=[])
+        route = SimpleNamespace(task_type="combined", scale="standard",
+                                signals=SimpleNamespace(include_topics=[]), log=lambda _: None)
+        weak = Scored(SimpleNamespace(id="incidental", route_key="a/one"), 0.8,
+                      detail={"adj": 0.8, "cos_raw": 0.8})
+        strong = Scored(SimpleNamespace(id="answer", route_key="b/two"), 0.6,
+                        detail={"adj": 0.6, "cos_raw": 0.96})
+        next_match = Scored(SimpleNamespace(id="additional", route_key="c/three"), 0.58,
+                            detail={"adj": 0.58, "cos_raw": 0.96})
+        selected, related = router._select(route, [weak, strong, next_match], [], set())
+        self.assertEqual([s.item.id for s in selected], ["answer"])
+        self.assertEqual([s.item.id for s in related], ["incidental", "additional"])
+        # Filtering must still return nothing when every candidate fails the same bar.
+        selected, related = router._select(route, [weak], [], set())
+        self.assertEqual(selected, [])
+        self.assertEqual([s.item.id for s in related], ["incidental"])
 
 
 MODELS = os.environ.get("BRAIN_TEST_MODELS", "")
