@@ -67,6 +67,15 @@ class Vault:
     def touch(self, path) -> None:
         """Say a file (or every file in a folder) is about to change or go."""
         self.writes += 1
+        # A fast same-size edit or undo can keep the same filesystem timestamp.
+        # Known writes invalidate parsed content even when its stat key is unchanged.
+        target = os.path.normcase(os.path.abspath(path))
+        prefix = target + os.sep
+        with self._lock:
+            for cached in list(self._cache):
+                key = os.path.normcase(os.path.abspath(cached))
+                if key == target or key.startswith(prefix):
+                    self._cache.pop(cached)
         if self.recording is not None:
             self.recording.capture(path)
 

@@ -2092,10 +2092,15 @@ class Router:
             return [], []
         # The bar is set by relevance. Freshness lifts a new note into the packet; it does not
         # raise the bar under everything else (a just-edited rule pushing out its neighbours).
-        best = max(s.detail["adj"] - (p.fresh_boost if s.detail.get("fresh") else 0.0)
-                   for s in pool)
         micro_lookup = route.task_type == "knowledge" and route.scale == "micro"
         calibrated = self.calibrated("note_abs_floor")
+        # A candidate that cannot be sent whole must not raise the relative cutoff
+        # above candidates that pass the evidence bar. Keep it in the pointer pool.
+        eligible = [s for s in pool if not calibrated or (
+            self.evidence(s) > self.share("note")
+            and (not s.detail.get("gated") or s.detail["adj"] >= p.note_abs_floor))]
+        best = max((s.detail["adj"] - (p.fresh_boost if s.detail.get("fresh") else 0.0)
+                    for s in eligible), default=0.0)
         if calibrated:
             factor = p.whole_relative
         else:
