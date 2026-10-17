@@ -36,6 +36,18 @@ The parts:
 """
 
 
+def redacts(model_id: str, policies: dict[str, Any] | None) -> bool:
+    """Does this triage model read redacted text? A local model (Ollama, or the pinned one)
+    reads it as written. A cloud model reads it redacted when the Brain's switch says so, and
+    always under the regulated preset (decision 7). Policies that cannot be read: the careful
+    default, redacted."""
+    if model_id.startswith(("local:", "ollama:")):
+        return False
+    if policies is None:
+        return True
+    return policies.get("preset") == "regulated" or bool(policies.get("redact_cloud", True))
+
+
 class Triage:
     """A cheap first reading, through one of the models the app can ask."""
 

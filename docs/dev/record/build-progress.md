@@ -831,3 +831,34 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   the run), and a run may propose 40 at most. The circular-evidence rule looked outputs up by
   file path, and the workspace names them by id; now a proposal citing a file the app's AI
   work made names that run's session, and the Brain checks it against what the run was handed.
+- 2026-10-16, `hardening`: Rami asked that ingestion, distillation and retrieval be "rock solid"
+  before the redesign's features are built.
+  - The ingestion audit's attribution findings are fixed:
+    - `brain scout`'s finds are a document's word, so their instructions are reported;
+    - an exported ChatGPT or Claude history is the owner's own messages;
+    - an earlier-workspace memory that was only suggested is the owner's AI's;
+    - regulated always redacts what a cloud model triages.
+  - Retrieval: "review" and "audit" stay among a request's words, since a code review checklist
+    or an audit trail is what such a request is about. Recall on the labeled requests rose
+    from 85% to 88% by meaning and from 75% to 77% by words. False nothing fell from 10% to 8%
+    and from 8% to 5%. Held-out results and must-hold recall and decoys are unchanged.
+  - Precision drops a point. By words alone, "Review the plumbing launch plan" now also pulls
+    the investor-update rule ("Riley reviews and sends it"); by meaning it does not. Two kept
+    parity briefs changed and were rewritten.
+  - A real end-to-end run on a scratch home on F: put a meeting transcript in through the app
+    and asked for its digest and Find what to remember.
+  - That run found every Claude Code run the app starts failing at once: the app passed
+    --restricted, which the PC's Claude Code (2.1.92) lacks. Now the runner reads the CLI's
+    help and uses --restricted or --setting-sources project, and refuses a Claude Code with
+    neither.
+  - It found the PC's Claude Code login dead though `auth status` says signed in. A failed
+    authentication now shows it signed out with "sign in again".
+  - It found Gemini CLI stopping on an account that needs GOOGLE_CLOUD_PROJECT; the error now
+    names that line, not a stack frame.
+  - Verified for real:
+    - matching the capture to related entries by meaning (the LinkedIn rule it changes, the
+      webinar series);
+    - Claude Code's MCP handshake with the app;
+    - Gemini CLI taking the app's flags.
+  - Not verified for real: a model's digest and distillation. They wait for Rami to sign in to
+    Claude Code again on the PC.

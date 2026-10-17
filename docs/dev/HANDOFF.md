@@ -280,7 +280,7 @@ model's behavior is made yet.
 
 - **Local models are deferred.** Get the rest of the architecture down first, with a model
   router ready from the start so models plug in later. Retrieval runs without the local
-  models: words and meaning (bge-small) give 85% needed-note recall on the demo set, 92% held
+  models: words and meaning (bge-small) give 88% needed-note recall on the demo set, 92% held
   out. Build step 9's work stays on the `models-out-of-the-box` branch, with its measurements
   (`docs/evals/setups-a-to-e.md` there): no setup with the small local models beat words and
   meaning.

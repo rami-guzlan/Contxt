@@ -76,6 +76,20 @@ def test_a_demo_brain_answers_with_its_own_context():
     assert "company-offer" in prices["note_ids"]
 
 
+def test_a_review_request_reaches_the_review_checklist():
+    """A review or an audit is as often what a request is about as what it asks to do: the
+    word stays among those a note is matched by, so "review this pull request" finds the code
+    review checklist instead of nothing."""
+    vault = os.path.join(homes.find_starter("programmer").path, "vault")
+    brain = Brain(vault, embeddings=False)
+    try:
+        found = brain.context("Review this pull request for me", record=False).data
+    finally:
+        brain.close()
+    assert found["mode"] != "lean"
+    assert "practices-reviews-checklist" in found["note_ids"]
+
+
 def test_a_home_is_made_from_a_starter_with_its_own_history(tmp_path):
     made = homes.create_home(str(tmp_path), homes.find_starter("programmer"), port=8800)
     assert os.path.isfile(os.path.join(made["vault"], "brain.json"))
@@ -170,7 +184,7 @@ def test_setup_then_connect_from_the_command_line(tmp_path, capsys, fetched):
 
 
 def test_setup_fetches_the_meaning_model_unless_offline(tmp_path, capsys, fetched):
-    # Recall falls from 85% to 75% on the demo set when the Brain matches by words alone.
+    # Recall falls from 88% to 77% on the demo set when the Brain matches by words alone.
     code, out = run(capsys, "--home", str(tmp_path / "online"), "setup")
     assert code == 0 and len(fetched) == 1
     assert "Your Brain matches requests by meaning" in out.out

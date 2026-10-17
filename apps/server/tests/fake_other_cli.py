@@ -4,7 +4,8 @@ started: its arguments, its folder and the prompt it read on stdin. Each also pr
 real one prints beside its answer (Codex a header, Gemini a credentials line), which the
 workspace must leave out.
 
-FAKE_CLI_MODE is ok (default) or fail (exits with an error on stderr).
+FAKE_CLI_MODE is ok (default), fail (exits with an error on stderr) or crash (a stack trace,
+as Gemini CLI prints one for an account it cannot use).
 """
 
 import json
@@ -22,6 +23,15 @@ prompt = sys.stdin.read()
 if os.environ.get("FAKE_CLI_MODE") == "fail":
     print("quota exceeded for this account", file=sys.stderr)
     sys.exit(2)
+if os.environ.get("FAKE_CLI_MODE") == "crash":  # as Gemini CLI stops on an account it cannot use
+    print("Loaded cached credentials.")
+    print(
+        "An unexpected critical error occurred:\nError: This account requires setting the "
+        "GOOGLE_CLOUD_PROJECT env var.\n    at setupUser (file:///setup.js:36:15)\n"
+        "    at async main (file:///gemini.js:158:34)",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 report = json.dumps({"argv": args, "cwd": os.getcwd(), "prompt": prompt})
 if kind == "codex":
     print("OpenAI Codex v0.9.9 (research preview)\n--------\nworkdir: " + os.getcwd())

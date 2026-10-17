@@ -389,6 +389,8 @@ class Legacy:
                 proposer=_proposer(who),
                 topic=home.topic if home is not None and home.topic else None,
                 origin=f"workspace:{item['id']}",
+                # A kept memory is the owner's word; one only suggested is their AI's.
+                extra={"said_by": "owner" if kept else "owner-ai"},
             )
             if made.status in ("pending", "applied", "duplicate"):
                 report["notes_proposed"] += made.status != "duplicate"

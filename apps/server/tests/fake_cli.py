@@ -5,6 +5,11 @@ stream-json lines it reads, and a report of exactly how it was started. Asked fo
 FAKE_CLI_SIGNED_IN=0 answers as signed out. FAKE_CLI_MODE is ok (default), hang (waits to be
 stopped) or fail (exits with an error on stderr). FAKE_CLI_MAKE names files (comma-separated,
 relative to its folder) it makes there, as a run of a skill that makes files would.
+
+FAKE_CLI_FLAGS says which version it plays: new (default, has --restricted), older (only
+--setting-sources) or oldest (neither); an option it does not know stops it, as Claude Code
+does. FAKE_CLI_AUTH=expired plays a login whose token no longer works: `auth status` still
+says signed in, but every answer is an authentication error.
 """
 
 import json
@@ -14,16 +19,36 @@ import sys
 import time
 
 args = sys.argv[1:]
+flags = os.environ.get("FAKE_CLI_FLAGS", "new")
+known = {"new": ["--restricted", "--setting-sources"], "older": ["--setting-sources"]}.get(
+    flags, []
+)
 if args[:1] == ["--version"]:
     print("9.9.9 (Claude Code)")
+    sys.exit(0)
+if args[:1] == ["--help"]:
+    print("Usage: claude [options] [command] [prompt]\n\nOptions:")
+    for flag in ["--tools <tools...>", "--strict-mcp-config", *known]:
+        print(f"  {flag}")
     sys.exit(0)
 if args[:2] == ["auth", "status"]:
     signed_in = os.environ.get("FAKE_CLI_SIGNED_IN", "1") == "1"
     print(json.dumps({"loggedIn": signed_in, "authMethod": "claude.ai" if signed_in else "none"}))
     sys.exit(0 if signed_in else 1)
+for flag in ("--restricted", "--setting-sources"):
+    if flag in args and flag not in known:
+        print(f"error: unknown option '{flag}'", file=sys.stderr)
+        sys.exit(1)
 
 mode = os.environ.get("FAKE_CLI_MODE", "ok")
 prompt = sys.stdin.read()
+if os.environ.get("FAKE_CLI_AUTH") == "expired":
+    reason = (
+        'Failed to authenticate. API Error: 401 {"type":"error","error":{"type":'
+        '"authentication_error","message":"OAuth access token is invalid."}}'
+    )
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": True, "result": reason}))
+    sys.exit(1)
 with open(args[args.index("--mcp-config") + 1], encoding="utf-8") as handle:
     config = json.load(handle)
 # What Claude Code reports a call used: a fixed system prompt plus the prompt, about four

@@ -46,10 +46,10 @@ ORIGIN_SAID_BY = {"you": "owner", "workspace": "owner", "conversation": "owner-a
                   "library": "document", "folder": "document", "movein": "document",
                   "import": "document", "sync": "system", "work": "agent", "run": "agent",
                   "skill": "agent", "output": "agent", "agent": "agent"}
-# Moving in brings the person's own words: instruction files and pastes are the owner's; what
-# a model read out of an exported history of conversations is the owner's AI's reading.
+# Moving in brings the person's own words: instruction files and pastes are the owner's, and so
+# is an AI app's exported history, which gives only the person's own messages, read by code.
 MOVE_IN = {"instructions": "owner", "cursor": "owner", "paste": "owner",
-           "chatgpt": "owner-ai", "claude": "owner-ai"}
+           "chatgpt": "owner", "claude": "owner"}
 # Who speaks in content brought in: an instruction they give is reported, never kept as a rule.
 CONTENT_SPEAKERS = ("document", "person", "system")
 REPORTED = {"document": "The document says", "person": "Someone else said",

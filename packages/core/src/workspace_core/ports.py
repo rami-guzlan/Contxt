@@ -244,6 +244,8 @@ class BrainPort(Protocol):
         revises: str | None = None,  # a new text for this existing entry, not a new entry
         summary: str | None = None,  # one line saying what it holds; derived when missing
         origin: str | None = None,  # where it came from: `doc:<id>@r<n>`, `work:<run>`, `you:`
+        # More front matter: who said it, the goal or project it serves, a must-hold's fields.
+        extra: dict[str, Any] | None = None,
         # What AI work proposing it read (its run's inputs): the quotes in `evidence` must
         # come from there, as a chat's must come from what the person said.
         heard: list[str] | None = None,
