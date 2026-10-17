@@ -653,7 +653,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             lines.append(f"- {name} (`{note.id}`, {note.route_key}): "
                          f"{util.excerpt(note.summary, 140)}")
         lines.append("")
-    if listed and route.mode in ("standard", "exact-skill"):
+    if listed and route.mode in ("standard", "exact-skill", "focus-only"):
         lines += ["## Also relevant (not included)", ""]
         for scored in listed:
             note = scored.item

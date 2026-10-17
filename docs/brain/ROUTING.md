@@ -37,7 +37,7 @@ or the calibrated evidence thresholds.
 | portfolio | "what is active", "orient me in the brain" | every visible Focus, active first |
 | system | questions about the brain itself ("brain MCP", "routing gap") | engine docs; the `system_skill` for deep work |
 | focus-update | a request naming a Focus and reporting progress ("X approved the outline"), or explicitly asking to record it | the Focus and an instruction to call `record_focus_update`; questions and drafting requests about an approval are not progress reports |
-| focus-only | a question about a named Focus, or a status question ("latest on ...") | its current state, baseline and files; for a question about its content, the file parts that answer it |
+| focus-only | a question about a named Focus, or a status question ("latest on ...") | its current state, baseline and files; factual questions also list related approved notes to open with `get_note`, and the file parts that answer them |
 | focus-aware | work on a named Focus | the Focus, its pinned notes, its project folder, its files, and standard routing |
 | standing | "may I publish/send ..." or a lookup the kernel already answers | pointers to the standing notes that answer it |
 | lean | nothing clears the evidence floor, and no file part answers it on its own | the closest notes and files, listed, and an instruction to say so |
@@ -46,6 +46,15 @@ or the calibrated evidence thresholds.
 A request names a Focus by an alias, by its full name plus a status or work word, by a word
 only that Focus uses, or by its distinctive name as a phrase ("30 60 90", "bank of china")
 when that phrase is rare in the brain.
+
+A factual project question can need an approved decision or fact stored separately from
+the project summary. The focus-only path now lists matching notes associated through the
+project folder or id, a pinned link, or its name or aliases in the note. The existing related
+evidence threshold and pointer count still apply. These candidates are visible in the MCP
+packet, not just its metadata; the calling model can open the evidence with `get_note`.
+A general project overview keeps the summary path. Candidate discovery does not turn an
+undated decision into a dated value, increase the full-note budget, or bypass scope/manual
+exclusions. Membership is cached for one index version and admission is checked per caller.
 
 ## Standard routing: every note competes
 
