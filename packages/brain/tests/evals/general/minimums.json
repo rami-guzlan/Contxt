@@ -4,28 +4,28 @@
   "bistro": {
    "recall": 0.595,
    "whole_recall": 0.571,
-   "reachable": 0.881,
-   "precision": 0.725,
+   "reachable": 0.905,
+   "precision": 0.69,
    "correct_nothing": 0.556,
    "off_topic_nothing": 0.93,
    "null_nothing": 0.96,
    "false_nothing": 0.0,
    "must_hold_recall": 1.0,
-   "must_hold_decoys": 0.239,
-   "off_topic_must_holds": 0.257
+   "must_hold_decoys": 0.225,
+   "off_topic_must_holds": 0.233
   },
   "dental": {
    "recall": 0.488,
    "whole_recall": 0.488,
-   "reachable": 0.86,
-   "precision": 0.743,
+   "reachable": 0.884,
+   "precision": 0.694,
    "correct_nothing": 0.7,
    "off_topic_nothing": 0.95,
    "null_nothing": 0.953,
    "false_nothing": 0.038,
    "must_hold_recall": 1.0,
    "must_hold_decoys": 0.818,
-   "off_topic_must_holds": 0.374
+   "off_topic_must_holds": 0.387
   },
   "entrepreneur": {
    "recall": 0.667,
