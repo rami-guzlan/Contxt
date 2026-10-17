@@ -145,3 +145,19 @@ class MeaningTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TopicTextTest(unittest.TestCase):
+    def test_a_topic_without_a_line_is_described_by_the_work_its_notes_are_for(self):
+        vault = se.copy_vault(LAWFIRM)
+        try:
+            brain = se.open_brain(vault)
+            try:
+                index = brain.state().index
+                note = index.note("consultation-fee")
+                self.assertTrue(note.applies_when)  # the test Brain ships enriched
+                self.assertIn(note.applies_when, index.topic_texts[note.route_key])
+            finally:
+                brain.close()
+        finally:
+            shutil.rmtree(os.path.dirname(vault), ignore_errors=True)

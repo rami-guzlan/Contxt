@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 import unittest
+from unittest import mock
 from types import SimpleNamespace
 
 from brainkit import calibration, evalkit
@@ -211,3 +213,36 @@ class PointerTest(unittest.TestCase):
             self.assertRegex(first, r"^- .+ \(`[^`]+`, [^)]+\): .{10,}")
         finally:
             shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
+
+
+class CalibrationBankCacheTest(unittest.TestCase):
+    def test_changing_the_bank_rebuilds_a_cached_calibration_even_at_the_same_size(self):
+        with tempfile.TemporaryDirectory() as folder:
+            scores = mock.Mock(side_effect=lambda request, restrict: {"n": len(request)})
+            index = SimpleNamespace(
+                embedder=SimpleNamespace(cache_path=os.path.join(folder, "embeddings.sqlite")),
+                semantic_ready=lambda: False, note_bm25=SimpleNamespace(scores=scores))
+            with mock.patch.object(calibration, "null_bank", return_value=["short"]):
+                first = calibration.for_index(index, ["n"])
+                self.assertEqual(first.bm, [5])
+            with mock.patch.object(calibration, "null_bank", return_value=["much longer"]):
+                changed = calibration.for_index(index, ["n"])
+                again = calibration.for_index(index, ["n"])
+            self.assertEqual(changed.bm, [11])
+            self.assertEqual(again.to_dict(), changed.to_dict())
+            self.assertEqual(scores.call_count, 2)
+
+    def test_a_cache_without_bank_provenance_is_rebuilt_once(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "calibration.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump({"cos": None, "bm": [99], "domains": {}, "notes": 1,
+                           "model": ""}, handle)
+            scores = mock.Mock(return_value={"n": 3})
+            index = SimpleNamespace(
+                embedder=SimpleNamespace(cache_path=os.path.join(folder, "embeddings.sqlite")),
+                semantic_ready=lambda: False, note_bm25=SimpleNamespace(scores=scores))
+            with mock.patch.object(calibration, "null_bank", return_value=["request"]):
+                self.assertEqual(calibration.for_index(index, ["n"]).bm, [3])
+                self.assertEqual(calibration.for_index(index, ["n"]).bm, [3])
+            scores.assert_called_once()

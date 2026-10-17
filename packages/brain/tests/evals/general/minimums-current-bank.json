@@ -1,0 +1,72 @@
+{
+ "about": "The original stage-5 measurement tree, replayed with only the shipped 292-request calibration bank substituted. The original minimums.json remains separately enforced against its original bank.",
+ "source_commit": "c9373cb87ed93c955c33ce0bf36d9f4fb1147f0b",
+ "brains": {
+  "bistro": {
+   "recall": 0.595,
+   "whole_recall": 0.571,
+   "reachable": 0.905,
+   "precision": 0.683,
+   "correct_nothing": 0.556,
+   "off_topic_nothing": 0.96,
+   "null_nothing": 0.969,
+   "false_nothing": 0.0,
+   "must_hold_recall": 1.0,
+   "must_hold_decoys": 0.183,
+   "off_topic_must_holds": 0.227
+  },
+  "dental": {
+   "recall": 0.488,
+   "whole_recall": 0.488,
+   "reachable": 0.837,
+   "precision": 0.694,
+   "correct_nothing": 0.7,
+   "off_topic_nothing": 0.96,
+   "null_nothing": 0.955,
+   "false_nothing": 0.038,
+   "must_hold_recall": 1.0,
+   "must_hold_decoys": 0.788,
+   "off_topic_must_holds": 0.403
+  },
+  "entrepreneur": {
+   "recall": 0.667,
+   "whole_recall": 0.667,
+   "reachable": 1.0,
+   "precision": 0.714,
+   "correct_nothing": 1.0,
+   "off_topic_nothing": 0.97,
+   "null_nothing": 0.973,
+   "false_nothing": 0.0
+  },
+  "knowledge-company": {
+   "recall": 0.833,
+   "whole_recall": 0.833,
+   "reachable": 1.0,
+   "precision": 0.882,
+   "correct_nothing": 0.667,
+   "off_topic_nothing": 0.99,
+   "null_nothing": 0.962,
+   "false_nothing": 0.143
+  },
+  "personal": {
+   "recall": 1.0,
+   "whole_recall": 1.0,
+   "reachable": 1.0,
+   "precision": 0.933,
+   "correct_nothing": 1.0,
+   "off_topic_nothing": 0.98,
+   "null_nothing": 0.962,
+   "false_nothing": 0.0
+  },
+  "programmer": {
+   "recall": 0.8,
+   "whole_recall": 0.8,
+   "reachable": 1.0,
+   "precision": 1.0,
+   "correct_nothing": 1.0,
+   "off_topic_nothing": 0.92,
+   "null_nothing": 0.962,
+   "false_nothing": 0.0
+  }
+ }
+}

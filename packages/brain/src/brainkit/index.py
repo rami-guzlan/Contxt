@@ -492,8 +492,9 @@ class Index:
 
         A topic's line in topics.md when it has one. A topic without a line (a project folder,
         a topic a new note just created) is described by what is filed in it: the project's
-        title and current state, or the titles of its notes. Every topic with a live note
-        gets a description, so a new topic is matchable the moment its first note lands.
+        title and current state, or the titles of its notes and the work each is for (their
+        enrichment, enrich.py). Every topic with a live note gets a description, so a new
+        topic is matchable the moment its first note lands, and nobody has to write one.
         """
         members: dict[str, list] = {}
         for note in self.notes.values():
@@ -511,7 +512,9 @@ class Index:
             if focus is not None:
                 out[key] = f"{words} {focus.title} {focus.summary}"
             else:
-                out[key] = f"{words} " + " ".join(n.title for n in sorted(notes, key=lambda n: n.id))
+                ordered = sorted(notes, key=lambda n: n.id)
+                out[key] = " ".join([words, *(n.title for n in ordered),
+                                     *(n.applies_when for n in ordered if n.applies_when)])
         return out
 
     # ------------------------------------------------------------------ files
