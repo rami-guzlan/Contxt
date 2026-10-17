@@ -781,7 +781,9 @@ class Router:
     def calibration(self):
         if self._calibration is None:
             from . import calibration
-            notes = [n.id for n in self.index.notes.values() if not n.standing]
+            cards = {c.id for c in self.index.cards.values()}
+            notes = [n.id for n in self.index.notes.values()
+                     if not n.standing and n.id not in cards]
             domains = [n.id for n in self.index.notes.values() if n.must_hold]
             self._calibration = calibration.for_index(self.index, notes, domains)
         return self._calibration
@@ -1649,15 +1651,21 @@ class Router:
         # part overrides that only when the request names its file or the part answers it
         # closely (see UNBACKED_SEMANTIC).
         if self.calibrated("lean_floor"):
-            best_evidence = max((self.evidence(s) for s in ranked_on_demand), default=0.0)
+            # Knowledge decides: a filed document's card has its own bars for being quoted.
+            cards = {c.id for c in self.index.cards.values()}
+            best_evidence = max((self.evidence(s) for s in ranked_on_demand
+                                 if s.item.id not in cards), default=0.0)
             weak = best_evidence <= self.share("nothing")
             why_weak = f"best match beats {best_evidence:.0%} of unrelated requests"
         else:
             weak = best_on_demand < p.lean_floor
             why_weak = f"best note {best_on_demand:.2f} < {p.lean_floor}"
-        unbacked = (not domains and route.focus is None and route.skill is None
-                    and not route.candidates and not style and weak)
-        if unbacked and route.sections:
+        alone = (not domains and route.focus is None and route.skill is None
+                 and not route.candidates and not style)
+        unbacked = alone and weak
+        # Quoting a file part that nothing else backs keeps its own measured bar: the parts
+        # that answer alone are kept when the best note is under lean_floor, calibrated or not.
+        if alone and best_on_demand < p.lean_floor and route.sections:
             kept = [s for s in route.sections if _answers_alone(s)]
             if len(kept) < len(route.sections):
                 route.log("sections: nothing else backs this request; kept "
