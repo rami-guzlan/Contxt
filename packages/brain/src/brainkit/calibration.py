@@ -53,12 +53,13 @@ def _requests(note_ids, requests=None) -> list[str]:
 
 def corpus_fingerprint(index, note_ids, domain_ids) -> str:
     """Hash the inputs used by calibration, including enrichment and the word index."""
-    from .index import note_search_text, must_hold_search_text
+    from .index import note_vector_text, note_ask_lines, must_hold_search_text
     notes = getattr(index, "notes", {})
     config = getattr(index, "config", None)
     routing = getattr(config, "routing", None)
     payload = {
-        "notes": {nid: note_search_text(n) for nid, n in notes.items()},
+        "notes": {nid: {"text": note_vector_text(n), "hints": note_ask_lines(n)}
+                  for nid, n in notes.items()},
         "domains": {nid: must_hold_search_text(notes[nid]) for nid in domain_ids if nid in notes},
         "note_ids": sorted(note_ids), "domain_ids": sorted(domain_ids),
         "words": getattr(index.note_bm25, "docs", {}),
