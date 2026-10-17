@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Sam's Classroom Brain",
+  "description": "Sam Whitaker's middle school science teaching: classes, labs, students, families, school rules, the robot club and the fair.",
+  "starter": "test",
+  "owner": "person:sam",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "about": {
+        "label": "About",
+        "order": 1,
+        "description": "who Sam is, the school day, and how work gets handed back"
+      },
+      "teaching": {
+        "label": "Teaching",
+        "order": 2,
+        "description": "units, lab work, class materials and grading"
+      },
+      "students": {
+        "label": "Students",
+        "order": 3,
+        "description": "support plans, class sizes, groups and student privacy"
+      },
+      "families": {
+        "label": "Families",
+        "order": 4,
+        "description": "notes home, translation and family conferences"
+      },
+      "school": {
+        "label": "School",
+        "order": 5,
+        "description": "Ridgeview rules, outings, the supply budget and who runs what"
+      },
+      "robotics": {
+        "label": "Robotics",
+        "order": 6,
+        "description": "the after-school robot club and its competition season"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:sam": {
+      "parent": "company",
+      "label": "Sam"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:sam",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

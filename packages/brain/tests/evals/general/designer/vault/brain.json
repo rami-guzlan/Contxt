@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Mia's Studio Brain",
+  "description": "Mia Laurent's studio Brain: clients, prices, process, writing and what is in flight.",
+  "starter": "test",
+  "owner": "person:mia",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "assistant": {
+        "label": "Assistant",
+        "order": 1,
+        "description": "how the assistant writes and acts for Mia"
+      },
+      "me": {
+        "label": "Me",
+        "order": 2,
+        "description": "who Mia is, her working week and protected hours"
+      },
+      "business": {
+        "label": "Business",
+        "order": 3,
+        "description": "prices, agreements, quotes and billing"
+      },
+      "clients": {
+        "label": "Clients",
+        "order": 4,
+        "description": "regular clients, their contacts, house styles and review cycles"
+      },
+      "production": {
+        "label": "Production",
+        "order": 5,
+        "description": "how design files are made, named, licensed and passed to the developer"
+      },
+      "marketing": {
+        "label": "Marketing",
+        "order": 6,
+        "description": "portfolio write-ups and the monthly mailing"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:mia": {
+      "parent": "company",
+      "label": "Mia"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:mia",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

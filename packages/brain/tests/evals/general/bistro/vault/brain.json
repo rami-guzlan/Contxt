@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Marco's Brain",
+  "description": "Marco Bellini's Brain for running Bellini's bistro: the kitchen, suppliers, team, guests, marketing and what is in flight.",
+  "starter": "test",
+  "owner": "person:marco",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "about": {
+        "label": "About",
+        "order": 1,
+        "description": "who Marco is and what Bellini's is"
+      },
+      "kitchen": {
+        "label": "Kitchen",
+        "order": 2,
+        "description": "the menu card, the specials board, prep and kitchen standards"
+      },
+      "purchasing": {
+        "label": "Purchasing",
+        "order": 3,
+        "description": "suppliers, ordering and what the food costs"
+      },
+      "team": {
+        "label": "Team",
+        "order": 4,
+        "description": "the people, the weekly rota and the tip pool"
+      },
+      "guests": {
+        "label": "Guests",
+        "order": 5,
+        "description": "allergens, group bookings and buyouts"
+      },
+      "marketing": {
+        "label": "Marketing",
+        "order": 6,
+        "description": "the monthly email and Instagram"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:marco": {
+      "parent": "company",
+      "label": "Marco"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:marco",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

@@ -1,0 +1,505 @@
+{
+ "about": "Off-topic requests for scoring correct nothing on every Brain: general questions nobody's Brain is about. Kept apart from brainkit/null_requests.txt, which calibrates the bar for nothing, so a Brain is never scored on the requests that set its bar. Same rule as that file: no cooking, home, health, money, travel or coding.",
+ "requests": [
+  {
+   "id": "ot-001",
+   "request": "Who was the last pharaoh of Egypt?",
+   "category": "history"
+  },
+  {
+   "id": "ot-002",
+   "request": "What started the French Revolution?",
+   "category": "history"
+  },
+  {
+   "id": "ot-003",
+   "request": "Who was Joan of Arc?",
+   "category": "history"
+  },
+  {
+   "id": "ot-004",
+   "request": "What was the Cold War, in two sentences?",
+   "category": "history"
+  },
+  {
+   "id": "ot-005",
+   "request": "Why did the Roman Empire fall?",
+   "category": "history"
+  },
+  {
+   "id": "ot-006",
+   "request": "Who was the first person to sail around the world?",
+   "category": "history"
+  },
+  {
+   "id": "ot-007",
+   "request": "What was the Industrial Revolution?",
+   "category": "history"
+  },
+  {
+   "id": "ot-008",
+   "request": "When did the Wright brothers first fly?",
+   "category": "history"
+  },
+  {
+   "id": "ot-009",
+   "request": "Who was Charlemagne?",
+   "category": "history"
+  },
+  {
+   "id": "ot-010",
+   "request": "What was the Ottoman Empire?",
+   "category": "history"
+  },
+  {
+   "id": "ot-011",
+   "request": "What is the deepest lake in the world?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-012",
+   "request": "Which country has the longest coastline?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-013",
+   "request": "What is the capital of Peru?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-014",
+   "request": "How many countries are in Africa?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-015",
+   "request": "What is the driest place on earth?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-016",
+   "request": "Which two countries share the longest border?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-017",
+   "request": "What is the highest city in the world?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-018",
+   "request": "Where is the Atacama Desert?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-019",
+   "request": "What is the largest island in the Mediterranean?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-020",
+   "request": "Which continent has the most countries?",
+   "category": "geography"
+  },
+  {
+   "id": "ot-021",
+   "request": "Why is the ocean salty?",
+   "category": "science"
+  },
+  {
+   "id": "ot-022",
+   "request": "What is the difference between mass and weight?",
+   "category": "science"
+  },
+  {
+   "id": "ot-023",
+   "request": "How does sound travel?",
+   "category": "science"
+  },
+  {
+   "id": "ot-024",
+   "request": "What is a neutron star?",
+   "category": "science"
+  },
+  {
+   "id": "ot-025",
+   "request": "Why do we see lightning before we hear thunder?",
+   "category": "science"
+  },
+  {
+   "id": "ot-026",
+   "request": "How do glaciers move?",
+   "category": "science"
+  },
+  {
+   "id": "ot-027",
+   "request": "What is the strongest natural material?",
+   "category": "science"
+  },
+  {
+   "id": "ot-028",
+   "request": "Why does a compass needle move near a magnet?",
+   "category": "science"
+  },
+  {
+   "id": "ot-029",
+   "request": "What makes a diamond so hard?",
+   "category": "science"
+  },
+  {
+   "id": "ot-030",
+   "request": "What is dark matter, in simple words?",
+   "category": "science"
+  },
+  {
+   "id": "ot-031",
+   "request": "What is the origin of the word salary?",
+   "category": "language"
+  },
+  {
+   "id": "ot-032",
+   "request": "What does the word \"serendipity\" mean?",
+   "category": "language"
+  },
+  {
+   "id": "ot-033",
+   "request": "Give me three words that rhyme with light.",
+   "category": "language"
+  },
+  {
+   "id": "ot-034",
+   "request": "What is the difference between \"compliment\" and \"complement\"?",
+   "category": "language"
+  },
+  {
+   "id": "ot-035",
+   "request": "How do you pronounce \"quinoa\"?",
+   "category": "language"
+  },
+  {
+   "id": "ot-036",
+   "request": "What is the longest word you can type with only the left hand?",
+   "category": "language"
+  },
+  {
+   "id": "ot-037",
+   "request": "What does \"per se\" mean?",
+   "category": "language"
+  },
+  {
+   "id": "ot-038",
+   "request": "What is a homophone? Give two.",
+   "category": "language"
+  },
+  {
+   "id": "ot-039",
+   "request": "What is the past tense of \"lead\"?",
+   "category": "language"
+  },
+  {
+   "id": "ot-040",
+   "request": "Is \"irregardless\" a real word?",
+   "category": "language"
+  },
+  {
+   "id": "ot-041",
+   "request": "Who painted the Mona Lisa?",
+   "category": "arts"
+  },
+  {
+   "id": "ot-042",
+   "request": "What is impressionism?",
+   "category": "arts"
+  },
+  {
+   "id": "ot-043",
+   "request": "Who wrote the Divine Comedy?",
+   "category": "arts"
+  },
+  {
+   "id": "ot-044",
+   "request": "What is a fugue in music?",
+   "category": "arts"
+  },
+  {
+   "id": "ot-045",
+   "request": "Who was Frida Kahlo?",
+   "category": "arts"
+  },
+  {
+   "id": "ot-046",
+   "request": "What is the oldest known cave painting?",
+   "category": "arts"
+  },
+  {
+   "id": "ot-047",
+   "request": "Recommend a classic novel about the sea.",
+   "category": "arts"
+  },
+  {
+   "id": "ot-048",
+   "request": "Who composed the Moonlight Sonata?",
+   "category": "arts"
+  },
+  {
+   "id": "ot-049",
+   "request": "What is the difference between a novel and a novella?",
+   "category": "arts"
+  },
+  {
+   "id": "ot-050",
+   "request": "What is a ballad?",
+   "category": "arts"
+  },
+  {
+   "id": "ot-051",
+   "request": "How does scoring work in volleyball?",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-052",
+   "request": "What is a grand slam in tennis?",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-053",
+   "request": "How many pieces does each player have in chess?",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-054",
+   "request": "What is the Stanley Cup?",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-055",
+   "request": "How long is an Olympic swimming pool?",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-056",
+   "request": "What is a perfect game in baseball?",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-057",
+   "request": "Explain the rules of curling.",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-058",
+   "request": "How do you play checkers?",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-059",
+   "request": "What is the highest possible hand in poker?",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-060",
+   "request": "How many dice are used in backgammon?",
+   "category": "sports_games"
+  },
+  {
+   "id": "ot-061",
+   "request": "How long can a turtle hold its breath?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-062",
+   "request": "Why do flamingos stand on one leg?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-063",
+   "request": "How many hearts does an octopus have?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-064",
+   "request": "What do pandas eat besides bamboo?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-065",
+   "request": "How far can a kangaroo jump?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-066",
+   "request": "Why do dogs wag their tails?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-067",
+   "request": "What is the smallest mammal?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-068",
+   "request": "How do bats find their way in the dark?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-069",
+   "request": "Do fish sleep?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-070",
+   "request": "How long do parrots live?",
+   "category": "animals"
+  },
+  {
+   "id": "ot-071",
+   "request": "What is 48 divided by 6, plus 9?",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-072",
+   "request": "What is the next number: 2, 6, 12, 20, ...?",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-073",
+   "request": "How many edges does a cube have?",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-074",
+   "request": "What is 7 factorial?",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-075",
+   "request": "If a train has 8 cars with 40 seats each, how many seats are there?",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-076",
+   "request": "What is a googol?",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-077",
+   "request": "What is 125 percent of 80?",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-078",
+   "request": "How many diagonals does a hexagon have?",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-079",
+   "request": "Give me a logic puzzle with an answer.",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-080",
+   "request": "What is the Monty Hall problem?",
+   "category": "puzzles_math"
+  },
+  {
+   "id": "ot-081",
+   "request": "Hey there, are you awake?",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-082",
+   "request": "What's up?",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-083",
+   "request": "Tell me something that will make me smile.",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-084",
+   "request": "Can you recommend a good joke for a birthday card?",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-085",
+   "request": "What should I talk about with a stranger on a long flight?",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-086",
+   "request": "Give me a random fun fact.",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-087",
+   "request": "Write a short poem about Monday mornings.",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-088",
+   "request": "I need a pep talk.",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-089",
+   "request": "What's a fun name for a team trivia night?",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-090",
+   "request": "Say hello in five languages.",
+   "category": "small_talk"
+  },
+  {
+   "id": "ot-091",
+   "request": "When is the next Halley's comet visit?",
+   "category": "sky_space"
+  },
+  {
+   "id": "ot-092",
+   "request": "What is the hottest planet?",
+   "category": "sky_space"
+  },
+  {
+   "id": "ot-093",
+   "request": "How big is Jupiter compared to Earth?",
+   "category": "sky_space"
+  },
+  {
+   "id": "ot-094",
+   "request": "What is the Kuiper belt?",
+   "category": "sky_space"
+  },
+  {
+   "id": "ot-095",
+   "request": "Why is Mars red?",
+   "category": "sky_space"
+  },
+  {
+   "id": "ot-096",
+   "request": "How do astronauts sleep in space?",
+   "category": "sky_space"
+  },
+  {
+   "id": "ot-097",
+   "request": "What is a meteor shower?",
+   "category": "sky_space"
+  },
+  {
+   "id": "ot-098",
+   "request": "How old is the universe?",
+   "category": "sky_space"
+  },
+  {
+   "id": "ot-099",
+   "request": "What is the International Space Station?",
+   "category": "sky_space"
+  },
+  {
+   "id": "ot-100",
+   "request": "Can you see the Great Wall from space?",
+   "category": "sky_space"
+  }
+ ]
+}

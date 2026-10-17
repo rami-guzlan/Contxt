@@ -115,6 +115,7 @@ def _cases(brain, st, spec, holdout, verbose, aliases, style_topics, style_notes
             "request_type": data.get("request_type"), "expected_type": case.get("type"),
             "noise_tokens": sum(int(sizes.get(i) or 0) for i in noise),
             "notes": data.get("note_ids"), "extra": sorted(delivered - useful),
+            "must_holds": sorted(must_held),
             # Labeled "should get nothing", and whether the brief brought nothing (one line).
             "nothing_expected": bool(case.get("nothing")),
             # The local engine's mode and each layer's time, for the comparison of setups.

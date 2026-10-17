@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Alvarado Immigration Law",
+  "description": "Teresa Alvarado's solo immigration practice: cases, clients, deadlines, fees, billing and community outreach.",
+  "starter": "test",
+  "owner": "person:teresa",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "firm": {
+        "label": "Firm",
+        "order": 1,
+        "description": "who Teresa is, the people in the office and what the practice takes on"
+      },
+      "clients": {
+        "label": "Clients",
+        "order": 2,
+        "description": "intake and how the firm writes and talks to clients"
+      },
+      "cases": {
+        "label": "Cases",
+        "order": 3,
+        "description": "how each kind of case works: family, work visas, naturalization and asylum"
+      },
+      "filings": {
+        "label": "Filings",
+        "order": 4,
+        "description": "deadlines, government fees and getting packets to USCIS"
+      },
+      "billing": {
+        "label": "Billing",
+        "order": 5,
+        "description": "flat fees, payment plans and the trust account"
+      },
+      "outreach": {
+        "label": "Outreach",
+        "order": 6,
+        "description": "the monthly community newsletter and free clinics"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:teresa": {
+      "parent": "company",
+      "label": "Teresa"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:teresa",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

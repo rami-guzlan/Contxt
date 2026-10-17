@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Ferreira Renovations",
+  "description": "Luis Ferreira's Brain for running Ferreira Renovations: estimates, schedules, permits, materials and homeowners.",
+  "starter": "test",
+  "owner": "person:luis",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "company": {
+        "label": "Company",
+        "order": 1,
+        "description": "the business, Luis, the crews and the subcontractors"
+      },
+      "estimating": {
+        "label": "Estimating",
+        "order": 2,
+        "description": "prices, estimates, change orders and contracts"
+      },
+      "scheduling": {
+        "label": "Scheduling",
+        "order": 3,
+        "description": "the job calendar, the busy season and inspections"
+      },
+      "compliance": {
+        "label": "Compliance",
+        "order": 4,
+        "description": "permits, lead-safe work and job-site safety"
+      },
+      "materials": {
+        "label": "Materials",
+        "order": 5,
+        "description": "suppliers, ordering and deliveries"
+      },
+      "clients": {
+        "label": "Clients",
+        "order": 6,
+        "description": "talking with homeowners, and the warranty"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "jobs in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:luis": {
+      "parent": "company",
+      "label": "Luis"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:luis",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

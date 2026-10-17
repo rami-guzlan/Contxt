@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "name": "Harvest Hands Operations",
+  "description": "Grace's Brain for running Harvest Hands: member agencies, warehouse, trucks, volunteers, funders and the board.",
+  "starter": "test",
+  "owner": "person:grace",
+  "structure": {
+    "scope_levels": [
+      {
+        "kind": "company",
+        "label": "Shared",
+        "prefix": "",
+        "container": ""
+      },
+      {
+        "kind": "person",
+        "label": "Person",
+        "prefix": "person:",
+        "container": "people",
+        "principal": true
+      }
+    ],
+    "areas": {
+      "about": {
+        "label": "About",
+        "order": 1,
+        "description": "who Grace is, how she likes work done, who is who on staff"
+      },
+      "volunteers": {
+        "label": "Volunteers",
+        "order": 2,
+        "description": "repack sessions, groups and messages to the volunteer list"
+      },
+      "agencies": {
+        "label": "Agencies",
+        "order": 3,
+        "description": "member agencies: the agreement, weekly orders and compliance"
+      },
+      "safety": {
+        "label": "Food safety",
+        "order": 4,
+        "description": "temperatures, recalls and what we can accept"
+      },
+      "logistics": {
+        "label": "Logistics",
+        "order": 5,
+        "description": "delivery runs, trucks and the warehouse"
+      },
+      "funding": {
+        "label": "Funding and board",
+        "order": 6,
+        "description": "grants, donors, impact numbers and board reporting"
+      },
+      "projects": {
+        "label": "Projects",
+        "order": 7,
+        "description": "what is in flight"
+      },
+      "topics": {
+        "label": "Topics",
+        "order": 8,
+        "description": "reference knowledge that belongs to no single area"
+      }
+    },
+    "focus": {
+      "area": "projects"
+    }
+  },
+  "scopes": {
+    "company": {
+      "label": "Shared"
+    },
+    "person:grace": {
+      "parent": "company",
+      "label": "Grace"
+    }
+  },
+  "partitions": {},
+  "governance": {
+    "approver": "person:grace",
+    "auto_apply_own_scope": true
+  },
+  "git": {
+    "auto_commit": true
+  }
+}

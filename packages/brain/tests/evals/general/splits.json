@@ -1,0 +1,12 @@
+{
+ "dental": "tuning",
+ "bistro": "tuning",
+ "lawfirm": "tuning",
+ "teacher": "tuning",
+ "foodbank": "validation",
+ "saas-support": "validation",
+ "contractor": "validation",
+ "lab": "sealed",
+ "realtor": "sealed",
+ "designer": "sealed"
+}
