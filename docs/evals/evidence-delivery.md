@@ -20,3 +20,7 @@ Validation uses fresh fictional dialogue and archived-note tests, the existing r
 scope, session, dated-value and semantic gates, all generated/demo Brains, an offline copy
 of the private Brain, and a separately frozen public sample. Historical benchmark data,
 thresholds and original results are not rewritten.
+
+The worker runs its first enrichment, learning and due-goal checks independently of machine
+uptime, then respects each existing interval. A zero-uptime clock test also checks that
+repeated ticks do not duplicate an active enrichment batch.
