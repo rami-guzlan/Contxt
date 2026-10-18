@@ -43,6 +43,8 @@ class BrainEntry:
     source: str | None = None
     path: str | None = None
     stale_reason: str | None = None
+    said_by: str | None = None
+    as_of: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,7 @@ class BrainHit:
     scope: str
     kind: str
     score: float = 0.0
+    excerpt: str = ""
 
 
 @dataclass(frozen=True)

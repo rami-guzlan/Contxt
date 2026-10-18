@@ -164,7 +164,10 @@ def search_context(
             f"version {item.revision}): {snippet}"
         )
     for hit in hits:
-        lines.append(f"- [brain] {hit.title} (brain_entry:{hit.id}, {hit.scope}): {hit.summary}")
+        lines.append(
+            f"- [brain] {hit.title} (brain_entry:{hit.id}, {hit.scope}): "
+            f"{hit.excerpt or hit.summary}"
+        )
     text = (
         "\n".join(lines) + "\n\nOpen one with get_context_item or get_brain_entry."
         if lines
@@ -225,6 +228,12 @@ def get_brain_entry(
     if entry is None:
         raise ValidationFailed(f"No Brain entry {entry_id} is visible.", field="entry_id")
     head = f"# {entry.title}\nbrain_entry:{entry.id}, {entry.kind}, {entry.scope}"
+    if entry.said_by:
+        head += f"\nSaid by: {entry.said_by}."
+    if entry.as_of:
+        head += f"\nAs of: {entry.as_of}."
+    if entry.source:
+        head += f"\nSource: {entry.source}."
     if entry.stale:
         head += "\nWarning: marked stale."
     return f"{head}\n\n{entry.text}", {"entry": asdict(entry)}

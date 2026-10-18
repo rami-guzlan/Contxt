@@ -408,6 +408,7 @@ class BrainKitAdapter:
                 scope=h.get("scope") or "",
                 kind=h.get("route_key") or "",
                 score=float(h.get("score") or 0),
+                excerpt=h.get("excerpt") or "",
             )
             for h in result.data.get("hits", [])
         ]
@@ -435,6 +436,8 @@ class BrainKitAdapter:
             stale_reason=data.get("stale"),
             source=meta.get("source"),
             path=data.get("path"),
+            said_by=meta.get("said_by"),
+            as_of=meta.get("as_of"),
         )
 
     def verify(self, entry_id: str, *, confidence: str | None = None) -> BrainEntry:

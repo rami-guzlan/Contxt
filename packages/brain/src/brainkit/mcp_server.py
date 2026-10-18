@@ -25,6 +25,7 @@ if __package__ in (None, ""):
 
 from brainkit import runtime, statements
 from brainkit.api import Brain, Result
+from brainkit.evidence import READING_GUIDANCE
 
 PROTOCOL_DEFAULT = "2024-11-05"
 INSTRUCTIONS = ("Call get_task_context first for every request, and again for every later "
@@ -41,6 +42,8 @@ INSTRUCTIONS = ("Call get_task_context first for every request, and again for ev
                 "fast-changing values (an account's health, a repo's owner) with update_state, "
                 "and a task's progress with hand_off: when you take it, after real work, when "
                 "blocked, before you stop, and when done.")
+
+INSTRUCTIONS += " " + READING_GUIDANCE
 
 _STR = {"type": "string"}
 AGENT_TOOLS = [
