@@ -511,7 +511,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
     rules = [n for n in chosen if n.kind in constraint and n.id not in focus_ids]
     knowledge = [n for n in chosen if n.kind not in constraint and n.id not in focus_ids
                  and n.id not in shorts]
-    in_short = [n for n in chosen if n.id in shorts and n.id not in focus_ids]
+    in_short = [n for n in chosen if n.id in shorts and n.id not in focus_ids
+                and n.kind not in constraint]
     if focus is not None and any(n.id == focus.id for n in chosen):
         lines += ["### Focus baseline", "", focus.note.body.strip(), ""]
     scored_by_id = {s.item.id: s.detail for s in route.notes + route.style_notes}
@@ -539,7 +540,13 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
     if rules:
         lines += ["## Your rules", "", "These direct you.", ""]
         for note in rules:
-            lines += [heading(note), ""] + body(note)
+            if note.id in shorts:
+                # Rendering must honor the form that fit: do not leak an unbudgeted full
+                # body or repeat the rule under ordinary knowledge. Its authority stays here.
+                lines += [shorts[note.id], "",
+                          f'Open the full rule with get_note(id="{note.id}") before applying it.', ""]
+            else:
+                lines += [heading(note), ""] + body(note)
     if knowledge or in_short:
         lines += ["## Notes", "", "Approved knowledge: it informs the work; the rules above "
                   "outrank it.", ""]

@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from brainkit import packets
 from brainkit.api import Brain
 from brainkit.model import Note
-from brainkit.router import Policy, Route, Scored, analyze
+from brainkit.router import MustHold, Policy, Route, Scored, analyze
 from brainkit.sections import Section
 from tests import fixture
 
@@ -33,7 +33,7 @@ class PacketExcerptTests(unittest.TestCase):
                                "Maintenance", self.note.body + "The final release code is orange.")
 
     def packet(self, query="airlock filter interval", *, note=True, budget=150,
-               section_room=160, engine=False, fresh=False):
+               section_room=160, engine=False, fresh=False, must=False):
         chain, partitions = self.brain.caller("person:alex", st=self.state)
         route = Route(query, chain, partitions, analyze(query, self.state.config.routing),
                       policy=dataclasses.replace(Policy(), section_tokens=section_room))
@@ -43,6 +43,8 @@ class PacketExcerptTests(unittest.TestCase):
                 route.engine_fit = {self.note.id: "pointer"}
         else:
             route.sections = [Scored(self.section, .9)]
+        if must:
+            route.must_holds = [MustHold(self.note, "the request concerns maintenance")]
         with mock.patch("brainkit.packets.note_budget", return_value=budget):
             result = packets.build(route, config=self.state.config, index=self.state.index,
                                    delivered=self.brain.ledger.delivered(self.session),
@@ -159,3 +161,54 @@ class PacketExcerptTests(unittest.TestCase):
             self.packet()
             self.assertIn("bay seven", self.packet("coolant storage during shutdown").text)
             self.assertEqual(self.packet().data["held_ids"], [self.note.id])
+
+    def test_a_rule_selected_in_short_is_not_rendered_in_full(self):
+        self.note.meta["kind"] = "rule"
+        result = self.packet()
+        self.assertEqual(result.data["pointer_ids"], [self.note.id])
+        self.assertNotIn(self.note.body.strip(), result.text)
+        self.assertNotIn("bay seven", result.text)
+        rules = result.text.split("## Your rules", 1)[1]
+        self.assertIn("17 days", rules)
+        self.assertIn('get_note(id="maintenance")', rules)
+        self.assertNotIn("## Notes", result.text)
+        self.assertEqual(result.text.count("17 days"), 1)
+        self.assertLessEqual(sum(result.data["note_tokens"].values()), 150)
+        self.assertEqual(result.items[0][3], result.data["note_tokens"][self.note.id])
+
+    def test_an_engine_rule_pointer_keeps_rule_authority_without_the_full_body(self):
+        self.note.meta["kind"] = "rule"
+        result = self.packet(engine=True, budget=5000)
+        self.assertEqual(result.data["pointer_ids"], [self.note.id])
+        self.assertNotIn(self.note.body.strip(), result.text)
+        self.assertIn("## Your rules", result.text)
+        self.assertNotIn("## Notes", result.text)
+        self.assertIn('get_note(id="maintenance")', result.text)
+
+    def test_a_short_rule_can_upgrade_to_full_delivery_when_it_fits(self):
+        self.note.meta["kind"] = "rule"
+        self.packet()
+        whole = self.packet(budget=5000)
+        self.assertEqual(whole.text.count(self.note.body.strip()), 1)
+        self.assertEqual(whole.data["pointer_ids"], [])
+        self.assertEqual(whole.data["note_tokens"][self.note.id], self.note.tokens)
+        self.assertEqual(whole.items[0][2], self.note.body_hash)
+        self.assertEqual(self.packet().data["held_ids"], [self.note.id])
+
+    def test_a_rule_too_large_even_in_short_remains_named(self):
+        self.note.meta["kind"] = "rule"
+        result = self.packet(budget=1)
+        self.assertEqual(result.data["unfit_ids"], [self.note.id])
+        self.assertIn(self.note.id, result.data["related_ids"])
+        self.assertIn("## Did not fit", result.text)
+        self.assertNotIn(self.note.body.strip(), result.text)
+
+    def test_must_hold_text_survives_short_or_unfit_rule_bodies(self):
+        self.note.meta.update(kind="rule", must_text="Never vent coolant into drains.")
+        self.note.load = "domain"
+        for allowance in (1, 150):
+            with self.subTest(allowance=allowance):
+                result = self.packet(budget=allowance, must=True, fresh=True)
+                self.assertIn("## Must hold", result.text)
+                self.assertIn(self.note.must_text.rstrip("."), result.text)
+                self.assertEqual(result.data["must_hold_ids"], [self.note.id])
