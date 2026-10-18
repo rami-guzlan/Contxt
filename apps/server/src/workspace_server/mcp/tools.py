@@ -155,7 +155,11 @@ def search_context(
         limit=limit,
         include_archived=bool(args.get("include_archived")),
     )
-    hits = ws.brain.search(who, query, limit) if who.can("brain.read") else []
+    hits = (
+        ws.brain.search(who, query, limit, include_archived=bool(args.get("include_archived")))
+        if who.can("brain.read")
+        else []
+    )
     lines = []
     for item in items:
         snippet = " ".join((item.body or item.text_shadow or "").split())[:160]
@@ -224,7 +228,7 @@ def get_brain_entry(
     ws: Workspace, who: Principal, args: dict[str, Any]
 ) -> tuple[str, dict[str, Any]]:
     entry_id = str(_str(args, "entry_id", True)).removeprefix("brain_entry:")
-    entry = ws.brain.entry(who, entry_id)
+    entry = ws.brain.entry(who, entry_id, include_archived=bool(args.get("include_archived")))
     if entry is None:
         raise ValidationFailed(f"No Brain entry {entry_id} is visible.", field="entry_id")
     head = f"# {entry.title}\nbrain_entry:{entry.id}, {entry.kind}, {entry.scope}"
@@ -629,7 +633,16 @@ TOOLS: dict[str, Tool] = {
         Tool(
             "get_brain_entry",
             "Read one long-term Brain entry in full.",
-            _obj({"entry_id": {"type": "string"}}, ["entry_id"]),
+            _obj(
+                {
+                    "entry_id": {"type": "string"},
+                    "include_archived": {
+                        "type": "boolean",
+                        "description": "Read the original retired entry for a historical question.",
+                    },
+                },
+                ["entry_id"],
+            ),
             get_brain_entry,
             "brain.read",
         ),

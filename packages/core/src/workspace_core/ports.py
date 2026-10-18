@@ -223,9 +223,11 @@ class BrainPort(Protocol):
 
     def context(self, request: str, *, session_id: str | None = None) -> BrainContext: ...
 
-    def search(self, query: str, limit: int = 10) -> list[BrainHit]: ...
+    def search(
+        self, query: str, limit: int = 10, *, include_archived: bool = False
+    ) -> list[BrainHit]: ...
 
-    def entry(self, entry_id: str) -> BrainEntry | None: ...
+    def entry(self, entry_id: str, *, include_archived: bool = False) -> BrainEntry | None: ...
 
     def skill(self, name: str) -> BrainDocument | None: ...
 
@@ -865,10 +867,12 @@ class NoBrain:
     def context(self, request: str, *, session_id: str | None = None) -> BrainContext:
         return BrainContext(available=False, reason="No Brain is configured.")
 
-    def search(self, query: str, limit: int = 10) -> list[BrainHit]:
+    def search(
+        self, query: str, limit: int = 10, *, include_archived: bool = False
+    ) -> list[BrainHit]:
         return []
 
-    def entry(self, entry_id: str) -> BrainEntry | None:
+    def entry(self, entry_id: str, *, include_archived: bool = False) -> BrainEntry | None:
         return None
 
     def skill(self, name: str) -> BrainDocument | None:
