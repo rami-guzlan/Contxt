@@ -433,6 +433,7 @@ def test_the_worker_learns_from_use_without_a_model(runtime, monkeypatch):
 
 def test_worker_cadences_start_at_zero_uptime_and_wait_for_each_interval(runtime, monkeypatch):
     from types import SimpleNamespace
+
     from workspace_server import worker as module
 
     clock = SimpleNamespace(now=0.0)
