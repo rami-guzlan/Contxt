@@ -90,6 +90,7 @@ def body_limit(config, route) -> int:
 
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
 _TERM = re.compile(r"[a-z0-9]+")
+_DIALOGUE = re.compile(r"^(?:user|assistant|system|tool):", re.I | re.M)
 
 
 def key_sentence(note, request: str) -> str:
@@ -686,7 +687,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             note = scored.item
             name = note.title if note.meta.get("title") else note.id
             lines.append(f"- {name} (`{note.id}`, {note.route_key}): "
-                         f"{util.excerpt(key_sentence(note, route.request) or note.summary, 140)}")
+                         f"{util.excerpt((key_sentence(note, route.request) if _DIALOGUE.search(note.body)
+                                         else note.summary), 140)}")
         lines.append("")
     if listed and route.mode in ("standard", "exact-skill", "focus-only"):
         lines += ["## Also relevant (not included)", ""]
