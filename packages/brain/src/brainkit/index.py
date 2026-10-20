@@ -416,6 +416,37 @@ def note_ask_lines(note) -> list[str]:
     return [*note.asked_as, *([note.applies_when] if note.applies_when else [])]
 
 
+PASSAGE_FROM = 1200   # a note longer than this is also matched passage by passage
+PASSAGE_CHARS = 800   # about this much text a passage, on paragraph boundaries
+
+
+def note_passages(note) -> list[str]:
+    """A long note's passages, each matched by meaning on its own: one vector of a long
+    conversation or document reads only its start and blurs the rest, so a fact deep in it
+    is never found. A note scores by its closest passage (folded like its ask lines)."""
+    body = str(note.body or "")
+    if len(body) <= PASSAGE_FROM:
+        return []
+    out, current = [], ""
+    for part in (p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()):
+        while len(part) > PASSAGE_CHARS:  # one very long paragraph: cut on a sentence
+            cut = part.rfind(". ", 0, PASSAGE_CHARS)
+            cut = cut + 1 if cut > PASSAGE_CHARS // 2 else PASSAGE_CHARS
+            if current:
+                out.append(current)
+                current = ""
+            out.append(part[:cut].strip())
+            part = part[cut:].strip()
+        if current and len(current) + len(part) + 2 > PASSAGE_CHARS:
+            out.append(current)
+            current = part
+        else:
+            current = f"{current}\n\n{part}" if current else part
+    if current:
+        out.append(current)
+    return out
+
+
 def must_hold_search_text(note) -> str:
     """What a must-hold's domain is about, read as one passage: where it applies, the words
     that bring it into play, and its rule. Matched by meaning against each request."""
@@ -676,6 +707,8 @@ class Index:
             items = [(f"note:{nid}", note_vector_text(n)[:2000]) for nid, n in self.notes.items()]
             items += [(f"ask:{nid}:{i}", line) for nid, n in self.notes.items()
                       for i, line in enumerate(note_ask_lines(n))]
+            items += [(f"ask:{nid}:p{i}", passage) for nid, n in self.notes.items()
+                      for i, passage in enumerate(note_passages(n))]
             items += [(f"skill:{name}", skill_search_text(s)[:2000])
                       for name, s in self.skills.items()]
             items += [(f"topic:{key}", text) for key, text in self.topic_texts.items()]
