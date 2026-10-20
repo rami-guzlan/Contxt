@@ -173,6 +173,27 @@ def test_secrets_are_masked_and_ordinary_words_are_not():
         assert mask(plain) == plain
 
 
+def test_a_run_whose_workspace_tools_do_not_connect_fails_and_says_so(
+    owner, ready_task, monkeypatch
+):
+    # Claude Code carries on without a server that failed to connect, and its answer says it
+    # could do nothing; the run must not count as done.
+    monkeypatch.setenv("FAKE_CLI_MCP", "failed")
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    done = finish(owner, run["id"])
+    assert done["status"] == "failed"
+    said = " ".join(e.get("text") or "" for e in done["events"])
+    assert "did not connect" in said and "/mcp" in said
+
+
+def test_serving_on_another_port_points_runs_at_it(runtime):
+    from workspace_server.cli import listen
+
+    listen(runtime, "0.0.0.0", 8911)
+    assert runtime.runners.base_url == "http://127.0.0.1:8911"
+    assert runtime.settings.port == 8911
+
+
 def test_a_run_stopped_midway_leaves_a_blocker_on_the_task(owner, ready_task, monkeypatch):
     monkeypatch.setenv("FAKE_CLI_MODE", "hang")
     run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)

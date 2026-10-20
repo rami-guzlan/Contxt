@@ -85,7 +85,9 @@ emit(
         "type": "system",
         "subtype": "init",
         "model": "fake-model",
-        "mcp_servers": [{"name": "contxt-app", "status": "connected"}],
+        "mcp_servers": [
+            {"name": "contxt-app", "status": os.environ.get("FAKE_CLI_MCP", "connected")}
+        ],
     }
 )
 listing = sorted(
