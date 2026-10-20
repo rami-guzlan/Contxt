@@ -1,6 +1,7 @@
 """The records a brain is made of. Plain dataclasses built by `vault.py`, read everywhere."""
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 
 from . import frontmatter as fm
@@ -51,11 +52,13 @@ class Note:
         """The older name for `area`."""
         return self.area
 
-    @property
+    # Read for every note on every request; a note never changes once read (a change is a
+    # new snapshot), so each is worked out once.
+    @functools.cached_property
     def route_key(self) -> str:
         return f"{self.area}/{self.topic}"
 
-    @property
+    @functools.cached_property
     def kind(self) -> str:
         value = str(self.meta.get("kind") or "").strip().lower()
         return value or LEGACY_KINDS.get(self.area, "fact")
