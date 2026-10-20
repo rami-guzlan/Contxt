@@ -75,6 +75,23 @@ class GovernanceTests(unittest.TestCase):
                                     text="Prefer bullet lists.", force_pending=True)
         self.assertEqual(forced.data["status"], "pending")
 
+    def test_a_reworded_proposal_from_the_same_capture_waits_once(self):
+        first = ("The loyalty card launches on November 17. Dana first set November 3, then "
+                 "moved it because the printer is late.")
+        again = ("The loyalty card launches on November 17. Dana set November 3 first, then "
+                 "moved it to November 17 because the printer is late. Nothing else changed.")
+        made = self.brain.propose(layer="facts", topic="services", scope="company", text=first,
+                                  source="contxt; sources: context_item:ctx_A, task:task_1")
+        self.assertEqual(made.data["status"], "pending")
+        repeat = self.brain.propose(layer="facts", topic="services", scope="company",
+                                    text=again, source="contxt; sources: context_item:ctx_A, "
+                                                       "task:task_2")
+        self.assertEqual(repeat.data["status"], "duplicate")
+        self.assertEqual(repeat.data["proposal_id"], made.data["proposal_id"])
+        elsewhere = self.brain.propose(layer="facts", topic="services", scope="company",
+                                       text=again, source="contxt; sources: context_item:ctx_B")
+        self.assertEqual(elsewhere.data["status"], "pending")
+
     def test_validation_duplicates_and_approver(self):
         bad = self.brain.propose(layer="nonsense", topic="x", text="y")
         self.assertTrue(bad.is_error)
