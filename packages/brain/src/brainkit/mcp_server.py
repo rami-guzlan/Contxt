@@ -166,6 +166,20 @@ AGENT_TOOLS = [
                         "retire when it is approved. With target_id, a merge: the changed note "
                         "now covers what they said."},
          "target_id": {"type": "string", "description": "Existing note id to change."},
+         "source_id": {"type": "string", "description": "The exact source it came from, "
+                       "when there is one: a capture (context_item:<id>) or a file. With it, "
+                       "give what you read of it below."},
+         "source_version": {"type": "string", "description": "The version or hash of the "
+                            "source you read."},
+         "source_locator": {"type": "string", "description": "Where in it: a moment "
+                            "(02:10), a page (p. 3), a tab and row, or a message."},
+         "source_speaker": {"type": "string", "description": "Who said it there; leave it "
+                            "out when you do not know (it is recorded as unknown)."},
+         "source_excerpt": {"type": "string", "description": "The source's own words, as "
+                            "they were."},
+         "idempotency_key": {"type": "string", "description": "A key for this one "
+                             "operation: the same key again returns the first proposal, "
+                             "so a retry never makes a second one."},
          "session_id": _STR},
          "required": ["text"]}},
     {"name": "propose_skill",
@@ -376,7 +390,10 @@ HANDLERS = {
         note_kind=a.get("kind"), session_id=a.get("session_id"), capture_origin="chat",
         applies_to=a.get("applies_to") or None, triggers=a.get("triggers") or None,
         must_text=a.get("must_text") or None, critical=a.get("critical"),
-        as_of=a.get("as_of") or None, valid_until=a.get("valid_until") or None),
+        as_of=a.get("as_of") or None, valid_until=a.get("valid_until") or None,
+        source_id=a.get("source_id"), source_version=a.get("source_version"),
+        source_locator=a.get("source_locator"), source_speaker=a.get("source_speaker"),
+        source_excerpt=a.get("source_excerpt"), op_id=a.get("idempotency_key")),
     "propose_skill": lambda b, a: b.propose_skill(
         name=a.get("name"), category=a.get("category"), description=a.get("description"),
         when_to_use=a.get("when_to_use"), triggers=a.get("triggers"), loads=a.get("loads"),

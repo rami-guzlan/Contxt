@@ -287,6 +287,9 @@ def propose_brain_entry(
         as_of=_str(args, "as_of"),
         valid_until=_str(args, "valid_until"),
         said_by=_str(args, "said_by"),
+        source_locator=_str(args, "source_locator"),
+        source_speaker=_str(args, "source_speaker"),
+        source_excerpt=_str(args, "source_excerpt"),
     )
     # Refused is a failure the model must notice; a duplicate (the same proposal retried) is
     # not.
@@ -720,6 +723,21 @@ TOOLS: dict[str, Tool] = {
                         "description": "The id of one existing entry this is a new text for "
                         "(a change to that entry, not a new one). The statement is the entry's "
                         "whole new text.",
+                    },
+                    "source_locator": {
+                        "type": "string",
+                        "description": "Where in the capture it was said: a moment (02:10), a "
+                        "page (p. 3), a tab and row, or a message. The capture is the first "
+                        "context_item in sources.",
+                    },
+                    "source_speaker": {
+                        "type": "string",
+                        "description": "Who said it in the capture, as named there. Leave it "
+                        "out when you cannot tell: it is recorded as unknown.",
+                    },
+                    "source_excerpt": {
+                        "type": "string",
+                        "description": "The capture's own words for it, exactly as they are.",
                     },
                     "goal": {
                         "type": "string",

@@ -366,7 +366,9 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
                  extra=None, session_id=None, force_pending=False, layer=None,
                  index_line=None, conflicts=None, origin=None, capture_origin=None,
                  applies_to=None, triggers=None, must_text=None, critical=None,
-                 as_of=None, valid_until=None, heard=None, made_by=None, **_ignored):
+                 as_of=None, valid_until=None, heard=None, made_by=None, source_id=None,
+                 source_version=None, source_locator=None, source_speaker=None,
+                 source_excerpt=None, op_id=None, **_ignored):
     """Propose a new note, a change to one (`target_id`), or its retirement (`archive`).
 
     `kind` is the proposal kind (note.create, note.update, ...); `note_kind` is what the note
@@ -385,6 +387,13 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     AI work outside a conversation (a run the workspace started) has no conversation to check
     its quotes against: `heard` is what it read instead (the run's inputs), and `made_by`
     names the runs behind the outputs it cites (`work:<run>`), for the circular-evidence rule.
+
+    The source reference (Release 1 plan, M02) says exactly where a statement came from:
+    `source_id` (`context_item:<id>`, `file:...`), `source_version` (the revision or hash
+    read), `source_locator` (a moment, page, row or message), `source_speaker` ("unknown"
+    when not known) and `source_excerpt` (the words, as they were). It stays on the note
+    once kept. `op_id` makes the proposal idempotent: the same operation again, worded
+    differently or not, returns the first proposal instead of a second one.
     """
     st = brain.state()
     config = st.config
@@ -504,9 +513,16 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
             problems.append(f"{field_name} names no note {', '.join(repr(i) for i in unknown)}")
         named[field_name] = ", ".join(dict.fromkeys(ids))
     supersedes = named["supersedes"] or None
+    cited = source_fields(source_id, source_version, source_locator, source_speaker,
+                          source_excerpt, problems)
+    op_id = str(op_id or "").strip()
     if problems:
         return _result("Proposal refused: " + "; ".join(problems) + ".",
                        {"status": "invalid", "problems": problems}, True)
+    if op_id:
+        done = same_operation(st, op_id)
+        if done is not None:
+            return done
     if kind == "note.create":
         duplicate = next((n for n in st.index.notes.values()
                           if util.canonical(n.body) == util.canonical(text)), None)
@@ -579,6 +595,17 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         target["startup_text"] = startup_text
     target.update(must)
     target.update(dates)
+    if kind == "note.update":
+        # A change is evidenced by its own source, never by the one the old text had.
+        for key in SOURCE_KEYS + ("op_id", "statement_status"):
+            target.pop(key, None)
+    if cited:
+        target.update(cited)
+    if text and kind in ("note.create", "note.update"):
+        target["statement_status"] = statements.statement_status(
+            cited.get("source_excerpt") or (extra or {}).get("source_excerpt") or text)
+    if op_id:
+        target["op_id"] = op_id
     if review_by:
         target["review_by"] = review_by
     if load is None and kind == "note.create" and st.scopes.kind(scope) == "person" \
@@ -666,6 +693,57 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         {"status": "pending", "proposal_id": proposal_id, "id": note_id, "path": relpath,
          "similar": similar, "suggested": header.get("suggested"), "held": held,
          "commit": outcome.get("commit")})
+
+
+SOURCE_KEYS = ("source_id", "source_version", "source_locator", "source_speaker",
+               "source_excerpt")
+EXCERPT_MAX = 1200
+
+
+def source_fields(source_id, version, locator, speaker, excerpt, problems) -> dict:
+    """The note fields of a source reference; a version, place, speaker or excerpt without a
+    source is refused. A source with no known speaker says so."""
+    clean = {k: " ".join(str(v or "").split()) for k, v in (
+        ("source_id", source_id), ("source_version", version),
+        ("source_locator", locator), ("source_speaker", speaker))}
+    words = str(excerpt or "").strip()
+    if not clean["source_id"]:
+        if any(clean.values()) or words:
+            problems.append("a source version, place, speaker or excerpt needs source_id")
+        return {}
+    out = {k: v for k, v in clean.items() if v}
+    out["source_speaker"] = clean["source_speaker"] or "unknown"
+    if words:
+        out["source_excerpt"] = words[:EXCERPT_MAX]
+    return out
+
+
+def source_of(fields: dict) -> dict | None:
+    """A proposal's or note's source reference, for the app: None when it has none."""
+    if not fields.get("source_id"):
+        return None
+    return {"id": fields.get("source_id"), "version": fields.get("source_version") or "",
+            "locator": fields.get("source_locator") or "",
+            "speaker": fields.get("source_speaker") or "unknown",
+            "excerpt": fields.get("source_excerpt") or ""}
+
+
+OPERATIONS = {"note.create": "new note", "note.update": "update", "note.archive": "retire",
+              "note.challenge": "challenge", "focus.create": "new project"}
+
+
+def same_operation(st, op_id):
+    """The result an earlier proposal with this operation id already had, or None."""
+    for proposal in st.snapshot.proposals.values():
+        if str(proposal.target.get("op_id") or "") == op_id:
+            return _result(f"This operation is already waiting for review ({proposal.id}).",
+                           {"status": "duplicate", "proposal_id": proposal.id,
+                            "id": proposal.target.get("id")})
+    for note in st.index.notes.values():
+        if str(note.meta.get("op_id") or "") == op_id:
+            return _result(f"This operation was already applied as {note.id}.",
+                           {"status": "duplicate", "id": note.id, "applied": True})
+    return None
 
 
 def default_scope(brain, area, topic, chain):
@@ -792,6 +870,12 @@ def inbox(brain, **_ignored):
             "session": str(proposal.meta.get("session") or ""),
             "reason": proposal.meta.get("reason") or "", "path": proposal.path,
             "body": proposal.body, "target": proposal.target,
+            # Release 1 (M02, M03): where it came from, what it does, how it was said.
+            "source": source_of(proposal.target),
+            "operation": OPERATIONS.get(proposal.kind, proposal.kind),
+            "statement_status": proposal.target.get("statement_status") or "",
+            "effective": str(proposal.target.get("as_of") or ""),
+            "op_id": proposal.target.get("op_id") or "",
             "current_body": (st.index.note(proposal.target.get("id")).body
                              if proposal.kind != "note.create"
                              and st.index.note(proposal.target.get("id")) else None),
@@ -850,6 +934,13 @@ def approve(brain, proposal_id, *, actor=None, edits=None, body=None, reason="")
     if {"area", "topic", "layer"} & set(edits or {}):
         target["placement"] = "chosen"     # the approver chose the place
     text = proposal.body if body is None else str(body)
+    if proposal.kind in ("note.create", "note.update") and body is not None \
+            and util.canonical(text) != util.canonical(proposal.body):
+        # The owner reworded it before keeping: what is kept is theirs, and the words that
+        # were proposed stay on record beside the source (its speaker is unchanged).
+        target.setdefault("original_text", proposal.body.strip())
+        target.setdefault("original_said_by", target.get("said_by") or "")
+        target["said_by"] = "owner"
     if proposal.kind in uploads.UPLOAD_KINDS:
         return uploads.apply(brain, proposal, actor=who, edits=edits, body=body)
     if proposal.kind in ("note.update", "note.archive"):

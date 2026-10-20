@@ -138,8 +138,11 @@ written for someone scanning a list and never the statement's first sentence cut
 statement in plain language, able to stand on its own; its kind ({kinds}); said_by, who \
 said it: owner when the person this Brain is for said it, person when someone else did (in \
 a meeting, an email), document when it is the document's own content; evidence that quotes \
-the item it came from; sources naming the \
-context_item refs (or brain_file refs), and brain:<entry id> for the entries you checked it \
+the item it came from; source_locator, where in it (a moment such as 02:10, a page such as \
+p. 3, a tab and row, or a message); source_speaker, who said it there as the item names them \
+(left out when you cannot tell); source_excerpt, the item's own words for it, exactly as they \
+are; sources naming the context_item ref it came from first (or brain_file refs), \
+and brain:<entry id> for the entries you checked it \
 against; topic, the area/topic it belongs in, taken from where related entries live; goal, \
 the goal it serves in a few words, from the pinned goals; project, the id of the active \
 project it belongs to, when it belongs to one; replaces or contradicts when they apply; and \
