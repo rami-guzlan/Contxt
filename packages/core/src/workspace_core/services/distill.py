@@ -146,6 +146,18 @@ project it belongs to, when it belongs to one; replaces or contradicts when they
 this run's run_id. Keep proposals distinct: one statement each, no two saying the same thing. \
 Proposing nothing is a good result when nothing is durable.
 
+Preserve attribution from the source. An assistant suggestion or generated answer is
+said_by owner-ai (or agent for an automated run), never owner unless the owner's own
+words explicitly adopt it. Approval of a proposal does not change who originally said it.
+Keep proposals, plans and completed actions distinct. Preserve the surrounding qualification
+or correction when quoting evidence. If the speaker is unknown, do not invent one.
+
+Keep historical facts and dates meaningful. The day a document was saved is not necessarily
+the day its statement was true. Do not fabricate as_of from an import timestamp. A changed
+value needs its source date and subject; preserve useful earlier context in the evidence.
+Do not combine unrelated measures, count a cumulative snapshot as a new event, or present
+a partial set of amounts as a complete total. Missing operands stay explicitly missing.
+
 When a rule must never be missed whenever its subject comes up (an allergy or another health \
 or safety limit, a legal, money or privacy line), also pass must_hold: applies_to, the area it \
 covers (from where related entries live); triggers, a dozen or so words and short phrases a \

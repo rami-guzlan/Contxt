@@ -412,10 +412,10 @@ def test_the_worker_enriches_new_entries_only_with_a_chosen_model(runtime, monke
     worker.tick()
     assert agent.started == []  # no model chosen: nothing spent
     monkeypatch.setattr(runtime.ws.agent, "chosen_model", lambda: "claude")
-    worker._enrich_at = 0.0
+    worker._enrich_at = None
     worker.tick()
     assert agent.started == [10]
-    worker._enrich_at = 0.0
+    worker._enrich_at = None
     worker.tick()  # the batch is still running: not a second one
     assert agent.started == [10]
 
@@ -429,3 +429,48 @@ def test_the_worker_learns_from_use_without_a_model(runtime, monkeypatch):
     worker.tick()
     worker.tick()  # not an hour yet
     assert calls == [1]
+
+
+def test_worker_cadences_start_at_zero_uptime_and_wait_for_each_interval(runtime, monkeypatch):
+    from types import SimpleNamespace
+
+    from workspace_server import worker as module
+
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock.now))
+    calls = {"goals": 0, "learn": 0}
+
+    def goals(who):
+        calls["goals"] += 1
+        return []
+
+    def learn():
+        calls["learn"] += 1
+        return {}
+
+    monkeypatch.setattr(runtime.ws.goals, "run_checks", goals)
+    monkeypatch.setattr(runtime.ws.rt.brain, "learn_from_use", learn)
+    monkeypatch.setattr(runtime.ws.agent, "chosen_model", lambda: "claude")
+    agent = _Agent()
+    worker = module.Worker(runtime.ws, agent=agent)
+    worker.tick()
+    assert calls == {"goals": 1, "learn": 1}
+    assert agent.started == [10]
+    worker.tick()
+    assert calls == {"goals": 1, "learn": 1}
+    assert agent.started == [10]
+    worker._enrich_job.status = "done"
+    clock.now = module.ENRICH_SECONDS - 1
+    worker.tick()
+    assert agent.started == [10]
+    clock.now = module.ENRICH_SECONDS
+    worker.tick()
+    assert agent.started == [10, 10]
+    assert calls == {"goals": 1, "learn": 1}
+    clock.now = module.GOAL_CHECK_SECONDS
+    worker.tick()
+    assert calls == {"goals": 2, "learn": 1}
+    clock.now = module.LEARN_SECONDS
+    worker.tick()
+    assert calls == {"goals": 3, "learn": 2}
+    assert agent.started == [10, 10]  # active batch still prevents duplicate work

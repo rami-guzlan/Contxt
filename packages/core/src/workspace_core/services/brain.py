@@ -718,12 +718,20 @@ class Brain:
         who.require("brain.read")
         return self.rt.brain.eval_status()
 
-    def search(self, who: Principal, query: str, limit: int = 10) -> list[BrainHit]:
+    def search(
+        self, who: Principal, query: str, limit: int = 10, *, include_archived: bool = False
+    ) -> list[BrainHit]:
         who.require("brain.read")
+        if include_archived:
+            return self.rt.brain.search(query, limit, include_archived=True)
         return self.rt.brain.search(query, limit)
 
-    def entry(self, who: Principal, entry_id: str) -> BrainEntry | None:
+    def entry(
+        self, who: Principal, entry_id: str, *, include_archived: bool = False
+    ) -> BrainEntry | None:
         who.require("brain.read")
+        if include_archived:
+            return self.rt.brain.entry(entry_id, include_archived=True)
         return self.rt.brain.entry(entry_id)
 
     def skill(self, who: Principal, name: str) -> BrainDocument | None:

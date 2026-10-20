@@ -661,6 +661,13 @@ class Brain:
             header += f"\nStale ({stale}): verify before relying on it."
         if note.confidence:
             header += f"\nConfidence: {note.confidence}."
+        # Approval and filing do not change who made a claim or when it was true.
+        from . import statements
+        speaker = statements.said_by(note.meta)
+        if speaker:
+            header += f"\nSaid by: {speaker}."
+        if note.as_of:
+            header += f"\nAs of: {note.as_of}."
         body = note.body.strip()
         if note.kind == "goal":
             # A goal opens with its shared plan: only the board blocks its owner shared.
@@ -691,8 +698,11 @@ class Brain:
         hits = [s for s in ranked if s.score > 0.05][:int(limit or 12)]
         held = (self.ledger.delivered(session_id)
                 if session_id and Ledger.valid(session_id) else {})
+        from . import packets, statements
         rows = [{"id": s.item.id, "score": s.score, "route_key": s.item.route_key,
                  "scope": s.item.scope, "load": s.item.load, "summary": s.item.summary,
+                 "excerpt": packets.key_sentence(s.item, str(query or "")),
+                 "said_by": statements.said_by(s.item.meta), "as_of": s.item.as_of,
                  "title": s.item.title, "added": s.item.added,
                  "standing": s.item.standing, "focus": st.config.is_focus(s.item),
                  "held": ("note", s.item.id) in held}
@@ -709,10 +719,12 @@ class Brain:
             marks = [m for m, on in (("in your startup context", r.get("standing")),
                                      ("already in this conversation", r.get("held")),
                                      ("a project's live state", r.get("focus")),
-                                     ("archived", r.get("archived"))) if on]
+                                     ("archived", r.get("archived")),
+                                     ("said by " + r.get("said_by", ""), r.get("said_by")),
+                                     ("as of " + r.get("as_of", ""), r.get("as_of"))) if on]
             lines.append(f"- {r.get('title') or r['id']} (`{r['id']}`, {r['route_key']}, "
                          f"{r['score']:.2f})" + (f" [{'; '.join(marks)}]" if marks else "")
-                         + f": {r['summary']}")
+                         + f": {r.get('excerpt') or r['summary']}")
         # What the brain's files say about it, in parts (sections.py): the searcher reads the
         # whole file with get_reference when a part fits.
         files, per_file = [], {}

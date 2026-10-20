@@ -398,8 +398,10 @@ class BrainKitAdapter:
             },
         )
 
-    def search(self, query: str, limit: int = 10) -> list[BrainHit]:
-        result = self.brain.search(query, limit=limit)
+    def search(
+        self, query: str, limit: int = 10, *, include_archived: bool = False
+    ) -> list[BrainHit]:
+        result = self.brain.search(query, limit=limit, include_archived=include_archived)
         return [
             BrainHit(
                 id=h["id"],
@@ -408,15 +410,18 @@ class BrainKitAdapter:
                 scope=h.get("scope") or "",
                 kind=h.get("route_key") or "",
                 score=float(h.get("score") or 0),
+                excerpt=h.get("excerpt") or "",
             )
             for h in result.data.get("hits", [])
         ]
 
-    def entry(self, entry_id: str) -> BrainEntry | None:
+    def entry(self, entry_id: str, *, include_archived: bool = False) -> BrainEntry | None:
         # A note sealed to a partition (a client, say) opens within that partition, which
         # the owner owns.
-        note = self.brain.state().index.note(entry_id)
-        result = self.brain.note(entry_id, partition=note.partition if note else None)
+        note = self.brain.state().index.note(entry_id, include_archived=include_archived)
+        result = self.brain.note(
+            entry_id, partition=note.partition if note else None, include_archived=include_archived
+        )
         if result.is_error:
             return None
         data, meta = result.data, result.data.get("meta") or {}
@@ -435,6 +440,8 @@ class BrainKitAdapter:
             stale_reason=data.get("stale"),
             source=meta.get("source"),
             path=data.get("path"),
+            said_by=meta.get("said_by"),
+            as_of=meta.get("as_of"),
         )
 
     def verify(self, entry_id: str, *, confidence: str | None = None) -> BrainEntry:

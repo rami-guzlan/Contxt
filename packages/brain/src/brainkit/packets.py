@@ -90,22 +90,36 @@ def body_limit(config, route) -> int:
 
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
 _TERM = re.compile(r"[a-z0-9]+")
+_DIALOGUE = re.compile(r"^(?:user|assistant|system|tool):", re.I | re.M)
 
 
 def key_sentence(note, request: str) -> str:
-    """The sentence of a note closest to the request: the one sharing most of its words, else
-    its first; at most POINTER_WORDS words."""
-    wanted = {t for t in _TERM.findall(str(request or "").lower()) if t not in util.STOPWORDS}
-    best, score = "", -1
+    """Closest source sentence, keeping explicit dialogue attribution inside 40 words.
+
+    Dates and speakers are context, not relevance terms. Never turn an assistant reply
+    into an unattributed personal fact. Plain notes retain their original text.
+    """
+    wanted = util.stems(t for t in _TERM.findall(str(request or "").lower())
+                        if t not in util.STOPWORDS)
+    best, score, speaker, stamp = "", -1, "", ""
     for line in str(note.body or "").splitlines():
         line = line.strip().lstrip("#-*> ").strip()
+        if line.startswith("Conversation time:"):
+            stamp = line.partition(":")[2].strip()
+            continue
+        role = re.match(r"^(user|assistant|system|tool):\s*(.*)$", line, re.I)
+        if role:
+            speaker, line = role.group(1).lower(), role.group(2)
         for sentence in _SENTENCE.split(line):
             sentence = sentence.strip()
             if len(sentence) < 12:
                 continue
-            hits = len(wanted & set(_TERM.findall(sentence.lower())))
+            hits = len(wanted & util.stems(_TERM.findall(sentence.lower())))
             if hits > score:
-                best, score = sentence, hits
+                context = " ".join(part for part in (stamp, speaker + ":" if speaker else "")
+                                   if part)
+                best = (context + " " if context else "") + sentence
+                score = hits
     return _clip(best, POINTER_WORDS)
 
 
@@ -673,7 +687,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             note = scored.item
             name = note.title if note.meta.get("title") else note.id
             lines.append(f"- {name} (`{note.id}`, {note.route_key}): "
-                         f"{util.excerpt(note.summary, 140)}")
+                         f"{util.excerpt((key_sentence(note, route.request) if _DIALOGUE.search(note.body)
+                                         else note.summary), 140)}")
         lines.append("")
     if listed and route.mode in ("standard", "exact-skill", "focus-only"):
         lines += ["## Also relevant (not included)", ""]

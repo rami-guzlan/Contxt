@@ -25,6 +25,7 @@ if __package__ in (None, ""):
 
 from brainkit import runtime, statements
 from brainkit.api import Brain, Result
+from brainkit.evidence import READING_GUIDANCE
 
 PROTOCOL_DEFAULT = "2024-11-05"
 INSTRUCTIONS = ("Call get_task_context first for every request, and again for every later "
@@ -41,6 +42,8 @@ INSTRUCTIONS = ("Call get_task_context first for every request, and again for ev
                 "fast-changing values (an account's health, a repo's owner) with update_state, "
                 "and a task's progress with hand_off: when you take it, after real work, when "
                 "blocked, before you stop, and when done.")
+
+INSTRUCTIONS += " " + READING_GUIDANCE
 
 _STR = {"type": "string"}
 AGENT_TOOLS = [
@@ -80,19 +83,23 @@ AGENT_TOOLS = [
     {"name": "get_note",
      "description": "Read one note by id: one the packet listed under Also relevant, or a "
                     "search_notes hit, when the work needs it.",
-     "inputSchema": {"type": "object", "properties": {"id": _STR, "session_id": _STR},
+     "inputSchema": {"type": "object", "properties": {"id": _STR, "session_id": _STR,
+         "include_archived": {"type": "boolean", "description":
+             "True to read the original retired note for a historical question."}},
                      "required": ["id"]}},
     {"name": "search_notes",
      "description": "Find notes the packet did not bring. Use it when the work needs something "
                     "the packet lacks: describe what you need in your own words, and if nothing "
                     "fits, try again with other words (the brain's terms, or plainer ones: "
                     "'UTM parameters' rather than 'tagging links', 'AI-sounding writing' rather "
-                    "than 'robotic'). Returns titles and one-line summaries, best first; open "
-                    "one with get_note.",
+                    "than 'robotic'). Returns titles and matching excerpts, best first; open "
+                    "one with get_note to verify the complete source.",
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "What you need, in a few words."},
          "limit": {"type": "integer", "description": "How many hits (default 8)."},
-         "session_id": _STR}, "required": ["query"]}},
+         "session_id": _STR, "include_archived": {"type": "boolean", "description":
+             "Include retired notes when the question asks about previous facts."}},
+         "required": ["query"]}},
     {"name": "challenge_note",
      "description": "When the person says, or evidence you found shows, that a note the Brain "
                     "holds is wrong or out of date, raise a challenge: the note's id, what you "
@@ -411,7 +418,8 @@ HANDLERS = {
     "search_notes": lambda b, a: b.search(a.get("query"), limit=a.get("limit") or 8,
                                           include_archived=bool(a.get("include_archived")),
                                           session_id=a.get("session_id")),
-    "get_note": lambda b, a: b.note(a.get("id"), session_id=a.get("session_id")),
+    "get_note": lambda b, a: b.note(a.get("id"), session_id=a.get("session_id"),
+                                  include_archived=bool(a.get("include_archived"))),
     "get_topic": lambda b, a: b.topic(a.get("route_key")),
     "list_focuses": lambda b, a: b.focus_list(status=a.get("status")),
     "get_focus": lambda b, a: b.focus_get(a.get("name")),

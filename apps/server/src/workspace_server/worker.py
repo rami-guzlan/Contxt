@@ -58,9 +58,11 @@ class Worker:
         self.interval = max(1.0, float(interval))
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._goals_at = 0.0  # when goal checks last looked for what is due
-        self._enrich_at = 0.0  # when it last looked for entries to enrich
-        self._learn_at = 0.0  # when it last learned from what conversations searched for
+        self._goals_at: float | None = None  # when goal checks last looked for what is due
+        self._enrich_at: float | None = None  # when it last looked for entries to enrich
+        self._learn_at: float | None = (
+            None  # when it last learned from what conversations searched for
+        )
         self._enrich_job = None
 
     def tick(self) -> Tick:
@@ -75,7 +77,7 @@ class Worker:
             scheduled = {"applied": []}
         if scheduled.get("applied"):
             log.info("%d scheduled revision(s) went in", len(scheduled["applied"]))
-        if time.monotonic() - self._goals_at >= GOAL_CHECK_SECONDS:
+        if self._goals_at is None or time.monotonic() - self._goals_at >= GOAL_CHECK_SECONDS:
             # Goal checks are code only; each runs on its own cadence, so this finds few.
             self._goals_at = time.monotonic()
             try:
@@ -85,7 +87,7 @@ class Worker:
                 checked = []
             if checked:
                 log.info("%d goal check(s) ran", len(checked))
-        if time.monotonic() - self._learn_at >= LEARN_SECONDS:
+        if self._learn_at is None or time.monotonic() - self._learn_at >= LEARN_SECONDS:
             self._learn_at = time.monotonic()
             try:  # code only: no model is asked
                 learned = self.ws.rt.brain.learn_from_use()
@@ -98,7 +100,7 @@ class Worker:
                     len(learned.get("learned") or []),
                     len(learned.get("suggested") or []),
                 )
-        if time.monotonic() - self._enrich_at >= ENRICH_SECONDS:
+        if self._enrich_at is None or time.monotonic() - self._enrich_at >= ENRICH_SECONDS:
             self._enrich_at = time.monotonic()
             self._enrich(system)
         if expired or woke or assigned:
