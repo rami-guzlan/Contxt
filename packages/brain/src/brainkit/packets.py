@@ -575,6 +575,12 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                         if a in sent and b in sent})
         for a, b in pairs:
             lines += [f"`{a}` and `{b}` disagree: weigh both, and say which you followed.", ""]
+        conflicts = sorted({tuple(sorted((a, b))) for a, b in route.conflicts.items()
+                            if a in sent and b in sent})
+        for a, b in conflicts:
+            lines += [f"`{a}` and `{b}` give different values for the same thing on the same "
+                      "date: neither is settled as current. Show both, and ask which holds.",
+                      ""]
         for note in knowledge:
             lines += [heading(note), ""] + body(note)
         if in_short:
@@ -816,6 +822,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                         for n in chosen},
         "must_hold_ids": [m.note.id for m in must],
         "older_ids": [o.id for o, _n in older],
+        # Values that conflict on the same date: sent together, neither current.
+        "conflict_ids": sorted(i for i in route.conflicts if i in {n.id for n in chosen}),
         "must_hold_listed": [m.note.id for m in overflow],
         # Every note the brief names without sending: the ones past its budget first, then
         # the ones listed as also relevant.

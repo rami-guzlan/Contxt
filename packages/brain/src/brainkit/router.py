@@ -795,6 +795,8 @@ class Route:
     # Notes filed with another project than the one this request names: out of its scope.
     out_of_project: set = field(default_factory=set)
     focus_reason: str = ""             # why find_focus chose the Focus
+    # {note id: the note it conflicts with}: two values for one thing on the same date.
+    conflicts: dict = field(default_factory=dict)
     # Every on-demand note scored for the request, best first: what the engine's fallback
     # audit writes down. Routing never reads it.
     ranked: list = field(default_factory=list)
@@ -1378,18 +1380,39 @@ class Router:
                     taken.add(note.id)
                 continue
             newest = max([note] + group, key=lambda n: (n.dated, n.id))
+            # Values dated the same day that differ have no defined precedence: a conflict.
+            # Both are sent, labelled, and neither is passed off as current (no newest-wins).
+            tied = [n for n in [note] + group if n.as_of and n.dated == newest.dated
+                    and newest.as_of]
+            rivals = [n for n in tied if n.id != newest.id
+                      and tension.same_measure(tension.measures(n.body),
+                                               tension.measures(newest.body))]
+            if rivals:
+                for rival in rivals:
+                    route.conflicts.setdefault(newest.id, rival.id)
+                    route.conflicts.setdefault(rival.id, newest.id)
+                    if rival.id not in taken:
+                        taken.add(rival.id)
+                        kept.append(Scored(rival, scored.score, list(scored.reasons)
+                                           + [f"differs from {newest.id} on the same date"],
+                                           dict(scored.detail, disputed=True)))
+                route.log(f"conflict: {newest.id} and {', '.join(r.id for r in rivals)} "
+                          f"give different values as of {newest.dated}")
+            tied_ids = {n.id for n in rivals}
             for member in [note] + group:
-                if member.id != newest.id:
+                if member.id != newest.id and member.id not in tied_ids:
                     older.setdefault(member.id, (member, newest))
             if newest.id in taken:
                 continue
             taken.add(newest.id)
+            detail = dict(scored.detail, disputed=True) if rivals else dict(scored.detail)
             if newest.id == note.id:
-                kept.append(scored)
+                kept.append(Scored(note, scored.score, list(scored.reasons), detail)
+                            if rivals else scored)
             else:
                 kept.append(Scored(newest, scored.score,
                                    list(scored.reasons) + [f"newer value than {note.id}"],
-                                   dict(scored.detail)))
+                                   detail))
                 route.log(f"{newest.id}: newer value than {note.id} ({newest.dated} against "
                           f"{note.dated})")
         route.notes = [s for s in kept if s.item.id not in older]
