@@ -38,6 +38,12 @@ from .index import MODEL_SCALES
 from .scopes import Scopes
 
 
+try:  # present wherever the meaning model runs (onnxruntime needs it); optional otherwise
+    import numpy as _np
+except ImportError:  # pragma: no cover
+    _np = None
+
+
 @dataclass(frozen=True)
 class Policy:
     """Every threshold the router uses, in one place. Overridable in routing.json `policy`."""
@@ -976,7 +982,7 @@ class Router:
         """
         if not keys:
             return {}
-        memo_key = (request, kind, tuple(keys), id(self.policy))
+        memo_key = (request, kind, tuple(sorted(keys)), id(self.policy))
         found = self._hybrids.get(memo_key)
         if found is not None:
             # The same request over the same candidates (routing, topics, must-holds): the
@@ -997,6 +1003,31 @@ class Router:
         floor, span = p.semantic_floor, p.semantic_span
         standing_out = mean is not None and spread > 1e-6
         prefix = f"{kind}:"
+        coss = [sims.get(prefix + key) for key in keys]
+        if _np is not None and len(keys) > 200 and all(c is not None for c in coss):
+            # The same arithmetic as the loop below, a whole Brain at once.
+            cov = _np.array([coverages[k] for k in keys], dtype=float)
+            bms = _np.array([raw.get(k, 0.0) for k in keys], dtype=float)
+            cos = _np.array(coss, dtype=float)
+            lexical = 0.6 * cov + 0.4 * (bms / top if top else 0.0)
+            semantic = _np.clip((cos - floor) / span, 0.0, 1.0)
+            if standing_out:
+                standout = _np.clip(((cos - mean) / spread + 0.5) / 3.0, 0.0, 1.0)
+                semantic = _np.minimum(semantic, standout)
+            hybrid = weight * semantic + (1 - weight) * lexical
+            if alone > 0:
+                hybrid = _np.maximum(hybrid, alone * semantic)
+            hybrid = _np.minimum(hybrid, 1.0)
+            for key, h, c, b, s_, raw_cos in zip(keys, hybrid.tolist(), cov.tolist(),
+                                                 bms.tolist(), semantic.tolist(), coss,
+                                                 strict=True):
+                out[key] = (round(h, 4), {"coverage": round(c, 3), "bm25": round(b, 3),
+                                          "semantic": round(s_, 3), "bm_raw": b,
+                                          "cos_raw": raw_cos})
+            if len(self._hybrids) > 32:
+                self._hybrids.clear()
+            self._hybrids[memo_key] = out
+            return {k: (v, dict(d)) for k, (v, d) in out.items()}
         for key in keys:
             coverage = coverages[key]
             bm = raw.get(key, 0.0)

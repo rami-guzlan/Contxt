@@ -50,5 +50,9 @@ class RecheckTest(unittest.TestCase):
                                        "body": "Written by an editor, not the app."}])
             with mock.patch.object(api.time, "monotonic",
                                    return_value=api.time.monotonic() + api.RECHECK_SECONDS + 1):
+                # The look happens beside the request, which is served what it had.
+                self.assertIsNone(self.brain.state().index.note("outside"))
+                self.brain._walker.join(10)
                 st = self.brain.state()
             self.assertIsNotNone(st.index.note("outside"))
+            self.assertEqual(len(calls), 2)

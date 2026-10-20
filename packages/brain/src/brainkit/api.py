@@ -131,6 +131,8 @@ class Brain:
         self.reranker = Reranker(self.vault.runtime_dir) if (embeddings and rerank) else None
         self._state: State | None = None
         self._looked: tuple | None = None  # (when, writes, files) of the last walk
+        self._found: tuple | None = None  # (fingerprint, writes, listing) a look beside found
+        self._walker: threading.Thread | None = None
         self._state_writes = -1
         self._lock = threading.RLock()
         self._ledger: Ledger | None = None
@@ -149,20 +151,40 @@ class Brain:
             self._ledger.close()
 
     # ------------------------------------------------------------------ state
+    def _look(self, writes: int) -> None:
+        """Walk the files beside the requests; the next request rebuilds if they changed."""
+        try:
+            listing = self.vault.listing()
+            self._found = (self.vault.fingerprint(listing), writes, listing)
+        except OSError:  # a folder that went away mid-walk: the next look tries again
+            pass
+
     def state(self) -> State:
         deferred = self._deferred
         if deferred is not None and self._state is not None and deferred.seen == self.vault.writes:
             # Inside a batch, only the batch writes: nothing changed since the last write.
             return self._state
         looked = self._looked
+        found = self._found
         if (self._state is not None and looked is not None and looked[1] == self.vault.writes
-                and looked[2] >= RECHECK_FILES
-                and time.monotonic() - looked[0] < RECHECK_SECONDS):
+                and looked[2] >= RECHECK_FILES):
             # A large Brain: walking every file to see whether one changed costs more than the
-            # brief. Its own writes are seen at once; an edit from outside within seconds.
-            return self._state
-        listing = self.vault.listing()
-        fingerprint = self.vault.fingerprint(listing)
+            # brief. Its own writes are seen at once; an edit from outside within seconds, by
+            # a look taken beside the requests, never in one.
+            if found is None or found[0] == self._state.fingerprint:
+                if time.monotonic() - looked[0] >= RECHECK_SECONDS and not (
+                        self._walker is not None and self._walker.is_alive()):
+                    self._looked = (time.monotonic(), looked[1], looked[2])
+                    self._walker = threading.Thread(target=self._look, args=(looked[1],),
+                                                    daemon=True, name="brain-look")
+                    self._walker.start()
+                return self._state
+        if found is not None and found[1] == self.vault.writes:
+            listing, fingerprint = found[2], found[0]  # what the look beside found changed
+        else:
+            listing = self.vault.listing()
+            fingerprint = self.vault.fingerprint(listing)
+        self._found = None
         self._looked = (time.monotonic(), self.vault.writes, len(listing))
         with self._lock:
             writes = self.vault.writes
