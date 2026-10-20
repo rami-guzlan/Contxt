@@ -395,7 +395,9 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             for scored in route.notes:
                 if scored.detail.get("dated"):
                     place(scored.item, "the newest dated value the question asks for")
-        if route.mode not in ("focus-only", "focus-update"):
+        if route.mode != "focus-update":
+            # A project's pins go with every request about it, in the same order: a pin
+            # that does not fit is named, never dropped silently.
             for note_id in focus.pinned_notes[:6]:
                 note = index.note(note_id)
                 if note is not None and note.id in {n.id for n in index.notes.values()} \
