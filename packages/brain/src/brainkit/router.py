@@ -822,6 +822,10 @@ class Router:
         self._project_members: dict[str, set[str]] = {}
         self._hand = set(overrides) & {"lean_floor", "note_abs_floor", "topic_note_floor"}
         self._calibration = None
+        self._facts: dict = {}
+        self._hybrids: dict = {}
+        self._admitted: dict = {}
+        self._facts_day = None
 
     # ------------------------------------------------------------------ calibration
     def calibrated(self, floor: str) -> bool:
@@ -847,14 +851,28 @@ class Router:
         return getattr(self.policy, f"{'words_' if words else ''}{bar}_share")
 
     def evidence(self, scored) -> float:
-        """The share of the Brain's unrelated requests this note's match beats."""
-        return self.calibration.evidence(scored.detail.get("cos_raw"),
-                                         scored.detail.get("bm_raw"))
+        """The share of the Brain's unrelated requests this note's match beats (worked out
+        once per scored note: a request asks it of every candidate several times)."""
+        found = scored.detail.get("_evidence")
+        if found is None:
+            found = self.calibration.evidence(scored.detail.get("cos_raw"),
+                                              scored.detail.get("bm_raw"))
+            scored.detail["_evidence"] = found
+        return found
 
     # ------------------------------------------------------------------ admission
     def admitted_notes(self, chain, partitions):
-        return [n for n in self.index.notes.values()
-                if Scopes.admits(n.scope, n.partition, chain, partitions)]
+        """The notes this caller may see: worked out once per caller for this index (it does
+        not change while this router lives), and handed out as a fresh list."""
+        key = (tuple(chain), tuple(sorted(partitions or ())))
+        found = self._admitted.get(key)
+        if found is None:
+            found = [n for n in self.index.notes.values()
+                     if Scopes.admits(n.scope, n.partition, chain, partitions)]
+            if len(self._admitted) > 16:
+                self._admitted.clear()
+            self._admitted[key] = found
+        return list(found)
 
     def admitted_skills(self, chain, partitions):
         return [s for s in self.index.skills.values()
@@ -958,6 +976,12 @@ class Router:
         """
         if not keys:
             return {}
+        memo_key = (request, kind, tuple(keys), id(self.policy))
+        found = self._hybrids.get(memo_key)
+        if found is not None:
+            # The same request over the same candidates (routing, topics, must-holds): the
+            # same scores. Each caller gets its own details to write on.
+            return {k: (v, dict(d)) for k, (v, d) in found.items()}
         raw = bm25.scores(request, restrict=keys)
         coverages = bm25.coverages(request, restrict=keys)
         top = max(raw.values(), default=0.0)
@@ -968,23 +992,33 @@ class Router:
         spread = ((sum((c - mean) ** 2 for c in cosines) / len(cosines)) ** 0.5
                   if mean is not None else 0.0)
         out = {}
+        p = self.policy
+        weight, alone = p.semantic_weight, p.semantic_alone
+        floor, span = p.semantic_floor, p.semantic_span
+        standing_out = mean is not None and spread > 1e-6
+        prefix = f"{kind}:"
         for key in keys:
             coverage = coverages[key]
-            relative = raw.get(key, 0.0) / top if top else 0.0
-            lexical = 0.6 * coverage + 0.4 * relative
-            semantic = self._semantic(sims, f"{kind}:{key}")
-            if semantic is not None and mean is not None and spread > 1e-6:
-                standout = ((sims[f"{kind}:{key}"] - mean) / spread + 0.5) / 3.0
-                semantic = min(semantic, max(0.0, min(1.0, standout)))
-            weight = self.policy.semantic_weight
+            bm = raw.get(key, 0.0)
+            lexical = 0.6 * coverage + 0.4 * (bm / top if top else 0.0)
+            cos = sims.get(prefix + key)
+            semantic = None
+            if cos is not None:  # _semantic, inline: this runs for every note
+                semantic = max(0.0, min(1.0, (cos - floor) / span))
+                if standing_out:
+                    standout = ((cos - mean) / spread + 0.5) / 3.0
+                    semantic = min(semantic, max(0.0, min(1.0, standout)))
             hybrid = lexical if semantic is None else weight * semantic + (1 - weight) * lexical
-            if semantic is not None and self.policy.semantic_alone > 0:
-                hybrid = max(hybrid, self.policy.semantic_alone * semantic)
+            if semantic is not None and alone > 0:
+                hybrid = max(hybrid, alone * semantic)
             out[key] = (round(min(1.0, hybrid), 4), {
-                "coverage": round(coverage, 3), "bm25": round(raw.get(key, 0.0), 3),
+                "coverage": round(coverage, 3), "bm25": round(bm, 3),
                 "semantic": None if semantic is None else round(semantic, 3),
-                "bm_raw": raw.get(key, 0.0), "cos_raw": sims.get(f"{kind}:{key}")})
-        return out
+                "bm_raw": bm, "cos_raw": cos})
+        if len(self._hybrids) > 32:
+            self._hybrids.clear()
+        self._hybrids[memo_key] = out
+        return {k: (v, dict(d)) for k, (v, d) in out.items()}
 
     def score_skills(self, request, sig: Signals, skills) -> list:
         if not skills:
@@ -2174,9 +2208,7 @@ class Router:
             fit = _hint_hits(sig.wordset, sig.norm, hint.get("fit_terms"))
             if fit:
                 adj += min(p.fit_boost * 2, p.fit_boost * fit)
-            stamp = util.parse_date(note.meta.get("revised") or note.meta.get("approved_at")
-                                    or note.meta.get("added"))
-            fresh = bool(stamp and (today - stamp).days <= p.fresh_days)
+            fresh, stale, disputed = self._day_facts(note, today)
             if fresh:
                 adj += p.fresh_boost
             ruling = (sig.asks_allowed and note.kind in constraint) or (
@@ -2184,10 +2216,8 @@ class Router:
                                         else topic in house_topics))
             if ruling:
                 adj += p.rule_boost
-            stale = note.stale_reason(today, self.config.review_days_for(note))
             if stale:
                 adj *= p.stale_factor
-            disputed = note.confidence == "disputed"
             if disputed:
                 adj *= p.disputed_factor
             scored.detail.update({
@@ -2198,6 +2228,24 @@ class Router:
                 "gated": gated, "fresh": fresh, "rule": ruling, "stale": stale,
                 "disputed": disputed,
                 "topic_rel": round(topic_rel.get(topic, 0.0), 3)})
+
+    def _day_facts(self, note, today) -> tuple:
+        """(fresh, stale reason, disputed) of a note today: they change at most once a day,
+        and this router lives only as long as the Brain does not change, so they are worked
+        out once per note, not on every request for every note."""
+        facts = self._facts if self._facts_day == today else None
+        if facts is None:
+            self._facts, self._facts_day = {}, today
+            facts = self._facts
+        found = facts.get(note.id)
+        if found is None:
+            stamp = util.parse_date(note.meta.get("revised") or note.meta.get("approved_at")
+                                    or note.meta.get("added"))
+            found = (bool(stamp and (today - stamp).days <= self.policy.fresh_days),
+                     note.stale_reason(today, self.config.review_days_for(note)),
+                     note.confidence == "disputed")
+            facts[note.id] = found
+        return found
 
     def _names(self, request, note_id) -> bool:
         """Does the request name this note: at least `gate_named` of its weighted words, and

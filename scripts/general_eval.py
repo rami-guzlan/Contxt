@@ -52,6 +52,7 @@ def scale(args) -> str:
     sources = [e["vault"] for e in evalkit.generated_brains(GENERAL)]
     sources += [os.path.join(BRAINS, n, "vault") for n in se.DEMO_BRAINS]
     requests = [c["request"] for c in evalkit.generated_brains(GENERAL)[0]["cases"]]
+    requests = requests * max(1, args.repeat)
     lines = ["## Latency by Brain size", "",
              f"Matching: {'words and meaning' if args.models else 'words only'}. "
              f"{len(requests)} requests per size, each in its own conversation, after one "
@@ -86,6 +87,8 @@ def main(argv=None) -> int:
     parser.add_argument("--markdown", help="write the report to this file too")
     parser.add_argument("--json", help="write the numbers (no private rows) to this file")
     parser.add_argument("--scale", help="measure latency at these Brain sizes, e.g. 50,500")
+    parser.add_argument("--repeat", type=int, default=1,
+                        help="ask the scale requests this many times over")
     parser.add_argument("--learning", action="store_true",
                         help="measure learning from use (stage 4) instead")
     parser.add_argument("--minimums", help="write each Brain's zero-config rates to this "

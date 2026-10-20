@@ -16,6 +16,7 @@ import copy
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass
 
 from . import config as config_mod
@@ -43,6 +44,12 @@ def review_stamp(brain) -> str:
     except Exception:
         return ""
 
+
+
+# A Brain with this many content files is walked for changes at most every RECHECK_SECONDS
+# (its own writes are always seen at once); a smaller one on every request.
+RECHECK_FILES = 1500
+RECHECK_SECONDS = 2.0
 
 class Result:
     __slots__ = ("text", "data", "is_error")
@@ -123,6 +130,7 @@ class Brain:
         # routing is unchanged.
         self.reranker = Reranker(self.vault.runtime_dir) if (embeddings and rerank) else None
         self._state: State | None = None
+        self._looked: tuple | None = None  # (when, writes, files) of the last walk
         self._state_writes = -1
         self._lock = threading.RLock()
         self._ledger: Ledger | None = None
@@ -146,8 +154,16 @@ class Brain:
         if deferred is not None and self._state is not None and deferred.seen == self.vault.writes:
             # Inside a batch, only the batch writes: nothing changed since the last write.
             return self._state
+        looked = self._looked
+        if (self._state is not None and looked is not None and looked[1] == self.vault.writes
+                and looked[2] >= RECHECK_FILES
+                and time.monotonic() - looked[0] < RECHECK_SECONDS):
+            # A large Brain: walking every file to see whether one changed costs more than the
+            # brief. Its own writes are seen at once; an edit from outside within seconds.
+            return self._state
         listing = self.vault.listing()
         fingerprint = self.vault.fingerprint(listing)
+        self._looked = (time.monotonic(), self.vault.writes, len(listing))
         with self._lock:
             writes = self.vault.writes
             if (self._state is None or self._state.fingerprint != fingerprint
