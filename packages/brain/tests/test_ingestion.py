@@ -42,6 +42,16 @@ class DoorTest(unittest.TestCase):
                          ["always send the deck a day early"])
         self.assertEqual(statements.quotes('A short "quote" only.'), [])
 
+    def test_a_quote_over_one_speakers_lines_is_heard_and_one_over_two_speakers_is_not(self):
+        source = ("Assistant: I would launch it in mid October.\n"
+                  "Dana: No, October is too early, the cards will not be printed.\n"
+                  "Dana: We will launch the loyalty card on November 3.")
+        joined = ("They said “No, October is too early, the cards will not be printed. "
+                  "We will launch the loyalty card on November 3.”")
+        self.assertEqual(statements.unheard(joined, [source]), [])
+        mixed = "They said “launch it in mid October. No, October is too early”"
+        self.assertEqual(len(statements.unheard(mixed, [source])), 1)
+
 
 class ProposalsTest(unittest.TestCase):
     def setUp(self):

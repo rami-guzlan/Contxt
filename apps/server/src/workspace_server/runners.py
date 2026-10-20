@@ -253,6 +253,7 @@ class LocalRun:
     # why a run being stopped will end (cancelled | timed_out); it stays running until the
     # process has exited and everything about it is recorded
     stopping: str | None = None
+    tools_failed: bool = False  # the app's tools did not connect: nothing could be done
     started_at: str = ""
     finished_at: str | None = None
     exit_code: int | None = None
@@ -387,7 +388,11 @@ def describe(line: str) -> list[dict[str, Any]]:
         state = next((s.get("status") for s in servers if s.get("name") == SERVER_NAME), None)
         model = message.get("model") or "the model"
         return [
-            {"kind": "status", "text": f"Started {model}; workspace tools {state or 'missing'}."}
+            {
+                "kind": "status",
+                "text": f"Started {model}; workspace tools {state or 'missing'}.",
+                "tools": state or "missing",
+            }
         ]
     body = message.get("message")
     content = body.get("content") if isinstance(body, dict) else None
@@ -1161,7 +1166,24 @@ class Runners:
                     log.warning("Could not read a line of %s's output", run.id, exc_info=True)
                     events = [{"kind": "log", "text": line[:400]}]
                 for event in events:
+                    tools = event.pop("tools", None)
                     self._add(run, **event)
+                    if tools not in (None, "connected"):
+                        # Claude Code goes on without a server that did not connect, and would
+                        # report a run that could do nothing as finished: stop it here.
+                        run.tools_failed = True
+                        self._add(
+                            run,
+                            "error",
+                            text=(
+                                f"The app's tools did not connect ({tools}), so this run could "
+                                f"do nothing. Check that the app answers at {self.base_url}/mcp "
+                                "and run it again."
+                            ),
+                        )
+                        proc = self._procs.get(run.id)
+                        if proc is not None:
+                            _kill(proc)
                     if event["kind"] == "result":
                         run.summary = str(event.get("text") or "")[:2000]
                         if event.get("usage"):
@@ -1207,7 +1229,9 @@ class Runners:
                     self._add(run, "error", text=f"Could not list what it made: {exc}")
             results = [e for e in run.events if e["kind"] == "result"]
             ended = run.stopping or (
-                "succeeded" if code == 0 and results and results[-1].get("ok") else "failed"
+                "succeeded"
+                if code == 0 and results and results[-1].get("ok") and not run.tools_failed
+                else "failed"
             )
             self._settle(run, token, ended)
         except Exception as exc:

@@ -266,13 +266,38 @@ def check_budget(brain, session_id):
         {"status": "limit", "used": used, "limit": limit}, True)
 
 
-def pending_duplicate(st, kind, text):
-    """A waiting proposal of this kind with the same text, if any."""
+CAPTURED = re.compile(r"context_item:([\w-]+)")
+# A model reading the same capture again rewords what it proposed: most of the shorter
+# text's words in the longer one is the same proposal (a reworded repeat shared 0.8 of its
+# words; a different note from the same capture, 0.2).
+REWORDED = 0.7
+
+
+def _words(text) -> set:
+    return set(re.sub(r"[^\w\s]", " ", str(text or "").lower()).split())
+
+
+def pending_duplicate(st, kind, text, source=""):
+    """A waiting proposal of this kind with the same text, or, from a capture it also came
+    from, nearly the same words, if any."""
     key = util.canonical(text)
     if not key:
         return None
-    return next((p for p in st.snapshot.proposals.values()
-                 if p.kind == kind and util.canonical(p.body) == key), None)
+    captured = set(CAPTURED.findall(str(source or "")))
+    words = _words(text)
+    for p in st.snapshot.proposals.values():
+        if p.kind != kind:
+            continue
+        if util.canonical(p.body) == key:
+            return p
+        theirs = set(CAPTURED.findall(str(p.target.get("source") or p.meta.get("source")
+                                          or "")))
+        if captured & theirs:
+            other = _words(p.body)
+            if words and other and len(words & other) / min(len(words), len(other)) >= \
+                    REWORDED:
+                return p
+    return None
 
 
 def _similar(brain, text, chain, partitions, limit=3):
@@ -488,7 +513,7 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         if duplicate is not None:
             return _result(f"Already governed as {duplicate.id}; nothing proposed.",
                            {"status": "duplicate", "id": duplicate.id})
-    waiting = pending_duplicate(st, kind, text) if kind in ("note.create",
+    waiting = pending_duplicate(st, kind, text, source) if kind in ("note.create",
                                                             "note.update") else None
     if waiting is not None:
         return _result(f"The same proposal is already waiting for review ({waiting.id}).",

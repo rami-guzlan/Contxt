@@ -159,10 +159,28 @@ def _plain(text: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", str(text or "").lower()).split())
 
 
+SPEAKER = re.compile(r"^\s*([A-Z][\w .'-]{0,40}):\s*(.*)$")
+
+
+def _one_voice(text: str) -> str:
+    """Consecutive lines one speaker said, read as one passage: a quote may run across them,
+    but never across two speakers' lines."""
+    out: list[str] = []
+    speaker = None
+    for line in str(text or "").splitlines():
+        found = SPEAKER.match(line)
+        if found and found.group(1) == speaker and out:
+            out[-1] += " " + found.group(2)
+        else:
+            out.append(line)
+            speaker = found.group(1) if found else None
+    return "\n".join(out)
+
+
 def unheard(evidence: str, said: list[str]) -> list[str]:
     """The quotes in the evidence that appear in none of the messages the person sent (the
     requests the ledger logged in that conversation)."""
-    heard = [_plain(t) for t in said if t]
+    heard = [_plain(_one_voice(t)) for t in said if t]
     return [q for q in quotes(evidence) if not any(_plain(q) in h for h in heard)]
 
 

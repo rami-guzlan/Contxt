@@ -319,6 +319,16 @@ def _open_browser(link: str, data_dir: str) -> None:
         pass
 
 
+def listen(runtime: Any, host: str, port: int) -> tuple[str, int]:
+    """Serve on this host and port: the settings and the runs the app starts (which reach its
+    MCP endpoint) both use them, not the port the home was made with."""
+    from .app import local_url
+
+    runtime.settings.host, runtime.settings.port = host, port
+    runtime.runners.base_url = local_url(runtime.settings).rstrip("/")
+    return host, port
+
+
 def _serve(runtime: object, args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -334,8 +344,7 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     assert isinstance(runtime, Runtime)
     settings = runtime.settings
     runtime.runners.sweep()  # credentials of runs a stopped server left behind
-    host, port = args.host or settings.host, args.port or settings.port
-    settings.host, settings.port = host, port
+    host, port = listen(runtime, args.host or settings.host, args.port or settings.port)
     worker = (
         None
         if args.no_worker
