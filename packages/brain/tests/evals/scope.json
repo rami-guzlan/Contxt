@@ -1,0 +1,110 @@
+{
+ "about": "Project-scoped requests (Release 1 plan, M00 baseline). Invented projects and people. Each project has a Focus with an objective and two pinned notes, and five notes filed with it; the Brain also holds Brain-wide notes. Requests name a project (or, for `implicit`, only its subject). Measured: the needed note reached, the pins delivered for a status request, and notes from other projects leaking in. `conflicts` are two live values for one fact on the same date, which should both be shown, and `updates` a newer dated value, which should be current with the older one marked.",
+ "brain_wide": [
+  {"id": "short-emails", "kind": "preference", "title": "Short emails", "body": "I prefer short emails with the ask in the first line."},
+  {"id": "invoice-days", "kind": "fact", "title": "Invoice days", "body": "Invoices go out on the 1st and the 15th of each month."},
+  {"id": "accountant", "kind": "fact", "title": "Our accountant", "body": "Our accountant is Lena Park at Park and Hale."},
+  {"id": "standup", "kind": "fact", "title": "Team standup", "body": "The team standup is on Mondays at 9 in the morning."},
+  {"id": "plain-words", "kind": "rule", "title": "Plain words for clients", "body": "Use plain words in anything sent to clients, with no jargon."}
+ ],
+ "projects": [
+  {"key": "bakery", "name": "Harbor Street bakery website", "aliases": ["the bakery site"],
+   "objective": "Launch the new ordering site for Harbor Street Bakery by December 1.",
+   "pins": ["bakery-rule", "bakery-decision"],
+   "notes": [
+    {"id": "bakery-rule", "kind": "rule", "title": "Prices include tax", "body": "Every page on the bakery site shows prices including tax."},
+    {"id": "bakery-contact", "kind": "fact", "title": "Bakery site developer", "body": "Our developer for the bakery site is Tomas Reyes, on contract for 20 hours a week."},
+    {"id": "bakery-deadline", "kind": "fact", "title": "Menu photos due", "body": "The menu photos for the bakery site are due on November 8."},
+    {"id": "bakery-decision", "kind": "decision", "title": "Shopify over Squarespace", "body": "We chose Shopify over Squarespace for the bakery site because of its pickup scheduling app."},
+    {"id": "bakery-budget", "kind": "fact", "title": "Bakery site budget", "body": "The bakery site budget is $6,500, with $1,200 held for photography."}
+   ],
+   "requests": [
+    {"q": "Who is the developer on the bakery site?", "need": "bakery-contact"},
+    {"q": "When are the menu photos due for the Harbor Street bakery website?", "need": "bakery-deadline"},
+    {"q": "Why did we pick Shopify for the bakery site?", "need": "bakery-decision"},
+    {"q": "How much money do we have for the bakery site?", "need": "bakery-budget"},
+    {"q": "Write the product page copy for the croissant box on the bakery site.", "need": "bakery-rule"},
+    {"q": "Where does the Harbor Street bakery website stand?", "status": true},
+    {"q": "Which platform runs the pickup ordering for the bakery?", "need": "bakery-decision", "implicit": true}
+   ]},
+  {"key": "podcast", "name": "Long Table podcast season 3", "aliases": ["Long Table"],
+   "objective": "Record and release ten episodes of Long Table season 3 by March.",
+   "pins": ["podcast-rule", "podcast-decision"],
+   "notes": [
+    {"id": "podcast-rule", "kind": "rule", "title": "Questions a week ahead", "body": "Long Table guests get the question list a week before recording."},
+    {"id": "podcast-contact", "kind": "fact", "title": "Audio editor", "body": "Our audio editor for Long Table is Ines Moreau."},
+    {"id": "podcast-deadline", "kind": "fact", "title": "Episode 1 mix due", "body": "Long Table episode 1 must be mixed by November 15."},
+    {"id": "podcast-decision", "kind": "decision", "title": "Record in person", "body": "Long Table season 3 records in person at the Eastside studio, not remotely."},
+    {"id": "podcast-budget", "kind": "fact", "title": "Season 3 budget", "body": "The Long Table season 3 budget is $9,000, mostly studio time."}
+   ],
+   "requests": [
+    {"q": "Who edits the audio for Long Table?", "need": "podcast-contact"},
+    {"q": "When does the first Long Table episode need to be mixed?", "need": "podcast-deadline"},
+    {"q": "Are we recording Long Table season 3 remotely?", "need": "podcast-decision"},
+    {"q": "What's the budget for Long Table podcast season 3?", "need": "podcast-budget"},
+    {"q": "Draft the booking email to our next Long Table guest.", "need": "podcast-rule"},
+    {"q": "Where does Long Table season 3 stand?", "status": true},
+    {"q": "Who mixes our episodes?", "need": "podcast-contact", "implicit": true}
+   ]},
+  {"key": "move", "name": "Office move to Pine Avenue", "aliases": ["the move"],
+   "objective": "Move the team into the Pine Avenue office by January 15 without losing a working day.",
+   "pins": ["move-rule", "move-decision"],
+   "notes": [
+    {"id": "move-rule", "kind": "rule", "title": "Inventory before packing", "body": "Nothing gets packed for the office move without a labelled inventory line."},
+    {"id": "move-contact", "kind": "fact", "title": "Movers contact", "body": "Our contact at the movers, Northline Moving, is Dana Kim."},
+    {"id": "move-deadline", "kind": "fact", "title": "Internet live date", "body": "Internet at the Pine Avenue office must be live by January 8."},
+    {"id": "move-decision", "kind": "decision", "title": "Keep the desks", "body": "For the office move we are keeping the old desks and selling the meeting room table."},
+    {"id": "move-budget", "kind": "fact", "title": "Move budget", "body": "The office move budget is $14,000, including movers and cabling."}
+   ],
+   "requests": [
+    {"q": "Who's our contact at the movers for the office move?", "need": "move-contact"},
+    {"q": "When does internet need to be working at Pine Avenue?", "need": "move-deadline"},
+    {"q": "Are we taking the old desks to the Pine Avenue office?", "need": "move-decision"},
+    {"q": "What's the budget for the office move to Pine Avenue?", "need": "move-budget"},
+    {"q": "Make a packing checklist for the office move.", "need": "move-rule"},
+    {"q": "Where does the office move to Pine Avenue stand?", "status": true},
+    {"q": "Who do I call at Northline Moving?", "need": "move-contact", "implicit": true}
+   ]},
+  {"key": "grant", "name": "Arts council grant application", "aliases": ["the grant"],
+   "objective": "Submit the arts council project grant for the spring mural program by February 2.",
+   "pins": ["grant-rule", "grant-decision"],
+   "notes": [
+    {"id": "grant-rule", "kind": "rule", "title": "Round budget figures", "body": "In the arts council grant, budget figures are always rounded to the nearest hundred dollars."},
+    {"id": "grant-contact", "kind": "fact", "title": "Program officer", "body": "Our program officer at the arts council is Samir Haddad."},
+    {"id": "grant-deadline", "kind": "fact", "title": "Support letters due", "body": "Letters of support for the arts council grant are due January 20."},
+    {"id": "grant-decision", "kind": "decision", "title": "Two years of funding", "body": "The arts council grant asks for two years of funding, not one."},
+    {"id": "grant-budget", "kind": "fact", "title": "Grant request amount", "body": "The arts council grant request is $48,000 over two years."}
+   ],
+   "requests": [
+    {"q": "Who is our program officer for the arts council grant?", "need": "grant-contact"},
+    {"q": "When are the letters of support due for the grant?", "need": "grant-deadline"},
+    {"q": "How many years of funding is the arts council grant asking for?", "need": "grant-decision"},
+    {"q": "How much are we requesting in the arts council grant application?", "need": "grant-budget"},
+    {"q": "Write the budget table for the arts council grant application.", "need": "grant-rule"},
+    {"q": "Where does the arts council grant application stand?", "status": true},
+    {"q": "How much are we asking the arts council for?", "need": "grant-budget", "implicit": true}
+   ]}
+ ],
+ "updates": [
+  {"id": "launch-update", "request": "When does the Harbor Street bakery website launch?",
+   "notes": [
+    {"id": "launch-old", "kind": "fact", "title": "Bakery site launch", "as_of": "2026-09-01", "body": "The bakery site launches on November 20."},
+    {"id": "launch-new", "kind": "fact", "title": "Bakery site launch moved", "as_of": "2026-10-10", "body": "The bakery site launch moved to December 1."}],
+   "newest": "launch-new", "older": ["launch-old"]},
+  {"id": "episodes-update", "request": "How many episodes are in Long Table season 3?",
+   "notes": [
+    {"id": "episodes-old", "kind": "fact", "title": "Season 3 length", "as_of": "2026-08-15", "body": "Long Table season 3 will have eight episodes."},
+    {"id": "episodes-new", "kind": "fact", "title": "Season 3 length grew", "as_of": "2026-10-05", "body": "Long Table season 3 will now have ten episodes."}],
+   "newest": "episodes-new", "older": ["episodes-old"]}
+ ],
+ "conflicts": [
+  {"id": "move-date-conflict", "request": "What date is the office move to Pine Avenue?",
+   "notes": [
+    {"id": "move-date-a", "kind": "fact", "title": "Move date", "as_of": "2026-10-12", "source": "email from facilities", "body": "The office move to Pine Avenue is on January 12."},
+    {"id": "move-date-b", "kind": "fact", "title": "Move date per movers", "as_of": "2026-10-12", "source": "Northline Moving quote", "body": "The office move to Pine Avenue is on January 14."}]},
+  {"id": "officer-conflict", "request": "Who is the program officer for the arts council grant?",
+   "notes": [
+    {"id": "officer-a", "kind": "fact", "title": "Program officer", "as_of": "2026-10-02", "source": "council website", "body": "The arts council program officer for our grant is Samir Haddad."},
+    {"id": "officer-b", "kind": "fact", "title": "Program officer changed", "as_of": "2026-10-02", "source": "call notes", "body": "The arts council program officer for our grant is Maya Okoro."}]}
+ ]
+}

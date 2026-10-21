@@ -792,6 +792,9 @@ class Route:
     must_holds: list = field(default_factory=list)    # [MustHold] in play, shown in full
     must_overflow: list = field(default_factory=list)  # [MustHold] past the cap: listed
     older: list = field(default_factory=list)         # [(older note, newer note)]: listed
+    # Notes filed with another project than the one this request names: out of its scope.
+    out_of_project: set = field(default_factory=set)
+    focus_reason: str = ""             # why find_focus chose the Focus
     # Every on-demand note scored for the request, best first: what the engine's fallback
     # audit writes down. Routing never reads it.
     ranked: list = field(default_factory=list)
@@ -891,19 +894,9 @@ class Router:
         request, so a previous caller cannot make a private note visible to another.
         """
         focus = route.focus
-        if focus.id not in self._project_members:
-            names = [focus.title] + focus.aliases
-            pinned = set(focus.pinned_notes)
-            self._project_members[focus.id] = {
-                n.id for n in self.index.notes.values()
-                if n.id in pinned or n.topic in (focus.id, focus.slug)
-                or (n.area == "projects" and n.route_key == focus.note.route_key)
-                or str(n.meta.get("project_id") or "") == focus.id
-                or any(_phrase(util.normalize(f"{n.title} {n.summary} {n.body}"), name)
-                       for name in names)
-            }
+        members = self.project_members(focus)
         sig = route.signals
-        candidates = [n for n in notes if n.id in self._project_members[focus.id]
+        candidates = [n for n in notes if n.id in members
                       and n.id != focus.id and not n.standing and not n.must_hold
                       and n.route_key not in sig.exclude_topics
                       and (sig.only_topics is None or n.route_key in sig.only_topics)]
@@ -913,6 +906,43 @@ class Router:
                     if calibrated else s.score >= self.policy.note_abs_floor)]
         route.log(f"project facts: {min(len(pointers), self.policy.related_count)} pointer(s)")
         return pointers[:self.policy.related_count]
+
+    def project_filed(self, focus) -> set[str]:
+        """The notes filed with a project: in its folder or marked with its id. A pin is not
+        filing: a Brain-wide note one project pins still belongs to every request."""
+        key = f"filed:{focus.id}"
+        if key not in self._project_members:
+            self._project_members[key] = {
+                n.id for n in self.index.notes.values()
+                if n.topic in (focus.id, focus.slug)
+                or (n.area == "projects" and n.route_key == focus.note.route_key)
+                or str(n.meta.get("project_id") or "") == focus.id
+            }
+        return self._project_members[key]
+
+    def project_members(self, focus) -> set[str]:
+        """The notes filed with a project, pinned by it, or naming it. Cached for this
+        immutable index."""
+        if focus.id not in self._project_members:
+            names = [focus.title] + focus.aliases
+            pinned = set(focus.pinned_notes)
+            self._project_members[focus.id] = self.project_filed(focus) | {
+                n.id for n in self.index.notes.values()
+                if n.id in pinned or any(_phrase(util.normalize(f"{n.title} {n.summary} {n.body}"), name)
+                       for name in names)
+            }
+        return self._project_members[focus.id]
+
+    def other_projects(self, focus, focuses) -> set[str]:
+        """Notes filed with another project and not belonging to this one, the other
+        projects' own notes included: a request about one project never receives them. A
+        Brain-wide note that only names another project stays in reach."""
+        own = self.project_members(focus)
+        out = set()
+        for other in focuses:
+            if other.id != focus.id:
+                out |= (self.project_filed(other) | {other.id}) - own
+        return out
 
     def admitted_focuses(self, chain, partitions):
         return [f for f in self.index.focuses.values()
@@ -1319,7 +1349,8 @@ class Router:
         # Never a note loaded "manual" (the owner's goals): a target is not a newer value.
         pool = [n for n in self.admitted_notes(route.chain, route.partitions)
                 if (n.as_of or n.kind == "state") and not self.config.is_focus(n)
-                and n.load != "manual" and tension.measures(n.body)]
+                and n.load != "manual" and n.id not in route.out_of_project
+                and tension.measures(n.body)]
         if not pool:
             return
         if route.mode == "focus-only":
@@ -1531,6 +1562,8 @@ class Router:
         route.log(f"focus: {reason}")
         if focus is not None:
             route.focus = focus
+            route.focus_reason = reason
+            route.out_of_project = self.other_projects(focus, focuses)
             if sig.focus_update:
                 route.mode, route.focus_mode = "focus-update", "focus-update"
                 route.task_type, route.scale = "workflow", "micro"
@@ -1552,7 +1585,23 @@ class Router:
                 return route
             route.focus_mode = "focus-aware"
         self._standard(route, notes, skills, focuses)
+        self._keep_to_project(route)
         return route
+
+    def _keep_to_project(self, route: Route) -> None:
+        """Take the notes of other projects out of what was chosen. They are removed after
+        the choice, never before it: leaving them out of the pool would move the relative
+        bars and could bring in a weaker note in their place."""
+        out = route.out_of_project
+        if not out:
+            return
+        dropped = 0
+        for name in ("notes", "related", "related_pool", "style_notes", "standing_answer"):
+            kept = [s for s in getattr(route, name) if s.item.id not in out]
+            dropped += len(getattr(route, name)) - len(kept)
+            setattr(route, name, kept)
+        if dropped:
+            route.log(f"project scope: {dropped} note(s) of other projects left out")
 
     # ------------------------------------------------------------------ orientation
     def _orientation(self, route: Route, notes, focuses) -> Route:
