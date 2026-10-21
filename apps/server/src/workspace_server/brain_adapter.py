@@ -59,6 +59,13 @@ SESSION_SECTIONS = (
 RETITLE = {"Startup context": "# Standing context", "Task context": "# Relevant context"}
 WORKSPACE_SOURCE = "contxt, proposed by "
 SOURCE_LABELS = (WORKSPACE_SOURCE, "workspace, proposed by ")  # the earlier label too
+SOURCE_FIELDS = (
+    "source_id",
+    "source_version",
+    "source_locator",
+    "source_speaker",
+    "source_excerpt",
+)
 RELATED = re.compile(r"\bbrain:([A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9])")
 TOOL_NAMES = {"search_notes": "search_context", "get_note": "get_brain_entry"}
 # Decisions about a live (or archived) entry rather than a waiting proposal.
@@ -1427,6 +1434,28 @@ class BrainKitAdapter:
             extra = dict(extra or {}, subtype=statements.subtype(kind))
         # A must-hold the proposer suggests: the Brain checks its fields like any other.
         extra = dict(extra or {})
+        destination = extra.pop("destination", None)
+        place = extra.pop("place", None) or {}
+        if destination in ("sheet", "progress", "todo"):
+            # A sheet value, a progress update or a task: a typed proposal in the same inbox.
+            cited = {k: extra.get(k) for k in SOURCE_FIELDS}
+            with self._lock:
+                result = self.brain.propose_piece(
+                    "task" if destination == "todo" else destination,
+                    statement,
+                    title=title,
+                    reason=f"{destination} proposed from the workspace",
+                    as_of=extra.get("as_of"),
+                    **cited,
+                    **place,
+                )
+            if result.is_error and result.data.get("status") != "duplicate":
+                return BrainProposal(status="refused", message=result.text)
+            return BrainProposal(
+                status=str(result.data.get("status") or "pending"),
+                message=result.text,
+                proposal_id=result.data.get("proposal_id"),
+            )
         must = extra.pop("must_hold", None) or {}
         # Dates the Brain checks like any other field.
         dated = {name: extra.pop(name) for name in ("as_of", "valid_until") if extra.get(name)}
