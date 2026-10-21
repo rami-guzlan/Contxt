@@ -4,8 +4,8 @@ started: its arguments, its folder and the prompt it read on stdin. Each also pr
 real one prints beside its answer (Codex a header, Gemini a credentials line), which the
 workspace must leave out.
 
-FAKE_CLI_MODE is ok (default), fail (exits with an error on stderr) or crash (a stack trace,
-as Gemini CLI prints one for an account it cannot use).
+FAKE_CLI_MODE is ok (default), fail (exits with an error on stderr), crash (a stack trace,
+as Gemini CLI prints one for an account it cannot use) or auth (its login no longer works).
 """
 
 import json
@@ -23,6 +23,9 @@ prompt = sys.stdin.read()
 if os.environ.get("FAKE_CLI_MODE") == "fail":
     print("quota exceeded for this account", file=sys.stderr)
     sys.exit(2)
+if os.environ.get("FAKE_CLI_MODE") == "auth":
+    print("Error: 401 Unauthorized: not logged in. Run login again.", file=sys.stderr)
+    sys.exit(1)
 if os.environ.get("FAKE_CLI_MODE") == "crash":  # as Gemini CLI stops on an account it cannot use
     print("Loaded cached credentials.")
     print(

@@ -3,13 +3,15 @@ background through the model the owner chose), its questions, and its settings."
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from fastapi import APIRouter, Request
 
+from ..ask import Ask
 from ..deps import WS, Who
 from ..knowledge_agent import AgentWork
-from ..models import Models
+from ..models import Models, provider_card
 from ..schemas import (
     AgentActionIn,
     AgentAnswerIn,
@@ -18,6 +20,7 @@ from ..schemas import (
     AgentEnrichIn,
     AgentKeepIn,
     AgentSettingsIn,
+    AskIn,
 )
 
 router = APIRouter(prefix="/api/brain/agent")
@@ -41,6 +44,14 @@ def overview(request: Request, who: Who, ws: WS) -> dict[str, Any]:
     out["models"] = [m.to_dict() for m in models(request).list()]
     if ws.agent.chosen_model() is None:
         out["model"] = models(request).default()  # a local model when one is here
+    here = {m.id: m for m in models(request).list()}
+    wanted = str(out["model"])
+    current = here.get(wanted)
+    if current is None and wanted.split(":", 1)[0] in here:  # a CLI with a model named
+        base = here[wanted.split(":", 1)[0]]
+        current = replace(base, id=wanted, label=f"{base.label}, {wanted.split(':', 1)[1]}")
+    if current is not None:
+        out["provider"] = provider_card(current)  # what it runs on, and where data goes
     out["working"] = [
         j.to_dict()
         for j in work(request).recent(who)
@@ -133,3 +144,13 @@ def answer(body: AgentAnswerIn, who: Who, ws: WS) -> dict[str, Any]:
 def keep(body: AgentKeepIn, who: Who, ws: WS) -> dict[str, Any]:
     """Keep a note the agent suggested in the conversation: it waits in Catch up."""
     return ws.agent.keep_note(who, title=body.title, text=body.text, kind=body.kind, said=body.said)
+
+
+@router.post("/ask")
+def ask(body: AskIn, request: Request, who: Who, ws: WS) -> dict[str, Any]:
+    """Ask the chosen AI one question, answered from the Brain alone, with the receipts of
+    exactly what it was handed (Release 1 plan, M10)."""
+    runtime = request.app.state.runtime
+    return Ask(ws, runtime.runners, runtime.models, runtime.settings.brain_vault).ask(
+        who, body.question
+    )

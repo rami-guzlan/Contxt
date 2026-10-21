@@ -8,6 +8,7 @@ reach a model only pinned to its own task: search never finds them.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -509,6 +510,68 @@ def redacting(ws: Workspace, who: Principal) -> bool:
     except (OSError, ValueError, RuntimeError, KeyError):  # unreadable: the careful default
         return True
     return bool(policy.get("redact_cloud", True))
+
+
+# ---------------------------------------------------------------------- the knowledge agent
+# Set by the app when it starts: the knowledge agent's background work (knowledge_run).
+AGENT_WORK: Any = None
+
+
+def knowledge_skills(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any]]:
+    """The knowledge agent's skills a connected AI may run, with their verdicts."""
+    from workspace_core.services.agent import ACTIONS, VERDICTS
+
+    rows = [
+        {"name": k, "label": v["label"], "verdicts": sorted(VERDICTS[k])}
+        for k, v in ACTIONS.items()
+    ]
+    text = "\n".join(f"- {r['name']}: {r['label']}" for r in rows)
+    return text, {"skills": rows}
+
+
+def knowledge_gather(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any]]:
+    run = ws.agent.gather(who, str(_str(args, "skill", True)), brief=bool(args.get("brief")))
+    if not run["run_id"]:
+        return run["summary"], run
+    text = (
+        f"Run {run['run_id']} ({run['skill']}), held until {run['expires']}. Judge only the "
+        f"candidates below, then call knowledge_submit with one JSON answer.\n\n" + run["procedure"]
+    )
+    return text, run
+
+
+def knowledge_submit(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    answer = args.get("answer")
+    if isinstance(answer, (dict, list)):
+        answer = json.dumps(answer)
+    found = ws.agent.submit(who, str(_str(args, "run_id", True)), str(answer or ""))
+    if "retry" in found:
+        problems = "\n".join(f"- {p}" for p in found["retry"]["problems"])
+        return f"Fix these and submit once more:\n{problems}", found, True
+    text = found.get("summary") or "Done."
+    if found.get("proposals"):
+        text += f" {len(found['proposals'])} suggestion(s) wait in Catch up."
+    return text, found, False
+
+
+def knowledge_run(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    """Have Gnomon run a skill on the owner's chosen model, in the background."""
+    if AGENT_WORK is None:
+        return "The knowledge agent is not running here.", {}, True
+    job = AGENT_WORK.start_action(ws.owner(), str(_str(args, "skill", True)))
+    text = (
+        f"Started {job.id} on {job.model_label}. Its findings become suggestions that wait in "
+        "Catch up; nothing changes until the owner decides."
+    )
+    return text, job.to_dict(), False
 
 
 # ---------------------------------------------------------------------- registry
@@ -1044,6 +1107,52 @@ TOOLS: dict[str, Tool] = {
                 }
             ),
             hand_off,
+            "brain.propose",
+        ),
+        Tool(
+            "knowledge_skills",
+            "The knowledge agent's skills (tidy repeats, freshen up, check drift and the "
+            "rest), each with its verdicts.",
+            _obj({}),
+            knowledge_skills,
+            "brain.propose",
+        ),
+        Tool(
+            "knowledge_gather",
+            "Run one knowledge agent skill yourself: code gathers the candidates and the "
+            "procedure; judge only those candidates, then call knowledge_submit. The run is "
+            "held for 30 minutes.",
+            _obj(
+                {
+                    "skill": {"type": "string", "description": "A name from knowledge_skills."},
+                    "brief": {"type": "boolean", "description": "Fewer candidates, short map."},
+                },
+                ["skill"],
+            ),
+            knowledge_gather,
+            "brain.propose",
+        ),
+        Tool(
+            "knowledge_submit",
+            "Your answer to a gathered run: one JSON object with summary and findings. Code "
+            "checks it; problems come back once to fix. Findings become suggestions that wait "
+            "for the owner.",
+            _obj(
+                {
+                    "run_id": {"type": "string"},
+                    "answer": {"description": "The JSON answer, as an object or as text."},
+                },
+                ["run_id", "answer"],
+            ),
+            knowledge_submit,
+            "brain.propose",
+        ),
+        Tool(
+            "knowledge_run",
+            "Have Gnomon run one knowledge agent skill on the owner's chosen model, in the "
+            "background. Its findings wait in Catch up.",
+            _obj({"skill": {"type": "string"}}, ["skill"]),
+            knowledge_run,
             "brain.propose",
         ),
         Tool(

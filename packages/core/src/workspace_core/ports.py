@@ -481,6 +481,10 @@ class BrainPort(Protocol):
         """One request's evidence receipt, exactly as delivered, or None."""
         ...
 
+    def requests_in(self, session_id: str) -> list[dict[str, Any]]:
+        """The requests one conversation made, oldest first: an answer's receipts."""
+        ...
+
     def dismiss_gap(self, key: str) -> None: ...
 
     def flow(self, *, days: int = 7) -> dict[str, Any]:
@@ -1025,6 +1029,9 @@ class NoBrain:
 
     def receipt(self, packet_id: str) -> dict[str, Any] | None:
         return None
+
+    def requests_in(self, session_id: str) -> list[dict[str, Any]]:
+        return []
 
     def dismiss_gap(self, key: str) -> None:
         return None

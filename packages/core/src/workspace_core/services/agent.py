@@ -122,6 +122,31 @@ Answer with the one JSON object the procedure describes, and nothing else: no wo
 after it."""
 
 
+HOLD_MINUTES = 30  # how long a gathered run waits for a connected AI's answer
+HOLD_RUNS = 20  # gathered runs held at once
+
+
+def _problems(skill: str, gathered: dict[str, Any], answer: str) -> list[str]:
+    """What keeps an answer from passing the checks, in plain words; empty when it passes."""
+    refs = [str(c["ref"]) for c in gathered.get("candidates") or []]
+    found = _json_in(answer)
+    findings = found.get("findings") if isinstance(found, dict) else None
+    if not isinstance(findings, list):
+        return ['The answer is one JSON object with "summary" and a "findings" list.']
+    out = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            out.append("Each finding is an object.")
+            continue
+        ref = str(finding.get("ref") or "").strip()
+        verdict = str(finding.get("verdict") or "").strip().lower()
+        if ref not in refs:
+            out.append(f"{ref or 'a finding'}: not one of the refs {', '.join(refs)}.")
+        elif verdict not in VERDICTS[skill]:
+            out.append(f"{ref}: the verdict is one of {', '.join(sorted(VERDICTS[skill]))}.")
+    return out
+
+
 def _json_in(text: str, *, last: bool = False) -> dict[str, Any] | None:
     """The JSON object in a model's answer: a ```json block (the last one when `last`), else
     the outermost braces. None when there is none that reads."""
@@ -457,6 +482,92 @@ class KnowledgeAgent:
         )
         parts.append(ANSWER)
         return "\n\n".join(parts) + "\n", gathered
+
+    # ---------------------------------------------------------------- run by a connected AI
+
+    def gather(self, who: Principal, skill: str, *, brief: bool = False) -> dict[str, Any]:
+        """knowledge_gather (Release 1 plan, M08): a connected AI runs one skill itself. Code
+        gathers the same candidates a run the app starts would; the run is held for
+        HOLD_MINUTES for its answer (knowledge_submit), which passes the same checks and the
+        same governance."""
+        who.require("brain.propose")
+        prompt, gathered = self.action_prompt(who, skill, brief=brief)
+        if not gathered.get("candidates"):
+            return {
+                "run_id": None,
+                "skill": skill,
+                "candidates": [],
+                "summary": "Nothing to check right now.",
+            }
+        now = self.rt.clock.now()
+        run_id = new_id("krun", now)
+        expires = iso(now + timedelta(minutes=HOLD_MINUTES))
+
+        def change(state: dict[str, Any], _tx: Any) -> None:
+            held = {
+                k: v
+                for k, v in (state.get("gathered") or {}).items()
+                if str(v.get("expires") or "") > iso(now)
+            }
+            held[run_id] = {
+                "skill": skill,
+                "gathered": gathered,
+                "expires": expires,
+                "retried": False,
+                "by": who.actor_id,
+            }
+            state["gathered"] = dict(list(held.items())[-HOLD_RUNS:])
+
+        self._update(change)
+        return {
+            "run_id": run_id,
+            "skill": skill,
+            "procedure": prompt,
+            "candidates": [
+                {"ref": c["ref"], "kind": c.get("kind"), "title": c.get("title")}
+                for c in gathered["candidates"]
+            ],
+            "verdicts": sorted(VERDICTS[skill]),
+            "answer_format": ANSWER,
+            "expires": expires,
+        }
+
+    def submit(self, who: Principal, run_id: str, answer: str) -> dict[str, Any]:
+        """knowledge_submit: check a connected AI's answer to a gathered run. Problems go back
+        once, listed (`retry`); a second answer that still does not pass keeps what it can,
+        and the run is handed back to the person (`handed_back`)."""
+        who.require("brain.propose")
+        held = (self._state().get("gathered") or {}).get(str(run_id or ""))
+        if held is None or held.get("by") != who.actor_id:
+            raise NotFound(f"No gathered run {run_id}: gather again.", id=run_id)
+        if str(held.get("expires") or "") <= iso(self.rt.clock.now()):
+            self._forget_run(run_id)
+            raise Conflict("That gathered run expired: gather again.")
+        problems = _problems(held["skill"], held["gathered"], answer)
+        if problems and not held.get("retried"):
+
+            def mark(state: dict[str, Any], _tx: Any) -> None:
+                state["gathered"][run_id]["retried"] = True
+
+            self._update(mark)
+            return {"retry": {"problems": problems}}
+        self._forget_run(run_id)
+        record = self.apply_action(
+            who, held["skill"], held["gathered"], answer, model="connected AI"
+        )
+        if problems:
+            record["handed_back"] = True
+            record["notes"].append(
+                "The answer still did not pass after one retry: what could not be read waits "
+                "for you."
+            )
+        return record
+
+    def _forget_run(self, run_id: str) -> None:
+        def change(state: dict[str, Any], _tx: Any) -> None:
+            (state.get("gathered") or {}).pop(run_id, None)
+
+        self._update(change)
 
     def apply_action(
         self,

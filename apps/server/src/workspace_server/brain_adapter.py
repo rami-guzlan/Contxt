@@ -1210,6 +1210,10 @@ class BrainKitAdapter:
         data: dict[str, Any] = self.brain.use(found, days=days).data
         return data
 
+    def requests_in(self, session_id: str) -> list[dict[str, Any]]:
+        found = self.brain.requests(session=session_id, limit=50)
+        return list(reversed(found.data.get("requests") or []))
+
     def receipt(self, packet_id: str) -> dict[str, Any] | None:
         found = self.brain.receipt(packet_id)
         return None if found.is_error else dict(found.data)

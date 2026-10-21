@@ -242,3 +242,31 @@ def test_verification_findings_arrive_only_as_cards_with_their_citations(ws, own
     assert question["sources"] == ["https://example.org/a", "https://example.org/b"]
     assert {k: v.text for k, v in brain.entries.items()} == before
     assert brain.proposed == []
+
+
+def test_a_connected_ai_gathers_judges_and_submits_under_the_same_checks(ws, owner, brain):
+    """knowledge_gather then knowledge_submit (Release 1 plan, M08): the same candidates,
+    checks and governance as a run the app starts; one retry for an answer that does not
+    read, then the run is handed back."""
+    brain.gathered["tidy-repeats"] = [PAIR]
+    run = ws.agent.gather(owner, "tidy-repeats")
+    assert run["skill"] == "tidy-repeats" and run["candidates"][0]["ref"] == "c1"
+    assert "merge" in run["verdicts"] and "# The procedure" in run["procedure"]
+    retry = ws.agent.submit(owner, run["run_id"], '{"findings": [{"ref": "c7", "verdict": "x"}]}')
+    assert retry["retry"]["problems"] and "c7" in retry["retry"]["problems"][0]
+    done = ws.agent.submit(
+        owner,
+        run["run_id"],
+        answer({"ref": "c1", "verdict": "merge", "keep": "A", "text": "Plain.", "why": "Same."}),
+    )
+    assert (done["proposed"], done["model"]) == (1, "connected AI")
+    with pytest.raises(NotFound):
+        ws.agent.submit(owner, run["run_id"], answer())
+
+
+def test_a_second_bad_answer_hands_the_run_back(ws, owner, brain):
+    brain.gathered["tidy-repeats"] = [PAIR]
+    run = ws.agent.gather(owner, "tidy-repeats")
+    ws.agent.submit(owner, run["run_id"], "not json")
+    ended = ws.agent.submit(owner, run["run_id"], "still not json")
+    assert ended["handed_back"] and ended["proposed"] == 0

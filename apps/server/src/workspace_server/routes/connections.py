@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request, Response
 
+from workspace_connectors import instructions
 from workspace_connectors.providers import (
     BRAIN_CLIENTS,
     BRAIN_SERVER_NAME,
@@ -16,9 +17,10 @@ from workspace_connectors.providers import (
     mcp_setup,
 )
 from workspace_core.domain.records import Actor, Credential
+from workspace_core.errors import ValidationFailed
 
 from ..deps import WS, Who
-from ..schemas import ActorRenameIn, ConnectionIn, TokenIn
+from ..schemas import ActorRenameIn, ConfirmIn, ConnectionIn, TokenIn
 
 router = APIRouter(prefix="/api")
 
@@ -118,3 +120,37 @@ def revoke(credential_id: str, who: Who, ws: WS) -> Response:
 @router.post("/actors/{actor_id}/disable")
 def disable(actor_id: str, who: Who, ws: WS) -> Actor:
     return ws.actors.disable(who, actor_id)
+
+
+@router.get("/connections/instructions")
+def instructions_status(request: Request, who: Who) -> list[dict[str, Any]]:
+    """Ask the Brain first: whether each app's own instructions file holds the instruction,
+    and where that file is."""
+    who.require("workspace.admin")
+    home = request.app.state.runtime.home
+    return [instructions.status(app, home) for app in instructions.FILES]
+
+
+@router.post("/connections/instructions/{app}")
+def install_instruction(app: str, body: ConfirmIn, request: Request, who: Who) -> dict[str, Any]:
+    """Write the instruction into the app's own instructions file, between markers. It
+    changes a file the app reads for every project, so it needs the person's yes."""
+    who.require("workspace.admin")
+    if not body.confirmed:
+        raise ValidationFailed(
+            "This writes to your app's own instructions file: confirm first.", field="confirmed"
+        )
+    try:
+        return instructions.install(app, request.app.state.runtime.home)
+    except ValueError as exc:
+        raise ValidationFailed(str(exc), field="app") from exc
+
+
+@router.delete("/connections/instructions/{app}")
+def remove_instruction(app: str, request: Request, who: Who) -> dict[str, Any]:
+    """Take the instruction out again; the rest of the file stays as it was."""
+    who.require("workspace.admin")
+    try:
+        return instructions.remove(app, request.app.state.runtime.home)
+    except ValueError as exc:
+        raise ValidationFailed(str(exc), field="app") from exc

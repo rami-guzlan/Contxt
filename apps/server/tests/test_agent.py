@@ -12,7 +12,7 @@ import pytest
 from workspace_core.errors import Conflict, ValidationFailed
 from workspace_server.knowledge_agent import AgentWork
 from workspace_server.models import ModelChoice, Models
-from workspace_server.runners import Runners
+from workspace_server.runners import RUNNERS, Runners
 
 FAKE_OTHER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_other_cli.py")
 
@@ -474,3 +474,90 @@ def test_worker_cadences_start_at_zero_uptime_and_wait_for_each_interval(runtime
     worker.tick()
     assert calls == {"goals": 3, "learn": 2}
     assert agent.started == [10, 10]  # active batch still prevents duplicate work
+
+
+def test_the_provider_card_reads_the_clis_own_model_and_says_where_data_goes(tmp_path):
+    """Release 1 plan, M08: the knowledge agent shows the model the CLI is set to, from the
+    CLI's own config, and names where what it reads is sent."""
+    from workspace_server.models import provider_card
+
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "settings.json").write_text('{"model": "claude-opus-5-5"}')
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex" / "config.toml").write_text(
+        'model = "gpt-5.1-codex"\n\n[profiles.fast]\nmodel = "gpt-5-mini"\n'
+    )
+    claude = provider_card(CHOICES[0], home=str(tmp_path))
+    assert (claude["vendor"], claude["model"]) == ("Anthropic", "claude-opus-5-5")
+    assert ".claude" in claude["model_from"] and "Anthropic" in claude["data"]
+    codex = ModelChoice("codex", "ChatGPT (Codex CLI)", "cli", True, "here", False)
+    assert provider_card(codex, home=str(tmp_path))["model"] == "gpt-5.1-codex"
+    named = ModelChoice("codex:gpt-x", "ChatGPT (Codex CLI), gpt-x", "cli", True, "here", False)
+    assert provider_card(named, home=str(tmp_path))["model_from"] == "named here"
+    gemini = ModelChoice("gemini", "Gemini CLI", "cli", True, "here", False)
+    found = provider_card(gemini, home=str(tmp_path))
+    assert found["model"] is None and found["model_from"] == "the CLI's own default"
+    local = provider_card(CHOICES[1], home=str(tmp_path))
+    assert local["vendor"] == "this computer" and "stays on this computer" in local["data"]
+
+
+def test_the_first_model_used_is_kept_so_a_failure_never_switches_provider(owner, runtime):
+    models = stub(runtime, '{"summary": "Nothing to merge.", "findings": []}')
+    assert runtime.ws.agent.chosen_model() in (None, "")
+    owner.ok(owner.post("/api/brain/agent/actions/tidy-repeats", json={}), 201)
+    assert runtime.ws.agent.chosen_model() == "claude"
+    CHOICES[0] = ModelChoice(
+        "claude", "Claude Code (your CLI)", "cli", False, "Not signed in", False
+    )
+    try:
+        refused = owner.post("/api/brain/agent/actions/tidy-repeats", json={})
+        assert refused.status_code == 409
+        assert "does not switch to another provider" in refused.json()["error"]["message"]
+    finally:
+        CHOICES[0] = ModelChoice("claude", "Claude Code (your CLI)", "cli", True, "here", False)
+    assert [a["model"] for a in models.asked] in ([], ["claude"])
+
+
+def test_a_codex_login_that_stopped_working_shows_as_signed_out(runtime, monkeypatch):
+    from brainkit import models_client
+
+    monkeypatch.setenv("FAKE_CLI_MODE", "auth")
+    codex_only = Runners(
+        runtime.ws,
+        runtime.templates,
+        base_url="http://127.0.0.1:8787",
+        resolve=lambda spec: [sys.executable, FAKE_OTHER, spec.id] if spec.id == "codex" else None,
+    )
+    models = Models(
+        codex_only, fetch=lambda *a, **k: {}, service=models_client.Status, settings=lambda: {}
+    )
+    with pytest.raises(Conflict, match="login no longer works"):
+        models.ask(runtime.ws.owner(), models.choose("codex"), "Judge.", json_only=True)
+    assert codex_only.status(RUNNERS["codex"]).signed_in is False
+
+
+def test_the_page_shows_what_the_agent_runs_on_and_where_data_goes(owner, runtime):
+    stub(runtime)
+    card = owner.ok(owner.get("/api/brain/agent"))["provider"]
+    assert (card["id"], card["vendor"]) == ("claude", "Anthropic")
+    assert "never on its own" in card["switches"]
+
+
+def test_a_connected_ai_runs_a_skill_through_gather_and_submit_over_mcp(model, brain_vault):
+    add_note(
+        brain_vault,
+        "rules-style-009",
+        "Headlines use sentence case, stay under nine words, and state one benefit.",
+    )
+    skills = model.tool("knowledge_skills")["structuredContent"]["skills"]
+    assert "tidy-repeats" in [s["name"] for s in skills]
+    run = model.tool("knowledge_gather", skill="tidy-repeats")["structuredContent"]
+    assert run["run_id"] and run["candidates"][0]["ref"] == "c1"
+    bad = model.tool("knowledge_submit", run_id=run["run_id"], answer={"findings": [{"ref": "c9"}]})
+    assert bad["isError"] and "Fix these" in bad["content"][0]["text"]
+    good = model.tool(
+        "knowledge_submit",
+        run_id=run["run_id"],
+        answer={"summary": "Different.", "findings": [{"ref": "c1", "verdict": "different"}]},
+    )
+    assert not good["isError"] and good["structuredContent"]["fine"] == 1
