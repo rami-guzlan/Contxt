@@ -645,6 +645,15 @@ class Brain:
             client=str(client or "").strip() or None,
         )
 
+    def receipt(self, who: Principal, packet_id: str) -> dict[str, Any]:
+        """One request's evidence receipt (Release 1 plan, M07): what was sent, opened,
+        did not fit, was already held and was unknown, with the tokens."""
+        who.require("brain.read")
+        found = self.rt.brain.receipt(str(packet_id or "").strip())
+        if found is None:
+            raise NotFound(f"No receipt {packet_id}.", id=packet_id)
+        return found
+
     def request(self, who: Principal, packet_id: str) -> dict[str, Any]:
         """One request in full, with the exact text it was handed and the startup context
         when that went with it."""
@@ -1043,6 +1052,9 @@ class Brain:
                     data={
                         "result": (outcome.get("data") or {}).get("status"),
                         "checkpoint": point.get("id"),
+                        # The entry a kept proposal became, so its capture can say when
+                        # that entry is searchable.
+                        "note": (outcome.get("data") or {}).get("id"),
                     },
                 )
         return result

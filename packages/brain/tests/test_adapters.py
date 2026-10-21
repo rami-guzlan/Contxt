@@ -60,7 +60,8 @@ class MCPServerTests(unittest.TestCase):
                                  "search_notes", "propose_note", "propose_skill", "add_file",
                                  "record_focus_update", "create_focus", "record_output",
                                  "brain_health", "challenge_note", "list_agents",
-                                 "get_agent", "get_state", "update_state", "hand_off"})
+                                 "get_agent", "get_state", "update_state", "hand_off",
+                                 "gnomon_map", "receipts_get"})
         first = self.call("get_task_context", {"request": "How long do web design projects run?"})
         self.assertFalse(first["isError"], first)
         text = first["content"][0]["text"]

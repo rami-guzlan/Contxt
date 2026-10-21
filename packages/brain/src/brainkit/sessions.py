@@ -141,6 +141,12 @@ class Ledger:
         if "epoch" not in columns:
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE deliveries ADD COLUMN epoch INTEGER")
+        # A packet keeps the last delivery row when it was handed over: what was opened after
+        # it comes later in that order (times are kept to the second, too coarse for this).
+        packet_columns = {row[1] for row in conn.execute("PRAGMA table_info(packets)")}
+        if "last_delivery" not in packet_columns:
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE packets ADD COLUMN last_delivery INTEGER")
         # Outputs say what they are for (BL 16.5): the project, the State row, who made it.
         kept = {row[1] for row in conn.execute("PRAGMA table_info(outputs)")}
         for column in ("project", "row_ref", "maker", "made_with", "violations"):
@@ -299,6 +305,42 @@ class Ledger:
                 (packet_id, session_id, now, request, mode, util.tokens(text), text,
                  json.dumps(data, ensure_ascii=False, default=str)))
             self._deliver(conn, session_id, packet_id, items, "packet", now)
+            conn.execute("UPDATE packets SET last_delivery = (SELECT COALESCE(MAX(rowid), 0) "
+                         "FROM deliveries) WHERE id = ?", (packet_id,))
+
+    @staticmethod
+    def _packets_in(conn, session_id) -> list:
+        return conn.execute("SELECT id, at, COALESCE(last_delivery, 0) AS last FROM packets "
+                            "WHERE session_id = ? ORDER BY at, rowid", (session_id,)).fetchall()
+
+    def opened_after(self, session_id: str, packet_id: str) -> list[dict]:
+        """What a conversation opened after one packet, before its next packet: one
+        receipt's "opened" list."""
+        with self._connect() as conn:
+            packets = self._packets_in(conn, session_id)
+            ids = [p["id"] for p in packets]
+            if packet_id not in ids:
+                return []
+            low = packets[ids.index(packet_id)]["last"]
+            later = packets[ids.index(packet_id) + 1:]
+            high = later[0]["last"] + 1 if later else None
+            rows = conn.execute(
+                "SELECT kind, item, tokens, at FROM deliveries WHERE session_id = ? AND "
+                "packet_id = ? AND rowid > ? AND (? IS NULL OR rowid < ?) ORDER BY rowid",
+                (session_id, FOLLOWUP, low, high, high)).fetchall()
+        return [dict(r) for r in rows]
+
+    def pulls_since_packet(self, session_id: str) -> tuple[int, int]:
+        """(items, tokens) opened in this conversation since its last packet: what the pull
+        budget of the current request has spent."""
+        with self._connect() as conn:
+            packets = self._packets_in(conn, session_id)
+            low = packets[-1]["last"] if packets else 0
+            row = conn.execute(
+                "SELECT COUNT(*) AS n, COALESCE(SUM(tokens), 0) AS t FROM deliveries "
+                "WHERE session_id = ? AND packet_id = ? AND rowid > ?",
+                (session_id, FOLLOWUP, low)).fetchone()
+        return int(row["n"] or 0), int(row["t"] or 0)
 
     def record_items(self, session_id: str, packet_id: str, items) -> None:
         """Items opened after a packet (`packet_id` "followup"), or handed out some other

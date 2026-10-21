@@ -497,6 +497,12 @@ class Distillation:
             chosen = [tx.one(schema.context_items, i, "note") for i in wanted]
             if any(row["archived_at"] for row in chosen):
                 raise ValidationFailed("Archived notes cannot be read for this.", field="item_ids")
+            excluded = [row["title"] for row in chosen if (row["provenance"] or {}).get("excluded")]
+            if excluded:
+                raise ValidationFailed(
+                    f"{excluded[0]} is excluded from the Brain: include it first.",
+                    field="item_ids",
+                )
             if any(not str(row["body"] or row["text_shadow"] or "").strip() for row in chosen):
                 raise ValidationFailed("That note is empty: write something first.")
             try:

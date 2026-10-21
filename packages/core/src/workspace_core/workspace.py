@@ -51,6 +51,7 @@ from .services.projects import Projects
 from .services.prompts import Prompts
 from .services.runtime import Runtime
 from .services.skills import Skills
+from .services.sources import Sources
 from .services.suggest import SkillSuggestions
 from .services.tasks import Tasks
 from .services.workflows import Workflows
@@ -81,6 +82,7 @@ class Workspace:
         self.distill = Distillation(rt, self.tasks)
         self.notes = Notes(rt)
         self.captures = Captures(rt, self.tasks, self.distill)
+        self.sources = Sources(rt, self.distill)
         self.skills = Skills(rt, self.tasks, self.distill, self.brain, self.artifacts)
         self.onboarding = Onboarding(rt)
         self.legacy = Legacy(rt)
