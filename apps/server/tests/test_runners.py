@@ -538,3 +538,32 @@ def test_the_apps_replies_to_a_run_repeat_its_contract(owner, ready_task, monkey
     assert "Run contract: Draft launch notes" in texts[4]
     owner.ok(owner.post(f"/api/runners/runs/{run['id']}/cancel"))
     finish(owner, run["id"])
+
+
+def test_ask_answers_from_the_brain_alone_and_returns_its_receipts(runtime, monkeypatch):
+    """Release 1 plan, M10: Claude Code runs with the Brain's MCP server and nothing else,
+    on a session named in advance, so every packet it asked for is the answer's receipt."""
+    from brainkit import models_client
+    from workspace_server.models import Models
+
+    monkeypatch.setenv("FAKE_CLI_ASK", "1")
+    runtime.runners = Runners(
+        runtime.ws, runtime.templates, base_url="http://127.0.0.1:8787", resolve=fake_resolve
+    )
+    runtime.models = Models(
+        runtime.runners,
+        fetch=lambda *a, **k: {},
+        service=models_client.Status,
+        settings=lambda: {},
+    )
+    with TestClient(create_app(runtime=runtime)) as client:
+        reply = client.post(
+            "/api/brain/agent/ask",
+            json={"question": "How long do web design projects run?"},
+            headers={"Authorization": f"Bearer {runtime.owner_token}"},
+        )
+    assert reply.status_code == 200, reply.text
+    found = reply.json()
+    assert found["asked_brain"] and len(found["receipts"]) == 1
+    assert found["cited"] and found["cited"][0] in found["answer"], found["answer"]
+    assert found["provider"]["vendor"] == "Anthropic"

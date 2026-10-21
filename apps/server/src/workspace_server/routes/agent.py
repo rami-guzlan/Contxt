@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from ..ask import Ask
 from ..deps import WS, Who
 from ..knowledge_agent import AgentWork
 from ..models import Models, provider_card
@@ -19,6 +20,7 @@ from ..schemas import (
     AgentEnrichIn,
     AgentKeepIn,
     AgentSettingsIn,
+    AskIn,
 )
 
 router = APIRouter(prefix="/api/brain/agent")
@@ -142,3 +144,13 @@ def answer(body: AgentAnswerIn, who: Who, ws: WS) -> dict[str, Any]:
 def keep(body: AgentKeepIn, who: Who, ws: WS) -> dict[str, Any]:
     """Keep a note the agent suggested in the conversation: it waits in Catch up."""
     return ws.agent.keep_note(who, title=body.title, text=body.text, kind=body.kind, said=body.said)
+
+
+@router.post("/ask")
+def ask(body: AskIn, request: Request, who: Who, ws: WS) -> dict[str, Any]:
+    """Ask the chosen AI one question, answered from the Brain alone, with the receipts of
+    exactly what it was handed (Release 1 plan, M10)."""
+    runtime = request.app.state.runtime
+    return Ask(ws, runtime.runners, runtime.models, runtime.settings.brain_vault).ask(
+        who, body.question
+    )

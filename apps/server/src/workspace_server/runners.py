@@ -1006,6 +1006,86 @@ class Runners:
         self._expired.discard(spec.id)
         return found
 
+    def ask_with_brain(
+        self,
+        who: Principal,
+        prompt: str,
+        *,
+        brain: list[str],
+        timeout: float = 240.0,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        """One answer from Claude Code with the Brain's MCP server and nothing else: no
+        built-in tools, none of the person's own MCP servers or connectors, the prompt on
+        stdin (a Windows launcher cuts a long argument short). Returns its final message."""
+        who.require("workspace.admin")
+        spec = RUNNERS["claude"]
+        command = self._ready(spec)
+        fenced = self._fence(spec, command)
+        folder = tempfile.mkdtemp(prefix="workspace-ask-")
+        config = os.path.join(folder, "mcp.json")
+        with open(config, "w", encoding="utf-8") as handle:
+            json.dump({"mcpServers": {"contxt": {"command": brain[0], "args": brain[1:]}}}, handle)
+        argv = [
+            *command,
+            "-p",
+            "--output-format",
+            "json",
+            *fenced,
+            "--tools",
+            "",
+            "--mcp-config",
+            config,
+            "--strict-mcp-config",
+            "--allowedTools",
+            "mcp__contxt",
+            "--permission-mode",
+            "dontAsk",
+            "--no-session-persistence",
+            *(["--model", model] if model else []),
+        ]
+        env = dict(os.environ, MCP_TIMEOUT="60000", ENABLE_CLAUDEAI_MCP_SERVERS="false")
+        try:
+            try:
+                proc = self.popen(
+                    argv,
+                    cwd=folder,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=env,
+                    **_quiet(),
+                )
+            except OSError as exc:
+                raise Conflict(f"Could not start {spec.label}: {exc}") from exc
+            try:
+                out, err = proc.communicate(prompt, timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                _kill(proc)
+                raise Conflict(f"{spec.label} took too long to answer.") from exc
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+        try:
+            found = json.loads(out or "{}")
+        except ValueError as exc:
+            raise Conflict(
+                f"{spec.label} gave an answer that could not be read: {error_line(err, out)}"
+            ) from exc
+        if not isinstance(found, dict) or found.get("is_error"):
+            reason = (
+                str(found.get("result") or "it stopped")
+                if isinstance(found, dict)
+                else "it stopped"
+            )
+            if AUTH_FAILED.search(reason):
+                raise Conflict(self._login_failed(spec))
+            raise Conflict(f"{spec.label} could not answer: {reason[:200]}")
+        self._expired.discard(spec.id)
+        return found
+
     def get(self, who: Principal, run_id: str) -> LocalRun:
         who.require("workspace.admin")
         run = self.runs.get(run_id) or self._load(run_id)

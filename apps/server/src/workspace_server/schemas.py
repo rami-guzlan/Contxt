@@ -285,6 +285,10 @@ class SummarizeIn(Body):
     guidance: str = Field(default="", max_length=2000)
 
 
+class AskIn(Body):
+    question: str = Field(max_length=4000)
+
+
 class ConfirmIn(Body):
     confirmed: bool = False
 

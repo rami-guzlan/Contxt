@@ -60,6 +60,49 @@ USAGE = {
     "output_tokens": 7,
 }
 SPENT = {"total_cost_usd": 0.0123, "modelUsage": {"claude-opus-5-5": {"costUSD": 0.0123}}}
+brain = (config.get("mcpServers") or {}).get("contxt")
+if brain and os.environ.get("FAKE_CLI_ASK") == "1":
+    # Ask: call the Brain's get_task_context once, the way Claude Code would, with the
+    # question and session the prompt names, and answer citing the first note it sent.
+    import re
+
+    question = prompt.rsplit("Question: ", 1)[-1].strip()
+    session = re.search(r"session_id (sess-[0-9a-f]+)", prompt).group(1)
+    server = subprocess.Popen(
+        [brain["command"], *brain["args"]],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    )
+    calls = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "get_task_context",
+                "arguments": {"request": question, "session_id": session},
+            },
+        },
+    ]
+    out, _ = server.communicate("\n".join(json.dumps(c) for c in calls) + "\n", timeout=60)
+    replies = [json.loads(line) for line in out.splitlines() if line.strip().startswith("{")]
+    text = ((replies[-1].get("result") or {}).get("content") or [{}])[0].get("text") or ""
+    ids = [i for i in re.findall(r"`([a-z][a-z0-9]*(?:-[a-z0-9]+)+)`", text)]
+    first = (ids or ["nothing"])[0]
+    print(
+        json.dumps(
+            {
+                "type": "result",
+                "is_error": False,
+                "result": f"Here is what the Brain says [{first}].",
+                "usage": {},
+            }
+        )
+    )
+    sys.exit(0)
 if args[args.index("--output-format") + 1] == "json":
     started = {"argv": args, "cwd": os.getcwd(), "prompt": prompt, "config": config}
     print(
