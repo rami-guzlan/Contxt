@@ -101,6 +101,14 @@ class DecisionItem(Body):
     confidence: str | None = None  # verify: confirmed | inferred | disputed | unknown
 
 
+class ReceiptCorrectionIn(Body):
+    """What went wrong with a request, from its receipt (brainkit/corrections.py)."""
+
+    kind: str
+    item: str = ""
+    note: str = ""
+
+
 class DecisionsIn(Body):
     decisions: list[DecisionItem] = Field(min_length=1, max_length=200)
     label: str | None = None

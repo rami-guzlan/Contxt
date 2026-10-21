@@ -667,6 +667,27 @@ class Brain:
             raise NotFound(f"No receipt {packet_id}.", id=packet_id)
         return found
 
+    def correct(
+        self, who: Principal, packet_id: str, kind: str, *, item: str = "", note: str = ""
+    ) -> dict[str, Any]:
+        """A correction made from a receipt (Release 1 plan, M07). It only proposes: a wrong
+        or outdated item raises a "Still true?" card, and the rest are recorded against the
+        receipt. Nothing in the Brain changes by itself."""
+        who.require("brain.read")
+        packet_id = str(packet_id or "").strip()
+        if not packet_id:
+            raise ValidationFailed("Name the request.", field="packet_id")
+        found = self.rt.brain.correct(packet_id, str(kind or ""), item=item, note=note)
+        with self.rt.write() as tx:
+            tx.emit(
+                "brain.corrected",
+                actor_id=who.actor_id,
+                subject_type="brain_request",
+                subject_id=packet_id,
+                data={"kind": kind, "item": item or None, "outcome": found.get("outcome")},
+            )
+        return found
+
     def request(self, who: Principal, packet_id: str) -> dict[str, Any]:
         """One request in full, with the exact text it was handed and the startup context
         when that went with it."""
@@ -1104,10 +1125,10 @@ class Brain:
         who.require("brain.read")
         return self.rt.brain.checkpoints(max(1, min(int(limit), 200)))
 
-    def undo(self, who: Principal, checkpoint_id: str) -> dict[str, Any]:
+    def undo(self, who: Principal, checkpoint_id: str, *, together: bool = False) -> dict[str, Any]:
         """Take a batch of decisions back: a human release gate, like deciding it was."""
         who.require("brain.govern")
-        result = self.rt.brain.undo(checkpoint_id)
+        result = self.rt.brain.undo(checkpoint_id, together=together)
         made = result.get("checkpoint") or {}
         with self.rt.write() as tx:
             tx.emit(

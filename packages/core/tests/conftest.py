@@ -245,7 +245,11 @@ class FakeBrain:
     def checkpoints(self, limit=50):
         return self.points[:limit]
 
-    def undo(self, checkpoint_id):
+    def correct(self, packet_id, kind, *, item="", note=""):
+        self.corrected = getattr(self, "corrected", []) + [(packet_id, kind, item, note)]
+        return {"outcome": "recorded", "kind": kind}
+
+    def undo(self, checkpoint_id, *, together=False):
         from workspace_core.errors import Conflict, NotFound
 
         point = next((p for p in self.points if p["id"] == checkpoint_id), None)

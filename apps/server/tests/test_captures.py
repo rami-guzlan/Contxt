@@ -216,3 +216,17 @@ def test_a_receipt_names_the_captures_not_searchable_yet(owner, runtime):
     found = owner.ok(owner.get(f"/api/brain/receipts/{packet.data['packet_id']}"))
     assert any(u.startswith("Not searchable yet: Call notes") for u in found["unknown"])
     assert "not proof" in found["note"]
+
+
+def test_a_correction_from_a_receipt_is_recorded_and_changes_nothing(owner, runtime):
+    packet = runtime.ws.rt.brain.brain.context("What did we decide about the videos?")
+    pid = packet.data["packet_id"]
+    found = owner.ok(
+        owner.post(
+            f"/api/brain/receipts/{pid}/corrections",
+            json={"kind": "missing", "note": "It should know the video budget."},
+        )
+    )
+    assert found["outcome"] == "recorded"
+    refused = owner.post(f"/api/brain/receipts/{pid}/corrections", json={"kind": "nonsense"})
+    assert refused.status_code == 422

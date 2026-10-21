@@ -126,6 +126,26 @@ class CheckpointTests(unittest.TestCase):
         self.assertTrue(self.note(note_id).live)  # nothing was touched
         self.assertTrue(self.note(note_id).meta.get("stale"))
 
+    def test_undo_names_the_later_decision_it_also_undoes_and_can_undo_both(self):
+        proposal, note_id = self.propose("Logo files ship as SVG and PNG at three sizes.")
+        first = governance.decide(self.brain, [{"id": proposal, "action": "approve"}])
+        later = governance.decide(self.brain, [{"id": note_id, "action": "edit",
+                                                "body": "Logo files ship as SVG only."}],
+                                  label="Tighten the logo note")
+        self.assertFalse(later.is_error, later.text)
+        point = first.data["checkpoint"]["id"]
+        asked = checkpoints.undo(self.brain, point)
+        self.assertTrue(asked.is_error)
+        self.assertEqual(asked.data["status"], "depends")
+        self.assertEqual([d["id"] for d in asked.data["dependents"]],
+                         [later.data["checkpoint"]["id"]])
+        self.assertIn("also undoes", asked.text)
+        self.assertTrue(self.note(note_id).live)  # nothing touched until asked
+        both = checkpoints.undo(self.brain, point, together=True)
+        self.assertFalse(both.is_error, both.text)
+        self.assertIsNone(self.note(note_id))
+        self.assertIn(proposal, self.pending())
+
     def test_an_undo_can_itself_be_undone(self):
         proposal, note_id = self.propose("Every brand sheet includes a dark-mode palette.")
         done = governance.decide(self.brain, [{"id": proposal, "action": "approve"}])
