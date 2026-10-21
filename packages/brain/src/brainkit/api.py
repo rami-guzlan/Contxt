@@ -1543,7 +1543,11 @@ class Brain:
         caller = self.caller(principal, None, partition)
         if isinstance(caller, Result):
             return caller
-        _chain, partitions = caller
+        chain, partitions = caller
+        from . import derived
+        if str(sheet or "") in derived.VIEWS:  # kept by the Brain itself, read-only
+            text, data = derived.view(self, str(sheet), chain, partitions)
+            return Result(text, data)
         text, data = state_mod.get_state(self, sheet_id=str(sheet or ""), row=str(row or ""),
                                          query=str(query or ""), partitions=partitions)
         return Result(text, data, is_error=data.get("status") == "missing")
