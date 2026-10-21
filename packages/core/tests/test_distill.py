@@ -146,6 +146,33 @@ def test_a_proposal_records_the_capture_version_place_speaker_and_words_it_read(
     assert sent["source_excerpt"] == "We post on Tuesdays and Thursdays."
 
 
+def test_a_sheet_value_goes_to_its_sheet_through_the_same_inbox(ws, owner, notes, brain):
+    ws.brain.propose(
+        owner,
+        title="Dana confirmed",
+        statement="Dana Ruiz is confirmed for November 12.",
+        evidence="kickoff call",
+        sources=[f"context_item:{notes[0].id}"],
+        destination="sheet",
+        place={"sheet": "guests", "row": "Dana Ruiz", "column": "Status", "value": "Confirmed"},
+    )
+    sent = brain.proposed[-1]["extra"]
+    assert sent["destination"] == "sheet"
+    assert sent["place"]["column"] == "Status"
+
+
+def test_a_typed_piece_without_its_place_is_refused(ws, owner):
+    with pytest.raises(ValidationFailed):
+        ws.brain.propose(
+            owner,
+            title="Dana confirmed",
+            statement="Dana Ruiz is confirmed.",
+            evidence="kickoff call",
+            destination="sheet",
+            place={"sheet": "guests"},
+        )
+
+
 def test_a_place_or_speaker_without_its_capture_is_refused(ws, owner):
     with pytest.raises(ValidationFailed):
         ws.brain.propose(

@@ -146,7 +146,12 @@ and brain:<entry id> for the entries you checked it \
 against; topic, the area/topic it belongs in, taken from where related entries live; goal, \
 the goal it serves in a few words, from the pinned goals; project, the id of the active \
 project it belongs to, when it belongs to one; replaces or contradicts when they apply; and \
-this run's run_id. Keep proposals distinct: one statement each, no two saying the same thing. \
+this run's run_id. Give each piece its home with destination: a value true now but likely \
+to change goes to a context sheet (sheet, with place: sheet, row, column, value); progress \
+on one project to that project (progress, with place: project, next_up); a next step with \
+an owner to a to-do (todo, with place: project, due, owner); anything else that will still \
+matter next month is a note. Keep proposals distinct: one statement each, no two saying \
+the same thing. \
 Proposing nothing is a good result when nothing is durable.
 
 Preserve attribution from the source. An assistant suggestion or generated answer is

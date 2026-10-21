@@ -290,6 +290,8 @@ def propose_brain_entry(
         source_locator=_str(args, "source_locator"),
         source_speaker=_str(args, "source_speaker"),
         source_excerpt=_str(args, "source_excerpt"),
+        destination=_str(args, "destination"),
+        place=args.get("place") if isinstance(args.get("place"), dict) else None,
     )
     # Refused is a failure the model must notice; a duplicate (the same proposal retried) is
     # not.
@@ -723,6 +725,20 @@ TOOLS: dict[str, Tool] = {
                         "description": "The id of one existing entry this is a new text for "
                         "(a change to that entry, not a new one). The statement is the entry's "
                         "whole new text.",
+                    },
+                    "destination": {
+                        "type": "string",
+                        "enum": ["note", "sheet", "progress", "todo"],
+                        "description": "Where the piece goes. Ask in order: true now but "
+                        "likely to change (a value in a context sheet: sheet)? Part of one "
+                        "project's progress (progress) or a next step with an owner (todo)? "
+                        "Else a long-term note (note, the default; with project, it is kept "
+                        "with that project).",
+                    },
+                    "place": {
+                        "type": "object",
+                        "description": "The home's own fields. sheet: sheet, row, column, "
+                        "value. progress: project, next_up. todo: project, due, owner.",
                     },
                     "source_locator": {
                         "type": "string",

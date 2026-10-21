@@ -132,6 +132,19 @@ def display_name(raw: str | None) -> str:
     return str(raw or "").strip() or "Someone"
 
 
+PIECE_DESTINATIONS = ("sheet", "progress", "todo")
+PIECE_FIELDS = {
+    "sheet": ("sheet", "row", "column", "value"),
+    "progress": ("project", "next_up"),
+    "todo": ("project", "due", "owner"),
+}
+PIECE_REQUIRED = {
+    "sheet": ("sheet", "row", "column", "value"),
+    "progress": ("project",),
+    "todo": ("project",),
+}
+
+
 @dataclass(frozen=True)
 class ReviewBatch:
     """Waiting proposals that came from one piece of work: a task's run (a distillation, say),
@@ -1524,6 +1537,8 @@ class Brain:
         source_locator: str | None = None,
         source_speaker: str | None = None,
         source_excerpt: str | None = None,
+        destination: str | None = None,
+        place: dict[str, Any] | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
 
@@ -1612,6 +1627,22 @@ class Brain:
         extra: dict[str, Any] = self._source_reference(
             sources, run, source_locator, source_speaker, source_excerpt
         )
+        if destination not in (None, "", "note"):
+            # A piece for another home (Release 1 plan, M03): a sheet value, a project's
+            # progress or a to-do, waiting in the same inbox as every proposal.
+            if destination not in PIECE_DESTINATIONS:
+                raise ValidationFailed(
+                    f"destination is note or one of {', '.join(PIECE_DESTINATIONS)}.",
+                    field="destination",
+                )
+            allowed = PIECE_FIELDS[destination]
+            given = {k: v for k, v in (place or {}).items() if k in allowed and v not in (None, "")}
+            missing = [k for k in PIECE_REQUIRED[destination] if k not in given]
+            if missing:
+                raise ValidationFailed(
+                    f"A {destination} piece needs {', '.join(missing)}.", field="place"
+                )
+            extra.update(destination=destination, place=given)
         goal = " ".join(str(goal or "").split())[:120]
         if goal:
             extra["goal"] = goal

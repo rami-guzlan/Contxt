@@ -1001,6 +1001,12 @@ class Brain:
         from . import governance
         return self._write(lambda: governance.propose_note(self, **kwargs))
 
+    def propose_piece(self, destination, text, **kwargs) -> Result:
+        """A piece for its home: a sheet value, a project's progress, a task, a kept item or
+        a note (destinations.py), waiting in the one inbox."""
+        from . import destinations
+        return self._write(lambda: destinations.propose(self, destination, text, **kwargs))
+
     def propose_skill(self, **kwargs) -> Result:
         """Propose a new skill or a change to one, with its files (staged until approved)."""
         from . import uploads

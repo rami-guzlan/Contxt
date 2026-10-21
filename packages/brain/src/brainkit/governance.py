@@ -729,7 +729,9 @@ def source_of(fields: dict) -> dict | None:
 
 
 OPERATIONS = {"note.create": "new note", "note.update": "update", "note.archive": "retire",
-              "note.challenge": "challenge", "focus.create": "new project"}
+              "note.challenge": "challenge", "focus.create": "new project",
+              "sheet.write": "update a sheet value", "project.progress": "add progress",
+              "task.create": "new task"}
 
 
 def same_operation(st, op_id):
@@ -845,6 +847,7 @@ def remember(brain, text, *, principal=None, scope=None, session_id=None, captur
 
 
 def inbox(brain, **_ignored):
+    from . import destinations
     st = brain.state()
     rows = []
     for proposal in sorted(st.snapshot.proposals.values(), key=lambda p: p.created):
@@ -876,6 +879,7 @@ def inbox(brain, **_ignored):
             "statement_status": proposal.target.get("statement_status") or "",
             "effective": str(proposal.target.get("as_of") or ""),
             "op_id": proposal.target.get("op_id") or "",
+            "destination": destinations.label(proposal.kind, proposal.target),
             "current_body": (st.index.note(proposal.target.get("id")).body
                              if proposal.kind != "note.create"
                              and st.index.note(proposal.target.get("id")) else None),
@@ -926,6 +930,10 @@ def approve(brain, proposal_id, *, actor=None, edits=None, body=None, reason="")
     if proposal.kind == "note.challenge":
         from . import dissent
         return dissent.apply(brain, proposal, actor=who)
+    from . import destinations
+    if proposal.kind in destinations.TYPED or (edits or {}).get("destination"):
+        # A sheet value, progress or a task, or any piece the owner moves before keeping.
+        return destinations.apply(brain, proposal, actor=who, edits=edits, body=body)
     target = dict(proposal.target)
     for key, value in (edits or {}).items():
         if key in RESERVED or key == "id":
