@@ -541,3 +541,23 @@ def test_the_page_shows_what_the_agent_runs_on_and_where_data_goes(owner, runtim
     card = owner.ok(owner.get("/api/brain/agent"))["provider"]
     assert (card["id"], card["vendor"]) == ("claude", "Anthropic")
     assert "never on its own" in card["switches"]
+
+
+def test_a_connected_ai_runs_a_skill_through_gather_and_submit_over_mcp(model, brain_vault):
+    add_note(
+        brain_vault,
+        "rules-style-009",
+        "Headlines use sentence case, stay under nine words, and state one benefit.",
+    )
+    skills = model.tool("knowledge_skills")["structuredContent"]["skills"]
+    assert "tidy-repeats" in [s["name"] for s in skills]
+    run = model.tool("knowledge_gather", skill="tidy-repeats")["structuredContent"]
+    assert run["run_id"] and run["candidates"][0]["ref"] == "c1"
+    bad = model.tool("knowledge_submit", run_id=run["run_id"], answer={"findings": [{"ref": "c9"}]})
+    assert bad["isError"] and "Fix these" in bad["content"][0]["text"]
+    good = model.tool(
+        "knowledge_submit",
+        run_id=run["run_id"],
+        answer={"summary": "Different.", "findings": [{"ref": "c1", "verdict": "different"}]},
+    )
+    assert not good["isError"] and good["structuredContent"]["fine"] == 1

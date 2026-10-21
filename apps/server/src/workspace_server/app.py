@@ -27,6 +27,7 @@ from .difference import Differences
 from .extractor import DocumentExtractor
 from .knowledge_agent import AgentWork
 from .library import Library
+from .mcp import tools as mcp_tools
 from .mcp.protocol import McpHandler
 from .models import Models
 from .outputs import Outputs
@@ -170,6 +171,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
 
 def create_app(settings: Settings | None = None, *, runtime: Runtime | None = None) -> FastAPI:
     runtime = runtime or open_runtime(settings or Settings.from_env())
+    mcp_tools.AGENT_WORK = runtime.agent  # knowledge_run starts work in the background
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
