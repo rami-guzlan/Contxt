@@ -110,7 +110,7 @@ def test_the_coach_asks_then_drafts_and_the_draft_becomes_a_goal_page(owner, run
         "Book 2 partner promos",
         "Follow up within 48 hours",
     ]
-    assert "Shared plan: get_note" in page["context"]
+    assert "Shared plan: notes_get" in page["context"]
 
 
 def test_a_check_in_then_a_suggestion_becomes_a_step(owner, runtime):

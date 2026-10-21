@@ -153,5 +153,5 @@ def test_claude_code_gets_a_subagent_that_fetches_the_current_version(owner, tmp
     assert written["path"] == str(tmp_path / ".claude" / "agents" / "case-writer.md")
     text = (tmp_path / ".claude" / "agents" / "case-writer.md").read_text(encoding="utf-8")
     assert text.startswith("---\nname: case-writer\n")
-    assert 'get_agent tool with name "case-writer"' in text
+    assert 'agents_get tool with name "case-writer"' in text
     assert ROLE["prompt"] not in text  # never a copy: it fetches the current version

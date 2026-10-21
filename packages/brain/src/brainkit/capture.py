@@ -80,7 +80,7 @@ _POLITE_ASK = re.compile(r"^(?:can|could|would|will) you (?:please )?(?:remember
                          r"save|file|store)\b", _FLAGS)
 _SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])|\n+")
 
-TOOL_FOR = {"procedure": "propose_skill", "reference": "add_file"}
+TOOL_FOR = {"procedure": "skills_propose_change", "reference": "files_upload"}
 
 
 @dataclass(frozen=True)
@@ -92,7 +92,7 @@ class Candidate:
 
     @property
     def tool(self) -> str:
-        return TOOL_FOR.get(self.kind, "propose_note")
+        return TOOL_FOR.get(self.kind, "notes_propose")
 
 
 def sentences(text: str) -> list[str]:
@@ -157,5 +157,5 @@ def nudge(candidates) -> str:
               + " / ".join(f"`{t}`" for t in tools)
               + " (quote the words in `evidence`). Do not ask first: shared knowledge waits "
               "for the owner's review, and a one-off instruction only needs doing. Project "
-              "progress goes to `record_focus_update` instead."]
+              "progress goes to `projects_propose_progress` instead."]
     return "\n".join(lines)

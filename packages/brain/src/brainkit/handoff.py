@@ -1,4 +1,4 @@
-"""Tasks and handoffs (goals plan 5): the built-in Tasks sheet, and `hand_off`, the one way a
+"""Tasks and handoffs (goals plan 5): the built-in Tasks sheet, and `todos_update`, the one way a
 task's ownership and progress move.
 
 A task is a row of the Tasks sheet (state.py), so its history is the cell log: who did what and
@@ -201,7 +201,7 @@ def render(brain, item: dict) -> str:
     text = "\n".join(lines)
     while util.tokens(text) > CARD_TOKENS and len(lines) > 3:
         lines.pop()
-        text = "\n".join(lines + [f"(the rest is in the task's log: get_state tasks "
+        text = "\n".join(lines + [f"(the rest is in the task's log: sheets_get tasks "
                                   f"{item['id']})"])
     return text
 
@@ -236,7 +236,7 @@ def hand_off(brain, *, task: str = "", new_task: dict | None = None, goal: str =
     caller = normal_owner(caller) if caller != YOU else YOU
     said_by = "agent" if caller.startswith("agent:") else (
         "owner" if not tool else "owner-ai")
-    source = f"hand_off ({tool or owner_label(caller)})"
+    source = f"todos_update ({tool or owner_label(caller)})"
     notes = []
     # A goal note with no task.
     if goal and not task and not new_task:
@@ -256,7 +256,7 @@ def hand_off(brain, *, task: str = "", new_task: dict | None = None, goal: str =
     row = state.find_row(brain, SHEET, task)
     if row is None:
         return _result(f"No task {task!r}. Open one with new_task, or check its id "
-                       "(get_state tasks).", {"status": "missing"}, True)
+                       "(sheets_get tasks).", {"status": "missing"}, True)
     row = next(r for r in state.rows(brain, SHEET) if r.id == row.id)
     item = view(brain, row)
     owner = item["owner"]
@@ -310,7 +310,7 @@ def hand_off(brain, *, task: str = "", new_task: dict | None = None, goal: str =
             good = _evidence_ok(brain, given)
             if not good:
                 return _result("Done needs evidence: an output an AI recorded "
-                               "(record_output) or a decided proposal's id.",
+                               "(outputs_save) or a decided proposal's id.",
                                {"status": "invalid"}, True)
             values["Evidence"] = "; ".join(dict.fromkeys(item["evidence"] + good))
         if reason:
@@ -334,7 +334,7 @@ def hand_off(brain, *, task: str = "", new_task: dict | None = None, goal: str =
     after = _after(brain, item, values, caller=caller, who=who, goal_note=goal_note)
     notes += after
     if decisions:
-        notes.append("If a decision here should last, propose it with propose_note.")
+        notes.append("If a decision here should last, propose it with notes_propose.")
     receiver = render(brain, item)
     return _result(" ".join(notes) or f"Saved {item['id']}.",
                    {"status": "saved", "task": item, "card": receiver,

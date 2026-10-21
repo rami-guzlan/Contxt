@@ -210,7 +210,7 @@ def render(block: dict[str, Any], goal: dict[str, Any]) -> str:
         )
     if kind == "sheet":
         sheet = block.get("sheet_id") or "a sheet"
-        return f"State sheet `{sheet}`: read it with get_state (sheet {sheet})."
+        return f"State sheet `{sheet}`: read it with sheets_get (sheet {sheet})."
     if kind == "decisions":
         return "\n".join(
             f"- {str(e.get('at') or '')[:10]}: {e.get('text')}"

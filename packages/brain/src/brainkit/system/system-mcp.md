@@ -10,8 +10,8 @@ loaded with the code on disk and reports itself stale.
 
 To restart: reconnect the MCP server from the client (Claude Code: `/mcp`, then reconnect
 `brain`; or restart the session). To check health first: `brain check`, or the
-`brain_health` tool. Agent tools: get_task_context, search_notes, get_note, get_skill,
-get_reference, propose_note, record_focus_update, create_focus, brain_health, list_agents,
-get_agent, get_state, update_state, hand_off. When a packet
-lacks something, search_notes finds notes in the agent's own words and get_note opens one;
+`gnomon_health` tool. Agent tools: gnomon_get_context, notes_search, notes_get, skills_get,
+files_open, notes_propose, projects_propose_progress, projects_create, gnomon_health, agents_list,
+agents_get, sheets_get, sheets_propose_update, todos_update. When a packet
+lacks something, notes_search finds notes in the agent's own words and notes_get opens one;
 both record what the session holds, so packets do not repeat it.

@@ -67,7 +67,7 @@ SOURCE_FIELDS = (
     "source_excerpt",
 )
 RELATED = re.compile(r"\bbrain:([A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9])")
-TOOL_NAMES = {"search_notes": "search_context", "get_note": "get_brain_entry"}
+TOOL_NAMES = {"notes_search": "search_context", "notes_get": "get_brain_entry"}
 # Decisions about a live (or archived) entry rather than a waiting proposal.
 ENTRY_ACTIONS = ("archive", "edit", "restore", "unarchive", "update", "verify", "mark")
 

@@ -26,7 +26,7 @@ en dashes.
 5b. **G1** (goals plan), after step 5 and before step 6: Goals and Projects, goal pages,
    Settings > Alignment, agent goals with measures and checks, the goal coach, the Home strip.
 6. BL4 State + UX D Workspace live context + UX E outputs; **+ G2**: the Tasks sheet, the
-   `hand_off` tool, cards and claims, Activity > Tasks and handoffs, the sheet block.
+   `todos_update` tool, cards and claims, Activity > Tasks and handoffs, the sheet block.
 7. BL5 updating loop, verification, streams + UX F workflows canvas; **+ G3**: "Open a task" and
    "Hand off" steps, verification as tasks, team scaffolding.
 8. BL6 proof + UX G walkthrough; **+ G4**: the goals plan's evals (its section 11) and the
@@ -99,11 +99,11 @@ live Brain's cost lines (re-reads are the biggest line: 74 later calls per brief
 - [x] Reranker: measured on the eval with and without; adopt only if recall rises. (No
       change: it reorders near ties only; stays off.)
 - [x] Push through the Claude Code prompt hook: the router asked per message; delivered only
-      when something new and relevant is found; shares the session id with get_task_context.
+      when something new and relevant is found; shares the session id with gnomon_get_context.
       (`cc:<Claude Code's id>`; `hooks.push` words by default, about 1 s; meaning about 3 s per
       message here, so opt-in; must-holds count as new only the first time.)
 - [x] MCP surface: measured, kept. Definitions are 3,419 tokens a call for clients that load
-      them (Claude Code loads none until used); folding get_skill and get_reference into get_note
+      them (Claude Code loads none until used); folding skills_get and files_open into notes_get
       saves 146 (4%), and kernels and skills name both tools. The plan made the fold conditional
       on the saving mattering; it does not.
 - [x] Kernel (5.10): layers per principal (company, role, person or agent) under 500 tokens;
@@ -120,12 +120,12 @@ live Brain's cost lines (re-reads are the biggest line: 74 later calls per brief
 UX B, Prompts:
 
 - [x] Engine: Library kind `prompt` (references/prompts/, card load manual, never routed or
-      quoted as sections unless named; the card carries the prompt verbatim so search_notes and
-      get_note find it); `add_file` gains `kind` and `attach_to` (files that came with it).
+      quoted as sections unless named; the card carries the prompt verbatim so notes_search and
+      notes_get find it); `files_upload` gains `kind` and `attach_to` (files that came with it).
 - [x] App: the Prompts tab replaces Compose (/work/compose redirects); list by project, tag,
       search; a prompt's page: verbatim text, copy, versions, projects, uses, files; secondary
       actions: open in a run, use in a workflow, make it a skill, preview what a model gets,
-      improve. Saving from chat: "save this prompt to my Brain" through add_file.
+      improve. Saving from chat: "save this prompt to my Brain" through files_upload.
 - [x] Migration: saved prompts in the app's database move once into the Brain, every version
       of their words kept; old ids still find them; the old rows set aside with `moved_to`.
 
@@ -392,7 +392,7 @@ parity 180 the same, retrieval_eval unchanged):
       default); the knowledge agent's four goals, its new gathers and "why I'm doing this".
 - [~] Done when (goals plan 10): one card per seeded slip (seeded test, engine and API); only
       shared blocks reach an AI (API test: a private note is in neither the plan file nor
-      `get_note`); no goal changes a brief's notes (goal notes load `manual`; a test asks about
+      `notes_get`); no goal changes a brief's notes (goal notes load `manual`; a test asks about
       the goal and the brief does not carry it; parity 180 the same). On the demo Brain, set by
       hand: a goal saved, checked in and a suggestion made a step in about a minute, the
       check-in itself a few seconds. The coach was tested with a stand-in model (questions,
@@ -406,7 +406,7 @@ How step 5b came out (October 10):
   recall, milestones and a sheet column listed with what they wait for), the ledger's
   `goal_checks` (kept for good, past retention), `journal/goals/<id>.jsonl`, and the plan file
   `goals/<id>/plan.md` (now a governed folder, committed like the rest). `Brain.ladder`, `goal`,
-  `goal_cards`, `act_goal`. `get_note` on a goal opens with its shared plan. A goal's stored
+  `goal_cards`, `act_goal`. `notes_get` on a goal opens with its shared plan. A goal's stored
   `goal_status` is its lifecycle (active, paused, met, missed, dropped, retired); how it is
   going comes from checks. An agent goal names who keeps it in `kept_by` (a note's `owner` stays
   a scope). Goal fields are editable through `governance.update`, only on goal notes. Goals are
@@ -459,16 +459,16 @@ Built in this order, committed per part:
       editable by AIs. Templates: Accounts, Repos or Services, Standards, Vendors, Contacts,
       Content calendar, Project board, and the built-in Tasks sheet. Staleness by column age.
       Promotion and demotion as suggestions. Partitions sealed; must-holds win over cells.
-- [x] 6b, reading and writing State from AIs: `get_state` and `update_state` (free applies and is
+- [x] 6b, reading and writing State from AIs: `sheets_get` and `sheets_propose_update` (free applies and is
       marked AI-filled until a person touches it, confirm waits, locked is refused, regulated
       waits for every AI write: decision 4); the brief's "Current state" block when a request
       names an entity or a working context is active (one line a value with its date and what
       changed since this session saw it, 300 tokens a row at most, computed values marked);
       working contexts (BL 8.3: explicit switching, the `context` argument, a resumption card,
       14 idle days asks).
-- [x] 6c, G2 in the engine: the Tasks sheet and `brainkit/handoff.py` (`hand_off`: take, save,
+- [x] 6c, G2 in the engine: the Tasks sheet and `brainkit/handoff.py` (`todos_update`: take, save,
       pass on, finish, goal notes; the card at about 250 tokens; the rules in goals plan 5.8),
-      registered on the Brain's MCP and the app's; `get_task_context` with a task as `context`
+      registered on the Brain's MCP and the app's; `gnomon_get_context` with a task as `context`
       returns the card; pending handoffs one line each in first briefs; agents' own tasks for
       their slipped goals (one open per goal, five per agent).
 - [x] 6d, the app: State API and Workspace's live context (grid with AG Grid Community, board
@@ -493,21 +493,21 @@ How step 6 came out (October 10):
   promotion and demotion suggestions) and `brainkit/formulas.py` (one formula per column read
   through Python's `ast` into a short list of allowed shapes; TODAY, CREATED, UPDATED, AGE,
   COUNT, SUM, AVERAGE, MIN, MAX over linked rows, LOOKUP, IF, AND, OR, NOT, JOIN, DAYS,
-  ADD_DAYS, ROUND). `brainkit/handoff.py`: `hand_off` (take, save, pass on, finish, goal notes),
+  ADD_DAYS, ROUND). `brainkit/handoff.py`: `todos_update` (take, save, pass on, finish, goal notes),
   the card at about 250 tokens with the project's objective and the goal's line filled by code,
   credentials masked, evidence checked against recorded outputs and decided proposals, a done
   task writing to its project's journal and its goal's. `state` is a governed folder.
 - Briefs: a named row (key, or an alias of two letters or more) gets "Current state", dated,
   AI-filled and stale values marked, computed ones marked, at most 300 tokens; in the same
   conversation an unchanged row comes as one line, and a changed one marks what changed since it
-  was sent. `get_task_context` takes `context` (a task, a goal, a project, a State row or
+  was sent. `gnomon_get_context` takes `context` (a task, a goal, a project, a State row or
   general), which the conversation keeps; a context idle 14 days asks to resume or close; a
   task's card leads the brief; a conversation's first brief lists tasks waiting to be picked
   up. The parity briefs stay byte for byte the same.
-- MCP: `get_state`, `update_state` and `hand_off` on the Brain's server and the app's (runs);
-  one sentence more in the server instructions; `record_output` takes project, for and maker.
+- MCP: `sheets_get`, `sheets_propose_update` and `todos_update` on the Brain's server and the app's (runs);
+  one sentence more in the server instructions; `outputs_save` takes project, for and maker.
 - Reminders: a run that works a task (an agent's run started by a handoff) has a contract
-  check that only `hand_off` satisfies; Claude Code's Stop hook, `python -m
+  check that only `todos_update` satisfies; Claude Code's Stop hook, `python -m
   brainkit.hooks.task_stop`, sends a session with an active, unsaved task back once. A slipped
   agent goal opens a task for its agent (one per goal, five per agent).
 - App: Workspace has Your docs and Live context (sheets from templates, what waits for your
@@ -531,7 +531,7 @@ How step 6 came out (October 10):
 
 - [x] The board's sheet block and sheet-driven progress; the Tasks sheet (built in, columns in
       the goals plan 5.1) and its validation; owners and tool queues.
-- [x] The `hand_off` tool (take, save, pass, finish, goal notes) with its reminders (the run
+- [x] The `todos_update` tool (take, save, pass, finish, goal notes) with its reminders (the run
       finishing gate, Claude Code's Stop hook, first briefs); cards (about 250 tokens) with the
       agent's words plus what code verifies; claims, reminders, take-backs; pending handoffs in
       first briefs and the session-start hook; agents' runs from handoffs.
@@ -586,10 +586,10 @@ How step 6 came out (October 10):
       schema, code checks it (valid ids, allowed tool, arguments in range; one retry), code
       calls the tool; up to six steps a job; hand-ups up the ladder (Kev, the 4B agent, 9B or
       larger if downloaded, Claude Code if turned on, the person through Catch up).
-- [x] The tools (17.4): to look (the map, search_notes, get_note, get_state, changes_since,
+- [x] The tools (17.4): to look (the map, notes_search, notes_get, sheets_get, changes_since,
       history, impact, past_suggestions, read-only Library, skills, agents, workflows, projects,
       goals); to suggest (note add, edit, merge, narrow, retire; a State update; a challenge or
-      "Still true?"; a task through hand_off; a goal note; a refit of the cuts); to use the app
+      "Still true?"; a task through todos_update; a goal note; a refit of the cuts); to use the app
       for the person only when asked (drafts of a project, a sheet, a workflow, an agent's role;
       a skill or workflow run), never irreversible or outside the machine. No tool writes.
 - [x] Kev inside the agent (17.5): stale, duplicate, contradicts, worth suggesting, which tier;
@@ -754,7 +754,7 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
 - 2026-10-10: rami-guzlan/Contxt#11 merged as d2251f0 (by hand with gh, all eight checks
   green), carrying step 6 (BL4 and G2): State sheets with column types, friction, age limits,
   formulas through a safe evaluator and a log per cell; the brief's "Current state" block sent
-  as deltas; working contexts; the Tasks sheet and `hand_off` with evidence checked against
+  as deltas; working contexts; the Tasks sheet and `todos_update` with evidence checked against
   recorded outputs; live context in Workspace on AG Grid, a board and a calendar; Activity's
   tasks and handoffs; outputs filed by project, row and maker. Main merged into
   `updating-loop` (657352a, no conflicts) after the step kinds commit (a419934). Waiting for

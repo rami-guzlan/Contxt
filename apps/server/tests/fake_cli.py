@@ -82,7 +82,7 @@ if brain and os.environ.get("FAKE_CLI_ASK") == "1":
             "id": 2,
             "method": "tools/call",
             "params": {
-                "name": "get_task_context",
+                "name": "gnomon_get_context",
                 "arguments": {"request": question, "session_id": session},
             },
         },

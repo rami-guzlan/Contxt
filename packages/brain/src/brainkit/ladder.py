@@ -25,7 +25,7 @@
   Private blocks never reach the vault.
 
 Setting or changing one of your goals is your own act: one undo point. An agent goal its owner
-sets in the app applies the same way; one proposed from a chat (propose_note, kind goal) waits.
+sets in the app applies the same way; one proposed from a chat (notes_propose, kind goal) waits.
 """
 from __future__ import annotations
 
@@ -649,5 +649,5 @@ def context(brain, goal_id) -> str:
     if shown["shared_plan"]:
         plan = brain.vault.goal_plan(note.id)
         heads = [line[3:].strip() for line in plan.splitlines() if line.startswith("## ")]
-        lines.append(f"Shared plan: get_note `{note.id}` ({', '.join(heads[:6])}).")
+        lines.append(f"Shared plan: notes_get `{note.id}` ({', '.join(heads[:6])}).")
     return "\n".join(lines)

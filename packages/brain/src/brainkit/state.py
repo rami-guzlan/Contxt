@@ -2,7 +2,7 @@
 than anyone can review, such as an account's stakeholders and health, a repo's owners, a
 standard's current version. Not knowledge (nothing here is reviewed before it applies) and not
 documents. People edit it in Workspace as sheets, boards and calendars (one sheet, three views);
-AIs read it with `get_state` and write it with `update_state`; every change is a cell event with
+AIs read it with `sheets_get` and write it with `sheets_propose_update`; every change is a cell event with
 who, when and why, so the history is the log itself.
 
 Files, the same pattern as project journals (decision 3):
@@ -13,7 +13,7 @@ Files, the same pattern as project journals (decision 3):
 
 A column says who may change it (its friction): `free` (AIs may change it; their values are
 marked AI-filled until a person touches them), `confirm` (an AI's value waits for one tap) or
-`locked` (only a person, or for the Tasks sheet only `hand_off`). Under the regulated preset
+`locked` (only a person, or for the Tasks sheet only `todos_update`). Under the regulated preset
 every AI write waits (decision 4). A column may have an age limit; older values are flagged
 stale. Computed columns (formulas.py) are worked out at read time, never written, and never
 editable by AIs.
@@ -165,7 +165,7 @@ TEMPLATES: dict[str, dict] = {
         {"name": "Owner", "type": "person"}, {"name": "Due", "type": "date"})},
     "tasks": {"title": "Tasks", "key": "Task id", "builtin": True,
               "description": "Every task, who owns it and where it stands. Owner, Status, "
-                             "Evidence and Card change only through hand_off.",
+                             "Evidence and Card change only through todos_update.",
               "columns": _cols(
                   "Task id", {"name": "Task"}, {"name": "Goal", "friction": "confirm"},
                   {"name": "Project"}, {"name": "For"},
@@ -587,7 +587,7 @@ def _cell_events(brain, found: Sheet, values: dict, *, who, said_by, source, ses
             problems.append(f"{column.name} is computed: nobody writes it")
             continue
         if found.id == "tasks" and column.name in HANDOFF_ONLY and not handoff:
-            problems.append(f"{column.name} changes only through hand_off")
+            problems.append(f"{column.name} changes only through todos_update")
             continue
         if ai and column.friction == "locked" and not handoff:
             problems.append(f"{column.name} is the owner's alone: an AI cannot change it")
@@ -822,7 +822,7 @@ def brief_block(brain, request: str, *, partitions=None, since: str = "",
         while util.tokens("\n".join(lines)) > ROW_TOKENS and len(lines) > 2:
             lines = lines[:-1]
         if len(lines) < len(full):
-            lines.append("- (more with get_state)")
+            lines.append("- (more with sheets_get)")
         blocks.append("\n".join(lines))
         shown.append((found, row, digest))
     return ("## Current state\n\nValues people and AIs keep current, dated, and marked when an "
@@ -832,7 +832,7 @@ def brief_block(brain, request: str, *, partitions=None, since: str = "",
 
 def get_state(brain, *, sheet_id: str = "", row: str = "", query: str = "",
               partitions=None) -> tuple[str, dict]:
-    """What `get_state` returns: the sheets, one sheet's rows (filtered by words), or one row
+    """What `sheets_get` returns: the sheets, one sheet's rows (filtered by words), or one row
     with its recent changes."""
     if not sheet_id:
         listed = sheets(brain)
@@ -894,7 +894,7 @@ def update_state(brain, updates: list, *, who: str, session: str = "", evidence:
     for (sheet_id, row_name, as_of), values in grouped.items():
         found = sheet(brain, sheet_id)
         if found is None:
-            lines.append(f"No sheet {sheet_id!r}; get_state lists them.")
+            lines.append(f"No sheet {sheet_id!r}; sheets_get lists them.")
             continue
         if find_row(brain, sheet_id, row_name, partitions=partitions) is None:
             made = add_row(brain, sheet_id, row_name, {}, who=who, said_by="owner-ai",

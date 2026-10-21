@@ -11,7 +11,7 @@ Mandatory items (a named Focus, its pins) are placed first; topic notes follow t
 
 POINTERS BEFORE BODIES. Rules come whole, and so do the first few notes (`briefs.bodies` by
 scale); every note after them comes in short, as its title, its summary and the sentence of it
-closest to the request, which the model opens with get_note when the task needs the rest. A
+closest to the request, which the model opens with notes_get when the task needs the rest. A
 brief stays in a conversation and is read again on every later call, so what it carries in
 full costs many times its size (costs.py).
 
@@ -32,9 +32,9 @@ POINTER_WORDS = 40   # the closest sentence of a note sent in short, at most
 OBJECTIVE_TOKENS = 60  # a project's objective at the top of a brief's task, at most
 
 WORKING_HINT = {
-    "candidate": "Pick the fitting skill candidate. Open it with get_skill only if you will "
+    "candidate": "Pick the fitting skill candidate. Open it with skills_get only if you will "
                  "follow its procedure in this turn.",
-    "executable": "A procedure is routed for this task. Open it with get_skill before you "
+    "executable": "A procedure is routed for this task. Open it with skills_get before you "
                   "start, then follow it.",
 }
 
@@ -482,7 +482,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             decisions.append(f"{note.id}: must hold, {entry.why}")
         if overflow:
             names = "; ".join(f"{m.note.title} (`{m.note.id}`)" for m in overflow)
-            lines.append(f"- Also must hold here; open each with get_note before you act: "
+            lines.append(f"- Also must hold here; open each with notes_get before you act: "
                          f"{names}.")
         lines.append("")
     loaded = bool(chosen or held or unfit or route.portfolio or route.system_docs
@@ -563,7 +563,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                 # Rendering must honor the form that fit: do not leak an unbudgeted full
                 # body or repeat the rule under ordinary knowledge. Its authority stays here.
                 lines += [shorts[note.id], "",
-                          f'Open the full rule with get_note(id="{note.id}") before applying it.', ""]
+                          f'Open the full rule with notes_get(id="{note.id}") before applying it.', ""]
             else:
                 lines += [heading(note), ""] + body(note)
     if knowledge or in_short:
@@ -585,12 +585,12 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             lines += [heading(note), ""] + body(note)
         if in_short:
             lines += ["### In short", "",
-                      'Open one with get_note(id="...") when the task needs all of it.', ""]
+                      'Open one with notes_get(id="...") when the task needs all of it.', ""]
             lines += [shorts[n.id] for n in in_short] + [""]
     if unfit:
         lines += ["## Did not fit", "",
                   "Chosen for this request, but past this brief's budget even in short"
-                  + (': open one with get_note(id="...") when the task needs it.' if tools
+                  + (': open one with notes_get(id="...") when the task needs it.' if tools
                      else ", so not included here."), ""]
         for note in unfit:
             name = note.title if note.meta.get("title") else note.id
@@ -633,11 +633,11 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             if tools:
                 ref = index.references.get(path)
                 size = f", about {ref.tokens:,} tokens" if ref is not None else ""
-                lines += [f'Whole file: get_reference(path="{path}"){size}.', ""]
+                lines += [f'Whole file: files_open(path="{path}"){size}.', ""]
     if section_pointers:
         lines += ["## Also in your files", "",
                   "Relevant too, past this brief's allowance"
-                  + (": open the file with get_reference." if tools else ", so not quoted here."),
+                  + (": open the file with files_open." if tools else ", so not quoted here."),
                   ""]
         lines += [f"- {index.file_title(s.path)}: {s.label} (`{s.path}`)"
                   for s in section_pointers] + [""]
@@ -670,7 +670,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             lines.append(f"When to use: {util.excerpt(skill.when_to_use or skill.description, 260)}")
         if skill.quality_gates:
             lines.append("Gates before reporting done: " + ", ".join(skill.quality_gates))
-        lines += [f'Open with: get_skill(name="{skill.name}"), about {skill.tokens:,} tokens.',
+        lines += [f'Open with: skills_get(name="{skill.name}"), about {skill.tokens:,} tokens.',
                   ""]
     elif route.candidates:
         lines += ["## Skill candidates", ""]
@@ -684,7 +684,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             ref = index.references.get(path)
             title = f" ({ref.title})" if ref is not None else ""
             size = f", about {ref.tokens:,} tokens" if ref is not None else ""
-            lines.append(f'- {path}{title}: read with get_reference(path="{path}"){size}.')
+            lines.append(f'- {path}{title}: read with files_open(path="{path}"){size}.')
         lines.append("")
     chosen_ids = {n.id for n in chosen + held + unfit}
     related = [r for r in route.related if r.item.id not in chosen_ids]
@@ -693,7 +693,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
     if listed and route.mode == "lean":
         lines += ["## Closest notes (not included)", "",
                   "Nothing in the brain is specific enough to include for this request. These "
-                  "come closest; open one with get_note if it fits:", ""]
+                  "come closest; open one with notes_get if it fits:", ""]
         for scored in listed:
             note = scored.item
             name = note.title if note.meta.get("title") else note.id
@@ -713,8 +713,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             else:
                 lines.append(f"- `{note.id}` ({note.route_key}): "
                              f"{util.excerpt(note.index_line, 110)}")
-        lines += ["", 'Open one with get_note(id="...") if the task needs it; for anything '
-                  "else missing, search_notes in your own words.", ""]
+        lines += ["", 'Open one with notes_get(id="...") if the task needs it; for anything '
+                  "else missing, notes_search in your own words.", ""]
     if held or held_sections:
         names = [n.id + ("" if already_held(n) else " (excerpt only)") for n in held]
         names += [f"{index.file_title(s.path)}: {s.label}" + (
@@ -734,18 +734,18 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             next_line = ("Nothing in the brain matches this request: answer from general "
                          "knowledge and say that the brain had nothing on it.")
     elif route.mode == "focus-update" and focus is not None:
-        next_line = (f'Record this progress with record_focus_update(focus="{focus.id}", '
+        next_line = (f'Record this progress with projects_propose_progress(focus="{focus.id}", '
                      'summary="<one line>", changes={"current": ..., "blockers": ..., '
                      '"next": ...}). Only fields that changed. Never rewrite the baseline.')
     elif route.mode == "orientation":
         next_line = ("This is a map, not everything: ask about any area or project by name, "
-                     "or open a note with get_note.")
+                     "or open a note with notes_get.")
     elif route.mode == "lean" and related:
-        next_line = ("If none of the closest notes fits, try search_notes in other words before "
+        next_line = ("If none of the closest notes fits, try notes_search in other words before "
                      "answering from general knowledge, and say the brain had nothing on it.")
     elif route.mode == "lean":
         next_line = ("No governed brain context matches this request, and no note comes close. "
-                     "If you expected the brain to know this, try search_notes in other words; "
+                     "If you expected the brain to know this, try notes_search in other words; "
                      "otherwise answer from general knowledge and say that the brain had "
                      "nothing on it.")
     elif route.signals.edit and not chosen and not held and not unfit:

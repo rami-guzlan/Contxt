@@ -270,24 +270,25 @@ class Compose:
         focus = p["project"]
         lines = [p["ask"], ""]
         lines.append(
-            "Before you start, call get_task_context with this request"
+            "Before you start, call gnomon_get_context with this request"
             + (f" (it is for the project {focus.title})" if focus is not None else "")
             + "."
         )
         if p["agent"]:
             name = p["agent"]
             lines.append(
-                f'Work as the agent {name}: call get_agent with name "{name}" first, and follow it.'
+                f'Work as the agent {name}: call agents_get with name "{name}" first, '
+                "and follow it."
             )
         if p["skills"]:
             lines.append(
-                "Follow these skills in this order, opening each with get_skill: "
+                "Follow these skills in this order, opening each with skills_get: "
                 + ", ".join(f"/{s.name}" for s in p["skills"])
                 + "."
             )
         if p["library"]:
             lines.append(
-                "Read these documents whole with get_reference: "
+                "Read these documents whole with files_open: "
                 + ", ".join(r.path for r in p["library"])
                 + "."
             )

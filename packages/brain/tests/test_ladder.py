@@ -189,7 +189,7 @@ class LadderTest(unittest.TestCase):
         opened = self.brain.note(goal["id"])
         self.assertIn("half from target accounts", opened.text)
         self.assertIn("## Obstacles and plan", opened.text)
-        self.assertIn("Shared plan: get_note", ladder.context(self.brain, goal["id"]))
+        self.assertIn("Shared plan: notes_get", ladder.context(self.brain, goal["id"]))
         cleared = ladder.write_plan(self.brain, goal["id"], [], actor=self.owner())
         self.assertFalse(cleared.is_error)
         self.assertNotIn("half from target accounts", self.brain.note(goal["id"]).text)

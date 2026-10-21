@@ -9,7 +9,7 @@ files it does not (a secret, a type it does not keep, one too large) are listed 
 The copy in Claude Code (`~/.claude/skills/<name>/`, or a project's `.claude/skills/<name>/`)
 carries `.contxt-skill.json`: the skill, the hash of the SKILL.md that went and when. The skill's
 page then says how many versions behind that copy is. Any connected AI can always read the
-current version with get_skill; the copy is for tools that need the files on disk.
+current version with skills_get; the copy is for tools that need the files on disk.
 """
 
 from __future__ import annotations

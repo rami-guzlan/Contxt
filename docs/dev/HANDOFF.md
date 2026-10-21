@@ -72,7 +72,7 @@ Positioning (the owner's direction, October 2026):
 | --- | --- | --- |
 | [plans/brain-logic-plan.md](plans/brain-logic-plan.md) | "BL": the engine's five stages (ingestion, distillation, storage, retrieval, updating) across five tiers (alignment, knowledge, State, episodes, briefs), with token economics, the local retrieval engine (5.11), the kernel (5.10), the updating loop (9), proof (10.6) and the local knowledge agent (17) | All 17 decisions approved; phases 0 to 6 built; real-model work waits for this PC |
 | [plans/knowledge-work-ux-plan.md](plans/knowledge-work-ux-plan.md) | "UX": the screens, phases A to G, and the one build order for both plans (its section 6) | All 8 decisions approved; A to F built; G (the walkthrough) waits for the owner |
-| [plans/goals-and-handoffs-plan.md](plans/goals-and-handoffs-plan.md) | Goals and Projects, check-ins, agent goals, tasks and `hand_off`, the goal coach (G0 to G4) | All 16 decisions approved; G0 to G4 built; the G4 walkthrough waits for the owner |
+| [plans/goals-and-handoffs-plan.md](plans/goals-and-handoffs-plan.md) | Goals and Projects, check-ins, agent goals, tasks and `todos_update`, the goal coach (G0 to G4) | All 16 decisions approved; G0 to G4 built; the G4 walkthrough waits for the owner |
 | [plans/general-retrieval-plan.md](plans/general-retrieval-plan.md) | Retrieval that works on anybody's Brain: zero-config as the product, enrichment at the door, rank fusion, per-Brain calibration against a null set, three tiers, learning from use, and an evaluation across many Brains | Plan only (Oct 16); its section 6 decisions wait for the owner |
 | [plans/testing-lab-plan.md](plans/testing-lab-plan.md) | The Gnomon Lab: measuring whether the Brain actually helps the owner's agents (not whether the code works), on a frozen copy of his live Brain, in a separate private repo | Not started; its section 13 decisions wait for the owner (decision 13 is settled) |
 | [record/build-progress.md](record/build-progress.md) | The build record: steps 2 to 8, checklists, what came out, a log entry per merge | Current |
@@ -188,7 +188,7 @@ AGENTS.md has the folder layout. This is what the build added, where it lives, a
   friction per column (free, confirm, locked), a log per cell, simple column formulas through a
   safe evaluator, and a small "Current state" block in briefs sent as deltas.
 - **Tasks and handoffs** (`handoff.py`, `hooks/task_stop.py`): the built-in Tasks sheet; tasks
-  move only through `hand_off` (claim, save, pass, finish); a card of about 250 tokens; "done"
+  move only through `todos_update` (claim, save, pass, finish); a card of about 250 tokens; "done"
   needs evidence; secrets are masked.
 - **Goals** (`ladder.py`, `measures.py`, `goals.py`): the purpose, your goals (optional) and
   agent goals as notes loaded only on request; check-ins and journals; computed measures from a

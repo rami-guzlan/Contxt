@@ -13,7 +13,7 @@ tokens; silent omission costs correctness, so the rule errs toward sending.
 
 HOOKS share a conversation's session: Claude Code's hooks name it `cc:<its session id>`, push
 briefs under it and record what they hand over outside a brief (`hand`), so the model's own
-`get_task_context` calls with that session id send only what is new.
+`gnomon_get_context` calls with that session id send only what is new.
 
 USAGE. Every handout is counted by day in `usage_daily` (how many conversations got the
 item, and how: in a packet, opened afterwards, or in AI work the workspace ran), which is
@@ -955,7 +955,7 @@ class Ledger:
         - `nothing`: a packet that brought no entry (`close` lists the entries it named as
           the closest, when any came near);
         - `searched`: an entry a conversation opened that none of its packets brought or
-          listed, so the AI found it some other way (search_notes): routing missed it;
+          listed, so the AI found it some other way (notes_search): routing missed it;
         - `flagged`: an AI said the Brain did not hold what a request needed (gaps_flag).
 
         Dismissed gaps (`dismiss`) stay out."""

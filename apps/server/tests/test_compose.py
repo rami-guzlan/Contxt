@@ -91,7 +91,7 @@ def test_the_whole_prompt_is_assembled_with_its_size(owner, brain_vault):
         "The Brain's brief",
     ]
     assert got["short"].startswith("Three posts from my outline.")
-    assert "get_skill: /weekly-posts" in got["short"] and got["short_tokens"] > 0
+    assert "skills_get: /weekly-posts" in got["short"] and got["short_tokens"] > 0
     assert (got["skills"], got["agent"], got["makes_files"]) == (["weekly-posts"], None, False)
     assert (
         owner.post("/api/compose/assemble", json={"request": "x", "skills": ["nope"]}).status_code
@@ -174,11 +174,11 @@ def test_the_chosen_model_improves_the_request(owner, runtime, brain_vault):
 
 
 def test_a_prompt_saved_in_a_chat_shows_word_for_word_with_its_file(owner, runtime):
-    """What an AI does when asked to "save this prompt to my Brain" (the Brain's add_file)."""
+    """What an AI does when asked to "save this prompt to my Brain" (the Brain's files_upload)."""
     from brainkit import mcp_server
 
     engine = runtime.ws.rt.brain.brain
-    save = mcp_server.HANDLERS["add_file"]
+    save = mcp_server.HANDLERS["files_upload"]
     words = "Draft the monthly client update.\n\n1. Wins\n2. Risks\n\nKeep it under 300 words."
     made = save(
         engine,

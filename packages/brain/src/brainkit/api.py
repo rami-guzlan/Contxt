@@ -262,7 +262,7 @@ class Brain:
             reason = " ".join(self._unsaved[-1].split())[:300]
             result.text = (str(result.text).rstrip() + "\n\nThis change is live, but saving it "
                            f"to the brain's git history failed: {reason}. Its history is "
-                           "incomplete until the next change saves it; brain_health shows it "
+                           "incomplete until the next change saves it; gnomon_health shows it "
                            "until then.")
             result.data = dict(result.data or {}, saved=False, commit_error=reason)
         return result
@@ -366,7 +366,7 @@ class Brain:
         `context` names a working context (BL 8.3): a task (its card leads), a goal, a project,
         a State row, or "general"; a conversation keeps the last one it named."""
         if not str(request or "").strip():
-            return error("get_task_context needs the request text.")
+            return error("gnomon_get_context needs the request text.")
         st = self.state()
         caller = self.caller(principal, via, partition, st=st)
         if isinstance(caller, Result):
@@ -440,7 +440,7 @@ class Brain:
             parts.append(
                 "## Continuity\n\n"
                 f"session_id: {session} ({status}). When a later message asks for something "
-                "new, call get_task_context again with this session_id; it sends only what is "
+                "new, call gnomon_get_context again with this session_id; it sends only what is "
                 "new. Pass it on every other call too, and fresh=true after a compaction.\n"
                 f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n"
                 "Pull budget for this request: open up to {} more items (about {:,} tokens) "
@@ -590,7 +590,7 @@ class Brain:
                          f"{working['idle']} days ago. Resume it here, or close it.")
         if working.get("kind") == "task":
             parts.append("## Your task\n\n" + handoff.render(self, working["task"])
-                         + "\n\nSave progress with hand_off before stopping, and pass it on "
+                         + "\n\nSave progress with todos_update before stopping, and pass it on "
                            "or finish it the same way.")
         if working.get("kind") == "goal":
             parts.append("## Your goal\n\n" + ladder.context(self, working["goal"]))
@@ -824,7 +824,7 @@ class Brain:
 
         For an agent whose packet lacks something: it can describe what it needs the way it
         understands it ("avoid AI-sounding writing", "UTM parameters for links") and open a
-        hit with get_note. With a session, notes it already holds are marked."""
+        hit with notes_get. With a session, notes it already holds are marked."""
         st = self.state()
         caller = self.caller(principal, None, partition, st=st)
         if isinstance(caller, Result):
@@ -897,10 +897,10 @@ class Brain:
                          "about it:\n" + "\n".join(lines))
         elif lines:
             parts.append(f"Notes matching {query!r}, best first:\n" + "\n".join(lines)
-                         + '\n\nOpen one with get_note(id="...").')
+                         + '\n\nOpen one with notes_get(id="...").')
         if file_lines:
             parts.append("In the brain's files:\n" + "\n".join(file_lines)
-                         + '\n\nRead a whole file with get_reference(path="...").')
+                         + '\n\nRead a whole file with files_open(path="...").')
         if parts:
             text = "\n\n".join(parts) + ("\n\nNothing fitting? Try other words: the brain's "
                                          "own terms, or plainer ones.")
@@ -1777,13 +1777,13 @@ class Brain:
         return Result(prompt, {"agent": found, "resolved": resolved, "prompt": prompt})
 
     def agent_prompt(self, name, *, session_id=None, principal=None, partition=None) -> Result:
-        """An agent's role as a connected AI takes it on (MCP get_agent): the assembled prompt,
+        """An agent's role as a connected AI takes it on (MCP agents_get): the assembled prompt,
         then how to get the brief for the task in front of it."""
         found = self.agent(name, principal=principal, partition=partition)
         if found.is_error:
             return found
         text = found.text + (
-            "\nFor the task in front of you, call get_task_context with the request"
+            "\nFor the task in front of you, call gnomon_get_context with the request"
             + (f" and session_id {session_id}" if session_id else "")
             + ", and follow this role with what it brings.\n")
         return Result(text, found.data)

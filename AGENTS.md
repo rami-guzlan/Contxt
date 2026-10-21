@@ -94,6 +94,6 @@ All of them pass before a change is done. CI runs the same, plus the core on Pos
 ## Working with a Brain while you code
 
 If this session has a Contxt Brain connected (an MCP server named `contxt`), call its
-`get_task_context` first for each task, as its instructions say. A Brain's own folder holds
+`gnomon_get_context` first for each task, as its instructions say. A Brain's own folder holds
 generated `CLAUDE.md` and `AGENTS.md` files for agents working inside it; never edit those by
 hand.

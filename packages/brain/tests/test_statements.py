@@ -40,7 +40,7 @@ class VocabularyTest(unittest.TestCase):
     def test_every_list_comes_from_the_one_vocabulary(self):
         self.assertIs(governance.NOTE_KINDS, statements.NOTE_KINDS)
         self.assertIs(governance.CAPTURE_TYPES, statements.CAPTURE_TYPES)
-        tool = next(t for t in mcp_server.AGENT_TOOLS if t["name"] == "propose_note")
+        tool = next(t for t in mcp_server.AGENT_TOOLS if t["name"] == "notes_propose")
         self.assertEqual(tool["inputSchema"]["properties"]["kind"]["enum"],
                          list(statements.NOTE_KINDS))
         for word in statements.PROPOSAL_KINDS + statements.NOTE_KINDS:

@@ -1,4 +1,4 @@
-"""`brain check` and the `brain_health` tool: is this vault well formed and current?
+"""`brain check` and the `gnomon_health` tool: is this vault well formed and current?
 
 Problems are things that make retrieval wrong (a note nothing can reach, a skill loading a
 topic that does not exist, a scope nobody declared). Warnings are things a human should look

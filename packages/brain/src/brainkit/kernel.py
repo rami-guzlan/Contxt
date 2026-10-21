@@ -4,7 +4,7 @@ A principal (a person, or an agent) sees a scope chain: the company first, then 
 or role, then itself. Its kernel holds only what must shape every response and that a brief
 could not bring in time:
 
-- the CONTRACT: one line that sends the model to `get_task_context`, with the fingerprint;
+- the CONTRACT: one line that sends the model to `gnomon_get_context`, with the fingerprint;
 - the CONSTITUTION, in layers: the company's (the action policy and the company-wide standing
   notes), the role's (the standing notes of the scopes between: a department, or an agent's own
   definition) and the person's (their own standing notes);
@@ -18,7 +18,7 @@ DELIVERY follows what the client can do. The shared part (the contract, the comp
 layers, the index) is written to `AGENTS.md` at the repository root, and `CLAUDE.md` is a stub
 that imports it (`@AGENTS.md`), so Claude Code reads one copy. The person's layer never enters a
 shared file: in Claude Code the session-start hook prints it fresh, and everywhere else the
-first brief of a conversation carries it. `get_task_context` sends the shared part again
+first brief of a conversation carries it. `gnomon_get_context` sends the shared part again
 whenever the client's fingerprint is stale, so a session never works from an outdated startup
 file for long.
 """
@@ -41,7 +41,7 @@ DISCLOSE = "Disclose thin, stale, contradictory or missing evidence. Archived no
 INDEX_TITLES = 5        # must-hold titles per domain line; the rest come with the brief
 INDEX_HINTS = 5         # words per domain line that say when it comes up
 MUST_HOLD_INTRO = ("When a task touches a domain below, its notes must hold: the brief brings "
-                   "them first. Working without a brief, open each with `get_note` before you "
+                   "them first. Working without a brief, open each with `notes_get` before you "
                    "act.")
 # Token budgets per layer, and for the whole kernel (brain.json `kernel.budgets`).
 BUDGETS = {"company": 150, "role": 150, "person": 100, "total": 500}
@@ -249,7 +249,7 @@ def compile(config, index, scopes, chain, partitions=(), tools=True) -> Kernel:
         return Kernel(text, "", fingerprint, "", layers, limits["total"])
     shared_chain = list(company) + list(role)
     contract = (f"Scope: {' > '.join(shared_chain)}; the closest scope wins. Call "
-                "`get_task_context` "
+                "`gnomon_get_context` "
                 "first for every task and for each new ask after it, with the request and "
                 "`startup_fingerprint: {fingerprint}`; reuse the `session_id` it returns, and "
                 "pass `fresh: true` after a compaction. CLI fallback: "

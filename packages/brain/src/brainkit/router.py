@@ -2113,7 +2113,7 @@ class Router:
 
     def admitted_sections(self, chain, partitions, excluded=(), only=None) -> list:
         """The file sections a caller may be given: their file's card is in the caller's
-        scope (a file without a card is everyone's, as `get_reference` serves it), not in an
+        scope (a file without a card is everyone's, as `files_open` serves it), not in an
         excluded topic, and not a copy marked superseded."""
         out = []
         for section in self.index.sections.values():

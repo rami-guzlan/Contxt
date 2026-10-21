@@ -147,7 +147,7 @@ improves L1 but not L3 is not yet a win, and the Lab reports it that way.
 | Governance and storage when new context is uploaded | 6.6, 6.8, and "upload to use" in 6.4 |
 | Updating: output check, corrections, AI updates, staleness, verify, cross-check, rules health, promotion | 6.7 |
 | Updates that are robust, clear and fully auditable | 6.7, the audit and clarity measures |
-| Goals optional, objectives, goal pages, agent goals, the Tasks sheet, `hand_off` | 6.9 |
+| Goals optional, objectives, goal pages, agent goals, the Tasks sheet, `todos_update` | 6.9 |
 | The knowledge agent's skills, tools and processes, with metrics and comparisons | 6.10 |
 | Labeled real data, generated data for gaps, approved by him | 5 |
 | His ChatGPT and Claude memories | 5.7 |
@@ -623,7 +623,7 @@ Four controls keep the labels honest:
 - **Pooling.** The candidates he labels for a retrieval case are the union of four lists:
   - what setup A delivers and lists;
   - what every other setup delivers, once it runs on the PC;
-  - what `search_notes` finds when Claude rephrases the request in its own words;
+  - what `notes_search` finds when Claude rephrases the request in its own words;
   - the old eval's labels.
 
   A new setup can deliver notes nobody labeled. Those count as "unjudged": the calibrated judge
@@ -756,7 +756,7 @@ A starting draft:
 | S5 | Deep briefs repeat the must-hold lines at the end (BL 5.5) | Code |
 | S6 | A dated value says "as of", and only the newest is carried as current | Code |
 | S7 | Two notes that disagree travel together, marked as disputed (BL 5.11.4) | Code |
-| S8 | Every pointer opens the right note through `get_note` | Code, which calls it |
+| S8 | Every pointer opens the right note through `notes_get` | Code, which calls it |
 | S9 | Each brief stays within its type's budget: lookup 400, standard 1,200, deep 2,500 tokens (BL 4.3) | Code |
 | S10 | Nothing the conversation already holds is sent again | Code, on multi-turn cases |
 | S11 | Best first: the most needed note leads | Code, from the labels |
@@ -788,7 +788,7 @@ misleads, and nothing at all when nothing fits?
 held-out splits.
 
 **The method.**
-1. Send each request to the Lab Brain the way an agent does: `get_task_context` over MCP, with
+1. Send each request to the Lab Brain the way an agent does: `gnomon_get_context` over MCP, with
    the case's project, partition and earlier turns.
 2. Read that packet's record from the Lab Brain's ledger: the delivered ids, pointers,
    must-holds, the gate's answer, the times, and from step 3b the scores.
@@ -909,8 +909,8 @@ It also writes three variants:
 - **`kernel-only`**: the hook without the MCP server.
 - **`memory-list`**: his approved memory items as SessionStart context, with no Brain.
 - **`frozen-<setup>`**: the MCP tools answered from mocks.
-  - `get_task_context` returns the packet recorded for that case and setup.
-  - `get_note` serves note bodies from fixture files, keyed by the note id in the call's input
+  - `gnomon_get_context` returns the packet recorded for that case and setup.
+  - `notes_get` serves note bodies from fixture files, keyed by the note id in the call's input
     (`{{file:fixtures/{input.<field>}.md}}`).
 
   Frozen packets make brief experiments exact, cheap and repeatable on any machine: record them
@@ -939,7 +939,7 @@ Each case carries:
    - each must-not as a pattern with `match: not_contains`.
 
    These score in both arms, so rule violations with and without the Brain come out directly.
-2. A `tool_used` grader on the Brain's `get_task_context`, marked `arm: with-only`, so it is an
+2. A `tool_used` grader on the Brain's `gnomon_get_context`, marked `arm: with-only`, so it is an
    indicator in the with-arm and never scored.
 3. Two `llm` graders:
    - the key points, as a checklist that passes only when all of them are present and right;
@@ -955,8 +955,8 @@ claude plugin eval .lab/plugins/brain-under-test-a --json <path> --runs 3 --mode
   --allow-tools "mcp__plugin_brain-under-test-a_brain__get_task_context" (and the other read tools)
 ```
 
-- **Read tools only**: `get_task_context`, `search_notes`, `get_note`, `get_skill` and
-  `get_reference`.
+- **Read tools only**: `gnomon_get_context`, `notes_search`, `notes_get`, `skills_get` and
+  `files_open`.
   - Write tools stay ungranted, so a run never changes the Lab Brain.
   - Writing is tested in 6.4 to 6.9, on worlds that are reset between runs.
 - **Frozen variants** run with mocks instead (`--mocks record`).
@@ -1002,7 +1002,7 @@ them gets them, and gets nothing it should not?
 - generated tricky inputs.
 
 **The method.** On a reset copy of the Lab Brain, put each input through the door it would really
-come through: Capture, Moving in, `add_file`, Work uploads, or a swept folder. Then:
+come through: Capture, Moving in, `files_upload`, Work uploads, or a swept folder. Then:
 1. Compare what was proposed, routed and dropped with his approved expectations.
 2. **Upload to use.** Ask the requests the case names: questions that only the new input
    answers. Score the briefs (did the new section arrive, with its document's context line?)
@@ -1116,14 +1116,14 @@ the only one who can change them?
 
 ### 6.8 Storage as experienced, and scale
 
-- **What comes back.** An approved note read through `get_note` is the approved text.
+- **What comes back.** An approved note read through `notes_get` is the approved text.
 - **History.** Questions like "what did we believe on September 1?" are answered from history.
   These are temporal questions, like LongMemEval's temporal reasoning and knowledge updates.
 - **Undo.** Approving and then undoing leaves briefs as they were before.
 - **Growth.** A world grown to three times the notes, with realistic generated notes, keeps
   recall, noise, time and cost within the gates. The ledger counts how often the ceiling is hit.
 
-### 6.9 State, goals, projects, tasks and `hand_off`
+### 6.9 State, goals, projects, tasks and `todos_update`
 
 **The question.** Does the working context (current values, objectives, goals, tasks and
 handoffs) help agents do the right next thing without being told twice?
@@ -1148,7 +1148,7 @@ better, the objective's place in the brief is reconsidered (GP 11).
 - Computed values match a reference computation on seeded Brains (100%).
 - Check-ins stay within the noise caps in GP 11.
 
-**Tasks and `hand_off`.**
+**Tasks and `todos_update`.**
 - Questions like "who did what, when, on which tool" are answered by lookup, correctly (100%).
 - On seeded long tasks, agents save at the moments GP 5.8 names, at least 90% of the time.
 - A fresh session resumed from a card alone continues correctly, compared with no card:
@@ -1486,8 +1486,8 @@ itself.
 | Only shared blocks reach briefs and cards | 100% | hard | GP 11 |
 | Measures match the reference computation | 100% | hard | GP 11 |
 | Handoff receivers: ask nothing the card holds, redo nothing, keep decisions | 100% | hard | GP 11 |
-| `hand_off` saves at the right moments | at least 90% | hard | GP 11 |
-| Integrity: Done has evidence, one claim wins, owners change only through `hand_off` | 100% | hard | GP 11 |
+| `todos_update` saves at the right moments | at least 90% | hard | GP 11 |
+| Integrity: Done has evidence, one claim wins, owners change only through `todos_update` | 100% | hard | GP 11 |
 | Knowledge agent wrong merges | none | hard | new |
 | Knowledge agent false alarms on clean controls | at most 1 per run | watch | new |
 | Knowledge agent precision and recall, per skill | at least 80% and 70% | watch first | new |
@@ -1916,7 +1916,7 @@ phase.
   framework for worlds.
 - Done when:
   - the snapshot is committed, with its manifest and a clean secret scan;
-  - the Lab Brain answers `get_task_context` over `contxt-lab` for 10 sampled requests;
+  - the Lab Brain answers `gnomon_get_context` over `contxt-lab` for 10 sampled requests;
   - `brain check` passes on it;
   - the canary check passes.
 
@@ -1977,7 +1977,7 @@ phase.
 - Governance.
 - Updating: the eight checks.
 - Storage as experienced.
-- State, goals, projects, tasks and `hand_off`, ready and waiting.
+- State, goals, projects, tasks and `todos_update`, ready and waiting.
 - Each with its worlds, plus the memory import.
 - Done when:
   - each suite runs end to end on what the engine has, and the rest say what they wait for;
@@ -2354,7 +2354,7 @@ expect:
 
 # ingestion
 expect:
-  door: movein                   # capture | movein | add_file | upload | swept
+  door: movein                   # capture | movein | files_upload | upload | swept
   routed: [{statement_ref: s1, tier: knowledge, project: q4-webinars, scope: company}]
   dropped: [{statement_ref: s7, why: one-off}]
   duplicates_of: {s3: brand-voice}

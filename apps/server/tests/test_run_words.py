@@ -55,13 +55,13 @@ def model_facing() -> dict[str, str]:
 # Where "task" is the new kind itself (G2: the Tasks sheet and hand_off), as the rule intends.
 NEW_KIND = {
     "brain instructions",
-    "brain tool get_task_context",
-    "brain tool get_state",
-    "brain tool update_state",
-    "brain tool hand_off",
-    "tool get_state",
-    "tool update_state",
-    "tool hand_off",
+    "brain tool gnomon_get_context",
+    "brain tool sheets_get",
+    "brain tool sheets_propose_update",
+    "brain tool todos_update",
+    "tool sheets_get",
+    "tool sheets_propose_update",
+    "tool todos_update",
 }
 
 
@@ -72,7 +72,7 @@ def test_model_facing_text_says_run_for_runs():
     # And where it says task, it means a task from the Tasks sheet.
     for where in NEW_KIND:
         if WORD.search(texts[where]):
-            assert any(w in texts[where] for w in ("hand_off", "T-41", "State")), where
+            assert any(w in texts[where] for w in ("todos_update", "T-41", "State")), where
 
 
 def test_distillation_still_names_its_kinds_from_the_one_vocabulary():

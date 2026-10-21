@@ -50,10 +50,10 @@ def test_mcp_exposes_historical_reads_and_passes_the_flag():
     from unittest.mock import Mock
     from brainkit import mcp_server
     tools = {t["name"]: t for t in mcp_server.AGENT_TOOLS}
-    for name in ("get_note", "search_notes"):
+    for name in ("notes_get", "notes_search"):
         assert tools[name]["inputSchema"]["properties"]["include_archived"]["type"] == "boolean"
     brain = Mock()
-    mcp_server.HANDLERS["get_note"](brain, {"id": "old", "include_archived": True})
+    mcp_server.HANDLERS["notes_get"](brain, {"id": "old", "include_archived": True})
     brain.note.assert_called_once_with("old", session_id=None, include_archived=True,
                                             full=False)
 

@@ -1,7 +1,7 @@
 """Agents: roles kept in the Brain as agents/<name>/AGENT.md. Saved by the owner as one undo
 point; checked (a line saying what it does, a known output and runner, a declared scope);
 assembled with every pointer resolved to what it is now, naming what no longer resolves; hidden
-when archived; and taken on by any connected AI through MCP get_agent.
+when archived; and taken on by any connected AI through MCP agents_get.
 """
 import os
 import shutil
@@ -119,13 +119,13 @@ class AgentTests(unittest.TestCase):
     def test_a_connected_ai_takes_an_agent_on_through_mcp(self):
         self.save()
         server = mcp_server.Server(self.brain)
-        listed = server.call("list_agents", {})
+        listed = server.call("agents_list", {})
         self.assertIn("case-writer: Writes the studio's case studies", listed.text)
-        taken = server.call("get_agent", {"name": "case-writer", "session_id": "s-1"})
+        taken = server.call("agents_get", {"name": "case-writer", "session_id": "s-1"})
         self.assertFalse(taken.is_error, taken.text)
         self.assertIn("# You are working as case-writer", taken.text)
-        self.assertIn("call get_task_context with the request and session_id s-1", taken.text)
-        self.assertTrue(server.call("get_agent", {"name": "nobody"}).is_error)
+        self.assertIn("call gnomon_get_context with the request and session_id s-1", taken.text)
+        self.assertTrue(server.call("agents_get", {"name": "nobody"}).is_error)
 
     def test_work_procedures_ship_with_the_engine(self):
         builder = self.brain.work_skill("agent-builder")

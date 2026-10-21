@@ -135,7 +135,7 @@ class KernelTests(unittest.TestCase):
         text = self.brain.kernel(principal="person:alex", tools=False).text
         self.assertIn("Lead with the decision", text)
         self.assertIn("12-column grid", text)
-        self.assertNotIn("get_task_context", text)
+        self.assertNotIn("gnomon_get_context", text)
 
 
 class HookTests(unittest.TestCase):
@@ -197,7 +197,7 @@ class HookTests(unittest.TestCase):
         # The same ask again holds nothing new: no push, the reminder instead.
         again = self.prompt("How should headlines be written for the studio?")
         self.assertNotIn("# Task context", again)
-        self.assertIn("call get_task_context", again)
+        self.assertIn("call gnomon_get_context", again)
 
     def test_push_can_be_turned_off(self):
         with mock.patch.dict(os.environ, {"BRAIN_HOOK_PUSH": "0"}):

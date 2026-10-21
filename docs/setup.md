@@ -103,7 +103,7 @@ token, and nothing goes anywhere but to the AI app you connect. The app does not
 running for your AI apps to use the Brain.
 
 From then on, every chat starts by asking the Brain for the context its request needs
-(`get_task_context`), and proposes what it learns: rules and preferences you state, decisions,
+(`gnomon_get_context`), and proposes what it learns: rules and preferences you state, decisions,
 progress on your projects, files you share. Projects and files go in at once with an undo
 point; what else your AI picks up waits for you in **Catch up** (Settings, Approval, says what
 waits).

@@ -10,10 +10,10 @@ message that asks for something, the hook asks the router itself, under the conv
 session (`cc:` and Claude Code's id, the one the session-start hook named), and when the brain
 holds something this conversation has not been given (a note, a must-hold, a part of a document,
 a procedure, the startup context when the file is stale), the brief comes with the message. The
-model's own `get_task_context` call with that session id then sends only what the push did not.
+model's own `gnomon_get_context` call with that session id then sends only what the push did not.
 Nothing new: nothing pushed, and the reminder to ask instead. brain.json `hooks.push` sets how:
 "words" (the default: about a second, no embedding model), "meaning" (the router exactly as
-`get_task_context` runs it, a few seconds while the model loads) or "off"; `BRAIN_HOOK_PUSH=0`
+`gnomon_get_context` runs it, a few seconds while the model loads) or "off"; `BRAIN_HOOK_PUSH=0`
 turns it off too. Every pushed brief is logged with `delivery: push`, so the report can weigh
 push against pull.
 
@@ -28,12 +28,12 @@ import os
 import re
 import sys
 
-ASK = ("If this message asks for something new, call get_task_context with it first (pass "
+ASK = ("If this message asks for something new, call gnomon_get_context with it first (pass "
        "your session_id): the brain sends only what this conversation does not hold yet.")
 SMALL_TALK = re.compile(r"^\s*(?:thanks|thank you|ok(?:ay)?|great|cool|perfect|got it|"
                         r"sounds good|yes|no|sure|nice)\b[\s.!]*$", re.IGNORECASE)
 PUSHED = ("[brain] The brain's brief for this message, sent before you start under session_id "
-          "{session}. Pass that session_id to get_task_context: it sends only what is not here.")
+          "{session}. Pass that session_id to gnomon_get_context: it sends only what is not here.")
 # What a brief may hold that this conversation was not given: any of it makes it worth pushing.
 NEW = ("note_ids", "section_ids", "system_ids", "skill_included", "kernel_included",
        "person_included")

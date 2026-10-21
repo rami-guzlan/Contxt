@@ -50,8 +50,8 @@ MEETINGS = ("recording", "transcript")
 INSTRUCTIONS = """\
 You are working as the agent {name} for {owner}. Its role, as {owner} wrote it, is below, with
 what it points to as each is now. Follow it for the request at the end. The Relevant context
-section holds what the Brain found for this request. Where the role says get_skill or
-get_reference, use get_brain_skill and get_brain_reference. Use only what the Brain, the pinned
+section holds what the Brain found for this request. Where the role says skills_get or
+files_open, use get_brain_skill and get_brain_reference. Use only what the Brain, the pinned
 items and the request say: never invent facts, names, numbers or quotes, and where something is
 missing, say so in the result.
 
@@ -283,7 +283,7 @@ class Agents:
         """Ask the agent for something: a run like a skill run, opening with its role. With
         `capture_id`, a note it works from (a Workspace doc: "I outline, you write"), pinned at
         the version it is now. With `handoff`, the run works that task from the Tasks sheet,
-        and its contract asks for a hand_off before it stops."""
+        and its contract asks for a todos_update before it stops."""
         who.require("tasks.write")
         doc = self.notes.get(who, capture_id) if capture_id else None
         plan = self.plan(who, name, ask=ask, project=project, docs=[doc] if doc else None)
@@ -414,8 +414,8 @@ class Agents:
             f"description: {json.dumps(description)[1:-1]} Use when asked to work as {name}.\n"
             "---\n"
             f"You are the agent {name}, kept in the owner's Brain. Before anything else, call the "
-            f'Brain\'s get_agent tool with name "{name}" and follow what it returns: your current '
-            "role, what you point to and what you never do. Then call get_task_context with the "
+            f'Brain\'s agents_get tool with name "{name}" and follow what it returns: your current '
+            "role, what you point to and what you never do. Then call gnomon_get_context with the "
             "task in front of you. If the Brain is not connected, say so and stop.\n"
         )
         return path, text

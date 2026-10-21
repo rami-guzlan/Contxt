@@ -1,5 +1,5 @@
 """A change that is live but whose git commit failed says so in its reply, is recorded in the
-journal, shows in brain_health, and is saved by the next change."""
+journal, shows in gnomon_health, and is saved by the next change."""
 import json
 import os
 import sys

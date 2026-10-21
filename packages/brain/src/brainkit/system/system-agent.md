@@ -28,7 +28,7 @@ tool, arguments in range), retries once, and calls the tool it names. A job has 
 steps; one that stays invalid is handed up (a larger model, Claude Code if turned on, or the
 owner through Catch up). The tools look (the map, search, a note, State, what changed since
 the last run, a note's impact, past suggestions) or suggest (an edit, a merge, a retirement,
-a State value, a challenge, a task through `hand_off`); none writes. Kev, when installed,
+a State value, a challenge, a task through `todos_update`); none writes. Kev, when installed,
 answers the typed checks (stale, duplicate, contradicts, worth suggesting); code answers them
 otherwise.
 

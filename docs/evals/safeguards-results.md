@@ -159,7 +159,7 @@ model yet; the line is put in front of it at the moment its domain shows up.
 ## Phase E: dissent and challenge
 
 - **Challenges are governed proposals** (`note.challenge`): a note, a claim, its evidence and
-  its source, from any AI (`challenge_note` on the Brain's server, `propose_challenge` on the
+  its source, from any AI (`notes_challenge` on the Brain's server, `propose_challenge` on the
   app's). They always wait. Accepted, the note is disputed and keeps the challenge as its other
   view; turned down, the same claim on the same evidence is refused, and new evidence is
   taken.

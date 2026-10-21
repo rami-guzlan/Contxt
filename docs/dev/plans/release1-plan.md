@@ -64,7 +64,7 @@ The design shows none of these because they were built after its snapshot. They 
 | Projects: Context, Tasks, Files, Outputs (R1); Board (R3) | Brain Focus (objective, aliases, pins, journal, files) plus workspace projects | **Change**: the Focus is the project |
 | Project packet: pins, file pointers, budget, preview (R1) | Focus pins, task pins frozen in run packets | Keep; add a pin budget and named overflow |
 | Kept with this project: rules, preferences, facts; references from captures (R1) | Focus journal and files | **Add** kept groups and references |
-| Latest progress update and timeline; "your AI sees the last five" (R1) | `record_focus_update`, journal | Keep |
+| Latest progress update and timeline; "your AI sees the last five" (R1) | `projects_propose_progress`, journal | Keep |
 | "What your AIs asked" per project (R1) | Requests log | Filter receipts by project |
 | Context sheets: Brain-wide and per project; send mode, updater, review, archive; cell history (R1) | State tier (typed columns, friction, cell logs, partitions) | **Change** (section 3.5) |
 | Auto sheets: Project status, Open loops this week (R1) | `formulas.py` computed columns | **Add** the two built-in sheets |
@@ -103,21 +103,21 @@ Both MCP servers expose the MCP Tools.md names. Every write takes `reason`, `sou
 
 | Today | New name |
 |---|---|
-| `get_task_context` | `gnomon.get_context` |
-| `search_notes`, `get_note` | `notes.*` |
-| `propose_note` | `notes.propose` |
-| `challenge_note` | `notes.challenge` |
-| `get_state` | `sheets.get` |
-| `update_state` | `sheets.propose_update` (now decided by the column's updater) |
-| `hand_off` | `todos.update` |
-| `create_focus` | `projects.create` |
-| `record_focus_update` | `projects.propose_progress` |
-| `record_output` | `outputs.save` |
-| `add_file` | `files.upload` |
-| `get_skill` | `skills.get` |
-| `get_reference` | `files.open` |
-| `propose_skill` | `skills.propose_change` |
-| `list_agents`, `get_agent` | `agents.*` |
+| `gnomon_get_context` | `gnomon.get_context` |
+| `notes_search`, `notes_get` | `notes.*` |
+| `notes_propose` | `notes.propose` |
+| `notes_challenge` | `notes.challenge` |
+| `sheets_get` | `sheets.get` |
+| `sheets_propose_update` | `sheets.propose_update` (now decided by the column's updater) |
+| `todos_update` | `todos.update` |
+| `projects_create` | `projects.create` |
+| `projects_propose_progress` | `projects.propose_progress` |
+| `outputs_save` | `outputs.save` |
+| `files_upload` | `files.upload` |
+| `skills_get` | `skills.get` |
+| `files_open` | `files.open` |
+| `skills_propose_change` | `skills.propose_change` |
+| `agents_list`, `agents_get` | `agents.*` |
 | app `propose_brain_entry` | `notes.propose` with source quotes |
 
 The app's task bus tools stay internal for runners.
@@ -165,7 +165,7 @@ The app's task bus tools stay internal for runners.
 - **Context:** objective, latest progress and timeline, kept rules, preferences and facts, references from captures, live sheets, the packet, aliases.
 - **Tasks:** the Tasks sheet, filtered by project, with stable task IDs. Edits and kept proposals update the same row, and each row links its source capture.
 - **Files:** Focus files, showing their source status ("Saved isn't the same as searchable").
-- **Outputs:** `record_output` lineage, plus the record versions read (from the receipt), plus a stale flag.
+- **Outputs:** `outputs_save` lineage, plus the record versions read (from the receipt), plus a stale flag.
 - **Packet:**
   - Order: must-holds → project brief → pins → live sheet values → notes by meaning → Taste → file pointers → gaps.
   - Pins stay under a budget share (about 30%); a pin that doesn't fit is named.

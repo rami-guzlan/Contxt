@@ -118,7 +118,7 @@ sets for itself, whatever its size, its notes' length, its vocabulary or its mod
 
 - **Whole notes:** candidates above the confident bar, best first, inside the budget.
 - **Pointers:** the next candidates above the nothing bar, as a title and their closest
-  `asked_as` line. The model opens one with `get_note` when the task needs it.
+  `asked_as` line. The model opens one with `notes_get` when the task needs it.
 - **Nothing:** below the nothing bar, with the closest pointers and an instruction to say the
   Brain has nothing.
 

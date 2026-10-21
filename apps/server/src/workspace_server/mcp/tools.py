@@ -1074,7 +1074,7 @@ TOOLS: dict[str, Tool] = {
             "brain.propose",
         ),
         Tool(
-            "get_state",
+            "sheets_get",
             "Read State: fast-changing values per entity (accounts, repos, tasks). No sheet "
             "lists the sheets; a sheet lists its rows (filter with query); a row gives its "
             "values with dates and recent changes.",
@@ -1089,10 +1089,10 @@ TOOLS: dict[str, Tool] = {
             "brain.read",
         ),
         Tool(
-            "update_state",
+            "sheets_propose_update",
             "Write State values you learned, with evidence: a list of {sheet, row, column, "
             "value, as_of}. Some columns apply at once, some wait for the owner, some are "
-            "theirs alone. Tasks move only with hand_off.",
+            "theirs alone. Tasks move only with todos_update.",
             _obj(
                 {
                     "updates": {"type": "array", "items": {"type": "object"}},
@@ -1104,7 +1104,7 @@ TOOLS: dict[str, Tool] = {
             "brain.propose",
         ),
         Tool(
-            "hand_off",
+            "todos_update",
             "Move a task: claim it, save progress (no `to`), pass it on (`to`, with done_when "
             "and next_step), or finish (status done, with evidence). new_task opens one. "
             "Save before the run ends.",
@@ -1222,6 +1222,14 @@ TOOLS: dict[str, Tool] = {
             "tasks.claim",
         ),
     )
+}
+
+
+# The names these tools had before the MCP Tools.md surface: still answered for a version.
+ALIASES = {
+    "get_state": "sheets_get",
+    "update_state": "sheets_propose_update",
+    "hand_off": "todos_update",
 }
 
 

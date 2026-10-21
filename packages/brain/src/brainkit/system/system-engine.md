@@ -13,7 +13,7 @@ budget becomes a pointer, never a drop). Must-holds bypass relevance. A request 
 cut finds nothing for gets one line.
 
 WITHOUT A VERIFIED SERVICE (a laptop without a GPU, or no models yet) retrieval runs exactly as
-before: keywords and the meaning index. `brain_health` says which mode runs.
+before: keywords and the meaning index. `gnomon_health` says which mode runs.
 
 THE MODELS are pinned in `models.lock.json` (repository, revision, the checksum of every file);
 the service refuses any model the lock does not list or whose files differ. `brain models lock`

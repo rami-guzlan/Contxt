@@ -170,7 +170,7 @@ class PacketExcerptTests(unittest.TestCase):
         self.assertNotIn("bay seven", result.text)
         rules = result.text.split("## Your rules", 1)[1]
         self.assertIn("17 days", rules)
-        self.assertIn('get_note(id="maintenance")', rules)
+        self.assertIn('notes_get(id="maintenance")', rules)
         self.assertNotIn("## Notes", result.text)
         self.assertEqual(result.text.count("17 days"), 1)
         self.assertLessEqual(sum(result.data["note_tokens"].values()), 150)
@@ -183,7 +183,7 @@ class PacketExcerptTests(unittest.TestCase):
         self.assertNotIn(self.note.body.strip(), result.text)
         self.assertIn("## Your rules", result.text)
         self.assertNotIn("## Notes", result.text)
-        self.assertIn('get_note(id="maintenance")', result.text)
+        self.assertIn('notes_get(id="maintenance")', result.text)
 
     def test_a_short_rule_can_upgrade_to_full_delivery_when_it_fits(self):
         self.note.meta["kind"] = "rule"

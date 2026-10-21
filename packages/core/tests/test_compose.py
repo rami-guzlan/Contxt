@@ -133,12 +133,12 @@ def test_the_short_request_fetches_its_brief_and_brings_the_notes(ws, owner, out
         project=q4.id,
     )
     assert short.startswith(
-        "Three posts.\n\nBefore you start, call get_task_context with this request"
+        "Three posts.\n\nBefore you start, call gnomon_get_context with this request"
     )
     assert "(it is for the project Q4 campaigns)" in short
-    assert 'call get_agent with name "content-strategist"' in short
-    assert "opening each with get_skill: /weekly-posts." in short
-    assert "get_reference: references/voice.md." in short
+    assert 'call agents_get with name "content-strategist"' in short
+    assert "opening each with skills_get: /weekly-posts." in short
+    assert "files_open: references/voice.md." in short
     assert "## My note: Q4 outline" in short and "Video keeps its budget." in short
 
 

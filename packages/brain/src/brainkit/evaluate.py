@@ -12,7 +12,7 @@ and may pin a mode or a Focus. `style_ok` counts the house style (`style_topics`
 `style_notes`, the owner's list of what every piece of writing needs) as useful for a writing
 task. Metrics are must-recall, precision (delivered notes that are must or useful)
 and noise hits, reported separately for tuning cases and held-out cases. "Listed" recall also
-counts notes the packet names under "Also relevant", which the agent can open with get_note. Old note ids are
+counts notes the packet names under "Also relevant", which the agent can open with notes_get. Old note ids are
 resolved through aliases.json, so renaming notes does not break a case.
 
 Runs on a throwaway session ledger; it never touches real conversation history, and the

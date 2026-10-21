@@ -13,7 +13,7 @@ only adds evidence: how well its whole topic matches the request, a lift when a 
 skill, an intent or a named Focus declares its topic, `fit_terms`, and a lift for notes added
 or approved in the last 14 days. So a note approved into a brand-new topic is used on the
 next relevant request. Notes that stand out go in; the next ones are listed by title under
-"Also relevant", to open with `get_note`. Writing tasks start with the owner's core style
+"Also relevant", to open with `notes_get`. Writing tasks start with the owner's core style
 rules (`house_style_notes`). Topic caveats (`with_notes`) travel with their topic's notes.
 
 MUST-HOLDS (`load: domain`) are constraints that go into every brief whenever their domain is

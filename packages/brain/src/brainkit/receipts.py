@@ -5,7 +5,7 @@ changes afterwards and always equals the delivery:
 
     sent              every item in the packet, whole or in short, with its tokens; the
                       startup context and the Brain map when they went with it
-    opened            what the AI opened afterwards, before its next request (get_note)
+    opened            what the AI opened afterwards, before its next request (notes_get)
     did_not_fit       chosen but past the budget, named, not sent; and the related items
                       named for one call away
     already_delivered held from earlier in the conversation, not sent again

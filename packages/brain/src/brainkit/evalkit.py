@@ -22,7 +22,7 @@ result: the scoring set is the one to read.
 
 Measures are counts (k of n), so each has a Wilson interval: recall (needed notes the brief
 carried, whole or in short, or the session already held), whole recall, reachable recall
-(listed too, one get_note away), precision (delivered notes that were needed or useful),
+(listed too, one notes_get away), precision (delivered notes that were needed or useful),
 correct nothing (the Brain's own off-topic requests and the scoring set), false nothing
 (needed something, got nothing), must-hold recall and decoys. Tokens and latency are lists.
 Across Brains: the mean of each Brain's rate (every Brain counts alike), the worst Brain,

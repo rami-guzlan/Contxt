@@ -143,11 +143,11 @@ BRAIN_CLIENTS: dict[str, str] = {
 # asks only when the tools are there: the same file is read by runs that have none (the app's
 # own one-answer asks of Claude Code, say), which must not stall on a tool they cannot call.
 BRAIN_INSTRUCTION = (
-    "Before you answer, if the contxt tools are available, call get_task_context with my "
+    "Before you answer, if the contxt tools are available, call gnomon_get_context with my "
     "message as I wrote it. Call it again for every later message that asks for something "
     "new, passing the session_id it returned. Follow the must-holds and rules it returns: they "
     "outrank the request. When I state a lasting rule, preference, decision or fact, propose it "
-    "with propose_note."
+    "with notes_propose."
 )
 # Where each app keeps the instructions it follows in every conversation.
 INSTRUCTION_PLACES: dict[str, str] = {

@@ -80,9 +80,9 @@ Everything below lives in the vault. The engine supplies a default for every key
   fallback even with a model service; `layers` and `scorer` are how the comparison of setups
   runs. It runs only with a verified local model service (ROUTING.md).
 - **Hooks**: `push` is how Claude Code's prompt hook sends a brief before the model asks:
-  `words` (the default, about a second), `meaning` (the router exactly as `get_task_context`
+  `words` (the default, about a second), `meaning` (the router exactly as `gnomon_get_context`
   runs it, a few seconds while the model loads) or `off`.
-- **Focus**: a note of kind `focus` is a project's live state. `create_focus` gives each new
+- **Focus**: a note of kind `focus` is a project's live state. `projects_create` gives each new
   one its own folder under `focus.area`.
 - `owner` is the default principal (override per process with `BRAIN_PRINCIPAL`).
 - `scopes` is the inheritance tree. `alt_parents` lets a person belong to a second team; pick

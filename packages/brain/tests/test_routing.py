@@ -73,7 +73,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(res.data["note_ids"], [])
         self.assertEqual(res.data["unfit_ids"], selected)
         self.assertIn("## Did not fit", res.text)
-        self.assertIn('get_note(id="...")', res.text.split("## Did not fit", 1)[1])
+        self.assertIn('notes_get(id="...")', res.text.split("## Did not fit", 1)[1])
 
     def test_a_topic_gate_yields_to_a_request_that_names_the_note(self):
         # facts/clients asks for a client's name; naming what the note says is as good.
@@ -155,7 +155,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(result.data["note_ids"], [])
         self.assertIn("facts-services-001", result.data["related_ids"])
         self.assertIn("## Closest notes (not included)", result.text)
-        self.assertIn("search_notes", result.text)
+        self.assertIn("notes_search", result.text)
 
     def test_a_permission_question_is_about_the_action_asked(self):
         self.assertEqual(self.ctx("Can we post the launch announcement now?").data["mode"],
@@ -181,7 +181,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(update["focus_mode"], "focus-update")
         self.assertEqual(update["focus_id"], "state-focus-website-redesign")
         packet = self.ctx("The Figma prototype was approved by the client, record that").text
-        self.assertIn("record_focus_update", packet)
+        self.assertIn("projects_propose_progress", packet)
 
     def test_a_task_in_a_project_opens_with_the_projects_objective(self):
         # Its summary stands in until the project has an objective of its own.
@@ -215,9 +215,9 @@ class RoutingTests(unittest.TestCase):
     def test_a_model_with_no_tools_is_never_asked_to_call_one(self):
         # One side of a comparison runs with no tools at all: told to call one, it writes the
         # call out instead of the answer. It gets the procedure it would open, in full.
-        calls = ("get_task_context", "get_skill", "get_note", "get_reference", "search_notes",
-                 "propose_note", "propose_skill", "add_file", "create_focus",
-                 "record_focus_update", "record_output", "fallback", "session_id", "fresh=true")
+        calls = ("gnomon_get_context", "skills_get", "notes_get", "files_open", "notes_search",
+                 "notes_propose", "skills_propose_change", "files_upload", "projects_create",
+                 "projects_propose_progress", "outputs_save", "fallback", "session_id", "fresh=true")
         kernel = self.brain.kernel(tools=False).text
         self.assertIn("Nothing goes to a client before Alex approves it.", kernel)
         self.assertNotIn("## Skills", kernel)
@@ -255,7 +255,7 @@ class RoutingTests(unittest.TestCase):
         # A model that can call the brain still gets the pointer, not the text.
         normal = self.brain.preview("Create a brand sheet for the new client")
         self.assertIsNone(normal.data["skill_included"])
-        self.assertIn("get_skill", normal.text)
+        self.assertIn("skills_get", normal.text)
         self.assertNotIn("Write the voice lines", normal.text)
 
     def test_intent_includes_topic(self):

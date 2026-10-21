@@ -1,6 +1,6 @@
 """Workspace's live context and Activity's tasks and handoffs over REST (UX plan 4.3, goals plan
 6.9): State sheets with their rows, history and the AI values that wait; and tasks, moved only
-through `hand_off`, the same function the tool uses."""
+through `todos_update`, the same function the tool uses."""
 
 from __future__ import annotations
 

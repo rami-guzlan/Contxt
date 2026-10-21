@@ -21,7 +21,7 @@ knowledge (the rest). Who said it and when it was true ride with it. Old ids res
 
 A request becomes a packet in three steps: the kernel (the company's, the role's and the
 person's standing notes; the shared part in AGENTS.md, which CLAUDE.md imports) is already in
-the session; `get_task_context` routes the request to what the caller's scope admits; the
+the session; `gnomon_get_context` routes the request to what the caller's scope admits; the
 packet delivers only what is relevant and not already delivered in this session, with the
 project's objective first, the must-holds of the task's domains, and a short "Current state"
 block for the sheet rows it names. Goals never change what a request receives. Nothing is
@@ -30,6 +30,6 @@ vault.
 
 What changes the brain is governed: an AI proposes, code checks (tensions, baselines, dated
 values, evidence quotes), and the owner decides in Catch up; the owner's own edits apply at
-once with an undo point. Tasks move only through `hand_off`. The updating loop
+once with an undo point. Tasks move only through `todos_update`. The updating loop
 (system-loop) keeps what the brain holds true over time, and the knowledge agent
 (system-agent) suggests upkeep; neither writes a note on its own.
