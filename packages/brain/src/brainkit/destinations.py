@@ -1,10 +1,11 @@
-"""Where a distilled piece goes (Release 1 plan, M03): one inbox, five homes.
+"""Where a distilled piece goes (Release 1 plan, M03): one inbox, six homes.
 
     note      a long-term note                     (governance.propose_note)
     kept      a rule, preference or fact kept with a project: a note filed in its folder
     sheet     one value in a context sheet: the row's cell, with history
     progress  a progress update in a project's journal
     task      a task in the Tasks sheet, linked to its project
+    taste     a taste entry: a principle, pair or word under one lens (taste.py)
 
 A note or a kept item is an ordinary note proposal. A sheet value, a progress update and a
 task are typed proposals in the same inbox (`sheet.write`, `project.progress`,
@@ -17,7 +18,7 @@ from __future__ import annotations
 
 from . import governance, statements, util
 
-DESTINATIONS = ("note", "kept", "sheet", "progress", "task")
+DESTINATIONS = ("note", "kept", "sheet", "progress", "task", "taste")
 KINDS = {"sheet": "sheet.write", "progress": "project.progress", "task": "task.create"}
 TYPED = set(KINDS.values())
 GROUPS = {"rules": "rule", "preferences": "preference", "facts": "fact"}
@@ -51,6 +52,13 @@ def propose(brain, destination, text, *, principal=None, session_id=None, reason
                        {"status": "invalid"}, True)
     if not text:
         return _result("Say the piece in a sentence.", {"status": "invalid"}, True)
+    if destination == "taste":
+        from . import taste
+        return taste.propose(
+            brain, text, lens=fields.get("lens"), kind=fields.get("kind") or "principle",
+            strength=fields.get("strength") or "usually", not_that=fields.get("not_that") or "",
+            principal=principal, session_id=session_id, reason=reason, op_id=op_id,
+            force_pending=True, **cited)
     if destination == "note":
         return governance.propose_note(
             brain, area=fields.get("area"), topic=fields.get("topic"), text=text,

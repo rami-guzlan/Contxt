@@ -493,6 +493,26 @@ class Brain:
             self._maps[key] = brainmap.build(st, self, chain, partitions)
         return self._maps[key]
 
+    def taste(self, *, principal=None, via=None, partition=None) -> Result:
+        """The owner's taste the caller may see, by lens (taste.py)."""
+        from . import taste as taste_mod
+        st = self.state()
+        caller = self.caller(principal, via, partition, st=st)
+        if isinstance(caller, Result):
+            return caller
+        chain, partitions = caller
+        found = taste_mod.profile(st, chain, partitions)
+        lines = []
+        for lens, rows in found["lenses"].items():
+            for r in rows:
+                pair = f" (not: {r['not_that']})" if r["not_that"] else ""
+                lines.append(f"- {lens}, {r['strength']}: {r['text']}{pair} (`{r['id']}`)")
+        return Result("\n".join(lines) or "No taste written yet.", found)
+
+    def propose_taste(self, text, **fields) -> Result:
+        from . import taste as taste_mod
+        return self._write(lambda: taste_mod.propose(self, text, **fields))
+
     def brain_map(self, *, principal=None, via=None, partition=None, area=None,
                   page=1) -> Result:
         """The whole Brain map the caller may see, paged; with `area`, that area only."""

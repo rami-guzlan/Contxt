@@ -291,6 +291,24 @@ AGENT_TOOLS = [
          "maker": {"type": "string", "description": "Who made it: you, or an agent's name."},
          "session_id": _STR},
          "required": ["path"]}},
+    {"name": "taste_get",
+     "description": "The owner's taste: what looks, feels and works good to them, as "
+                    "principles, this-not-that pairs and words to use or avoid, each usually or "
+                    "always. A request to write or make something already brings it; read it "
+                    "for creative work the packet did not cover.",
+     "inputSchema": {"type": "object", "properties": {"session_id": _STR}}},
+    {"name": "taste_propose",
+     "description": "Suggest one taste entry the owner stated (not one you inferred): it waits "
+                    "for the owner like any suggestion.",
+     "inputSchema": {"type": "object", "properties": {
+         "text": {"type": "string", "description": "The principle, the 'this' of a pair, or "
+                  "the word."},
+         "lens": {"type": "string", "enum": ["looks", "feels", "works"]},
+         "kind": {"type": "string", "enum": ["principle", "pair", "use", "avoid"]},
+         "strength": {"type": "string", "enum": ["usually", "always"]},
+         "not_that": {"type": "string", "description": "For a pair: what it is not."},
+         "evidence": _STR, "session_id": _STR},
+         "required": ["text", "lens"]}},
     {"name": "receipts_get",
      "description": "What one earlier request was handed, exactly: what was sent, opened "
                     "after, did not fit, was already held and was not known, with the tokens. "
@@ -447,6 +465,11 @@ HANDLERS = {
         a.get("path"), title=a.get("title") or "", session_id=a.get("session_id"),
         project=a.get("project") or "", for_row=a.get("for") or "",
         maker=a.get("maker") or ""),
+    "taste_get": lambda b, a: b.taste(),
+    "taste_propose": lambda b, a: b.propose_taste(
+        a.get("text"), lens=a.get("lens"), kind=a.get("kind") or "principle",
+        strength=a.get("strength") or "usually", not_that=a.get("not_that") or "",
+        session_id=a.get("session_id"), capture_origin="chat"),
     "receipts_get": lambda b, a: b.receipt(a.get("id")),
     "gnomon_map": lambda b, a: b.brain_map(area=a.get("area") or None, page=a.get("page") or 1),
     "get_state": lambda b, a: b.get_state(sheet=a.get("sheet") or "", row=a.get("row") or "",
