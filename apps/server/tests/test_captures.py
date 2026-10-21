@@ -196,3 +196,15 @@ def test_the_digest_worker_runs_one_summary_at_a_time_with_the_local_cli(owner, 
     away = Runs(installed=False)
     assert DigestWorker(runtime.ws, away).run_once() is True and away.started == []
     assert owner.ok(owner.get(f"/api/notes/{later['id']}"))["digest"]["state"] == "waiting"
+
+
+def test_a_capture_says_where_it_stands_and_can_be_kept_out(owner):
+    made = owner.ok(upload(owner, "Call notes.vtt", VTT.encode(), "text/vtt"), 201)
+    found = owner.ok(owner.get(f"/api/captures/status?ids={made['id']}"))[made["id"]]
+    assert (found["status"], found["stage"]) == ("captured", "captured")
+    out = owner.ok(owner.post(f"/api/captures/{made['id']}/exclude", json={"reason": "Personal"}))
+    assert (out["status"], out["detail"]) == ("excluded", "Personal")
+    back = owner.ok(owner.post(f"/api/captures/{made['id']}/include"))
+    assert back["status"] == "captured"
+    refused = owner.post(f"/api/captures/{made['id']}/read-again")
+    assert refused.status_code == 409

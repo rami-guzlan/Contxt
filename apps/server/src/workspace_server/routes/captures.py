@@ -18,7 +18,7 @@ from workspace_core.services.captures import MAX_ORIGINAL
 
 from ..deps import WS, Who
 from ..files import served
-from ..schemas import CaptureSettingsIn, SummarizeIn
+from ..schemas import CaptureSettingsIn, ExcludeIn, SummarizeIn
 
 router = APIRouter()
 MAX_DICTATION = 25 * 1024 * 1024  # a few minutes of talk
@@ -69,6 +69,31 @@ def original(capture_id: str, who: Who, ws: WS, download: bool = False) -> FileR
 @router.post("/api/captures/{capture_id}/retry")
 def retry(capture_id: str, who: Who, ws: WS) -> dict[str, Any]:
     return asdict(ws.captures.retry(who, capture_id))
+
+
+@router.get("/api/captures/status")
+def statuses(who: Who, ws: WS, ids: str = "") -> dict[str, Any]:
+    """Where each capture stands, from captured to searchable (Release 1 plan, M03), by id:
+    `ids` is a comma-separated list."""
+    wanted = [i.strip() for i in ids.split(",") if i.strip()][:200]
+    return {k: asdict(v) for k, v in ws.sources.status(who, wanted).items()}
+
+
+@router.post("/api/captures/{capture_id}/read-again", status_code=201)
+def read_again(capture_id: str, who: Who, ws: WS) -> Task:
+    """Read a capture for the Brain again after its run failed, with the same model."""
+    return ws.sources.retry(who, capture_id)
+
+
+@router.post("/api/captures/{capture_id}/exclude")
+def exclude(capture_id: str, body: ExcludeIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Keep a capture out of the Brain until it is included."""
+    return asdict(ws.sources.exclude(who, capture_id, reason=body.reason))
+
+
+@router.post("/api/captures/{capture_id}/include")
+def include(capture_id: str, who: Who, ws: WS) -> dict[str, Any]:
+    return asdict(ws.sources.include(who, capture_id))
 
 
 @router.post("/api/captures/{capture_id}/summarize", status_code=201)

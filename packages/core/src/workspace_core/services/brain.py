@@ -1043,6 +1043,9 @@ class Brain:
                     data={
                         "result": (outcome.get("data") or {}).get("status"),
                         "checkpoint": point.get("id"),
+                        # The entry a kept proposal became, so its capture can say when
+                        # that entry is searchable.
+                        "note": (outcome.get("data") or {}).get("id"),
                     },
                 )
         return result

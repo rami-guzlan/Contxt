@@ -56,6 +56,7 @@ class FakeBrain:
     def __init__(self) -> None:
         self.proposed: list[dict] = []
         self.decided: dict[str, bool] = {}
+        self.not_indexed: set[str] = set()
         self.extra_skills: list[BrainSkill] = []  # skills a test adds to weekly-posts
         self.skill_dir: str | None = None  # where weekly-posts' files are, when a test says
         self.uploaded: list[dict] = []
@@ -140,6 +141,10 @@ class FakeBrain:
         if path != "references/voice.md":
             return None
         return BrainDocument(kind="reference", name=path, text="# Voice\nWarm and plain.")
+
+    def indexed(self, ids):
+        # Every entry is searchable at once, except the ones a test holds back.
+        return {i for i in ids if i not in self.not_indexed}
 
     def propose(self, **fields):
         self.proposed.append(fields)

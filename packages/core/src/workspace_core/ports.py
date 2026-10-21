@@ -472,6 +472,11 @@ class BrainPort(Protocol):
         """Requests the Brain served poorly: nothing matched, or routing missed an entry."""
         ...
 
+    def indexed(self, ids: list[str]) -> set[str]:
+        """The entries among `ids` the Brain's search index holds now: a kept entry is not
+        searchable until it does."""
+        ...
+
     def dismiss_gap(self, key: str) -> None: ...
 
     def flow(self, *, days: int = 7) -> dict[str, Any]:
@@ -1010,6 +1015,9 @@ class NoBrain:
 
     def gaps(self, *, days: int = 30) -> list[dict[str, Any]]:
         return []
+
+    def indexed(self, ids: list[str]) -> set[str]:
+        return set()
 
     def dismiss_gap(self, key: str) -> None:
         return None

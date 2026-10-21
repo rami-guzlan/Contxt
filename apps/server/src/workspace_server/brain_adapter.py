@@ -1203,6 +1203,12 @@ class BrainKitAdapter:
         data: dict[str, Any] = self.brain.use(found, days=days).data
         return data
 
+    def indexed(self, ids: list[str]) -> set[str]:
+        # The index the next request is matched against: on a large Brain it is rebuilt in
+        # the background, and a kept entry is not searchable until that finishes.
+        index = self.brain.state().index
+        return {i for i in ids if index.note(str(i)) is not None}
+
     def gaps(self, *, days: int = 30) -> list[dict[str, Any]]:
         st = self.brain.state()
         seen = self._seen(st)

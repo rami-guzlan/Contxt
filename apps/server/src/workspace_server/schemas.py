@@ -285,6 +285,10 @@ class SummarizeIn(Body):
     guidance: str = Field(default="", max_length=2000)
 
 
+class ExcludeIn(Body):
+    reason: str = Field(default="", max_length=200)
+
+
 class CaptureSettingsIn(Body):
     summarize: bool
 
