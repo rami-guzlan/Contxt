@@ -477,6 +477,10 @@ class BrainPort(Protocol):
         searchable until it does."""
         ...
 
+    def receipt(self, packet_id: str) -> dict[str, Any] | None:
+        """One request's evidence receipt, exactly as delivered, or None."""
+        ...
+
     def dismiss_gap(self, key: str) -> None: ...
 
     def flow(self, *, days: int = 7) -> dict[str, Any]:
@@ -1018,6 +1022,9 @@ class NoBrain:
 
     def indexed(self, ids: list[str]) -> set[str]:
         return set()
+
+    def receipt(self, packet_id: str) -> dict[str, Any] | None:
+        return None
 
     def dismiss_gap(self, key: str) -> None:
         return None

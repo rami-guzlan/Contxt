@@ -208,3 +208,11 @@ def test_a_capture_says_where_it_stands_and_can_be_kept_out(owner):
     assert back["status"] == "captured"
     refused = owner.post(f"/api/captures/{made['id']}/read-again")
     assert refused.status_code == 409
+
+
+def test_a_receipt_names_the_captures_not_searchable_yet(owner, runtime):
+    owner.ok(upload(owner, "Call notes.vtt", VTT.encode(), "text/vtt"), 201)
+    packet = runtime.ws.rt.brain.brain.context("What did we decide about the videos?")
+    found = owner.ok(owner.get(f"/api/brain/receipts/{packet.data['packet_id']}"))
+    assert any(u.startswith("Not searchable yet: Call notes") for u in found["unknown"])
+    assert "not proof" in found["note"]

@@ -54,7 +54,8 @@ def test_mcp_exposes_historical_reads_and_passes_the_flag():
         assert tools[name]["inputSchema"]["properties"]["include_archived"]["type"] == "boolean"
     brain = Mock()
     mcp_server.HANDLERS["get_note"](brain, {"id": "old", "include_archived": True})
-    brain.note.assert_called_once_with("old", session_id=None, include_archived=True)
+    brain.note.assert_called_once_with("old", session_id=None, include_archived=True,
+                                            full=False)
 
 
 def test_an_explicit_archived_read_keeps_the_original_instead_of_its_successor():

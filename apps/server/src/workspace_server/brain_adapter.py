@@ -1203,6 +1203,10 @@ class BrainKitAdapter:
         data: dict[str, Any] = self.brain.use(found, days=days).data
         return data
 
+    def receipt(self, packet_id: str) -> dict[str, Any] | None:
+        found = self.brain.receipt(packet_id)
+        return None if found.is_error else dict(found.data)
+
     def indexed(self, ids: list[str]) -> set[str]:
         # The index the next request is matched against: on a large Brain it is rebuilt in
         # the background, and a kept entry is not searchable until that finishes.

@@ -434,6 +434,18 @@ def requests(
     return ws.brain.requests(who, limit=limit, before=before, client=app)
 
 
+@router.get("/receipts/{packet_id}")
+def receipt(packet_id: str, who: Who, ws: WS) -> dict[str, Any]:
+    """One request's evidence receipt, exactly as delivered. Its unknown list also names the
+    recent captures that were not searchable yet, which no answer could have drawn on."""
+    found = ws.brain.receipt(who, packet_id)
+    pending = [
+        f"Not searchable yet: {title} ({status.label.rstrip('.')})"
+        for title, status in ws.sources.unsearchable(who)
+    ]
+    return {**found, "unknown": list(found.get("unknown") or []) + pending}
+
+
 @router.get("/requests/{packet_id}")
 def request(packet_id: str, who: Who, ws: WS) -> dict[str, Any]:
     """One request in full: what it got, the exact text it was handed, and the startup

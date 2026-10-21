@@ -106,6 +106,15 @@ def default_vault() -> str:
     return os.path.abspath(os.environ.get("BRAIN_VAULT") or "vault")
 
 
+PULLS = {"items": 3, "tokens": 1500}
+
+
+def pull_budget(config) -> tuple[int, int]:
+    """(items, tokens) a conversation may open after each packet: brain.json's `pulls`."""
+    found = {**PULLS, **(config.data.get("pulls") or {})}
+    return max(0, int(found["items"])), max(0, int(found["tokens"]))
+
+
 class Brain:
     """One vault, read fresh on every call. Thread-safe for concurrent readers."""
 
@@ -433,7 +442,10 @@ class Brain:
                 f"session_id: {session} ({status}). When a later message asks for something "
                 "new, call get_task_context again with this session_id; it sends only what is "
                 "new. Pass it on every other call too, and fresh=true after a compaction.\n"
-                f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n")
+                f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n"
+                "Pull budget for this request: open up to {} more items (about {:,} tokens) "
+                "beyond this packet; past it, only names come back.\n".format(
+                    *pull_budget(st.config)))
         data = dict(packet.data)
         data.update({"kernel_fingerprint": kernel_fp, "kernel_included": not kernel_held,
                      "person_fingerprint": kernel.person_fingerprint or None,
@@ -711,9 +723,14 @@ class Brain:
         return Result(ref.body, {"path": ref.path, "title": ref.title, "tokens": ref.tokens})
 
     def note(self, note_id, *, principal=None, partition=None, include_archived=False,
-             session_id=None) -> Result:
+             session_id=None, full=False) -> Result:
         """One note by id or alias. With a session, the delivery is recorded, so later packets
-        in that conversation do not send the same text again."""
+        in that conversation do not send the same text again.
+
+        In a conversation, opening is budgeted per request (Release 1 plan, 10.3): a note
+        this conversation already holds comes back as "already delivered" unless `full`, and
+        past the request's pull budget only its name comes back (`over_budget`) until the
+        next packet."""
         st = self.state()
         caller = self.caller(principal, None, partition, st=st)
         if isinstance(caller, Result):
@@ -733,6 +750,20 @@ class Brain:
             return error(f"No note {note_id!r} is visible to {' > '.join(chain)}.",
                          id=note_id)
         if session_id and Ledger.valid(session_id) and note.live:
+            held = self.ledger.delivered(session_id).get(("note", note.id))
+            name = f"{note.title} (`{note.id}`)" if note.meta.get("title") else f"`{note.id}`"
+            if held and note.body_hash in held["hashes"] and not full:
+                return Result(f"{name} is already in this conversation, unchanged; nothing "
+                              "sent again. Ask with full=true only if it was lost.",
+                              {"status": "already_delivered", "id": note.id})
+            items, tokens = pull_budget(st.config)
+            spent, used = self.ledger.pulls_since_packet(session_id)
+            if spent >= items or (spent and used + note.tokens > tokens):
+                return Result(f"Over this request's pull budget ({items} items, about "
+                              f"{tokens:,} tokens): {name} was not opened. Work with what you "
+                              "have, or ask again with the next request.",
+                              {"status": "over_budget", "id": note.id, "title": note.title},
+                              True)
             self.ledger.touch(session_id, chain[-1])
             self.ledger.record_items(session_id, "followup",
                                      [("note", note.id, note.body_hash, note.tokens)])
@@ -1344,6 +1375,15 @@ class Brain:
         startup context when that went with it (activity.py)."""
         from . import activity
         return activity.request(self, packet_id)
+
+    def receipt(self, packet_id) -> Result:
+        """The evidence receipt of one request, exactly as delivered (receipts.py)."""
+        from . import receipts
+        found = receipts.build(self, packet_id)
+        if found is None:
+            return error(f"No receipt {packet_id!r} (requests are kept for "
+                         f"{self.ledger.retention_days} days).", id=packet_id)
+        return Result(receipts.render(found), found)
 
     def record_output(self, path, *, title="", session_id=None, project="", for_row="",
                       maker="") -> Result:

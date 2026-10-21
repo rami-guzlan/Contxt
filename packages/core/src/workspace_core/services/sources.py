@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import builtins
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
 import sqlalchemy as sa
 
+from workspace_core.clock import iso
 from workspace_core.db import schema
 from workspace_core.domain.policy import Principal
 from workspace_core.domain.records import Task
@@ -28,6 +30,7 @@ from workspace_core.errors import Conflict, NotFound, ValidationFailed
 
 from .context import open_to
 from .distill import Distillation
+from .notes import KIND
 from .runtime import Runtime
 
 STAGES = ("captured", "analysis", "review", "accepted", "indexing", "searchable")
@@ -151,6 +154,33 @@ class Sources:
                 **counts,
             )
         return _made(item_id, "indexing", searchable=0, **counts)
+
+    def unsearchable(
+        self, who: Principal, *, days: int = 30, limit: int = 50
+    ) -> builtins.list[tuple[str, SourceStatus]]:
+        """(title, status) of the recent captures not searchable yet: what a receipt lists
+        under unknown, since an answer could not have drawn on them."""
+        who.require("context.read")
+        items = schema.context_items
+        with self.rt.read() as tx:
+            cutoff = iso(self.rt.clock.now() - timedelta(days=days))
+            query = sa.select(items).where(
+                items.c.workspace_id == self.rt.workspace_id,
+                items.c.kind == KIND,
+                items.c.archived_at.is_(None),
+                items.c.created_at >= cutoff,
+            )
+            rows = [
+                dict(r)
+                for r in tx.rows(query.order_by(items.c.created_at.desc()).limit(limit))
+                if open_to(tx, who, r)
+            ]
+        out = []
+        for row in rows:
+            found = self._status(who, row)
+            if found.status not in ("searchable", "nothing_kept", "excluded"):
+                out.append((str(row["title"]), found))
+        return out
 
     def _entries(self, proposal_ids: builtins.list[str]) -> dict[str, str]:
         """The entry each kept proposal became: as its approval recorded it, else the

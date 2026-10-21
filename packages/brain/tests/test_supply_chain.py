@@ -259,7 +259,9 @@ class UseTests(Base):
 
     def test_handouts_are_counted_by_day_and_kept_when_the_detail_goes(self):
         first = self.brain.context(NOTE).data["session_id"]
-        self.brain.note(NOTE, session_id=first)  # opened again: the same conversation
+        # Opened again in the same conversation: held already, so only in full is it sent
+        # (and counted) again.
+        self.brain.note(NOTE, session_id=first, full=True)
         self.brain.context(NOTE)  # another conversation
         self.brain.record_use("run_1", [{"id": NOTE}, {"id": "no-such-note"}])
         counts = self.usage()
