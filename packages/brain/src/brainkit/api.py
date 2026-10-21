@@ -1340,6 +1340,17 @@ class Brain:
                             if n is not None]
         return Result(f"{len(rows)} gap(s).", {"gaps": rows, "days": days})
 
+    def learned(self) -> Result:
+        """What Auto learned from the owner's undos, each removable (governance.py)."""
+        from . import governance
+        rules = governance.learned_rules(self)
+        return Result("\n".join(f"- {r['says']} (`{r['id']}`)" for r in rules)
+                      or "Nothing learned from undos yet.", {"rules": rules})
+
+    def forget_learned(self, rule_id) -> Result:
+        from . import governance
+        return self._write(lambda: governance.forget_learned(self, str(rule_id or "")))
+
     def flag_gap(self, question, *, session_id="", about="", packet_id="") -> Result:
         """An AI flags what the Brain did not hold, instead of guessing: it shows in Brain >
         Questions with the other gaps."""
