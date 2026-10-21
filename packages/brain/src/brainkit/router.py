@@ -867,7 +867,8 @@ class Router:
         careful; design contract 15). Standard is the calibrated bar as measured."""
         words = self.calibration.cos is None
         base = getattr(self.policy, f"{'words_' if words else ''}{bar}_share")
-        named = str(self.config.data.get("retrieval_policy") or "standard").strip().lower()
+        data = getattr(getattr(self, "config", None), "data", None) or {}
+        named = str(data.get("retrieval_policy") or "standard").strip().lower()
         step = NAMED_POLICIES.get(named, 0.0)
         return min(0.995, max(0.5, base + step))
 

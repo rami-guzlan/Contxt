@@ -714,7 +714,7 @@ class Skills:
         is a new version of the same result."""
         who.require("runs.write")
         task = self._task_of_run(
-            who, run_id, (RUN, WORK), "This run is not a skill or Work with AI run."
+            who, run_id, (RUN, WORK), "This run is not a skill run (nor a Work with AI run)."
         )
         text = str(text or "").strip()
         if not text:
