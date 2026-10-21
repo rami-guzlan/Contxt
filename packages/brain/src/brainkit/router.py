@@ -794,6 +794,7 @@ class Route:
     older: list = field(default_factory=list)         # [(older note, newer note)]: listed
     # Notes filed with another project than the one this request names: out of its scope.
     out_of_project: set = field(default_factory=set)
+    focus_reason: str = ""             # why find_focus chose the Focus
     # Every on-demand note scored for the request, best first: what the engine's fallback
     # audit writes down. Routing never reads it.
     ranked: list = field(default_factory=list)
@@ -1561,6 +1562,7 @@ class Router:
         route.log(f"focus: {reason}")
         if focus is not None:
             route.focus = focus
+            route.focus_reason = reason
             route.out_of_project = self.other_projects(focus, focuses)
             if sig.focus_update:
                 route.mode, route.focus_mode = "focus-update", "focus-update"

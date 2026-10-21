@@ -56,7 +56,9 @@ Four invented projects, each a Focus with an objective, two pinned notes and fiv
 - **The rest of the leaks come from projects the router does not recognize.** These are requests like "the office move" against a project named "Office move to Pine Avenue". Recognizing the active project (an explicit project, a connected app's working folder) is a later step.
 - **A conflict between two values dated the same day is resolved by picking one.** That is the newest-wins behaviour M04 replaces.
 
-**One cost:** the programmer demo's precision falls from 100% to 86%. The router names the wrong project for "Can I ship the route planner change Friday afternoon?" (the tidyq release, through the distinctive word "ship"). That project's pin now goes with it. The wrong project was chosen before this PR too; the pin makes the mistake visible in precision.
+**Status questions and pins:** a question about where a project stands brings its pins only when it names the project (its name or an alias). A single distinctive word is not enough: "Can I ship the route planner change Friday afternoon?" matched the tidyq project through "ship", and its pin no longer goes with it.
+
+**Known miss:** "Is it OK to push the route planner update late on Friday?" now receives the route planner's pinned architecture note whole. The note names the project but does not help answer the question. The programmer demo's precision is 92% (was 100%). The owner accepted this one case on Oct 20, and its quick-set floor is set to the measured value; no other floor changed.
 
 ## The owner's private Brain, aggregates only
 
