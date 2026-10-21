@@ -1340,6 +1340,17 @@ class Brain:
                             if n is not None]
         return Result(f"{len(rows)} gap(s).", {"gaps": rows, "days": days})
 
+    def flag_gap(self, question, *, session_id="", about="", packet_id="") -> Result:
+        """An AI flags what the Brain did not hold, instead of guessing: it shows in Brain >
+        Questions with the other gaps."""
+        question = " ".join(str(question or "").split())[:500]
+        if not question:
+            return error("Say what the Brain did not hold, as a question.")
+        flag_id = self.ledger.flag(str(session_id or ""), question, about=str(about or ""),
+                                   packet_id=str(packet_id or ""))
+        return Result("Flagged for the owner's Questions; say plainly that the Brain does "
+                      "not hold it.", {"id": flag_id, "status": "flagged"})
+
     def dismiss_gap(self, key) -> Result:
         """Hide one gap from later lists (an off-topic request, say)."""
         self.ledger.dismiss(str(key))

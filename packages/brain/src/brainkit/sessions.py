@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS usage_daily (
     opened INTEGER NOT NULL DEFAULT 0, in_work INTEGER NOT NULL DEFAULT 0,
     tokens INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, kind, item));
 CREATE TABLE IF NOT EXISTS ledger_meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS flags (
+    id TEXT PRIMARY KEY, at TEXT, session_id TEXT, packet_id TEXT, question TEXT, about TEXT);
 CREATE TABLE IF NOT EXISTS outputs (
     path TEXT PRIMARY KEY, session_id TEXT, at TEXT, title TEXT, client TEXT);
 CREATE TABLE IF NOT EXISTS dismissed (key TEXT PRIMARY KEY, at TEXT);
@@ -936,13 +938,25 @@ class Ledger:
         return rows
 
     # ------------------------------------------------------------------ gaps
+    def flag(self, session_id: str, question: str, *, about: str = "",
+             packet_id: str = "") -> str:
+        """An AI said the Brain did not hold what a request needed: kept for Brain >
+        Questions, never guessed (gaps_flag)."""
+        flag_id = "flag-" + util.short_hash(f"{session_id}{question}{util.now_iso()}", 10)
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO flags (id, at, session_id, packet_id, "
+                         "question, about) VALUES (?, ?, ?, ?, ?, ?)",
+                         (flag_id, util.now_iso(), session_id, packet_id, question, about))
+        return flag_id
+
     def gaps(self, since: str, *, limit: int = 200) -> list[dict]:
         """Requests the brain served poorly since an ISO moment, newest first:
 
         - `nothing`: a packet that brought no entry (`close` lists the entries it named as
           the closest, when any came near);
         - `searched`: an entry a conversation opened that none of its packets brought or
-          listed, so the AI found it some other way (search_notes): routing missed it.
+          listed, so the AI found it some other way (search_notes): routing missed it;
+        - `flagged`: an AI said the Brain did not hold what a request needed (gaps_flag).
 
         Dismissed gaps (`dismiss`) stay out."""
         hidden = self.dismissed()
@@ -982,6 +996,16 @@ class Ledger:
             out.append({"key": key, "kind": "searched", "at": row["at"],
                         "session_id": row["session_id"], "request": before[-1][0]["request"]
                         or "", "entry": row["item"], "close": []})
+        with self._connect() as conn:
+            flagged = [dict(r) for r in conn.execute(
+                "SELECT id, at, session_id, question, about FROM flags WHERE at >= ? "
+                "ORDER BY at", (since,))]
+        for row in flagged:
+            key = f"flag:{row['id']}"
+            if key not in hidden:
+                out.append({"key": key, "kind": "flagged", "at": row["at"],
+                            "session_id": row["session_id"], "request": row["question"] or "",
+                            "entry": row["about"] or None, "close": []})
         out.sort(key=lambda g: g["at"], reverse=True)
         return out[:int(limit)]
 

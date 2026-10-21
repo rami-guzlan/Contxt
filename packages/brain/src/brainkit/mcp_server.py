@@ -291,6 +291,14 @@ AGENT_TOOLS = [
          "maker": {"type": "string", "description": "Who made it: you, or an agent's name."},
          "session_id": _STR},
          "required": ["path"]}},
+    {"name": "gaps_flag",
+     "description": "When the Brain does not hold what the request needs, say so to the "
+                    "person, never guess, and flag it here: it shows in their Questions.",
+     "inputSchema": {"type": "object", "properties": {
+         "question": {"type": "string", "description": "What was missing, as a question."},
+         "about": {"type": "string", "description": "The note id it is about, if any."},
+         "receipt_id": {"type": "string", "description": "The packet id it came from."},
+         "session_id": _STR}, "required": ["question"]}},
     {"name": "taste_get",
      "description": "The owner's taste: what looks, feels and works good to them, as "
                     "principles, this-not-that pairs and words to use or avoid, each usually or "
@@ -465,6 +473,9 @@ HANDLERS = {
         a.get("path"), title=a.get("title") or "", session_id=a.get("session_id"),
         project=a.get("project") or "", for_row=a.get("for") or "",
         maker=a.get("maker") or ""),
+    "gaps_flag": lambda b, a: b.flag_gap(a.get("question"), session_id=a.get("session_id"),
+                                         about=a.get("about") or "",
+                                         packet_id=a.get("receipt_id") or ""),
     "taste_get": lambda b, a: b.taste(),
     "taste_propose": lambda b, a: b.propose_taste(
         a.get("text"), lens=a.get("lens"), kind=a.get("kind") or "principle",
