@@ -322,9 +322,19 @@ def undo(brain, checkpoint_id, *, actor=None, together=False):
         stored = _load(brain, point["id"]) or point
         stored.update(undone_by=current.checkpoint["id"], undone_at=util.now_iso())
         _write(brain, stored)
-    return _result(f"{label}: done.",
+    learned = []
+    if not redo:
+        # A change that went in on its own and was undone: that kind asks first from now on.
+        for decision in point.get("decisions") or []:
+            kind, _, origin = str(decision.get("capture") or "").partition(":")
+            if kind and origin:
+                rule = governance.learn_ask_first(brain, kind, origin,
+                                                  str(decision.get("area") or ""), point["id"])
+                if rule:
+                    learned.append(rule)
+    return _result(f"{label}: done." + "".join(f" {r['says']}" for r in learned),
                    {"status": "undone", "undone": point["id"], "checkpoint": current.checkpoint,
-                    "commit": outcome.get("commit")})
+                    "commit": outcome.get("commit"), "learned": learned})
 
 
 def _prune_empty(folder: str, root: str) -> None:

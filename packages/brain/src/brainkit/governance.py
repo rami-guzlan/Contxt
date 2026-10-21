@@ -41,6 +41,7 @@ from __future__ import annotations
 import datetime as _dt
 
 import fnmatch
+import json
 import re
 
 from . import frontmatter as fm
@@ -255,14 +256,74 @@ def capture_type(kind: str, target: dict) -> str:
         decision=str(target.get("type") or "").strip().lower() == "decision")
 
 
-def captures_apply(brain, who, kind, origin) -> bool:
-    """Does this capture by the owner (or their AI) apply at once? Never for anyone else."""
+def captures_apply(brain, who, kind, origin, area="") -> bool:
+    """Does this capture by the owner (or their AI) apply at once? Never for anyone else.
+
+    In order: an "ask first" the owner's undos taught waits; a standing permission (brain.json
+    governance `standing`: {type, origin, area, paused}, design contract 9) applies; else the
+    preset's matrix decides."""
     config = brain.state().config
     approver = config.governance.get("approver") or config.owner
     if who not in {approver} | set(config.governance.get("approvers") or []):
         return False
     origin = origin if origin in CAPTURE_ORIGINS else "chat"
+    if any(_covers(r, kind, origin, area) for r in learned_rules(brain)):
+        return False
+    if any(_covers(r, kind, origin, area) and not r.get("paused")
+           for r in config.governance.get("standing") or [] if isinstance(r, dict)):
+        return True
     return capture_policy(config).get(kind, {}).get(origin) == "apply"
+
+
+LEARNED = "learned.json"  # the "ask first" rules the owner's undos taught (vault root)
+
+
+def _covers(rule, kind, origin, area) -> bool:
+    return all(str(rule.get(key) or "*") in ("*", str(value or ""))
+               for key, value in (("type", kind), ("origin", origin), ("area", area)))
+
+
+def learned_rules(brain) -> list[dict]:
+    """What Auto learned from the owner's undos: each rule makes one kind of change from one
+    origin in one area wait for the owner. Visible and removable (forget_learned)."""
+    try:
+        with open(brain.vault.path(LEARNED), encoding="utf-8") as handle:
+            found = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    return [r for r in found if isinstance(r, dict)] if isinstance(found, list) else []
+
+
+def _keep_learned(brain, rules, message) -> None:
+    path = brain.vault.path(LEARNED)
+    util.atomic_write(path, json.dumps(rules, indent=1, ensure_ascii=False) + "\n")
+    brain.after_write([path], message)
+
+
+def learn_ask_first(brain, kind, origin, area, checkpoint) -> dict | None:
+    """The owner undid a change that went in on its own: that kind of change, from that
+    origin, in that area, asks first from now on. Returns the rule, or None when one was
+    already there."""
+    rules = learned_rules(brain)
+    if any(r.get("type") == kind and r.get("origin") == origin and r.get("area") == area
+           for r in rules):
+        return None
+    rule = {"id": "learned-" + util.short_hash(f"{kind}{origin}{area}{util.now_iso()}", 8),
+            "type": kind, "origin": origin, "area": area, "from": checkpoint,
+            "at": util.now_iso(),
+            "says": f"Ask first before a {kind} from {origin} goes into {area or 'the Brain'}."}
+    _keep_learned(brain, rules + [rule], f"Learned from an undo: {rule['says']}")
+    return rule
+
+
+def forget_learned(brain, rule_id) -> dict:
+    rules = learned_rules(brain)
+    kept = [r for r in rules if r.get("id") != rule_id]
+    if len(kept) == len(rules):
+        return _result(f"No learned rule {rule_id!r}.", {"status": "missing"}, True)
+    _keep_learned(brain, kept, f"Forgot a learned rule ({rule_id})")
+    return _result("Forgotten: that kind of change follows your settings again.",
+                   {"status": "forgotten", "id": rule_id})
 
 
 DEFAULT_SESSION_BUDGET = 12
@@ -665,10 +726,16 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
     if capture:
         header["capture"] = f"{capture}:{capture_origin}"
     applies = auto_applies(config, who, scope)
+    taught = next((r for r in learned_rules(brain) if capture
+                   and _covers(r, capture, capture_origin, area)), None)
+    if applies and taught:
+        applies = False  # the owner undid this kind of change once: it asks first now
     if not applies and capture and not force_pending and not (
             named["conflicts"] or supersedes or util.text_flags(text)
             or any(s["score"] >= CLOSE for s in similar)):
-        applies = captures_apply(brain, who, capture, capture_origin)
+        applies = captures_apply(brain, who, capture, capture_origin, area)
+    if taught and not applies:
+        header["learned"] = taught["says"]
     held = None
     if applies and not force_pending:
         # Nothing goes in on its own over a note it may disagree with, or over a baseline:
@@ -698,7 +765,9 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
             if not applied.is_error:
                 batch.decisions.append({"action": "approved", "proposal": proposal_id,
                                         "kind": kind, "note": note_id,
-                                        "title": str(target.get("title") or note_id)})
+                                        "title": str(target.get("title") or note_id),
+                                        "capture": header.get("capture") or "",
+                                        "area": area})
         if not applied.is_error:
             applied.data["checkpoint"] = batch.checkpoint
             if header.get("capture") and not auto_applies(config, who, scope):
@@ -718,6 +787,8 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         + (f" It would have applied at once, but it waits: {held['why']} "
            f"(“{held['title']}”, {held['id']})." if held else "")
         + (f" {header['paused']}" if header.get("paused") else "")
+        + (f" It waits because you undid one like it: {header['learned']}"
+           if header.get("learned") else "")
         + (f" Similar existing notes: {header['similar']}." if similar else "")
         + placement_note,
         {"status": "pending", "proposal_id": proposal_id, "id": note_id, "path": relpath,

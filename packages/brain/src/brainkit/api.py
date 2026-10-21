@@ -493,6 +493,26 @@ class Brain:
             self._maps[key] = brainmap.build(st, self, chain, partitions)
         return self._maps[key]
 
+    def taste(self, *, principal=None, via=None, partition=None) -> Result:
+        """The owner's taste the caller may see, by lens (taste.py)."""
+        from . import taste as taste_mod
+        st = self.state()
+        caller = self.caller(principal, via, partition, st=st)
+        if isinstance(caller, Result):
+            return caller
+        chain, partitions = caller
+        found = taste_mod.profile(st, chain, partitions)
+        lines = []
+        for lens, rows in found["lenses"].items():
+            for r in rows:
+                pair = f" (not: {r['not_that']})" if r["not_that"] else ""
+                lines.append(f"- {lens}, {r['strength']}: {r['text']}{pair} (`{r['id']}`)")
+        return Result("\n".join(lines) or "No taste written yet.", found)
+
+    def propose_taste(self, text, **fields) -> Result:
+        from . import taste as taste_mod
+        return self._write(lambda: taste_mod.propose(self, text, **fields))
+
     def brain_map(self, *, principal=None, via=None, partition=None, area=None,
                   page=1) -> Result:
         """The whole Brain map the caller may see, paged; with `area`, that area only."""
@@ -1320,6 +1340,28 @@ class Brain:
                             if n is not None]
         return Result(f"{len(rows)} gap(s).", {"gaps": rows, "days": days})
 
+    def learned(self) -> Result:
+        """What Auto learned from the owner's undos, each removable (governance.py)."""
+        from . import governance
+        rules = governance.learned_rules(self)
+        return Result("\n".join(f"- {r['says']} (`{r['id']}`)" for r in rules)
+                      or "Nothing learned from undos yet.", {"rules": rules})
+
+    def forget_learned(self, rule_id) -> Result:
+        from . import governance
+        return self._write(lambda: governance.forget_learned(self, str(rule_id or "")))
+
+    def flag_gap(self, question, *, session_id="", about="", packet_id="") -> Result:
+        """An AI flags what the Brain did not hold, instead of guessing: it shows in Brain >
+        Questions with the other gaps."""
+        question = " ".join(str(question or "").split())[:500]
+        if not question:
+            return error("Say what the Brain did not hold, as a question.")
+        flag_id = self.ledger.flag(str(session_id or ""), question, about=str(about or ""),
+                                   packet_id=str(packet_id or ""))
+        return Result("Flagged for the owner's Questions; say plainly that the Brain does "
+                      "not hold it.", {"id": flag_id, "status": "flagged"})
+
     def dismiss_gap(self, key) -> Result:
         """Hide one gap from later lists (an off-topic request, say)."""
         self.ledger.dismiss(str(key))
@@ -1523,7 +1565,11 @@ class Brain:
         caller = self.caller(principal, None, partition)
         if isinstance(caller, Result):
             return caller
-        _chain, partitions = caller
+        chain, partitions = caller
+        from . import derived
+        if str(sheet or "") in derived.VIEWS:  # kept by the Brain itself, read-only
+            text, data = derived.view(self, str(sheet), chain, partitions)
+            return Result(text, data)
         text, data = state_mod.get_state(self, sheet_id=str(sheet or ""), row=str(row or ""),
                                          query=str(query or ""), partitions=partitions)
         return Result(text, data, is_error=data.get("status") == "missing")

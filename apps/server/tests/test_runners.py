@@ -567,3 +567,29 @@ def test_ask_answers_from_the_brain_alone_and_returns_its_receipts(runtime, monk
     assert found["asked_brain"] and len(found["receipts"]) == 1
     assert found["cited"] and found["cited"][0] in found["answer"], found["answer"]
     assert found["provider"]["vendor"] == "Anthropic"
+
+
+def test_work_with_ai_makes_one_job_in_the_project_and_shows_it_on_the_timeline(
+    owner, runtime, model
+):
+    """Release 1 plan, section 11: a prompt becomes one task in the project, run now with the
+    app's tools only; the timeline shows its status, model and cost."""
+    project = runtime.ws.projects.create(runtime.ws.owner(), title="Spring launch")
+    started = owner.ok(
+        owner.post(
+            f"/api/work/projects/{project.id}/ask",
+            json={"prompt": "Draft the launch email.", "skill": "launch-email"},
+        ),
+        201,
+    )
+    assert started["task"]["template"] == "work"
+    assert "launch-email" in started["task"]["instructions"]
+    run = finish(owner, started["run"]["id"])
+    assert run["status"] == "succeeded", run
+    (line,) = owner.ok(owner.get(f"/api/work/projects/{project.id}/timeline"))
+    assert (line["task_id"], line["status"], line["runner"]) == (
+        started["task"]["id"],
+        "succeeded",
+        "claude",
+    )
+    assert line["model"] and line["asked_by"]

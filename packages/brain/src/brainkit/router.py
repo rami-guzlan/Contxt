@@ -328,6 +328,11 @@ RETIRED_FILE_STATES = frozenset({"superseded", "retired", "withdrawn", "archived
 # the file or its project lowers either bar a little.
 SECTION_SEMANTIC = 0.60
 GUIDE_SEMANTIC = 0.90
+# How far each named retrieval policy moves the calibrated bars (the share of a Brain's
+# unrelated requests a match must beat): careful sends less and says "nothing" more often,
+# relaxed sends more. Standard is the measured default.
+NAMED_POLICIES = {"relaxed": -0.03, "standard": 0.0, "careful": 0.02}
+TASTE_LENSES = ("looks", "feels", "works")  # taste.py: an entry carries one
 NAMED_RELIEF = 0.10
 # A REQUEST NOTHING ELSE BACKS (no note, file card, project or procedure is about it: the
 # weather, a recipe) gets a file part only when the request names the file or the part is
@@ -857,9 +862,15 @@ class Router:
         return self._calibration
 
     def share(self, bar: str) -> float:
-        """The bar (nothing, note, related) for this Brain's kind of evidence."""
+        """The bar (nothing, note, related) for this Brain's kind of evidence, moved by the
+        Brain's named retrieval policy (brain.json `retrieval_policy`: relaxed, standard or
+        careful; design contract 15). Standard is the calibrated bar as measured."""
         words = self.calibration.cos is None
-        return getattr(self.policy, f"{'words_' if words else ''}{bar}_share")
+        base = getattr(self.policy, f"{'words_' if words else ''}{bar}_share")
+        data = getattr(getattr(self, "config", None), "data", None) or {}
+        named = str(data.get("retrieval_policy") or "standard").strip().lower()
+        step = NAMED_POLICIES.get(named, 0.0)
+        return min(0.995, max(0.5, base + step))
 
     def evidence(self, scored) -> float:
         """The share of the Brain's unrelated requests this note's match beats (worked out
@@ -1905,8 +1916,13 @@ class Router:
         topic_rel = self.topic_relevance(sig.request, {n.route_key for n in candidates})
         self._adjust(route, ranked_on_demand, domains, topic_rel)
 
+        # The owner's taste goes with every request to write or make something (taste.py).
+        tasteful = sig.composing and not sig.no_house_style
+
         def in_house(scored):
-            return scored.item.route_key in house or scored.item.id in house_ids
+            return (scored.item.route_key in house or scored.item.id in house_ids
+                    or (tasteful and str(scored.item.meta.get("taste_lens") or "")
+                        in TASTE_LENSES))
 
         # House style for a writing task: the owner's core list, the rules every piece of
         # writing needs, goes first in the owner's order (style is about how to write, not

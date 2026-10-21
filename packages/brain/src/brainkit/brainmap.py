@@ -75,6 +75,11 @@ def build(st, brain, chain, partitions) -> dict:
     sheets = [{"id": s.id, "name": _name(s.title),
                "columns": [_name(c.name) for c in s.columns[:6]]}
               for s in state_mod.sheets(brain) if not s.scope or s.scope in chain]
+    if projects:  # the sheets the Brain keeps by itself (derived.py)
+        sheets.append({"id": "project-status", "name": "Project status",
+                       "columns": ["Status", "Latest", "Next up", "Days quiet"]})
+    sheets.append({"id": "open-loops", "name": "Open loops this week",
+                   "columns": ["Owner", "Due", "Status"]})
     must = [{"id": n.id, "name": _name(n.title or n.id)} for n in notes if n.must_hold]
     levels: dict[str, int] = {}
     for note in notes:
