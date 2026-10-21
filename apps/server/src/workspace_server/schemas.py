@@ -293,6 +293,13 @@ class SummarizeIn(Body):
     guidance: str = Field(default="", max_length=2000)
 
 
+class WorkAskIn(Body):
+    prompt: str = Field(max_length=8000)
+    skill: str | None = Field(default=None, max_length=120)
+    agent: str | None = Field(default=None, max_length=120)
+    runner: str = Field(default="claude", max_length=20)
+
+
 class AskIn(Body):
     question: str = Field(max_length=4000)
 

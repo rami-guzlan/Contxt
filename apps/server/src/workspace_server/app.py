@@ -62,6 +62,7 @@ from .settings import Settings
 from .speech import Speech
 from .templates import TemplateLibrary, find_templates_dir
 from .triage import Triage, redacts
+from .work_with_ai import WorkWithAI
 
 
 @dataclass
@@ -172,6 +173,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
 def create_app(settings: Settings | None = None, *, runtime: Runtime | None = None) -> FastAPI:
     runtime = runtime or open_runtime(settings or Settings.from_env())
     mcp_tools.AGENT_WORK = runtime.agent  # knowledge_run starts work in the background
+    mcp_tools.WORK_WITH_AI = WorkWithAI(runtime.ws, runtime.runners)  # work_ask
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:

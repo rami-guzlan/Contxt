@@ -33,6 +33,7 @@ from .runtime import Runtime
 from .tasks import Tasks
 
 RUN = "skill"  # the template of a skill run
+WORK = "work"  # the template of a Work with AI run (a project's Tasks)
 DRAFT = "skill-draft"  # the template of improving a skill, or writing a new one
 # What a skill makes (its `artifacts`) that is a file made on this computer: such a skill runs
 # in a folder of its own, with file and Python tools.
@@ -712,7 +713,9 @@ class Skills:
         """What a skill run made, shown on the skill's page; saved again in the same run, it
         is a new version of the same result."""
         who.require("runs.write")
-        task = self._task_of_run(who, run_id, RUN, "This run is not a skill run.")
+        task = self._task_of_run(
+            who, run_id, (RUN, WORK), "This run is not a skill or Work with AI run."
+        )
         text = str(text or "").strip()
         if not text:
             raise ValidationFailed(
@@ -1161,14 +1164,14 @@ class Skills:
         return [str(about["name"])] if about.get("name") else []
 
     def _task_of_run(
-        self, who: Principal, run_id: str, template: str, wrong: str
+        self, who: Principal, run_id: str, template: str | tuple[str, ...], wrong: str
     ) -> dict[str, Any]:
         with self.rt.read() as tx:
             run = tx.one(schema.task_runs, run_id, "run")
             if run["actor_id"] != who.actor_id:
                 raise PermissionDenied("That run belongs to someone else.", run_id=run_id)
             task = tx.one(schema.tasks, run["task_id"], "task")
-        if task["template"] != template:
+        if task["template"] not in ((template,) if isinstance(template, str) else template):
             raise ValidationFailed(wrong, run_id=run_id)
         return task
 

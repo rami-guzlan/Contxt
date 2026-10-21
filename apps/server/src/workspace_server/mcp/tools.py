@@ -517,6 +517,31 @@ def redacting(ws: Workspace, who: Principal) -> bool:
 AGENT_WORK: Any = None
 
 
+# Set by the app when it starts: Work with AI (work_ask) starts a run on this computer.
+WORK_WITH_AI: Any = None
+
+
+def work_ask(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    """Start one Work with AI job in a project, as the owner's work."""
+    if WORK_WITH_AI is None:
+        return "Work with AI is not running here.", {}, True
+    found = WORK_WITH_AI.ask(
+        ws.owner(),
+        str(_str(args, "project", True)),
+        str(_str(args, "prompt", True)),
+        skill=_str(args, "skill"),
+        agent=_str(args, "agent"),
+        asked_by=who.name,
+    )
+    text = (
+        f"Started “{found['task']['title']}” as run {found['run']['id']}. What it makes "
+        "lands in the project's Outputs as a draft; anything for the Brain waits in Catch up."
+    )
+    return text, found, False
+
+
 def knowledge_skills(
     ws: Workspace, who: Principal, args: dict[str, Any]
 ) -> tuple[str, dict[str, Any]]:
@@ -1108,6 +1133,24 @@ TOOLS: dict[str, Tool] = {
             ),
             hand_off,
             "brain.propose",
+        ),
+        Tool(
+            "work_ask",
+            "Start one Work with AI job in one of the owner's projects: a prompt, optionally "
+            "a Brain skill to use and an agent to work as. It runs on this computer now; what "
+            "it makes lands in the project's Outputs as a draft, and anything for the Brain "
+            "waits for the owner.",
+            _obj(
+                {
+                    "project": {"type": "string", "description": "The project's id."},
+                    "prompt": {"type": "string"},
+                    "skill": {"type": "string"},
+                    "agent": {"type": "string"},
+                },
+                ["project", "prompt"],
+            ),
+            work_ask,
+            "tasks.claim",
         ),
         Tool(
             "knowledge_skills",
