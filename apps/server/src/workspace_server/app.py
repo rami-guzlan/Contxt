@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -79,6 +79,9 @@ class Runtime:
     library: Library
     testing: TestTheBrain
     closed: bool = False
+    # Where the AI apps on this computer keep their own instructions files (a test's
+    # scratch folder in tests): Ask the Brain first writes there, with the person's yes.
+    home: str = field(default_factory=lambda: os.path.expanduser("~"))
 
     def close(self) -> None:
         if self.closed:

@@ -3,13 +3,14 @@ background through the model the owner chose), its questions, and its settings."
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from fastapi import APIRouter, Request
 
 from ..deps import WS, Who
 from ..knowledge_agent import AgentWork
-from ..models import Models
+from ..models import Models, provider_card
 from ..schemas import (
     AgentActionIn,
     AgentAnswerIn,
@@ -41,6 +42,14 @@ def overview(request: Request, who: Who, ws: WS) -> dict[str, Any]:
     out["models"] = [m.to_dict() for m in models(request).list()]
     if ws.agent.chosen_model() is None:
         out["model"] = models(request).default()  # a local model when one is here
+    here = {m.id: m for m in models(request).list()}
+    wanted = str(out["model"])
+    current = here.get(wanted)
+    if current is None and wanted.split(":", 1)[0] in here:  # a CLI with a model named
+        base = here[wanted.split(":", 1)[0]]
+        current = replace(base, id=wanted, label=f"{base.label}, {wanted.split(':', 1)[1]}")
+    if current is not None:
+        out["provider"] = provider_card(current)  # what it runs on, and where data goes
     out["working"] = [
         j.to_dict()
         for j in work(request).recent(who)

@@ -56,6 +56,75 @@ class ModelChoice:
         return asdict(self)
 
 
+# Where each CLI sends what the knowledge agent reads, and where it keeps its own model.
+VENDORS = {"claude": "Anthropic", "codex": "OpenAI", "gemini": "Google"}
+CLI_CONFIG = {
+    "claude": (".claude", "settings.json"),
+    "codex": (".codex", "config.toml"),
+    "gemini": (".gemini", "settings.json"),
+}
+TOML_MODEL = re.compile(r'^\s*model\s*=\s*"([^"]+)"\s*$')
+
+
+def cli_model(cli: str, home: str | None = None) -> tuple[str | None, str]:
+    """(the model a CLI is set to, the file that says so), read from the CLI's own
+    configuration and never written; (None, "") when it names none (its default)."""
+    parts = CLI_CONFIG.get(cli)
+    if parts is None:
+        return None, ""
+    path = os.path.join(home or os.path.expanduser("~"), *parts)
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError:
+        return None, ""
+    if path.endswith(".toml"):
+        for line in text.splitlines():
+            if line.strip().startswith("["):
+                break  # a profile's model is not the one the CLI uses by default
+            found = TOML_MODEL.match(line)
+            if found:
+                return found.group(1), path
+        return None, ""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None, ""
+    model = data.get("model") if isinstance(data, dict) else None
+    if isinstance(model, dict):
+        model = model.get("name")
+    return (str(model), path) if isinstance(model, str) and model.strip() else (None, "")
+
+
+def provider_card(choice: ModelChoice, *, home: str | None = None) -> dict[str, Any]:
+    """What the knowledge agent's page says about the model it works through: the provider,
+    the model (named here, or the one the CLI is set to), whether it can answer now, and
+    where what it reads is sent."""
+    cli, _, named = choice.id.partition(":")
+    if choice.kind == "cli":
+        vendor = VENDORS.get(cli, cli)
+        model, path = (named, "named here") if named else cli_model(cli, home)
+        source = path or "the CLI's own default"
+        data = (
+            f"What the knowledge agent reads for a job (the notes and captures it works on) "
+            f"is sent to {vendor} through {choice.label}, on your own plan."
+        )
+    else:
+        vendor, model, source = "this computer", named or None, "named here"
+        data = "What the knowledge agent reads stays on this computer."
+    return {
+        "id": choice.id,
+        "label": choice.label,
+        "vendor": vendor,
+        "model": model,
+        "model_from": "named here" if named else source,
+        "available": choice.available,
+        "health": choice.detail,
+        "data": data,
+        "switches": "never on its own: when it cannot answer, the work stops and says so",
+    }
+
+
 def _http(url: str, body: dict[str, Any] | None = None, *, timeout: float = 2.0) -> Any:
     data = json.dumps(body).encode("utf-8") if body is not None else None
     request = urllib.request.Request(

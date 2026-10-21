@@ -18,7 +18,7 @@ from typing import Any
 
 from workspace_core.clock import iso
 from workspace_core.domain.policy import Principal
-from workspace_core.errors import NotFound, ValidationFailed, WorkspaceError
+from workspace_core.errors import Conflict, NotFound, ValidationFailed, WorkspaceError
 from workspace_core.ids import new_id
 from workspace_core.services import agent_loop
 from workspace_core.services.agent import ACTIONS, MAX_MESSAGE
@@ -58,10 +58,22 @@ class AgentWork:
         self._lock = threading.Lock()
         self._turn = threading.Lock()  # one model call at a time
 
-    def _model(self, wanted: str | None) -> ModelChoice:
-        return self.models.choose(
-            str(wanted or self.ws.agent.chosen_model() or self.models.default())
-        )
+    def _model(self, who: Principal, wanted: str | None) -> ModelChoice:
+        """The model this work runs on (Release 1 plan, M08). With none chosen, the first
+        one that can answer here is kept as the choice, so a later failure stops the work
+        instead of moving it to another provider. A model that cannot answer is never
+        replaced: the work stops and says so."""
+        chosen = str(wanted or self.ws.agent.chosen_model() or "")
+        if not chosen:
+            chosen = self.models.default()
+            self.ws.agent.configure(who, model=chosen)
+        try:
+            return self.models.choose(chosen)
+        except Conflict as exc:
+            raise Conflict(
+                f"{exc} The knowledge agent does not switch to another provider on its own: "
+                "fix this one, or choose another in its settings."
+            ) from exc
 
     def _keep(self, job: AgentJob) -> None:
         with self._lock:
@@ -74,7 +86,7 @@ class AgentWork:
         who.require("workspace.admin")
         if action not in ACTIONS:
             raise ValidationFailed(f"An action is one of {', '.join(ACTIONS)}.", field="action")
-        choice = self._model(model)
+        choice = self._model(who, model)
         job = AgentJob(
             id=new_id("ajob", self.ws.rt.clock.now()),
             kind="action",
@@ -95,7 +107,7 @@ class AgentWork:
         """Write how each waiting entry is asked for (general-retrieval plan 3.1), one model
         call per entry, in the background."""
         who.require("workspace.admin")
-        choice = self._model(model)
+        choice = self._model(who, model)
         job = AgentJob(
             id=new_id("ajob", self.ws.rt.clock.now()),
             kind="enrich",
@@ -170,7 +182,7 @@ class AgentWork:
             raise ValidationFailed(
                 f"Keep a message under {MAX_MESSAGE:,} characters.", field="message"
             )
-        choice = self._model(model)
+        choice = self._model(who, model)
         job = AgentJob(
             id=new_id("ajob", self.ws.rt.clock.now()),
             kind="chat",
@@ -202,7 +214,7 @@ class AgentWork:
         """One model call for another part of Work (writing an agent's prompt, improving a
         prompt in Compose), in the background through the model the owner chose: `build()`
         makes the prompt, `read(answer)` turns the answer into the job's result."""
-        choice = self._model(model)
+        choice = self._model(who, model)
         prompt = build()  # a refusal (a missing procedure, a bad form) is the caller's error
         job = AgentJob(
             id=new_id("ajob", self.ws.rt.clock.now()),

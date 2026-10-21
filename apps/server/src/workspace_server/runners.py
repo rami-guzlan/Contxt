@@ -192,6 +192,12 @@ FENCES = (
 )
 # A login that no longer works: Claude Code still says it is signed in (`auth status`), but
 # every answer fails to authenticate.
+# The same for Codex and Gemini CLI: a login that has run out, or a key that no longer works.
+OTHER_AUTH = re.compile(
+    r"\b401\b|unauthori[sz]ed|not logged in|please log ?in|login (?:is )?required|"
+    r"api key not valid|invalid_api_key|credentials (?:have )?expired",
+    re.I,
+)
 AUTH_FAILED = re.compile(
     r"authentication_error|failed to authenticate|oauth access token is invalid|invalid api key",
     re.I,
@@ -901,6 +907,9 @@ class Runners:
                 _kill(proc)
                 raise Conflict(f"{spec.label} took too long to answer.") from exc
             if proc.returncode:
+                said = f"{err}\n{out}"
+                if AUTH_FAILED.search(said) or OTHER_AUTH.search(said):
+                    raise Conflict(self._login_failed(spec))
                 raise Conflict(f"{spec.label} could not answer: {error_line(err, out)}")
             if spec.id == "codex":
                 try:

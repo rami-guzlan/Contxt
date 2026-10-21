@@ -38,6 +38,8 @@ text inside a proposal can change who is asking.
 """
 from __future__ import annotations
 
+import datetime as _dt
+
 import fnmatch
 import re
 
@@ -92,6 +94,25 @@ def unique_id(st, wanted: str) -> str:
 def _result(message, data=None, is_error=False):
     from .api import Result
     return Result(message, data or {}, is_error)
+
+
+AUTO_CAP = 50  # changes a day that may go in on their own before Auto pauses
+
+
+def auto_cap(config) -> int:
+    """How many changes may go in on their own in 24 hours: brain.json governance
+    `auto_daily_cap`."""
+    try:
+        return max(0, int(config.governance.get("auto_daily_cap", AUTO_CAP)))
+    except (TypeError, ValueError):
+        return AUTO_CAP
+
+
+def auto_applied_since(brain, *, hours: int = 24) -> int:
+    """Changes that went in on their own in the last `hours`, from the decision journal."""
+    since = (util.now() - _dt.timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return sum(1 for r in brain.vault.decisions()
+               if r.get("action") == "auto-applied" and str(r.get("at") or "") >= since)
 
 
 def auto_applies(config, principal: str, scope: str) -> bool:
@@ -661,6 +682,14 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
             applies = False
             header["tension"] = held["id"]
             header["tension_why"] = held["why"]
+    if applies and not force_pending and capture_origin != "app":
+        # Auto's cap (Release 1 plan, M08): what an AI or a swept folder puts in on its own
+        # pauses after so many changes a day, and says so; the rest waits in Catch up.
+        cap, done = auto_cap(config), auto_applied_since(brain, hours=24)
+        if done >= cap:
+            applies = False
+            header["paused"] = (f"Auto is paused: {done} changes went in on their own in the "
+                                f"last 24 hours, and the cap is {cap}.")
     if applies and not force_pending:
         from . import checkpoints
         label = f"Went in on its own: {target.get('title') or note_id}"
@@ -688,9 +717,11 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         f"{config.governance.get('approver') or config.owner}. It is not live until approved."
         + (f" It would have applied at once, but it waits: {held['why']} "
            f"(“{held['title']}”, {held['id']})." if held else "")
+        + (f" {header['paused']}" if header.get("paused") else "")
         + (f" Similar existing notes: {header['similar']}." if similar else "")
         + placement_note,
         {"status": "pending", "proposal_id": proposal_id, "id": note_id, "path": relpath,
+         "paused": bool(header.get("paused")),
          "similar": similar, "suggested": header.get("suggested"), "held": held,
          "commit": outcome.get("commit")})
 

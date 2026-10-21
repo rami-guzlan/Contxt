@@ -109,6 +109,7 @@ def runtime(tmp_path, clock, brain_vault):
         web_dist=str(tmp_path / "web-dist"),
     )
     opened = open_runtime(settings, clock=clock)
+    opened.home = str(tmp_path / "home")  # never the person's own app instruction files
     yield opened
     opened.close()
 
