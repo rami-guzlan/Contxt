@@ -143,6 +143,10 @@ class Ledger:
                 conn.execute("ALTER TABLE deliveries ADD COLUMN epoch INTEGER")
         # A packet keeps the last delivery row when it was handed over: what was opened after
         # it comes later in that order (times are kept to the second, too coarse for this).
+        fixes = {row[1] for row in conn.execute("PRAGMA table_info(corrections)")}
+        if "kind" not in fixes:
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE corrections ADD COLUMN kind TEXT")
         packet_columns = {row[1] for row in conn.execute("PRAGMA table_info(packets)")}
         if "last_delivery" not in packet_columns:
             with contextlib.suppress(sqlite3.OperationalError):
@@ -717,13 +721,16 @@ class Ledger:
 
     # ------------------------------------------------------------------ the updating loop
     def add_correction(self, text: str, *, session_id: str = "", packet_id: str = "",
-                       suspect: str = "", score: float = 0.0, by: str = "") -> None:
-        """A correction the owner made, and the note most likely behind it (BL 9)."""
+                       suspect: str = "", score: float = 0.0, by: str = "",
+                       kind: str = "") -> None:
+        """A correction the owner made, and the note most likely behind it (BL 9). One made
+        from a receipt has its `kind` (corrections.py) and is kept as recorded: its own
+        challenge, if any, is the card, so the open "That's wrong" list does not show it."""
         with self._connect() as conn:
             conn.execute("INSERT INTO corrections (at, session_id, packet_id, text, suspect, "
-                         "score, by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         "score, by, kind, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                          (util.now_iso(), session_id, packet_id, text[:1000], suspect, score,
-                          by))
+                          by, kind or None, "recorded" if kind else "open"))
 
     def corrections(self, *, status: str | None = "open", since: str = "") -> list[dict]:
         query = "SELECT rowid AS id, * FROM corrections WHERE at >= ?"

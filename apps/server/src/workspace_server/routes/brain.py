@@ -34,6 +34,7 @@ from ..schemas import (
     ProjectObjectiveIn,
     ProjectUpdateIn,
     ProposalIn,
+    ReceiptCorrectionIn,
     ReconcileIn,
     ReplayIn,
     RequestLabelsIn,
@@ -352,9 +353,10 @@ def checkpoints(who: Who, ws: WS, limit: int = 50) -> list[dict[str, Any]]:
 
 
 @router.post("/checkpoints/{checkpoint_id}/undo")
-def undo(checkpoint_id: str, who: Who, ws: WS) -> dict[str, Any]:
-    """Put back what one batch of decisions changed (refused when something changed since)."""
-    return ws.brain.undo(who, checkpoint_id)
+def undo(checkpoint_id: str, who: Who, ws: WS, together: bool = False) -> dict[str, Any]:
+    """Put back what one batch of decisions changed. When later decisions changed the same
+    entries it refuses and names them; `together` undoes them too, newest first."""
+    return ws.brain.undo(who, checkpoint_id, together=together)
 
 
 @router.post("/merge", status_code=201)
@@ -444,6 +446,13 @@ def receipt(packet_id: str, who: Who, ws: WS) -> dict[str, Any]:
         for title, status in ws.sources.unsearchable(who)
     ]
     return {**found, "unknown": list(found.get("unknown") or []) + pending}
+
+
+@router.post("/receipts/{packet_id}/corrections")
+def correct(packet_id: str, body: ReceiptCorrectionIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Say what went wrong with a request, from its receipt. It only proposes: a wrong or
+    outdated item gets a "Still true?" card; the rest is recorded against the receipt."""
+    return ws.brain.correct(who, packet_id, body.kind, item=body.item, note=body.note)
 
 
 @router.get("/requests/{packet_id}")

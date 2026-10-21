@@ -1218,6 +1218,19 @@ class BrainKitAdapter:
         found = self.brain.receipt(packet_id)
         return None if found.is_error else dict(found.data)
 
+    def correct(
+        self, packet_id: str, kind: str, *, item: str = "", note: str = ""
+    ) -> dict[str, Any]:
+        from brainkit import corrections
+
+        with self._lock:
+            result = corrections.correct(self.brain, packet_id, kind, item=item, note=note)
+        if result.is_error:
+            if result.data.get("status") == "missing":
+                raise NotFound(result.text)
+            raise ValidationFailed(result.text)
+        return dict(result.data, message=result.text)
+
     def indexed(self, ids: list[str]) -> set[str]:
         # The index the next request is matched against: on a large Brain it is rebuilt in
         # the background, and a kept entry is not searchable until that finishes.
@@ -2073,13 +2086,17 @@ class BrainKitAdapter:
             for point in self.brain.checkpoints(limit).data.get("checkpoints") or []
         ]
 
-    def undo(self, checkpoint_id: str) -> dict[str, Any]:
+    def undo(self, checkpoint_id: str, *, together: bool = False) -> dict[str, Any]:
         with self._lock:
-            result = self.brain.undo(checkpoint_id)
+            result = self.brain.undo(checkpoint_id, together=together)
         if result.is_error:
             if result.data.get("status") == "missing":
                 raise NotFound(result.text)
-            raise Conflict(result.text, blocked=result.data.get("blocked") or [])
+            raise Conflict(
+                result.text,
+                blocked=result.data.get("blocked") or [],
+                dependents=result.data.get("dependents") or [],
+            )
         return {"undone": result.data.get("undone"), "checkpoint": result.data.get("checkpoint")}
 
 

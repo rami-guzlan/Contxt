@@ -220,8 +220,37 @@ def get(brain, checkpoint_id) -> dict | None:
     return _load(brain, checkpoint_id)
 
 
-def undo(brain, checkpoint_id, *, actor=None):
-    """Put back what an undo point changed, recorded as a new undo point of its own."""
+def dependents(brain, point: dict) -> list[dict] | None:
+    """The later undo points that changed this one's files again, newest first, when they
+    explain every change since (each file goes back to what this point left once they are
+    undone). None when something else changed a file, such as an edit by hand."""
+    blocked = {b["path"] for b in _blocked(brain, point)}
+    if not blocked:
+        return []
+    left = {f["path"]: f.get("after") for f in point.get("files") or []}
+    later = [p for p in reversed(_all(brain))
+             if p["id"] != point["id"] and not p.get("undone_by")
+             and str(p.get("at") or "") >= str(point.get("at") or "")]
+    chosen, paths = [], set(blocked)
+    for candidate in later:  # oldest first: the first later change to a file follows ours
+        files = {f["path"]: f for f in candidate.get("files") or []}
+        if not paths & set(files):
+            continue
+        chosen.append(candidate)
+        paths |= set(files)
+    for path in blocked:
+        first = next((c for c in chosen
+                      if path in {f["path"] for f in c.get("files") or []}), None)
+        entry = next((f for f in (first or {}).get("files") or [] if f["path"] == path), None)
+        if entry is None or entry.get("before") != left.get(path):
+            return None
+    return list(reversed(chosen))
+
+
+def undo(brain, checkpoint_id, *, actor=None, together=False):
+    """Put back what an undo point changed, recorded as a new undo point of its own. When
+    later decisions changed the same entries, it says what they are first ("this also
+    undoes..."); with `together`, it undoes them too, newest first, then this one."""
     from . import governance
     who, refusal = governance._require_approver(brain, actor)
     if refusal:
@@ -234,11 +263,25 @@ def undo(brain, checkpoint_id, *, actor=None):
                        "that instead to bring it back.", {"status": "conflict"}, True)
     blocked = _blocked(brain, point)
     if blocked:
-        names = ", ".join(b["what"] for b in blocked[:5])
-        more = f" and {len(blocked) - 5} more" if len(blocked) > 5 else ""
-        return _result(f"Cannot undo “{point['label']}”: {names}{more} changed since. Undo "
-                       "the later change first, or change it by hand.",
-                       {"status": "conflict", "blocked": blocked}, True)
+        later = dependents(brain, point)
+        if later is None:
+            names = ", ".join(b["what"] for b in blocked[:5])
+            more = f" and {len(blocked) - 5} more" if len(blocked) > 5 else ""
+            return _result(f"Cannot undo “{point['label']}”: {names}{more} changed since, "
+                           "not by a decision that can be undone. Change it by hand.",
+                           {"status": "conflict", "blocked": blocked}, True)
+        listed = [{"id": p["id"], "label": p.get("label") or p["id"], "at": p.get("at")}
+                  for p in later]
+        if not together:
+            names = "; ".join(f"“{p['label']}”" for p in listed)
+            return _result(f"Undoing “{point['label']}” also undoes {names}, which changed "
+                           "the same entries after it. Undo them together, or leave it.",
+                           {"status": "depends", "dependents": listed, "blocked": blocked},
+                           True)
+        for each in later:
+            done = undo(brain, each["id"], actor=who)
+            if done.is_error:
+                return done
     redo = point.get("kind") == "undo"
     base = str(point.get("label") or "")
     for prefix in ("Undo: ", "Redo: "):

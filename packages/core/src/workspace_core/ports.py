@@ -281,8 +281,10 @@ class BrainPort(Protocol):
 
     def checkpoints(self, limit: int = 50) -> list[dict[str, Any]]: ...
 
-    def undo(self, checkpoint_id: str) -> dict[str, Any]:
-        """Put back what an undo point changed: {"undone", "checkpoint"} (the undo's own)."""
+    def undo(self, checkpoint_id: str, *, together: bool = False) -> dict[str, Any]:
+        """Put back what an undo point changed: {"undone", "checkpoint"} (the undo's own).
+        When later decisions changed the same entries it refuses and names them, unless
+        `together`, which undoes them too, newest first."""
         ...
 
     def verify(self, entry_id: str, *, confidence: str | None = None) -> BrainEntry: ...
@@ -483,6 +485,13 @@ class BrainPort(Protocol):
 
     def requests_in(self, session_id: str) -> list[dict[str, Any]]:
         """The requests one conversation made, oldest first: an answer's receipts."""
+        ...
+
+    def correct(
+        self, packet_id: str, kind: str, *, item: str = "", note: str = ""
+    ) -> dict[str, Any]:
+        """A correction made from a receipt, of one kind; it only proposes (corrections.py):
+        {"outcome": "challenge" | "recorded", "proposal_id"?}."""
         ...
 
     def dismiss_gap(self, key: str) -> None: ...
@@ -909,7 +918,7 @@ class NoBrain:
     def checkpoints(self, limit: int = 50) -> list[dict[str, Any]]:
         return []
 
-    def undo(self, checkpoint_id: str) -> dict[str, Any]:
+    def undo(self, checkpoint_id: str, *, together: bool = False) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain.")
 
     def verify(self, entry_id: str, *, confidence: str | None = None) -> BrainEntry:
@@ -1032,6 +1041,11 @@ class NoBrain:
 
     def requests_in(self, session_id: str) -> list[dict[str, Any]]:
         return []
+
+    def correct(
+        self, packet_id: str, kind: str, *, item: str = "", note: str = ""
+    ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain.")
 
     def dismiss_gap(self, key: str) -> None:
         return None
