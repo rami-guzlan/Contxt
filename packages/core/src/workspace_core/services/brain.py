@@ -1413,6 +1413,62 @@ class Brain:
             )
         return self.rt.brain.preview(text, project=str(project or "").strip() or None, tools=tools)
 
+    def _source_reference(
+        self,
+        sources: list[str],
+        run: dict[str, Any] | None,
+        locator: str | None,
+        speaker: str | None,
+        excerpt: str | None,
+    ) -> dict[str, Any]:
+        """The source reference of a proposal that names a capture (Release 1 plan, M02):
+        the first `context_item:` source, at the version and hash the run read (or the one
+        stored now, outside a run). Empty when it names no capture."""
+        cited = next((s for s in sources if s.startswith("context_item:")), "")
+        if not cited:
+            if any(str(v or "").strip() for v in (locator, speaker, excerpt)):
+                raise ValidationFailed(
+                    "A place, speaker or excerpt needs the capture it is from among the "
+                    "sources (context_item:<id>).",
+                    field="sources",
+                )
+            return {}
+        item_id = cited.partition(":")[2]
+        read = next(
+            (
+                i
+                for i in ((run or {}).get("packet") or {}).get("inputs") or []
+                if str(i.get("ref") or "") == cited
+            ),
+            None,
+        )
+        if read is None:
+            with self.rt.read() as tx:
+                row = tx.first(
+                    sa.select(
+                        schema.context_items.c.revision, schema.context_items.c.content_hash
+                    ).where(schema.context_items.c.id == item_id)
+                )
+            read = {"version": row["revision"], "content_hash": row["content_hash"]} if row else {}
+        version = " · ".join(
+            part
+            for part in (
+                f"r{read['version']}" if read.get("version") else "",
+                str(read.get("content_hash") or "")[:12],
+            )
+            if part
+        )
+        out: dict[str, Any] = {"source_id": cited, "source_speaker": "unknown"}
+        if version:
+            out["source_version"] = version
+        if str(locator or "").strip():
+            out["source_locator"] = " ".join(str(locator).split())[:80]
+        if str(speaker or "").strip():
+            out["source_speaker"] = " ".join(str(speaker).split())[:80]
+        if str(excerpt or "").strip():
+            out["source_excerpt"] = str(excerpt).strip()[:1200]
+        return out
+
     def _made_by(self, sources: list[str], origin: str | None) -> list[str]:
         """The runs that made the outputs a proposal cites (`artifact:<id>` among its sources,
         or `output:<id>` as its origin), as the Brain's ledger names them (`work:<run>`): what
@@ -1453,6 +1509,9 @@ class Brain:
         as_of: str | None = None,
         valid_until: str | None = None,
         said_by: str | None = None,
+        source_locator: str | None = None,
+        source_speaker: str | None = None,
+        source_excerpt: str | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
 
@@ -1471,7 +1530,12 @@ class Brain:
         selection in a doc, say); without one it is read from the run or the first source.
         `goal` names the owner's goal it serves; `project` the active project it belongs to,
         by id or name (it is then kept with that project). `as_of` is the day a changing value
-        was true (a total, a count, a version), `valid_until` the last day it holds."""
+        was true (a total, a count, a version), `valid_until` the last day it holds.
+
+        The source reference (Release 1 plan, M02): when the proposal names a capture among
+        its sources, the Brain records it with the version and hash that was read, and
+        `source_locator` (a moment, page, row or message), `source_speaker` (unknown when not
+        given) and `source_excerpt` (the source's own words)."""
         who.require("brain.propose")
         title, statement = " ".join(str(title or "").split()), str(statement or "").strip()
         if not title or not statement:
@@ -1509,6 +1573,7 @@ class Brain:
         sources = [str(s) for s in sources or []]
         task_id = project_id = None
         heard: list[str] | None = None
+        run: dict[str, Any] | None = None
         if run_id:
             with self.rt.read() as tx:
                 run = tx.one(schema.task_runs, run_id, "run")
@@ -1532,7 +1597,9 @@ class Brain:
             ]
         made_by = self._made_by(sources, origin)
         origin = _origin(origin, run_id, sources, who)
-        extra: dict[str, Any] = {}
+        extra: dict[str, Any] = self._source_reference(
+            sources, run, source_locator, source_speaker, source_excerpt
+        )
         goal = " ".join(str(goal or "").split())[:120]
         if goal:
             extra["goal"] = goal

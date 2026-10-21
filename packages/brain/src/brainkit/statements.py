@@ -184,6 +184,26 @@ def unheard(evidence: str, said: list[str]) -> list[str]:
     return [q for q in quotes(evidence) if not any(_plain(q) in h for h in heard)]
 
 
+CONDITIONAL = re.compile(r"\b(if|unless|provided that|as long as|only when|assuming)\b", re.I)
+TENTATIVE = re.compile(
+    r"\b(might|maybe|perhaps|possibly|probably|likely|could|should we|i think|we think|"
+    r"not sure|tentatively|for now|pencil(?:led)? in|hopefully)\b", re.I)
+STATEMENT_STATUSES = ("stated", "tentative", "conditional", "confirmed", "disputed")
+
+
+def statement_status(text: str) -> str:
+    """How a statement was said, read at the door: `conditional` when it holds only under a
+    condition, `tentative` when it was hedged or asked, else `stated`. Keeping a statement
+    approves storing it; only the owner's check makes it `confirmed`, and a conflict makes it
+    `disputed` (Release 1 plan, M02)."""
+    text = str(text or "").strip()
+    if CONDITIONAL.search(text):
+        return "conditional"
+    if TENTATIVE.search(text) or text.endswith("?"):
+        return "tentative"
+    return "stated"
+
+
 def tier(note_kind: str | None, load: str = "") -> str:
     """Alignment (rules, identity, must-holds, goals), state (values) or knowledge."""
     found = kind(note_kind)

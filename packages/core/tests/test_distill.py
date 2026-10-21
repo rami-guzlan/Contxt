@@ -123,6 +123,40 @@ def test_a_request_runs_end_to_end_and_reports_its_proposals(ws, owner, notes, c
     ]
 
 
+def test_a_proposal_records_the_capture_version_place_speaker_and_words_it_read(
+    ws, owner, notes, connect, brain
+):
+    claude = connect()
+    task = ws.distill.request(owner, item_ids=[notes[0].id])
+    run = ws.bus.claim(claude, task.id).run
+    ws.brain.propose(
+        claude,
+        title="Posting days",
+        statement="We post on Tuesdays and Thursdays.",
+        evidence="Posting days note",
+        sources=[f"context_item:{notes[0].id}"],
+        run_id=run.id,
+        source_locator="line 1",
+        source_excerpt="We post on Tuesdays and Thursdays.",
+    )
+    sent = brain.proposed[-1]["extra"]
+    assert sent["source_id"] == f"context_item:{notes[0].id}"
+    assert sent["source_version"].startswith("r1")
+    assert (sent["source_locator"], sent["source_speaker"]) == ("line 1", "unknown")
+    assert sent["source_excerpt"] == "We post on Tuesdays and Thursdays."
+
+
+def test_a_place_or_speaker_without_its_capture_is_refused(ws, owner):
+    with pytest.raises(ValidationFailed):
+        ws.brain.propose(
+            owner,
+            title="Posting days",
+            statement="We post on Tuesdays.",
+            evidence="Taylor said so",
+            source_speaker="Taylor",
+        )
+
+
 def test_requests_can_be_listed_for_one_note(ws, owner, notes, connect):
     claude = connect()
     one = ws.distill.request(owner, item_ids=[notes[0].id], assignee_id=claude.actor_id)
