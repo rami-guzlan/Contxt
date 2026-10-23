@@ -101,7 +101,7 @@ class NudgeTests(unittest.TestCase):
     def test_nudge_quotes_candidates_and_names_the_tools(self):
         text = capture.nudge(capture.detect("I prefer bullet summaries over long paragraphs."))
         self.assertIn("I prefer bullet summaries", text)
-        self.assertIn("propose_note", text)
+        self.assertIn("notes_propose", text)
         self.assertIn("do not ask first", text.lower())
 
     def test_no_candidates_no_nudge(self):
@@ -109,9 +109,9 @@ class NudgeTests(unittest.TestCase):
 
     def test_nudge_routes_each_kind_to_the_right_tool(self):
         procedure = capture.nudge(capture.detect(DURABLE[15][0]))
-        self.assertIn("propose_skill", procedure)
+        self.assertIn("skills_propose_change", procedure)
         reference = capture.nudge(capture.detect(DURABLE[17][0]))
-        self.assertIn("add_file", reference)
+        self.assertIn("files_upload", reference)
 
 
 

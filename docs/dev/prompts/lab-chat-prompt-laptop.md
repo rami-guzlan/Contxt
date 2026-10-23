@@ -21,7 +21,7 @@ After this, do not ask me anything until the sitting, unless going on would brea
 
 ## Your session
 
-- This session starts in my live Brain's folder. Its instructions make you call get_task_context first. Do that, and use the live Brain only for that normal read. Never propose notes, record outputs or write anything to the live Brain from Lab work.
+- This session starts in my live Brain's folder. Its instructions make you call gnomon_get_context first. Do that, and use the live Brain only for that normal read. Never propose notes, record outputs or write anything to the live Brain from Lab work.
 - The Lab lives in its own new private repo at C:\Users\rguzian\dev\AI-Brain\contxt-lab (decision 1). Once Phase 0 creates it, ask the app to add it as a session folder. Work there with absolute paths.
 - Never commit anything in the live Brain's repo. Its working tree has other chats' uncommitted changes; leave them alone.
 
@@ -81,4 +81,4 @@ Shared files other chats also write:
 21. Log every message I send you, word for word, in C:\Users\rguzian\dev\AI-Brain\outputs\contxt\build\rami-prompts-verbatim.md. Several chats write that file, and numbers have collided, so read its last entry first and take the next free number.
 22. Keep the memory note contxt-testing-lab-plan current at each phase. Other chats edit MEMORY.md at the same time, so re-read it right before editing and change only your own line.
 
-Start now: read the plan, call get_task_context, then begin Phase 0.
+Start now: read the plan, call gnomon_get_context, then begin Phase 0.

@@ -213,7 +213,7 @@ OUTPUT_REF = re.compile(r"\boutput:([^\s,;]+)")
 
 def circular(brain, st, text, origin=None, source="", made_by=()) -> str | None:
     """The note a statement only repeats from the brief its source output was made from, or
-    None (brain-logic plan 7.2, decision 11). The links come from `record_output` (the
+    None (brain-logic plan 7.2, decision 11). The links come from `outputs_save` (the
     conversation that made a file, by its path) and the ledger (what that conversation was
     handed); for an output the workspace's AI work made, the caller names that work's session
     (`made_by`: `work:<run>`, where the run's handouts are recorded)."""

@@ -257,15 +257,16 @@ def _entries(path: str):
 
 
 def _brain_prefixes(path: str) -> set[str]:
-    """The MCP servers in this session that are brains: those with a get_task_context tool."""
+    """The MCP servers in this session that are brains: those with a gnomon_get_context tool."""
     found = set()
     for entry in _entries(path):
         if entry.get("type") != "assistant":
             continue
         for block in (entry.get("message") or {}).get("content") or []:
             name = str(block.get("name") or "") if isinstance(block, dict) else ""
-            if block.get("type") == "tool_use" and name.endswith("__get_task_context"):
-                found.add(name[: -len("get_task_context")])
+            for tool in ("__gnomon_get_context", "__get_task_context"):  # new name, old one
+                if block.get("type") == "tool_use" and name.endswith(tool):
+                    found.add(name[: -len(tool) + 2])
     return found
 
 

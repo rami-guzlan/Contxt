@@ -74,7 +74,7 @@ fact revised every week is really a value). Friction rises with the tier.
 | --- | --- | --- | --- | --- | --- |
 | Alignment | Only from the owner's own words or a promotion the owner approves; never from content | Flagged as candidates; always wait | Standing and must-hold notes, the goals note; amendments in git and the decisions journal | Kernel; must-holds by domain; authority labels in every brief | Amendments with reason, impact and delay; an exceptions ledger; a quarterly alignment review |
 | Knowledge | Proposals from chats, captures, swept folders, Work uploads | Statements with kind, who said it, evidence, sources and dates; compared with the Brain (new, covered, replaces, contradicts) | Markdown notes in git; filed documents split into sections, indexed with their document's context | By relevance under a budget: bodies for the top few, pointers for the rest | Proposals by preset; shelf life; weekly cross-check; suspects from corrections; blast radius before approval |
-| State | Sheet edits, `update_state` over MCP, values found in captures, syncs | Values routed to cells instead of notes | Typed sheets; an append-only log per row; readable snapshots | By key; "changed since you last saw it" | Light writes; friction per column; age and source-linked staleness; promotion and demotion |
+| State | Sheet edits, `sheets_propose_update` over MCP, values found in captures, syncs | Values routed to cells instead of notes | Typed sheets; an append-only log per row; readable snapshots | By key; "changed since you last saw it" | Light writes; friction per column; age and source-linked staleness; promotion and demotion |
 | Episodes | Everything raw | Digests; left-out lists kept and searchable | Originals outside git; the session ledger with retention by preset | By search, as quoted evidence | Append-only; deleted only by the owner; provenance chains for the circular-evidence check |
 | Briefs | (none) | (none) | Kept in the ledger as episodes | Assembled by code: kernel delta, must-holds, state, notes, pointers, the skill | Measured per brief; rebuilt by the replay harness to test changes |
 
@@ -181,7 +181,7 @@ background job uses matters more than anything in the brief. Phase 0 measures al
 3. **Trim fixed overhead.** A kernel budget; tool descriptions cut to what a model needs to pick
    the tool; server instructions under about 100 tokens; fewer tools (see 5.7).
 4. **Pointers before bodies.** Most notes arrive as title, one-line summary and their key
-   sentence; full bodies only for the top few; the model opens the rest with `get_note`, which
+   sentence; full bodies only for the top few; the model opens the rest with `notes_get`, which
    the ledger counts. This is the progressive disclosure Agent Skills use.
 5. **Budgets set by evidence.** Start from today's ceilings and lower each request type's budget
    only as far as needed-note recall holds on held-out requests.
@@ -263,7 +263,7 @@ in as a pointer, so nothing relevant is dropped; it is shortened.
 
 ### 5.6 Delivery
 
-- Pull everywhere: `get_task_context`, as today.
+- Pull everywhere: `gnomon_get_context`, as today.
 - Push where the client allows it: in Claude Code, the prompt hook that already reads each
   message for capture cues (`hooks/capture_prompt.py`) also asks the router whether something
   new and relevant exists, and delivers it only then. Retrieval that depends on the model
@@ -275,16 +275,16 @@ in as a pointer, so nothing relevant is dropped; it is shortened.
 
 ### 5.7 The MCP surface
 
-Today 13 tools. Keep a small core always described (`get_task_context`, `search_notes`,
-`get_note`, `propose_note`, plus `update_state` from Phase 4); fold `get_skill` and
-`get_reference` into `get_note` if Phase 0 shows the saving matters; generalize
-`get_task_context`'s `partition` argument into `context` (a working context, Phase 4) rather
+Today 13 tools. Keep a small core always described (`gnomon_get_context`, `notes_search`,
+`notes_get`, `notes_propose`, plus `sheets_propose_update` from Phase 4); fold `skills_get` and
+`files_open` into `notes_get` if Phase 0 shows the saving matters; generalize
+`gnomon_get_context`'s `partition` argument into `context` (a working context, Phase 4) rather
 than adding a tool to switch contexts.
 
 ### 5.8 Signals every brief leaves
 
-Logged per brief, for tuning and the report card: opened afterwards (`get_note` or
-`search_notes` in the same request: something was missing), corrections that follow (Phase 5),
+Logged per brief, for tuning and the report card: opened afterwards (`notes_get` or
+`notes_search` in the same request: something was missing), corrections that follow (Phase 5),
 questions the brain could not answer (exists), and for sampled sessions, a model's offline
 judgment of which delivered items the answer used.
 
@@ -404,7 +404,7 @@ Approved October 10, 2026 (prompts 146 to 148, 152 and 153).
 
 #### 5.11.1 Why
 
-- **It runs when nothing fits.** In development, `get_task_context` brings unrelated content. On
+- **It runs when nothing fits.** In development, `gnomon_get_context` brings unrelated content. On
   October 10, a question about an outside model returned 18 brain-kit modules, each with the same
   filler line. A goals-planning request the night before got product facts.
 - **Nothing judges.** Meaning matching (bge-small) finds similar notes, but nothing asks whether
@@ -463,7 +463,7 @@ The demo baseline finds 73% of needed notes on held-out requests, against a 90% 
    round only pays when it brings new candidates or asks a new question.
 6. **Fit (code, 5.4).** Everything above the cut is used, best first. What does not fit the
    budget goes in as a pointer (title and a line, about 20 tokens) that the AI can open with
-   `get_note`. Nothing relevant is dropped; it is shortened.
+   `notes_get`. Nothing relevant is dropped; it is shortened.
 
 Must-holds keep bypassing relevance (5.4). The gate and the cut never remove a must-hold whose
 domain is in play.
@@ -780,7 +780,7 @@ with the Work tab). Changes:
    - Values go to State as cell updates (entity, column, value, as of) instead of notes.
 5. **Reconcile (code).** Replaces and contradicts as today; the circular-evidence rule: an AI
    output built from a brief cannot count as evidence for the notes in that brief (the links come
-   from `record_output` and the ledger); duplicates collapse.
+   from `outputs_save` and the ledger); duplicates collapse.
 6. **Output.** Knowledge proposals (governed), state updates (light), alignment candidates
    (always wait, labeled), and the left-out list, kept as a searchable episode record and
    re-scored when the goals change.
@@ -863,7 +863,7 @@ recall that is best in the original context (Godden & Baddeley 1975).
 
 - The owner in Workspace's editors (grid, board, calendar): applies, logged, undoable; the Brain
   tab shows the State logs.
-- An AI through `update_state` (a batch of cell updates with evidence): `free` applies, marked as
+- An AI through `sheets_propose_update` (a batch of cell updates with evidence): `free` applies, marked as
   AI-filled until a person touches it; `confirm` waits for one tap; `locked` is refused.
 - Distillation: values found in captures (7.2).
 - Syncs (later): mirrored columns follow their source.
@@ -872,7 +872,7 @@ recall that is best in the original context (Godden & Baddeley 1975).
 
 When an entity is named or a context is active, the brief carries "Current state": the row's
 values one line each with their dates, and what changed since this session last saw it, capped as
-in 5.4. `get_state` (or `search_notes` with a sheet filter) answers questions across rows ("which
+in 5.4. `sheets_get` (or `notes_search` with a sheet filter) answers questions across rows ("which
 accounts renew this quarter?").
 
 ### 8.6 Staleness
@@ -1032,7 +1032,7 @@ gain justifies the cost and Rami agrees.
 | 1. Retrieval and briefs | Pointers before bodies; authority labels; bookends; sections with their document's context; reranker test; push through the prompt hook; MCP surface trim; per-type budgets; kernel layers and delivery (5.10); the retrieval engine (5.11): the local model service, the lock, the gate, the relevance cut, Kev's second pass and the link loop, the ledger's scores and the "why" view, the machine setups and the model settings, the 4B agent wired as a local option (17.10), then the comparison on a PC, a Mac and a 16 GB laptop | L | Sections 5.9, 5.10 and 5.11.13 gates pass |
 | 2. One statement model | One kind vocabulary; who said it; time fields; shelf life by kind; tiers; audit retention setting; origins; the Library as the home of whole items, prompts and assets included (16.2 to 16.4) | M | Section 6 gates pass (no behavior change) |
 | 3. Ingestion and distillation | Pre-pass, triage, privacy labels, distill changes, reconcile rules, evidence quote checks, background model routing | L | Section 7.4 gates pass |
-| 4. State tier | Sheets, cell logs, column types, views (grid, board, calendar), working contexts, `update_state`, brief block, staleness, promotion and demotion, outputs linked to rows (16.5); built together with Workspace's editors (UX plan, phase D) | L | Section 8.9 gates pass |
+| 4. State tier | Sheets, cell logs, column types, views (grid, board, calendar), working contexts, `sheets_propose_update`, brief block, staleness, promotion and demotion, outputs linked to rows (16.5); built together with Workspace's editors (UX plan, phase D) | L | Section 8.9 gates pass |
 | 5. Updating loop | Correction suspects, blast radius, exceptions ledger, approval health, alignment review, salience from consequences, output checks, blind judging, single-source flags, independent evidence, run transcripts, verification with sources, one stream per run, admin roles scaffolded; the local knowledge agent (17): core prompt and skills, code-run loop, tools, change digest, impact check, suggestion memory | L | Section 9 and 17.9 gates pass |
 | 6. Proof | Drift eval, four-week soak and the alignment tax report (10.6); final report card; measured results for the paper; system notes rewritten (`brainkit/system/*.md`) | M | Rami signs off; UI and UX work starts on a proven base |
 
@@ -1182,7 +1182,7 @@ marked outside the brain with the analog Gnomon provides.
 | Prompt caching | Taken as economics: a stable kernel so caches hold; the cost model (4) |
 | Constitutional AI and RLAIF | Outside the brain: it trains weights. The analog Gnomon owns: an explicit, versioned constitution at inference time, amended under friction (5.10, 9) |
 | Sparse autoencoders, representation engineering, InferenceGuard | Outside the brain: they need the model's internals, which closed models do not expose. The analog: every brief's exact text is kept in the ledger, so what a model was given is always inspectable |
-| MemGPT and Letta paging | Taken, governed: the brief is the working set; notes, state and episodes are storage; `get_note` and `search_notes` page on demand. Unlike Letta, an agent cannot rewrite its own core memory without governance |
+| MemGPT and Letta paging | Taken, governed: the brief is the working set; notes, state and episodes are storage; `notes_get` and `notes_search` page on demand. Unlike Letta, an agent cannot rewrite its own core memory without governance |
 | CoALA | Taken and extended: briefs (working), episodes (episodic), knowledge (semantic and procedural), plus two tiers CoALA lacks: alignment (a governed constitution) and state (fast, structured values) |
 | Generative Agents | Taken: recency (the 14-day lift), importance (governed loads instead of a model's rating), relevance (words and meaning); reflection only through governance; plans as projects and working contexts |
 | Supervisor guardrails (Llama Guard, NeMo Guardrails) | Added in a narrow form: outputs checked against the owner's must-holds (9). General harm moderation stays with the model vendor |
@@ -1263,7 +1263,7 @@ kinds and origins, and two mechanisms join the updating loop.
 ### 16.1 State is edited in Workspace
 
 Sheets, boards and calendars are created and edited in Workspace as the State tier (section 8):
-medium-term context that AIs read and update through `get_state` and `update_state`. Boards and
+medium-term context that AIs read and update through `sheets_get` and `sheets_propose_update`. Boards and
 calendars are views of a sheet, never separate stores (8.2). This replaces the Work tab plan's
 decision to link outside sheets and calendars rather than build them; links to outside sheets stay
 possible. The Brain tab keeps the audit view, the State logs. Columns can be computed by simple
@@ -1278,7 +1278,7 @@ person's own scope:
 - saved verbatim, with any files that came with them, versioned and linked to projects;
 - found by name or by search by any connected AI, and never routed into a brief unless a request
   names one (their load is `manual`);
-- saved from a chat ("save this prompt to my Brain") through the Library's saving tool: `add_file`
+- saved from a chat ("save this prompt to my Brain") through the Library's saving tool: `files_upload`
   gains a kind and inline text, rather than a new tool (5.7);
 - the existing saved prompts migrate once, keeping their versions;
 - a prompt used often enough suggests a skill (exists).
@@ -1297,7 +1297,7 @@ Files filed before origins existed read "origin unknown" until the owner sets on
 
 ### 16.5 Outputs link to context
 
-`record_output` also records the project, the State row it is for (an account, a repo), who made
+`outputs_save` also records the project, the State row it is for (an account, a repo), who made
 it (a person or an agent) and when, beside the brief it was made from (exists). Outputs group by
 project by default, and by entity type wherever the Brain has a State sheet for it (one bucket
 per account).
@@ -1384,8 +1384,8 @@ All local, typed, validated by code.
 
 | Kind | Tools |
 | --- | --- |
-| To look | the map of the Brain; `search_notes`, `get_note`; `get_state` (rows and their history); `changes_since` (the change digest); `history` (an item's changes, who and why); `impact` (17.6); `past_suggestions` (its own suggestions and the person's decisions); the Library, skills, agents, workflows, projects and goals, read only |
-| To suggest | a note to add, edit, merge, narrow or retire; a State update under each column's rule (8.4); a challenge or a "Still true?" card; a task opened or handed off (`hand_off`, goals plan 5.8); a goal progress note; a refit of the cuts (5.11.10) |
+| To look | the map of the Brain; `notes_search`, `notes_get`; `sheets_get` (rows and their history); `changes_since` (the change digest); `history` (an item's changes, who and why); `impact` (17.6); `past_suggestions` (its own suggestions and the person's decisions); the Library, skills, agents, workflows, projects and goals, read only |
+| To suggest | a note to add, edit, merge, narrow or retire; a State update under each column's rule (8.4); a challenge or a "Still true?" card; a task opened or handed off (`todos_update`, goals plan 5.8); a goal progress note; a refit of the cuts (5.11.10) |
 | To use the app for the person | drafts of a project, a sheet from a template, a workflow from a template, an agent's role; a run of a skill or a workflow. Only when the person asks in the agent's panel, or as a suggestion they accept. Never something irreversible or outside the machine (the action policy) |
 
 Every suggestion lands in Catch up, or in the panel, under the presets and the friction of its

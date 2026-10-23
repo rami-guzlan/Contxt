@@ -41,14 +41,14 @@ class ToolsTest(unittest.TestCase):
     def test_code_checks_every_call(self):
         _, problems = agent_tools.call(self.brain, "delete_note", {"id": self.note.id})
         self.assertIn("no tool 'delete_note'", problems[0])
-        _, problems = agent_tools.call(self.brain, "get_note", {"id": "invented-note"})
+        _, problems = agent_tools.call(self.brain, "notes_get", {"id": "invented-note"})
         self.assertIn("no note 'invented-note'", problems)
-        _, problems = agent_tools.call(self.brain, "get_note", {"id": self.note.id, "x": 1})
+        _, problems = agent_tools.call(self.brain, "notes_get", {"id": self.note.id, "x": 1})
         self.assertIn("no argument 'x'", problems)
         _, problems = agent_tools.call(self.brain, "suggest_note", {"change": "rewrite",
                                                                     "why": "x"})
         self.assertTrue(any("change is one of" in p for p in problems))
-        found, problems = agent_tools.call(self.brain, "get_note", {"id": self.note.id})
+        found, problems = agent_tools.call(self.brain, "notes_get", {"id": self.note.id})
         self.assertEqual(problems, [])
         self.assertIn(self.note.title, found)
 

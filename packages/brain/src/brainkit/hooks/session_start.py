@@ -6,7 +6,7 @@ when CLAUDE.md is stale.
 Claude Code adds what this prints to the conversation. The person's layer (their own standing
 notes) never sits in a shared startup file, so it arrives here, fresh each session. The session
 id (`cc:` and Claude Code's own id) is the one the prompt hook pushes briefs under; the model
-passes it to `get_task_context`, so neither sends what the other already did. After a
+passes it to `gnomon_get_context`, so neither sends what the other already did. After a
 compaction or a clear the conversation holds nothing it was given before, and the brain is told
 so.
 

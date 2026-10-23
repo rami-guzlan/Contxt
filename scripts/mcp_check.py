@@ -6,7 +6,7 @@
     python tools/mcp_check.py --config C:/path/.mcp.json --kernel --json
 
 It runs the configured command with the configured args and cwd, performs the MCP handshake,
-lists the tools, sends one task through get_task_context, then a follow-up in the same session
+lists the tools, sends one task through gnomon_get_context, then a follow-up in the same session
 to show deduplication, and prints what a model would receive. Exit code 0 means the server
 started, answered every call, and reported no tool errors. Nothing is written to the vault;
 the session ledger records the two packets like any other conversation.
@@ -81,7 +81,7 @@ def main(argv=None):
     parser.add_argument("--server", default="brain")
     parser.add_argument("--request", default="Write a LinkedIn post about AI leadership")
     parser.add_argument("--followup", default="Make the opening line punchier")
-    parser.add_argument("--search", help="also call search_notes with this query, in the "
+    parser.add_argument("--search", help="also call notes_search with this query, in the "
                         "same session, as an agent would when the packet lacks something")
     parser.add_argument("--kernel", action="store_true", help="also print the startup kernel")
     parser.add_argument("--json", action="store_true", help="print raw JSON-RPC replies")
@@ -113,27 +113,27 @@ def main(argv=None):
         tools, ms = client.rpc("tools/list")
         names = [t["name"] for t in (tools.get("result") or {}).get("tools") or []]
         print(f"tools  : {', '.join(names)}  ({ms} ms)")
-        if "get_task_context" not in names:
-            failures.append("get_task_context is not advertised")
+        if "gnomon_get_context" not in names:
+            failures.append("gnomon_get_context is not advertised")
 
         def task(request, session=None):
             arguments = {"request": request}
             if session:
                 arguments["session_id"] = session
-            reply, ms = client.rpc("tools/call", {"name": "get_task_context",
+            reply, ms = client.rpc("tools/call", {"name": "gnomon_get_context",
                                                   "arguments": arguments})
             result = reply.get("result") or {}
             text = "".join(part.get("text", "") for part in result.get("content") or [])
             if args.json:
                 print(json.dumps(reply, indent=1, ensure_ascii=False))
             if result.get("isError"):
-                failures.append(f"get_task_context reported an error for {request!r}")
+                failures.append(f"gnomon_get_context reported an error for {request!r}")
             return text, ms
 
         text, ms = task(args.request)
         session = text.split("session_id: ", 1)[1].split()[0] if "session_id: " in text else None
         kernel, _, packet = text.partition("# Task context")
-        print(f"\n=== get_task_context: {args.request!r}  ({ms} ms) ===")
+        print(f"\n=== gnomon_get_context: {args.request!r}  ({ms} ms) ===")
         if kernel.strip() and args.kernel:
             print(kernel.strip() + "\n")
         elif kernel.strip():
@@ -146,20 +146,20 @@ def main(argv=None):
             print(text2.partition("# Task context")[2].strip() or text2.strip())
 
         if args.search:
-            if "search_notes" not in names:
-                failures.append("search_notes is not advertised")
+            if "notes_search" not in names:
+                failures.append("notes_search is not advertised")
             else:
                 arguments = {"query": args.search}
                 if session:
                     arguments["session_id"] = session
-                reply, ms3 = client.rpc("tools/call", {"name": "search_notes",
+                reply, ms3 = client.rpc("tools/call", {"name": "notes_search",
                                                        "arguments": arguments})
                 result = reply.get("result") or {}
                 if args.json:
                     print(json.dumps(reply, indent=1, ensure_ascii=False))
                 if result.get("isError"):
-                    failures.append(f"search_notes reported an error for {args.search!r}")
-                print(f"\n=== search_notes: {args.search!r}  ({ms3} ms) ===")
+                    failures.append(f"notes_search reported an error for {args.search!r}")
+                print(f"\n=== notes_search: {args.search!r}  ({ms3} ms) ===")
                 print("".join(p.get("text", "") for p in result.get("content") or []).strip())
     finally:
         client.close()

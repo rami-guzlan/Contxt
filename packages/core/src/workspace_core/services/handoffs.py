@@ -1,6 +1,6 @@
 """Activity > Tasks and handoffs (goals plan 6.9 and 6.13): who has what, and who did what.
 
-Tasks live in the Brain's Tasks sheet and move only through `hand_off` (brainkit/handoff.py);
+Tasks live in the Brain's Tasks sheet and move only through `todos_update` (brainkit/handoff.py);
 this service is the app's door to the same function, so the composer, a goal's rail and any AI
 chat are validated once. "Now" is the Tasks sheet as lanes by status; "Timeline" draws each
 owner's lane from the tasks' cell logs: handoffs as arrows between lanes, saves as dots,
@@ -153,7 +153,7 @@ class Handoffs:
         run = self.agents.run(
             who,
             name,
-            ask=f"Pick up {task['id']}: claim it with hand_off, work from its card, save "
+            ask=f"Pick up {task['id']}: claim it with todos_update, work from its card, save "
             f"progress, and pass it on or finish it.\n\n{card}",
             project=task.get("project") or None,
             handoff=str(task["id"]),

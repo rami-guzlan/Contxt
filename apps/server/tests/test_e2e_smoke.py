@@ -148,13 +148,13 @@ def test_two_brain_processes_share_one_conversation(home, apps):
     first, second = apps
     vault = home["vault"]
     info = first.init()
-    assert info["serverInfo"]["name"] == "brain" and "get_task_context" in info["instructions"]
+    assert info["serverInfo"]["name"] == "brain" and "gnomon_get_context" in info["instructions"]
     second.init()
     names = {t["name"] for t in first.request("tools/list")["result"]["tools"]}
-    assert {"get_task_context", "propose_note", "create_focus", "record_output"} <= names
+    assert {"gnomon_get_context", "notes_propose", "projects_create", "outputs_save"} <= names
 
     opened, error = first.call(
-        "get_task_context", request="Write a LinkedIn post announcing the Q4 webinar series"
+        "gnomon_get_context", request="Write a LinkedIn post announcing the Q4 webinar series"
     )
     assert not error and "# Startup context (kernel " in opened
     session = session_of(opened)
@@ -162,20 +162,20 @@ def test_two_brain_processes_share_one_conversation(home, apps):
 
     # The same conversation, continued from another process: nothing again, no kernel.
     edit, _ = second.call(
-        "get_task_context", request="Make the opening line punchier", session_id=session
+        "gnomon_get_context", request="Make the opening line punchier", session_id=session
     )
     assert f"session_id: {session} (continuing)" in edit
     assert "# Startup context" not in edit and f"kernel: {kernel} (current)" in edit
     assert last_packet(vault, session)["followup"] == "edit"
     side, _ = second.call(
-        "get_task_context", request="Who approves posts before they go out?", session_id=session
+        "gnomon_get_context", request="Who approves posts before they go out?", session_id=session
     )
     summary, _ = first.call(
-        "get_task_context", request="Make the executive summary warmer", session_id=session
+        "gnomon_get_context", request="Make the executive summary warmer", session_id=session
     )
     assert last_packet(vault, session)["followup"] == "edit"  # the draft, not the side question
     again, _ = second.call(
-        "get_task_context",
+        "gnomon_get_context",
         request="Write a LinkedIn post announcing the Q4 webinar series",
         session_id=session,
         fresh=True,
@@ -185,18 +185,18 @@ def test_two_brain_processes_share_one_conversation(home, apps):
     # A new conversation that already holds the kernel skips it (the person's own layer,
     # never in a shared file, comes once); a stale fingerprint gets it.
     held, _ = first.call(
-        "get_task_context", request="Draft a newsletter intro", startup_fingerprint=kernel
+        "gnomon_get_context", request="Draft a newsletter intro", startup_fingerprint=kernel
     )
     assert "# Startup context (kernel " not in held
     stale, _ = first.call(
-        "get_task_context", request="Draft a newsletter intro", startup_fingerprint="0" * 12
+        "gnomon_get_context", request="Draft a newsletter intro", startup_fingerprint="0" * 12
     )
     assert "# Startup context" in stale
 
     # Governed writes: the owner's own scope applies at once as a commit; shared rules wait.
     before = commits(home["brain"])
     own, error = first.call(
-        "propose_note",
+        "notes_propose",
         text="Jordan wants webinar recaps sent within two days of each session.",
         title="Webinar recap timing",
         area="people",
@@ -208,7 +208,7 @@ def test_two_brain_processes_share_one_conversation(home, apps):
     assert not error and "appl" in own.lower(), own
     assert commits(home["brain"]) > before
     shared, error = first.call(
-        "propose_note",
+        "notes_propose",
         text="Every LinkedIn post about a webinar must name the guest plant manager.",
         title="Name the guest",
         area="marketing",
@@ -219,14 +219,14 @@ def test_two_brain_processes_share_one_conversation(home, apps):
     )
     assert not error and any(w in shared.lower() for w in ("wait", "review", "inbox")), shared
     made, error = first.call(
-        "create_focus",
+        "projects_create",
         name="Spring open house",
         summary="An open house for plant managers in March.",
         aliases=["the open house"],
     )
     assert not error, made
     # ...and the other process sees the new project at once, by its alias.
-    found, _ = second.call("get_task_context", request="Where does the open house stand?")
+    found, _ = second.call("gnomon_get_context", request="Where does the open house stand?")
     assert "Spring open house" in found
     assert git_clean(home["brain"]) == ""
 
@@ -265,6 +265,6 @@ def test_an_approval_in_the_app_reaches_a_running_brain_process(home, apps, owne
     assert late["isError"]  # fenced: the run is over
 
     owner.ok(owner.post(f"/api/brain/proposals/{proposal_id}/decide", json={"approve": True}))
-    text, error = brain.call("search_notes", query="what time do plant managers want webinars")
+    text, error = brain.call("notes_search", query="what time do plant managers want webinars")
     assert not error and "11 AM" in text, text  # no restart needed
     assert git_clean(home["brain"]) == ""

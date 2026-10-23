@@ -216,7 +216,7 @@ def record_output(brain, path, *, title="", session_id=None, project="", for_row
         return _result("Give the saved file's full path.", {"status": "invalid"}, True)
     session = str(session_id or "").strip()
     if session and not Ledger.valid(session):
-        return _result("That is not a session id from get_task_context.",
+        return _result("That is not a session id from gnomon_get_context.",
                        {"status": "invalid"}, True)
     st = brain.state()
     project_id = str(project or "").strip()

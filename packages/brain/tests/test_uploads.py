@@ -395,14 +395,14 @@ class HookTests(unittest.TestCase):
         payload = json.loads(done.stdout)
         context = payload["hookSpecificOutput"]["additionalContext"]
         self.assertEqual(payload["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit")
-        self.assertIn("propose_note", context)
+        self.assertIn("notes_propose", context)
         self.assertIn("bullet summaries", context)
 
     def test_an_ordinary_request_gets_only_the_reminder_to_ask_the_brain(self):
         done = self.run_hook(json.dumps({"prompt": "Write a post about sourdough."}))
         context = json.loads(done.stdout)["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("get_task_context", context)
-        self.assertNotIn("propose_note", context)
+        self.assertIn("gnomon_get_context", context)
+        self.assertNotIn("notes_propose", context)
         quiet = self.run_hook(json.dumps({"prompt": "thanks!"}))
         self.assertEqual((quiet.returncode, quiet.stdout.strip()), (0, ""))
 

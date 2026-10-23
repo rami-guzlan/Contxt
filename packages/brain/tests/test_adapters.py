@@ -54,91 +54,91 @@ class MCPServerTests(unittest.TestCase):
     def test_handshake_tools_and_a_full_task(self):
         init = self.rpc("initialize", {"protocolVersion": "2025-06-18"})
         self.assertEqual(init["result"]["protocolVersion"], "2025-06-18")
-        self.assertIn("get_task_context", init["result"]["instructions"])
+        self.assertIn("gnomon_get_context", init["result"]["instructions"])
         names = {t["name"] for t in self.rpc("tools/list")["result"]["tools"]}
-        self.assertEqual(names, {"get_task_context", "get_skill", "get_reference", "get_note",
-                                 "search_notes", "propose_note", "propose_skill", "add_file",
-                                 "record_focus_update", "create_focus", "record_output",
-                                 "brain_health", "challenge_note", "list_agents",
-                                 "get_agent", "get_state", "update_state", "hand_off",
+        self.assertEqual(names, {"gnomon_get_context", "skills_get", "files_open", "notes_get",
+                                 "notes_search", "notes_propose", "skills_propose_change", "files_upload",
+                                 "projects_propose_progress", "projects_create", "outputs_save",
+                                 "gnomon_health", "notes_challenge", "agents_list",
+                                 "agents_get", "sheets_get", "sheets_propose_update", "todos_update",
                                  "gnomon_map", "receipts_get", "taste_get", "taste_propose",
                                  "gaps_flag"})
-        first = self.call("get_task_context", {"request": "How long do web design projects run?"})
+        first = self.call("gnomon_get_context", {"request": "How long do web design projects run?"})
         self.assertFalse(first["isError"], first)
         text = first["content"][0]["text"]
         self.assertIn("facts-services-002", text)
         self.assertIn("# Startup context", text)
         session = text.split("session_id: ", 1)[1].split()[0]
-        second = self.call("get_task_context", {"request": "How long do web design projects run?",
+        second = self.call("gnomon_get_context", {"request": "How long do web design projects run?",
                                                 "session_id": session})
         self.assertIn("Already in this conversation", second["content"][0]["text"])
         self.assertNotIn("# Startup context", second["content"][0]["text"])
-        skill = self.call("get_skill", {"name": "brand-sheet", "session_id": session})
+        skill = self.call("skills_get", {"name": "brand-sheet", "session_id": session})
         self.assertIn("Export a one-page PDF", skill["content"][0]["text"])
-        ref = self.call("get_reference", {"path": "references/style-guide.md"})
+        ref = self.call("files_open", {"path": "references/style-guide.md"})
         self.assertIn("Studio style guide", ref["content"][0]["text"])
 
     def test_agent_files_a_document_at_once_and_proposes_a_skill_for_review(self):
-        skill = self.call("propose_skill", {
+        skill = self.call("skills_propose_change", {
             "name": "client-kickoff", "category": "design",
             "description": "Run a client kickoff meeting.",
             "body": "# /client-kickoff\n\n1. Agenda.\n2. Goals.\n",
             "files": [{"path": "assets/agenda.md", "content": "# Kickoff agenda\n"}]})
         self.assertFalse(skill["isError"], skill)
         self.assertIn("for review", skill["content"][0]["text"])
-        document = self.call("add_file", {"content": "# Studio rates\n\nDay rate: 900.",
+        document = self.call("files_upload", {"content": "# Studio rates\n\nDay rate: 900.",
                                           "filename": "rates.md", "title": "Studio rates"})
         self.assertFalse(document["isError"], document)
         self.assertIn("Filed Studio rates", document["content"][0]["text"])
         self.assertIn("can use it now", document["content"][0]["text"])
-        asked = self.call("get_task_context", {"request": "What is the studio day rate?"})
+        asked = self.call("gnomon_get_context", {"request": "What is the studio day rate?"})
         self.assertIn("Evidence from your files", asked["content"][0]["text"])
         self.assertIn("Day rate: 900.", asked["content"][0]["text"])
-        unsafe = self.call("add_file", {"content": "TOKEN=1", "filename": ".env"})
+        unsafe = self.call("files_upload", {"content": "TOKEN=1", "filename": ".env"})
         self.assertTrue(unsafe["isError"])
 
     def test_agent_searches_in_its_own_words_and_the_session_remembers(self):
-        first = self.call("get_task_context", {"request": "What is our favourite colour?"})
+        first = self.call("gnomon_get_context", {"request": "What is our favourite colour?"})
         session = first["content"][0]["text"].split("session_id: ", 1)[1].split()[0]
-        found = self.call("search_notes", {"query": "how long web design projects take",
+        found = self.call("notes_search", {"query": "how long web design projects take",
                                            "session_id": session})
         self.assertFalse(found["isError"], found)
         text = found["content"][0]["text"]
         self.assertIn("facts-services-002", text)
-        self.assertIn("get_note", text)
-        opened = self.call("get_note", {"id": "facts-services-002", "session_id": session})
+        self.assertIn("notes_get", text)
+        opened = self.call("notes_get", {"id": "facts-services-002", "session_id": session})
         self.assertFalse(opened["isError"], opened)
-        again = self.call("search_notes", {"query": "how long web design projects take",
+        again = self.call("notes_search", {"query": "how long web design projects take",
                                            "session_id": session})
         self.assertIn("already in this conversation", again["content"][0]["text"])
-        packet = self.call("get_task_context", {"request": "How long do web design projects run?",
+        packet = self.call("gnomon_get_context", {"request": "How long do web design projects run?",
                                                 "session_id": session})
         self.assertIn("Already in this conversation", packet["content"][0]["text"])
 
     def test_a_search_says_when_nothing_is_a_close_match(self):
         # "clients" reaches two notes, both far below what a request would be handed
-        far = self.call("search_notes", {"query": "quantum pastry for clients next winter abroad"})
+        far = self.call("notes_search", {"query": "quantum pastry for clients next winter abroad"})
         text = far["content"][0]["text"]
         self.assertIn("No close match", text)
         self.assertIn("rules-delivery-001", text)  # the nearest are still listed
-        near = self.call("search_notes", {"query": "how long web design projects take"})
+        near = self.call("notes_search", {"query": "how long web design projects take"})
         self.assertNotIn("No close match", near["content"][0]["text"])
 
     def test_writes_and_refusals(self):
-        proposal = self.call("propose_note", {"layer": "facts", "topic": "services",
+        proposal = self.call("notes_propose", {"layer": "facts", "topic": "services",
                                               "scope": "company",
                                               "text": "Workshops are sold as half days."})
         self.assertFalse(proposal["isError"], proposal)
         self.assertIn("not live until approved", proposal["content"][0]["text"])
-        update = self.call("record_focus_update", {"focus": "website redesign",
+        update = self.call("projects_propose_progress", {"focus": "website redesign",
                                                    "summary": "Nav built",
                                                    "changes": {"next": "Footer"}})
         self.assertFalse(update["isError"], update)
-        missing = self.call("record_focus_update", {"focus": "nope", "summary": "x"})
+        missing = self.call("projects_propose_progress", {"focus": "nope", "summary": "x"})
         self.assertTrue(missing["isError"])
         forbidden = self.call("approve", {"id": "anything"})
         self.assertTrue(forbidden["isError"])
-        health = self.call("brain_health", {})
+        health = self.call("gnomon_health", {})
         self.assertIn("Brain health", health["content"][0]["text"])
         unknown = self.rpc("no/such/method")
         self.assertEqual(unknown["error"]["code"], -32601)

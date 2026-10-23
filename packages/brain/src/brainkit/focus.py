@@ -138,7 +138,7 @@ def create_focus(brain, name, summary, *, principal=None, status="active", scope
     name = str(name or "").strip()
     summary = str(summary or "").strip()
     if not name or not summary:
-        return _result("create_focus needs a name and a summary.", {"status": "invalid"}, True)
+        return _result("projects_create needs a name and a summary.", {"status": "invalid"}, True)
     objective = " ".join(str(objective or "").split())
     if statements.objective_problem(objective):
         return _result(f"Not started: {statements.objective_problem(objective)}.",
@@ -187,5 +187,5 @@ def create_focus(brain, name, summary, *, principal=None, status="active", scope
     return governance.propose_note(
         brain, area=area, topic=topic, text=summary, scope=scope or who, principal=who,
         note_id=note_id, title=name, summary=util.excerpt(summary, 110),
-        source=f"created by {who}", evidence="create_focus", kind="focus.create",
+        source=f"created by {who}", evidence="projects_create", kind="focus.create",
         extra=extra, session_id=session_id)

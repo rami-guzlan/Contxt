@@ -6,7 +6,7 @@ the last one writes anything live.
 
 ```
 notice    capture.py flags durable statements in a message      (never writes)
-propose   the agent calls propose_note / propose_skill / add_file (writes a proposal)
+propose   the agent calls notes_propose / skills_propose_change / files_upload (writes a proposal)
 stage     uploaded files wait in vault/.brain/staging/<id>/      (not in git)
 decide    policy applies own-scope notes and skills, the owner's
           files and what the preset lets in at once, each as an
@@ -20,14 +20,14 @@ and flags the ones that state something that will still matter later:
 
 | Kind | Example | Tool the agent is pointed to |
 |---|---|---|
-| rule | "From now on, always put the event date in the first line." | `propose_note` |
-| correction | "Actually, we call them sessions, not webinars." | `propose_note` |
-| preference | "I prefer bullet summaries over long paragraphs." | `propose_note` |
-| decision | "Lena decided every proposal needs a one-page summary." | `propose_note` |
-| memory | "Remember that Jordan is on leave until October 20." | `propose_note` |
-| fact | "Our new price for the half-day workshop is $4,500." | `propose_note` |
-| procedure | "Here's how we onboard a new freelance partner: ..." | `propose_skill` |
-| reference | "Attached is the pdf explaining the vision." | `add_file` |
+| rule | "From now on, always put the event date in the first line." | `notes_propose` |
+| correction | "Actually, we call them sessions, not webinars." | `notes_propose` |
+| preference | "I prefer bullet summaries over long paragraphs." | `notes_propose` |
+| decision | "Lena decided every proposal needs a one-page summary." | `notes_propose` |
+| memory | "Remember that Jordan is on leave until October 20." | `notes_propose` |
+| fact | "Our new price for the half-day workshop is $4,500." | `notes_propose` |
+| procedure | "Here's how we onboard a new freelance partner: ..." | `skills_propose_change` |
+| reference | "Attached is the pdf explaining the vision." | `files_upload` |
 
 It leaves alone questions, idioms ("never mind") and instructions tied to the draft at hand
 ("don't use bullet points in this post", "for now"). Detection only ever produces a nudge, so
@@ -36,7 +36,7 @@ flagged one, a genuine project progress statement.
 
 The nudge reaches the agent twice:
 
-- **In the packet.** `get_task_context` adds a `## Capture` section quoting the flagged
+- **In the packet.** `gnomon_get_context` adds a `## Capture` section quoting the flagged
   sentences and naming the tool for each (not for exact note or skill lookups, or Focus
   updates, which are captures already).
 - **On the raw message.** In Claude Code, the `UserPromptSubmit` hook
@@ -52,11 +52,11 @@ being asked; one-off instructions need no capture.
 
 | Tool | What it proposes |
 |---|---|
-| `propose_note` | a rule, fact, preference or decision, with the person's words in `evidence` |
-| `propose_skill` | a new procedure, or a change to one: SKILL.md fields, body and files |
-| `add_file` | a document (filed as a reference, as Markdown that keeps its headings, slides and pages) or an asset (kept byte for byte), from a path or base64 content, with its card: what it covers, its sections, and which copy it is (`version`, `status`, `dated`). With `project`, it is filed in that project (`project_id` on its card), and a file named like one already there ("v3", "final" and dates set aside) is its new version: written over the old text in place, its card brought up to date, the earlier text kept in git. `replaces` names the file to replace directly. With `kind: prompt`, the person's own prompt is kept word for word in their own scope (`references/prompts/`), found by name and never routed unless a request names it; each file that came with it is filed with `attach_to` naming the prompt's path. The capture policy decides whether it is filed at once (an undo point) or waits |
-| `create_focus` | a project: its name, one line on what it is for, and `aliases` (the names the person calls it), so requests that use one bring its state and files |
-| `record_focus_update` | project progress: append-only, never a note |
+| `notes_propose` | a rule, fact, preference or decision, with the person's words in `evidence` |
+| `skills_propose_change` | a new procedure, or a change to one: SKILL.md fields, body and files |
+| `files_upload` | a document (filed as a reference, as Markdown that keeps its headings, slides and pages) or an asset (kept byte for byte), from a path or base64 content, with its card: what it covers, its sections, and which copy it is (`version`, `status`, `dated`). With `project`, it is filed in that project (`project_id` on its card), and a file named like one already there ("v3", "final" and dates set aside) is its new version: written over the old text in place, its card brought up to date, the earlier text kept in git. `replaces` names the file to replace directly. With `kind: prompt`, the person's own prompt is kept word for word in their own scope (`references/prompts/`), found by name and never routed unless a request names it; each file that came with it is filed with `attach_to` naming the prompt's path. The capture policy decides whether it is filed at once (an undo point) or waits |
+| `projects_create` | a project: its name, one line on what it is for, and `aliases` (the names the person calls it), so requests that use one bring its state and files |
+| `projects_propose_progress` | project progress: append-only, never a note |
 
 Each call carries the conversation's `session_id`, so every proposal and decision records
 where it came from.
@@ -114,7 +114,7 @@ fields) or the CLI (`brain inbox`). See [Governance](GOVERNANCE.md).
   inputs stored on the run. A quote that is not there marks the statement inferred, and it
   waits, with a card line saying so.
 - **The circular-evidence rule**: a statement that only repeats a note from the brief an output
-  was made from cannot be promoted from that output. In a chat, `record_output` links the file
+  was made from cannot be promoted from that output. In a chat, `outputs_save` links the file
   to its conversation (cite it as `output:<path>` in `source`); a file the app's AI work made
   links to its run; the ledger keeps what either was handed.
 
@@ -167,7 +167,7 @@ Files that arrive outside a conversation are picked up by `sync`:
 ```
 
 Paths are relative to the repository root. Every file in a drop folder goes through
-`add_file` with origin `folder` (filed at once by default, see the capture policy in
+`files_upload` with origin `folder` (filed at once by default, see the capture policy in
 [Governance](GOVERNANCE.md)); every skill folder (one with a `SKILL.md`) becomes a `skill.create` or
 `skill.update` proposal when its contents change. Sync never moves or deletes anything: it
 remembers content hashes in `vault/.brain/sync.json`, so a file is proposed once, and a

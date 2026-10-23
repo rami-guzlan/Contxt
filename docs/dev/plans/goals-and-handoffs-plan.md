@@ -20,7 +20,7 @@ here fits into that order, so one builder can carry all three plans. Gnomon is t
 the code says Contxt.
 
 **Decisions: all 16 are set (section 12).** 1 to 10 were approved on October 9 (prompt 144) as
-recommended, except 9, which became the `hand_off` tool. Rami's notes (prompt 145) moved his
+recommended, except 9, which became the `todos_update` tool. Rami's notes (prompt 145) moved his
 goals to their own pages, revising 8 and adding 11 to 14. His follow-up (prompt 149) made goals
 optional and gave every project an objective that agents carry into their tasks, adding 15 and
 16. Decisions 11 to 16 were approved as recommended (prompt 150). The plan is ready for the
@@ -42,7 +42,7 @@ There are four levels:
 short summary of the output it is chasing, and every agent working a task in the project gets
 it first.
 
-It all rides on tiers the Brain already has. One new tool, `hand_off`, lets every agent save its
+It all rides on tiers the Brain already has. One new tool, `todos_update`, lets every agent save its
 progress and pass work on.
 
 | Piece | What it is | Where you see it | Phase |
@@ -54,7 +54,7 @@ progress and pass work on.
 | Goal coach | Setting a goal by talking it through: what you want, how you'll know, what gets in the way, the plan | "Set a goal" anywhere goals appear; any AI chat | G1 |
 | Check-ins and goal journals | Your quick fill-ins and agents' progress notes, in one feed per goal; agent goals speak up only when they slip | Goal pages, Home, Catch up | G1 |
 | Tasks | One piece of work, one owner at a time, a row in a built-in Tasks sheet whose log records who did what and when | Goal and project pages; Activity > Tasks and handoffs | G2 |
-| Handoffs and the `hand_off` tool | Cards with fixed fields that travel to the next owner on any tool; one call to take a task, save progress, pass it on or finish it | The hand-off composer; Catch up; every AI's first brief | G2 |
+| Handoffs and the `todos_update` tool | Cards with fixed fields that travel to the next owner on any tool; one call to take a task, save progress, pass it on or finish it | The hand-off composer; Catch up; every AI's first brief | G2 |
 | Projects, semi-reflected | Project pages gain the same check-in, updates feed, AI rail and an optional board, kept execution-first | Each project's page | G1, G2 |
 | Project objectives | A sentence or two on the output a project is chasing, at the top of every task brief in the project | Each project's page; every agent's task brief | G0 (field and briefs), G1 (page) |
 | Workflows and teams | "Open a task" and "Hand off" steps; teammates as owners; admins for shared goals | Workflows canvas; team edition | G3 |
@@ -87,7 +87,7 @@ progress and pass work on.
 9. **Code measures, a model suggests, you decide.** Computed measures come from code, never from
    a model. Changes to the Brain still pass their gates.
 10. **Done means evidence; one owner at a time; agents write their progress down.** A task closes
-   with an output or a decided proposal. Ownership changes only through `hand_off`, with a card.
+   with an output or a decided proposal. Ownership changes only through `todos_update`, with a card.
    Before an agent stops, gets blocked or passes work on, it saves what it knows.
 11. **Team-ready, solo now.** Owners, scopes and admins are in the model from the start; the solo
     app shows "You" and your agents.
@@ -105,7 +105,7 @@ progress and pass work on.
 | Ends? | Never | When you call it met or drop it; dated goals are met or missed | No; paused or retired | Done or dropped | Done or dropped |
 | Progress | Two or three signals you pick from "how will you know it's working" | Your check-in, with an optional computed measure beside it | A measure the engine computes, against a target | Milestones (tasks marked as milestones) and the journal | Its evidence |
 | AI's part | Steers what is worth keeping | Suggests next steps; works on tasks you accept or assign | Opens a task when its measure slips | Works its tasks, with the project's objective in every brief; saves, hands off | Its owner's next brief |
-| Changing it | Your own act, with a reason and an undo point | Your own act, with an undo point | You approve; an agent may only propose | Like any project baseline: a reason and an undo point | Logged; owner changes only through `hand_off` |
+| Changing it | Your own act, with a reason and an undo point | Your own act, with an undo point | You approve; an agent may only propose | Like any project baseline: a reason and an undo point | Logged; owner changes only through `todos_update` |
 | Never | Filters what a request receives | Filters what a request receives; changed by an agent | Filters what a request receives | Holds goals of its own | Changes owner without a card |
 | Lives in | Alignment (the `you-goals` note, as today) | Alignment (goal notes) plus its page (board, check-ins) | Alignment (goal notes) | The project's baseline and journal | State (the Tasks sheet) |
 
@@ -188,7 +188,7 @@ value shows at once ("Right now: 64").
 | Drafts sent back by the output check | BL5 output checks | Step 7 |
 | A column of any sheet: latest value, sum, count, average, by status | State summary rows (BL 8.2), including sheets made on the goal's page | Step 6 |
 | State rows past their age limit; rows updated within N days | State cell logs (BL4) | Step 6 |
-| Tasks done with evidence, handoffs claimed within a day, sessions resumed from a saved card | The Tasks sheet and `hand_off`'s log | G2 |
+| Tasks done with evidence, handoffs claimed within a day, sessions resumed from a saved card | The Tasks sheet and `todos_update`'s log | G2 |
 
 ### 4.3 Status
 
@@ -227,7 +227,7 @@ Each of your goals and each agent goal has an append-only journal, like a projec
 (`journal/goals/<goal id>.jsonl`). It holds:
 
 - your check-ins;
-- agents' progress notes, written through `hand_off`;
+- agents' progress notes, written through `todos_update`;
 - decisions recorded on the goal.
 
 The goal page's updates feed reads it, with the task events of the goal's tasks interleaved. A
@@ -248,12 +248,12 @@ who did what is the log itself.
 | Goal | The goal it serves: one of yours, or an agent goal (optional) | Ask me first |
 | Project, For | The project; the row it is for (an account, a repo) | AIs may change |
 | Milestone | Yes or no; counts toward the project's done-when | Ask me first |
-| Owner | A person, an agent, or a tool queue (5.2) | Only through `hand_off`, with a card |
+| Owner | A person, an agent, or a tool queue (5.2) | Only through `todos_update`, with a card |
 | Tool | Where it is being worked: Claude Code, Codex, Cursor, Claude app, ChatGPT, Gnomon run | AIs may change |
-| Status | 5.3 | Only through `hand_off`; Done needs evidence |
+| Status | 5.3 | Only through `todos_update`; Done needs evidence |
 | Due | Date | Ask me first |
-| Evidence | Links to outputs and decided proposals | Through `hand_off` |
-| Card | The latest card: progress saved, or work passed on | Written by `hand_off` |
+| Evidence | Links to outputs and decided proposals | Through `todos_update` |
+| Card | The latest card: progress saved, or work passed on | Written by `todos_update` |
 | Days open, Since update | Computed from the date and the cell log | Nobody: computed |
 
 Views: a board grouped by Status, a list grouped by goal or project, a calendar by Due. A summary
@@ -301,7 +301,7 @@ purposes: a save (progress kept for whoever comes next, the same agent included)
 | Lineage | Outputs from one brief count once as evidence | Code |
 
 At most about 250 tokens rendered, because it is pointers, not bodies. An AI writes and passes
-the card with `hand_off` (5.8); `update_state` refuses the Owner, Status, Evidence and Card
+the card with `todos_update` (5.8); `sheets_propose_update` refuses the Owner, Status, Evidence and Card
 columns, so there is one way to move a task. When the agent fills a field itself, code keeps its
 words and adds only what it can verify.
 
@@ -316,7 +316,7 @@ words and adds only what it can verify.
   agent.
 - **Agents, for your goals**: never on their own. They suggest next steps on the goal's page, and
   a suggestion becomes a task when you accept it.
-- **Any AI, when you ask**: "make this a task" in a chat creates one with `hand_off`, owned by you
+- **Any AI, when you ask**: "make this a task" in a chat creates one with `todos_update`, owned by you
   or by the tool queue you name.
 - **Workflows** (G3): an "Open a task" step.
 
@@ -324,8 +324,8 @@ words and adds only what it can verify.
 
 | Receiver | Learns from | Claims by | Starts with |
 | --- | --- | --- | --- |
-| An agent | Gnomon schedules a run within the agent's schedule ("Run now" to hurry) | Its run, at start, with `hand_off` (claim) | The card as its call to action, under its kernel |
-| Claude Code (a repo or project) | The session-start hook lists pending handoffs for this repo or project, one line each | You say "pick it up"; the session claims with `hand_off` | `get_task_context` with `context` set to the task: the card |
+| An agent | Gnomon schedules a run within the agent's schedule ("Run now" to hurry) | Its run, at start, with `todos_update` (claim) | The card as its call to action, under its kernel |
+| Claude Code (a repo or project) | The session-start hook lists pending handoffs for this repo or project, one line each | You say "pick it up"; the session claims with `todos_update` | `gnomon_get_context` with `context` set to the task: the card |
 | Codex, Cursor | The first brief lists pending handoffs for this tool | Same, over MCP | Same |
 | Claude app, ChatGPT | The first brief lists pending handoffs | Same | Same |
 | You | Catch up ("Handed to you"), Home and the goal or project page | "Start" in the app, or "pick up T-44" in any AI chat | The card, in the app or the chat |
@@ -342,14 +342,14 @@ sessions try to claim, the first wins; the second sees who has it.
   under one of your goals adds an event to the goal's updates feed. Neither needs approval.
 - Each run that worked on the task keeps its transcript as an episode (BL 9).
 
-### 5.8 The `hand_off` tool
+### 5.8 The `todos_update` tool
 
 This is decision 9, as amended on October 9. One call covers everything an agent does to a
 task's ownership and progress, and to its goal's progress notes. Agents offload what they know to
 the Brain instead of holding it in a context window, and anyone can see who did what.
 
 ```
-hand_off(
+todos_update(
   task           "T-41"; or new_task to open one
   new_task       { title, goal, project, for, due }                        optional
   goal           a goal id, for a goal progress note with no task          optional
@@ -390,7 +390,7 @@ Rules the tool enforces:
 - Text is masked for secrets (BL 9's patterns) and stored as the agent's account, with who said
   it (an agent run, or a session acting for you). It is never evidence for notes (the
   circular-evidence rule) and never an instruction.
-- Durable facts and decisions still go through `propose_note`. When a save holds one, the reply
+- Durable facts and decisions still go through `notes_propose`. When a save holds one, the reply
   says so, the way the capture hook nudges.
 - The rendered card stays at about 250 tokens; longer text stays in the task's log, and the card
   points to it.
@@ -414,7 +414,7 @@ Reminders, so it does not depend on the model remembering:
 
 What it is not:
 
-- not a notes tool: knowledge goes through `propose_note`;
+- not a notes tool: knowledge goes through `notes_propose`;
 - not a way to change a goal: goals change by amendment, or by your own edit for your own goals;
 - not a free-form log: every save has the card's shape.
 
@@ -776,7 +776,7 @@ Hand off T-41
 
 It opens from a task's drawer, a goal's "AI on this" rail, a run's review ("Hand off the rest"),
 or any AI chat, where the AI drafts the card, you confirm it, and the AI sends it with
-`hand_off`. The composer calls the same engine function as the tool.
+`todos_update`. The composer calls the same engine function as the tool.
 
 ### 6.14 In any AI chat
 
@@ -784,9 +784,9 @@ or any AI chat, where the AI drafts the card, you confirm it, and the AI sends i
 | --- | --- |
 | "What's on my plate?" | Lists tasks owned by you and your tool queues, waiting-for-you first |
 | "Check in on the webinar goal: 71, on track" | Records your check-in on that goal |
-| "Pick up T-44" | Loads the card and claims the task with `hand_off` |
-| "Save where we are on T-44" | Saves a progress card with `hand_off`, so the next session or another agent starts from it |
-| "Hand this to the Accounts agent" | Drafts a card from the conversation; it goes out with `hand_off` when you say yes |
+| "Pick up T-44" | Loads the card and claims the task with `todos_update` |
+| "Save where we are on T-44" | Saves a progress card with `todos_update`, so the next session or another agent starts from it |
+| "Hand this to the Accounts agent" | Drafts a card from the conversation; it goes out with `todos_update` when you say yes |
 | "What happened with the stale notes?" | Answers from the task's log and the goal's journal |
 | "Set a goal: ..." | Proposes it. One of your goals is set when you confirm in the app or the chat. An agent goal waits in Catch up, because alignment never applies from a chat on its own. |
 
@@ -834,7 +834,7 @@ or any AI chat, where the AI drafts the card, you confirm it, and the AI sends i
 - **The objective in briefs.** When a request's working context is a project, or a task belongs
   to one, the brief's call to action (BL 5.5) opens with the project's objective (about 60 tokens
   at most), then the goal's line if there is one. Cards fill their first field from the same
-  place, and `get_task_context` with a project as `context` returns the objective first.
+  place, and `gnomon_get_context` with a project as `context` returns the objective first.
 - **Goals off until used.** Every goal surface checks whether the Brain has any goals of yours.
   With none, the app shows the projects-only layout, and briefs and cards never mention goals.
 - **The goal page** reads:
@@ -855,7 +855,7 @@ or any AI chat, where the AI drafts the card, you confirm it, and the AI sends i
   (source: you). Computed checks write points with source: code. The goal page shows both, and
   the flag rule in 4.3.
 - **Suggestions** for your goals are stored like the knowledge agent's suggestions (dismissed
-  ones remembered). Accepting one calls `hand_off` with `new_task` on your behalf. The knowledge
+  ones remembered). Accepting one calls `todos_update` with `new_task` on your behalf. The knowledge
   agent's alignment check gathers three new kinds of candidate: your goals with no recent
   check-in, no projects, or an obstacle with no plan.
 - **Agents.** AGENT.md's "Goals it serves" becomes links to goal ids, the purpose or your goals.
@@ -870,11 +870,11 @@ or any AI chat, where the AI drafts the card, you confirm it, and the AI sends i
   kept for good. A check only queues a Catch up card under the rules in 4.4.
 - **Goal journals**: `journal/goals/<goal id>.jsonl`, append-only, in the same pattern as project
   journals (`brainkit/focus.py`). They are written by your check-ins, the Decisions block and
-  `hand_off`'s `goal_note`. No approval is needed, and they are never read as evidence for notes.
+  `todos_update`'s `goal_note`. No approval is needed, and they are never read as evidence for notes.
 - **The Tasks sheet**: a built-in State sheet type (BL 8.2 templates), with the columns in 5.1.
-  Owner, Status, Evidence and Card are written only by `hand_off`. Milestone, Goal and Due ask you
-  first; the rest take `update_state`. Ids are short and human (T-41).
-- **The `hand_off` tool** (5.8): one engine function, for example `brainkit/handoff.py`, over the
+  Owner, Status, Evidence and Card are written only by `todos_update`. Milestone, Goal and Due ask you
+  first; the rest take `sheets_propose_update`. Ids are short and human (T-41).
+- **The `todos_update` tool** (5.8): one engine function, for example `brainkit/handoff.py`, over the
   State API and the goal journals.
   - It is registered on the Brain's MCP server and on the app's MCP that runs use.
   - It backs the app's composer and `/api/work/handoffs`, so every path is validated once.
@@ -883,18 +883,18 @@ or any AI chat, where the AI drafts the card, you confirm it, and the AI sends i
   - Saves and passes are cell events with who said it: the agent run, or the session and the
     person it acts for.
 - **Working contexts**: each task, and each of your goals, is a working context (BL 8.3).
-  `get_task_context` with `context` set to a task returns the latest card as the brief's call to
+  `gnomon_get_context` with `context` set to a task returns the latest card as the brief's call to
   action (BL 5.5). With a goal as `context`, it returns the goal, its why and its plan file as
   pointers. Pointers are resolved and the must-holds in play are added. After a compaction, that
   card is what the brief resends (BL 4.2: deltas only).
 - **Pending handoffs**: a first brief, and Claude Code's session-start hook, list them for that
   tool, project or repo, one line each.
-- **Reminders**: the run finishing gate checks for a `hand_off` when a run worked a task; Claude
+- **Reminders**: the run finishing gate checks for a `todos_update` when a run worked a task; Claude
   Code's Stop hook asks for a save when a task is active; first briefs remind in one line.
-- **MCP**: one new tool, `hand_off`, joins the core in BL 5.7 (`get_task_context`,
-  `search_notes`, `get_note`, `propose_note`, `update_state`). `get_task_context` returns a task's
-  card or a goal's context. `propose_note` with kind `goal` handles agent goals proposed from a
-  chat. Check-ins from a chat go through `hand_off` with `goal` and `goal_note`, marked as yours
+- **MCP**: one new tool, `todos_update`, joins the core in BL 5.7 (`gnomon_get_context`,
+  `notes_search`, `notes_get`, `notes_propose`, `sheets_propose_update`). `gnomon_get_context` returns a task's
+  card or a goal's context. `notes_propose` with kind `goal` handles agent goals proposed from a
+  chat. Check-ins from a chat go through `todos_update` with `goal` and `goal_note`, marked as yours
   when the session acts for you. The server instructions gain one sentence.
 - **App API**:
   - `/api/brain/goals`: the ladder.
@@ -925,7 +925,7 @@ or any AI chat, where the AI drafts the card, you confirm it, and the AI sends i
   - Ask AI uses the knowledge agent's side panel.
 
   No new heavy library is needed.
-- **System notes**: a new `system-goals.md`, and updates to `system-mcp.md` (the `hand_off` tool)
+- **System notes**: a new `system-goals.md`, and updates to `system-mcp.md` (the `todos_update` tool)
   and `system-agent.md`.
 - **Token budget**:
 
@@ -938,7 +938,7 @@ or any AI chat, where the AI drafts the card, you confirm it, and the AI sends i
   | A pending handoff line | About 20 tokens |
   | A project's objective in a brief | About 60 tokens at most |
   | An agent's goals in its kernel | About 60 tokens |
-  | `hand_off`'s description | About 80 tokens where a client loads tool definitions (Claude Code defers them until used) |
+  | `todos_update`'s description | About 80 tokens where a client loads tool definitions (Claude Code defers them until used) |
 
 ## 8. Muse: what we take, and what we change
 
@@ -964,7 +964,7 @@ The build chat follows UX section 6 and was on step 3 when this was written. Ins
 | --- | --- |
 | Step 4: BL2 one statement model, UX C skills | **G0**: the `goal` kind with levels purpose, yours and agent; the project `objective` field at the top of task briefs (if step 3 frames the call to action first, it uses the project's summary until the field lands); "run" instead of "task" in model-facing text |
 | After step 5 (BL3), before step 6 | **G1**: Goals and Projects, with the projects-only layout and the new-project form (objective first); goal pages (header, check-in, board with notes, checklists, docs, projects, links and decisions; templates; shared plan files; suggestions; Ask AI; updates feed from journals); Settings > Alignment; agent goals with measures and checks; the goal coach; Home strip and weekly review; projects linked to goals; the knowledge agent's goals and its new gathers |
-| Step 6: BL4 State, UX D, UX E | **G2**: the board's sheet block and sheet-driven progress; the Tasks sheet; the `hand_off` tool and its reminders; cards and claims; delivery to each tool; "AI on this" rails; Activity > Tasks and handoffs; project pages semi-reflected (tasks, AI on this, updates, optional board); Catch up cards; State-based signals |
+| Step 6: BL4 State, UX D, UX E | **G2**: the board's sheet block and sheet-driven progress; the Tasks sheet; the `todos_update` tool and its reminders; cards and claims; delivery to each tool; "AI on this" rails; Activity > Tasks and handoffs; project pages semi-reflected (tasks, AI on this, updates, optional board); Catch up cards; State-based signals |
 | Step 7: BL5, UX F workflows | **G3**: "Open a task" and "Hand off" workflow steps, verification as tasks, correction signals, team scaffolding |
 | Step 8: BL6 proof, UX G walkthrough | **G4**: the evals in section 11, then the walkthrough with a goal of yours, the T-41 story and the interviewees |
 
@@ -977,7 +977,7 @@ steps as its section 9 says; tick them in `build-progress.md`."
 | --- | --- | --- |
 | G0 | The `goal` kind and its fields; the project `objective` field and its place at the top of task briefs; "run" in model-facing text | Every existing note reads as before; `brain check` passes; every task brief in a project with an objective opens with it |
 | G1 | Goals and Projects with the projects-only layout and the new-project form; goal notes and migration (`you-goals` as the purpose, agents' goal lines); goal pages with the check-in, updates feed, board (notes, checklists, docs, projects, links, decisions), templates, the "AIs can read" switch and plan files, suggestions and Ask AI; project links to goals; `measures.py` with today's signals; `goal_checks`; goal journals; Settings > Alignment; agent goal drawers; the goal coach and the form; Home strip and weekly review; the knowledge agent's four goals, its new gathers and "why I'm doing this" | You set a goal with the coach, see its draft page, check in, and see a suggestion turn into an accepted step, in under three minutes on the demo Brain. A check-in takes under 20 seconds. Only shared blocks ever reach a brief. A seeded agent goal slip makes exactly one card. No goal ever changes a brief's notes |
-| G2 | The sheet block and sheet-driven progress; the Tasks sheet and its validation; owners and tool queues; the `hand_off` tool (take, save, pass, finish, goal notes) with its reminders; cards with the agent's words plus what code verifies; claims, reminders and take-backs; pending handoffs in first briefs and the session-start hook; agents' runs from handoffs; "AI on this" rails; Activity > Tasks and handoffs; project pages semi-reflected; Done with evidence; journal lines; milestones | On the demo Brain, a goal of yours gets a checklist item turned into a task for the Accounts agent, whose saves appear in the goal's feed. The T-41 story runs end to end: the knowledge agent, you in the app, a Claude Code session, and the Claude app answering "what happened?" from the log. A session that saved progress is resumed by a fresh session that redoes nothing |
+| G2 | The sheet block and sheet-driven progress; the Tasks sheet and its validation; owners and tool queues; the `todos_update` tool (take, save, pass, finish, goal notes) with its reminders; cards with the agent's words plus what code verifies; claims, reminders and take-backs; pending handoffs in first briefs and the session-start hook; agents' runs from handoffs; "AI on this" rails; Activity > Tasks and handoffs; project pages semi-reflected; Done with evidence; journal lines; milestones | On the demo Brain, a goal of yours gets a checklist item turned into a task for the Accounts agent, whose saves appear in the goal's feed. The T-41 story runs end to end: the knowledge agent, you in the app, a Claude Code session, and the Claude app answering "what happened?" from the log. A session that saved progress is resumed by a fresh session that redoes nothing |
 | G3 | Workflow steps "Open a task" and "Hand off"; verification with sources as tasks; correction and output-check signals; teammates as owners and admins for shared goals (scaffold) | A workflow opens, works and hands off a task; the solo app shows nothing of teams |
 | G4 | Evals (section 11); the walkthrough; the goal coach and a goal page tried by the two interviewees | Rami signs off |
 
@@ -1013,7 +1013,7 @@ full checks, a pull request, no auto-merge, and a look on the demo Brain.
   - it keeps every listed decision.
 
   The card stays at about 250 tokens or less.
-- **`hand_off` in use**:
+- **`todos_update` in use**:
   - On seeded long tasks, agents save at the moments in 5.8: when blocked, before stopping, when
     passing on, and when finished, at 90% or more.
   - A fresh session resumed from a saved card alone continues correctly, compared with no saves.
@@ -1022,7 +1022,7 @@ full checks, a pull request, no auto-merge, and a look on the demo Brain.
   - Duplicate saves do nothing.
 - **Integrity**:
   - every Done task has evidence (100%);
-  - no owner changes outside `hand_off` (100%);
+  - no owner changes outside `todos_update` (100%);
   - the timeline and the feeds match the logs (100%);
   - when two claims race, one wins (100%);
   - no task, sheet or board leaks across partitions;
@@ -1053,8 +1053,8 @@ added 15 and 16. Decisions 11 to 16 were approved as recommended (prompt 150).
 8. **Projects and goals**: revised by the notes. Projects keep their own done-when, due date and
    milestones (tasks marked Milestone) and link to the goals they serve. Goals are yours or an
    agent's, not a project's.
-9. **A `hand_off` tool**: agents take, save progress on, pass on and finish tasks, and add goal
-   progress notes, in one validated call (5.8). `update_state` no longer writes the Tasks sheet's
+9. **A `todos_update` tool**: agents take, save progress on, pass on and finish tasks, and add goal
+   progress notes, in one validated call (5.8). `sheets_propose_update` no longer writes the Tasks sheet's
    Owner, Status, Evidence or Card. Approved as amended.
 10. **The purpose in every kernel**: no. Goals reach briefs only as a task's reason or a goal's
     shared plan, and agents' kernels carry their own goals. Approved.

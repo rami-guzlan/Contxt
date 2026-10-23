@@ -4,9 +4,9 @@ Two MCP servers, for two jobs:
 
 - **The Brain's own server** (`python -m brainkit --vault <vault> mcp`, the `packages/brain`
   engine; `uv run contxt connect` prints the setup for each AI app): what your AI apps use in
-  every chat. It hands each request its context (`get_task_context`), opens entries,
-  files and procedures, and saves what the conversation learns (`propose_note`, `add_file`,
-  `create_focus`, `record_focus_update`); `record_output` says what a file it saved for you was
+  every chat. It hands each request its context (`gnomon_get_context`), opens entries,
+  files and procedures, and saves what the conversation learns (`notes_propose`, `files_upload`,
+  `projects_create`, `projects_propose_progress`); `outputs_save` says what a file it saved for you was
   made from, so the app's Outputs page can show it. Every Claude Desktop or Claude Code window starts one;
   they all read and write the same Brain. See [the Brain's architecture](brain/ARCHITECTURE.md).
 - **The app's endpoint** (`POST /mcp` on the server): how a model does the AI work the app

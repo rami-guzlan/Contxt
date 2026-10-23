@@ -89,7 +89,7 @@ def build(
     # passed the task on or finished it (goals plan 5.8).
     handoff = str(((task.provenance or {}).get("skill") or {}).get("handoff") or "")
     save = (
-        f"Before you stop, save progress on {handoff} with hand_off, pass it on, or finish it."
+        f"Before you stop, save progress on {handoff} with todos_update, pass it on, or finish it."
         if handoff
         else ""
     )
@@ -108,7 +108,7 @@ def build(
         "checks": checks,
         "finish": [
             {"check": FINISH_CHECK, "any": ["complete_task", "append_task_event"]},
-            *([{"check": save, "any": ["hand_off"]}] if save else []),
+            *([{"check": save, "any": ["todos_update", "hand_off"]}] if save else []),
         ],
         "must_holds": must_holds(ws, task),
         "scope": {"folder": folder, "tools": list(tools)},

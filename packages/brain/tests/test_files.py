@@ -380,7 +380,7 @@ class RoutingTests(ProjectFilesBase):
         self.assertNotIn("Local Eats", res.text)
         self.assertIn("version 2", res.text)
         self.assertIn("sent", res.text)
-        self.assertIn(f'get_reference(path="{self.path}")', res.text)
+        self.assertIn(f'files_open(path="{self.path}")', res.text)
         self.assertEqual(res.data["section_ids"], [f"{self.path}#2"])
         self.assertNotIn(self.card().id, res.data["note_ids"])  # quoted instead of its card
 
@@ -513,7 +513,7 @@ class RoutingTests(ProjectFilesBase):
         self.assertEqual(res.data["files"][0]["id"], f"{self.path}#3")
         self.assertIn("In the brain's files:", res.text)
         self.assertIn("Podcast sponsorship", res.text)
-        self.assertIn("get_reference", res.text)
+        self.assertIn("files_open", res.text)
 
 
 class PolicyTests(unittest.TestCase):

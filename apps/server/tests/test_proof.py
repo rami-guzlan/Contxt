@@ -82,13 +82,13 @@ def test_the_answer_with_the_brain_gets_the_procedure_and_no_tool_to_call(
     assert "Nothing goes to a client before Alex approves it." in with_brain  # startup context
     assert "Write the voice lines in plain language." in with_brain  # the skill's own steps
     for call in (
-        "get_task_context",
-        "get_skill",
-        "get_note",
-        "get_reference",
-        "search_notes",
-        "propose_note",
-        "record_output",
+        "gnomon_get_context",
+        "skills_get",
+        "notes_get",
+        "files_open",
+        "notes_search",
+        "notes_propose",
+        "outputs_save",
         "fallback",
     ):
         assert call not in with_brain, call

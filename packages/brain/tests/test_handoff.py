@@ -1,4 +1,4 @@
-"""Tasks and handoffs (goals plan 5, G2): the Tasks sheet, `hand_off`'s four moves and its
+"""Tasks and handoffs (goals plan 5, G2): the Tasks sheet, `todos_update`'s four moves and its
 rules, the card, pending handoffs in a first brief, and the T-41 story end to end with a
 stand-in agent: a goal slips, its agent opens a task, saves, hands it to Claude Code, and a
 fresh session picks up from the card and redoes nothing."""
@@ -67,7 +67,7 @@ class HandoffTest(unittest.TestCase):
         self.brain.hand_off(new_task={"title": "Tidy the pricing skill"})
         done = self.brain.update_state([{"sheet": "tasks", "row": "T-1", "column": "Status",
                                          "value": "done"}])
-        self.assertIn("changes only through hand_off", done.text)
+        self.assertIn("changes only through todos_update", done.text)
         self.assertEqual(handoff.task(self.brain, "T-1")["status"], "open")
 
     def test_finishing_needs_evidence_and_blocking_needs_a_reason(self):
@@ -183,7 +183,7 @@ class StopHookTest(unittest.TestCase):
         session = "cc:abc123"
         self.brain.context("pick up T-1", context="T-1", session_id=session)
         line = task_stop.reminder(self.brain, session)
-        self.assertIn("save where you are on T-1 with hand_off", line)
+        self.assertIn("save where you are on T-1 with todos_update", line)
         self.brain.hand_off(task="T-1", next_step="Check the source", session_id=session)
         self.assertIsNone(task_stop.reminder(self.brain, session))
         self.assertIsNone(task_stop.reminder(self.brain, "cc:none"))

@@ -321,18 +321,18 @@ def assemble(brain, agent: dict, resolved: dict) -> str:
     pointers = []
     live_skills = [s for s in resolved["skills"] if not s["missing"]]
     if live_skills:
-        pointers.append("Skills to follow (open each in full with get_skill before you use "
+        pointers.append("Skills to follow (open each in full with skills_get before you use "
                         "it): " + "; ".join(
                             f"/{s['name']}" + (f" ({s['description']})" if s["description"]
                                                else "") for s in live_skills) + ".")
     live_docs = [d for d in resolved["library"] if not d["missing"]]
     if live_docs:
-        pointers.append("Library documents to read whole (get_reference): " + "; ".join(
+        pointers.append("Library documents to read whole (files_open): " + "; ".join(
             f"{d['title']} ({d['path']})" for d in live_docs) + ".")
     live_context = [c["key"] for c in resolved["context"] if not c["missing"]]
     if live_context:
         pointers.append("Your context in the Brain: " + ", ".join(live_context) + ". The "
-                        "brief for each task brings what fits from there; search_notes "
+                        "brief for each task brings what fits from there; notes_search "
                         "finds more.")
     for project in resolved["projects"]:
         if project["missing"]:

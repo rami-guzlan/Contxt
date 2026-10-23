@@ -1,8 +1,8 @@
 """The knowledge agent's tools (brain-logic plan 17.4 and 17.6): all local, typed and checked by
-code. To look: the map, search_notes, get_note, get_state, changes_since, history, impact,
+code. To look: the map, notes_search, notes_get, sheets_get, changes_since, history, impact,
 past_suggestions, and the Library, skills, agents, workflows, projects and goals read only. To
 suggest: a note to add, edit, merge, narrow or retire; a State update; a challenge or a "Still
-true?" card; a task (`hand_off`); a goal progress note. A suggestion tool writes nothing: it
+true?" card; a task (`todos_update`); a goal progress note. A suggestion tool writes nothing: it
 returns the suggestion, which code turns into a proposal or a card that waits for the person.
 
 THE CHANGE DIGEST (`changes_since`): what changed since a moment, by area, from undo points,
@@ -201,9 +201,9 @@ def _suggest(kind: str):
 
 
 TOOLS: dict[str, Tool] = {t.name: t for t in (
-    Tool("get_note", "look", "Open one note by id.", {"id": "str"}, _note, ids=("id",)),
-    Tool("search_notes", "look", "Find notes by meaning.", {"query": "str"}, _search),
-    Tool("get_state", "look", "Read a State sheet or a row.", {"sheet": "str?", "row": "str?"},
+    Tool("notes_get", "look", "Open one note by id.", {"id": "str"}, _note, ids=("id",)),
+    Tool("notes_search", "look", "Find notes by meaning.", {"query": "str"}, _search),
+    Tool("sheets_get", "look", "Read a State sheet or a row.", {"sheet": "str?", "row": "str?"},
          _state),
     Tool("changes_since", "look", "What changed lately, by area.", {"since": "str?"},
          lambda b, a: changes_since(b, a.get("since") or "")["line"]),

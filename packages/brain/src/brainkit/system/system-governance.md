@@ -3,7 +3,7 @@ id: system-governance
 title: Governance, proposals and approvals
 keywords: governance proposal approve reject inbox review policy auto apply decisions write boundaries version history restore rollback undo owner baseline reason disagree challenge dispute cross-check
 ---
-Knowledge changes enter as proposals (`propose_note`, `create_focus`, `python brain.py
+Knowledge changes enter as proposals (`notes_propose`, `projects_create`, `python brain.py
 remember`). Policy in `brain.json` decides what happens: a change inside the proposer's own
 person scope applies immediately (logged), and shared knowledge (company and team identity,
 rules, facts, skills) waits in `vault/inbox/` for the approver. Review with `python brain.py
@@ -13,7 +13,7 @@ must-hold, a standing note, a note the owner confirmed or AIs use a lot): the re
 waits, and why. Revising or retiring a baseline takes a reason of a few words, kept in the
 journal (`baseline_revised`); with `revision_delay` on, a revision of a rule or a must-hold
 goes in a day later unless the owner cancels it.
-A note can be challenged (`challenge_note`: the note, the claim, the evidence, its source).
+A note can be challenged (`notes_challenge`: the note, the claim, the evidence, its source).
 The challenge waits for the owner; accepted, the note is disputed and keeps the challenge as
 its other view, which planning and decision work sees beside it; turned down, it is not taken
 again on the same evidence. Once a week a cross-check reads the most used notes and the oldest

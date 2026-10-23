@@ -4,7 +4,7 @@ A prompt is kept word for word, with its title, its tags, the project it is for 
 used with (skills in order, an agent, Workspace docs, Library items to read whole), versioned by
 the Brain's history. It lives in the person's own scope and is never routed into a brief unless
 a request names it: any AI connected to the Brain finds it by name or by search, and saves one
-from a conversation with add_file (kind prompt). Each run from it counts as a use, so the
+from a conversation with files_upload (kind prompt). Each run from it counts as a use, so the
 often-used ones are suggested as skills.
 
 Prompts saved before they moved into the Brain (context items of kind "prompt" in the app's own
@@ -374,7 +374,8 @@ class Prompts:
     def _person(who: Principal) -> None:
         if not who.is_human:
             raise PermissionDenied(
-                "Only a person saves prompts here; an AI keeps one with add_file in a conversation."
+                "Only a person saves prompts here; an AI keeps one with files_upload in a "
+                "conversation."
             )
 
     def _uses(self, who: Principal) -> dict[str, dict[str, Any]]:

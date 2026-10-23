@@ -17,7 +17,7 @@ LongMemEval) on scratch copies.
   bank (null_requests.txt, kept apart from the scoring set).
 
 **Measures.** Recall: needed notes the brief carried (whole or in short, or already held).
-Reachable: those plus the ones listed, one `get_note` away. Precision: delivered notes that were
+Reachable: those plus the ones listed, one `notes_get` away. Precision: delivered notes that were
 needed or useful. Own off-topic: the Brain's own off-topic and uncovered requests that got nothing.
 Off-topic set: the 100 general requests that got nothing. False nothing: requests that needed a
 note and got nothing. Must-hold recall and decoys: the must-holds labeled in play, carried; those

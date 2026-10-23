@@ -43,7 +43,7 @@ narrower: it hands a model the AI work the app itself starts.
 ## The main flows
 
 **Files your AI can read.** A document added to the Brain (a project's page, Library, Files;
-`add_file` from any AI chat; a note added to the Brain; a swept folder) is filed with its shape
+`files_upload` from any AI chat; a note added to the Brain; a swept folder) is filed with its shape
 kept (Word headings, slides and pages become headings) and a card saying what it covers and
 which copy it is. Filed into a project, a file named like one already there becomes its new
 version: the text is replaced in place, the card says which version, git keeps the earlier

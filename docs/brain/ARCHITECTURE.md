@@ -55,7 +55,7 @@ gitops.py       commit exactly the files a governed change touched
 ## A request, end to end
 
 ```
-get_task_context(request, session_id)
+gnomon_get_context(request, session_id)
   -> Brain.state()          fingerprint the vault from directory listings (~40 ms, once
                             per request); rebuild Snapshot + Index if anything changed
   -> Brain.caller()         scope chain for the principal, partition chain if one is active

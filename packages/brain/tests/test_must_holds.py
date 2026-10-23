@@ -84,7 +84,7 @@ class MustHoldTest(unittest.TestCase):
                                     "school night", record=False, include_kernel=False,
                                     tools=False)
         self.assertIn("## Must hold", result.text)
-        self.assertNotIn("get_note", result.text.split("## Must hold")[1].split("##")[0])
+        self.assertNotIn("notes_get", result.text.split("## Must hold")[1].split("##")[0])
 
     def test_past_the_cap_must_holds_are_listed_by_title(self):
         notes = [{"id": f"rule-{i}", "area": "food", "topic": "diet", "kind": "rule",
@@ -94,7 +94,7 @@ class MustHoldTest(unittest.TestCase):
         result = self.context("Plan Tuesday dinner")
         self.assertEqual(len(result.data["must_hold_ids"]), 8)
         self.assertTrue(result.data["must_hold_listed"])
-        self.assertIn("open each with get_note", result.text)
+        self.assertIn("open each with notes_get", result.text)
         # the critical one is never the one pushed out
         self.assertEqual(result.data["must_hold_ids"][0], "family-ollie")
 
@@ -180,7 +180,7 @@ class MustHoldTest(unittest.TestCase):
         self.assertIn("at most 3", text)
 
     def test_the_connector_offers_the_must_hold_fields(self):
-        tool = next(t for t in mcp_server.AGENT_TOOLS if t["name"] == "propose_note")
+        tool = next(t for t in mcp_server.AGENT_TOOLS if t["name"] == "notes_propose")
         props = tool["inputSchema"]["properties"]
         self.assertIn("domain", props["load"]["enum"])
         for name in ("applies_to", "triggers", "must_text", "critical"):

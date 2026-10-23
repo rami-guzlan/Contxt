@@ -74,7 +74,7 @@ def test_an_ais_values_arrive_marked_or_wait_in_catch_up(owner, model):
         )
     )
     reply = model.tool(
-        "update_state",
+        "sheets_propose_update",
         updates=[
             {
                 "sheet": "accounts",
@@ -107,7 +107,7 @@ def test_an_ais_values_arrive_marked_or_wait_in_catch_up(owner, model):
         )
     )
     assert owner.ok(owner.get("/api/brain/catch-up"))["state_waiting"] == []
-    read = model.tool("get_state", sheet="accounts", row="Northwind")
+    read = model.tool("sheets_get", sheet="accounts", row="Northwind")
     assert "Contract owner: Dana" in read["content"][0]["text"]
 
 
@@ -133,7 +133,7 @@ def test_the_composer_passes_a_task_on_and_it_shows_where_it_stands(owner, model
     assert [t["id"] for t in now["lanes"]["handed_off"]] == ["T-1"]
     detail = owner.ok(owner.get("/api/work/handoffs/T-1"))
     assert "Next step: Update the figure" in detail["rendered"]
-    claimed = model.tool("hand_off", task="T-1", claim=True)
+    claimed = model.tool("todos_update", task="T-1", claim=True)
     assert not claimed.get("isError"), claimed
     back = owner.ok(owner.post("/api/work/handoffs/T-1/take-back"))
     assert back["task_status"] == "waiting_for_you"
@@ -215,8 +215,11 @@ def test_a_task_handed_to_an_agent_starts_its_run_which_must_save_before_it_stop
     run = ws.tasks.get(ws.owner(), passed["run"])
     assert "Pick up T-1" in run.instructions or "Pick up T-1" in str(run.provenance)
     contract = anchoring.build(ws, run, run_id="run-1", minutes=5, folder=None, tools=())
-    assert any("hand_off" in check for check in contract["checks"])
-    assert {"check": contract["finish"][1]["check"], "any": ["hand_off"]} in contract["finish"]
+    assert any("todos_update" in check for check in contract["checks"])
+    assert {
+        "check": contract["finish"][1]["check"],
+        "any": ["todos_update", "hand_off"],
+    } in contract["finish"]
 
 
 def test_a_sheet_on_a_goals_board_drives_its_progress(owner, runtime):
@@ -269,7 +272,7 @@ def test_a_sheet_on_a_goals_board_drives_its_progress(owner, runtime):
     )
     assert saved["measure"]["signal"] == "sheet_column"
     assert saved["measure"]["target"] == 150
-    assert "get_state" in saved["plan"]
+    assert "sheets_get" in saved["plan"]
     checks = owner.ok(owner.post("/api/goals/checks"))["checks"]
     mine = next(c for c in checks if c["goal"] == page["id"])
     assert mine["value"] == 65.0 and mine["status"] == "off_track"

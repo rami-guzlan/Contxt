@@ -16,7 +16,7 @@ from workspace_core.workspace import Workspace
 
 from ..anchoring import Contracts
 from ..templates import TemplateLibrary
-from .tools import TOOLS, visible
+from .tools import ALIASES, TOOLS, visible
 
 VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 # The app's own version: one number for the app, its API and this server.
@@ -120,7 +120,7 @@ class McpHandler:
         self, msg_id: Any, who: Principal, params: dict[str, Any], protocol_version: str | None
     ) -> dict[str, Any]:
         name = params.get("name")
-        tool = TOOLS.get(str(name))
+        tool = TOOLS.get(ALIASES.get(str(name), str(name)))
         if tool is None:
             return _error(msg_id, INVALID_PARAMS, f"Unknown tool {name!r}.")
         arguments = params.get("arguments") or {}

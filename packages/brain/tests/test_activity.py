@@ -35,11 +35,11 @@ class ActivityTests(unittest.TestCase):
         self.server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize",
                             "params": {"clientInfo": {"name": "claude-code",
                                                       "version": "2.1.0"}}})
-        reply = self.call("get_task_context", request="Write a headline for the web page")
+        reply = self.call("gnomon_get_context", request="Write a headline for the web page")
         session = reply["content"][0]["text"].split("session_id: ")[1].split(" ")[0]
         # The packet already held it: only asked for in full is it opened again.
-        self.call("get_note", id="facts-services-002", session_id=session, full=True)
-        self.call("propose_note", layer="facts", topic="services", scope="company",
+        self.call("notes_get", id="facts-services-002", session_id=session, full=True)
+        self.call("notes_propose", layer="facts", topic="services", scope="company",
                   text="Web projects include two rounds of changes.", session_id=session)
         data = self.brain.requests().data
         (request,) = data["requests"]

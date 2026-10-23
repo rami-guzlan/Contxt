@@ -1175,7 +1175,7 @@ class Workflows:
         before: dict[str, Any] | None,
     ) -> dict[str, Any]:
         """A step code runs at once: a State update from the step before, a task opened, or a
-        task handed off (the same `hand_off` every AI uses; G3)."""
+        task handed off (the same `todos_update` every AI uses; G3)."""
         said = cut(str((before or {}).get("text") or (before or {}).get("excerpt") or ""), 1500)
         if spec["kind"] == "state":
             if not said:

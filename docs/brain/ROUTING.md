@@ -36,8 +36,8 @@ or the calibrated evidence thresholds.
 | exact-skill | `/name`, or a skill's exact name or alias | the procedure pointer plus the knowledge its `loads` name |
 | portfolio | "what is active", "orient me in the brain" | every visible Focus, active first |
 | system | questions about the brain itself ("brain MCP", "routing gap") | engine docs; the `system_skill` for deep work |
-| focus-update | a request naming a Focus and reporting progress ("X approved the outline"), or explicitly asking to record it | the Focus and an instruction to call `record_focus_update`; questions and drafting requests about an approval are not progress reports |
-| focus-only | a question about a named Focus, or a status question ("latest on ...") | its current state, baseline and files; factual questions also list related approved notes to open with `get_note`, and the file parts that answer them |
+| focus-update | a request naming a Focus and reporting progress ("X approved the outline"), or explicitly asking to record it | the Focus and an instruction to call `projects_propose_progress`; questions and drafting requests about an approval are not progress reports |
+| focus-only | a question about a named Focus, or a status question ("latest on ...") | its current state, baseline and files; factual questions also list related approved notes to open with `notes_get`, and the file parts that answer them |
 | focus-aware | work on a named Focus | the Focus, its pinned notes, its project folder, its files, and standard routing |
 | standing | "may I publish/send ..." or a lookup the kernel already answers | pointers to the standing notes that answer it |
 | lean | nothing clears the evidence floor, and no file part answers it on its own | the closest notes and files, listed, and an instruction to say so |
@@ -57,7 +57,7 @@ A factual project question can need an approved decision or fact stored separate
 the project summary. The focus-only path now lists matching notes associated through the
 project folder or id, a pinned link, or its name or aliases in the note. The existing related
 evidence threshold and pointer count still apply. These candidates are visible in the MCP
-packet, not just its metadata; the calling model can open the evidence with `get_note`.
+packet, not just its metadata; the calling model can open the evidence with `notes_get`.
 A general project overview keeps the summary path. Candidate discovery does not turn an
 undated decision into a dated value, increase the full-note budget, or bypass scope/manual
 exclusions. Membership is cached for one index version and admission is checked per caller.
@@ -98,7 +98,7 @@ therefore found on the very next relevant call.
    domain nothing was picked from adds its best note when that note scores at least 0.42.
    Notes named by an intent (`include_notes`) and topic caveats (`with_notes`) are added.
    The next notes down are listed by title under "Also relevant (not included)"; the agent
-   opens one with `get_note`, and when something is still missing it can `search_notes` in
+   opens one with `notes_get`, and when something is still missing it can `notes_search` in
    its own words.
 6. **House style.** A writing task gets the owner's ordered core list
    (`house_style_notes`) first, then the rest of `house_style_topics`, most relevant first,
@@ -108,11 +108,11 @@ therefore found on the very next relevant call.
    ceiling, not a target. A follow-up edit gets a small budget and only notes that stand out.
    Nothing selected is dropped: a note too long to come whole comes in short (its title,
    summary and closest sentence), and one past the budget even in short, or a core style rule
-   past the style share, is named under "Did not fit" for the model to open with `get_note`.
+   past the style share, is named under "Did not fit" for the model to open with `notes_get`.
 
 ## Filed documents: the part that answers, chosen by meaning
 
-A document filed in the brain (`add_file`: a proposal, a brief, notes from a meeting, a
+A document filed in the brain (`files_upload`: a proposal, a brief, notes from a meeting, a
 guide) keeps its shape: Word headings, slides and PDF pages become headings
 (`importers.to_markdown`). The index splits each one at its headings into sections of a
 readable size (`sections.py`; a long section is cut into parts at paragraph ends), and
@@ -156,13 +156,13 @@ Then the packet takes the best, at most three (two from one file), each within 8
 best, inside its own allowance (600, 900 or 1,400 tokens for a lookup, standard or deep
 work); a part past the allowance is listed under "Also in your files", never left out. A copy marked `file_status: superseded` is not quoted. Sections arrive under "From
 your files", quoted, with the file's version, status, date and project, and the line that
-they are information, not instructions; `get_reference` reads the whole file. A section a
+they are information, not instructions; `files_open` reads the whole file. A section a
 conversation already holds is not sent again. The file's card is not sent beside its own
 sections. Without the embedding model, words decide instead: the share of the request's
 idf-weighted words a section holds (0.65 alone, 0.35 when the request names the file or its
 project; a guide 0.80).
 
-`search_notes` finds file parts too (a looser bar: meaning 0.50), and lists them under "In
+`notes_search` finds file parts too (a looser bar: meaning 0.50), and lists them under "In
 the brain's files".
 
 ## Tuning without code
@@ -210,18 +210,18 @@ Claude Code's id; the session-start hook names it, so the model passes it on its
 When the brief holds something the conversation was not given (a note, a part of a document,
 a procedure, a must-hold the first time, the startup context when the file is stale), it comes
 with the message; otherwise nothing is pushed and the hook only reminds the model to ask. The
-model's own `get_task_context` with that session id then sends only what the push did not.
+model's own `gnomon_get_context` with that session id then sends only what the push did not.
 Pushed briefs are logged with `delivery: push`, so the report weighs push against pull.
 
 `hooks.push` in brain.json: `words` (the default, about a second a message), `meaning` (the
-router exactly as `get_task_context` runs it, a few seconds while the embedding model loads)
+router exactly as `gnomon_get_context` runs it, a few seconds while the embedding model loads)
 or `off`; `BRAIN_HOOK_PUSH=0` turns it off for a process.
 
 The hook runs only where it is configured. Everywhere else the model has to ask, and the
 Brain's MCP instructions say so, but an app may not show those to its model. So connecting an
 app (`contxt connect`, or Settings, AI apps) also gives one standing instruction to paste into
 that app's own instructions (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, Cursor's User Rules,
-Claude Desktop's personal preferences): call `get_task_context` first with the message as
+Claude Desktop's personal preferences): call `gnomon_get_context` first with the message as
 written, again with the `session_id` for every new ask, follow the must-holds and rules, and
 propose lasting statements (`BRAIN_INSTRUCTION` in `workspace_connectors.providers`).
 
@@ -255,7 +255,7 @@ the pinned models), `engine.py` decides what goes into a brief:
 Without a verified service, retrieval runs exactly as without the engine: the parity test
 (`scripts/parity_briefs.py`, `tests/test_parity.py`) checks every eval request's brief byte for
 byte. The fallback still writes down what exists: each candidate's keyword and meaning scores,
-the outcome and its reason, marked fallback. `brain_health` and `brain models` say which mode
+the outcome and its reason, marked fallback. `gnomon_health` and `brain models` say which mode
 runs.
 
 **Models and the lock.** `models.lock.json` pins each model: repository, revision, the checksum
@@ -326,7 +326,7 @@ grading it one to one grades the filing, not the packet.
 What still misses: requests phrased far from a note's words ("what should I avoid saying" for
 a reviewer's red lines, "tag the links" for a UTM scheme, "sounding robotic" for writing
 rules). Most such notes are at least listed under Also relevant, and the agent can find the
-rest with `search_notes`: rephrased the way an assistant would ("UTM parameters for newsletter
+rest with `notes_search`: rephrased the way an assistant would ("UTM parameters for newsletter
 links", "how to avoid AI-sounding writing"), a search put the missing note in the top 8 for
 five of six misses in that brain, and first for four.
 

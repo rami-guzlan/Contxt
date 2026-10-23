@@ -103,8 +103,8 @@ exact words, kept until you ask for them. The page says this in one line.
   step; "Make it a skill" once it is used often (the existing suggestion).
 - **Kept from Compose, demoted**: "Preview what a model gets" (the assembled prompt with its token
   count) opens from a prompt's page; Improve stays as an action there.
-- Backend: prompts become Library items in the Brain (person scope), saved through `add_file` with
-  a kind and inline text, found by `search_notes`, never routed into a brief unless named; the
+- Backend: prompts become Library items in the Brain (person scope), saved through `files_upload` with
+  a kind and inline text, found by `notes_search`, never routed into a brief unless named; the
   existing saved prompts migrate (BL 16.2).
 - Done when: a prompt saved from a Claude Code chat appears in Prompts word for word with its file;
   a connected AI finds it by name; versions and projects work; a run is optional and secondary.
@@ -147,7 +147,7 @@ Workspace gets two clearly separate groups, each with a one-line explanation:
 **Organized**: by project (default); filters by kind (docs, sheets, boards, calendars, links,
 uploads); search; recently edited.
 
-**What agents get**: the same rows through `get_state` and `update_state`; a request that names an
+**What agents get**: the same rows through `sheets_get` and `sheets_propose_update`; a request that names an
 account gets that account's row in its brief (BL 8.5).
 
 **Open-source candidates** (licenses checked again at build time): the grid, Glide Data Grid (MIT)

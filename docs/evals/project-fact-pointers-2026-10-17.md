@@ -34,12 +34,12 @@ Only those three expected strings are updated, not the benchmark labels or numer
 ## Native model follow-through
 
 A separate experiment uses the already approved fictional workshop facts, Claude Haiku 5.5
-and the real production MCP transport. The test server exposes only get_task_context,
-get_note and search_notes. Each of three requests gets its first response with no retries,
+and the real production MCP transport. The test server exposes only gnomon_get_context,
+notes_get and notes_search. Each of three requests gets its first response with no retries,
 labels or expected answers in the prompt. Both revisions correctly answer the approved
 $4,800 budget, Jonas and the October 28 deadline, and recognize that catering ownership is
-not established. The candidate reaches the budget with context then get_note; baseline
-needs context, search_notes and get_note. Both answer the compound venue question from the
+not established. The candidate reaches the budget with context then notes_get; baseline
+needs context, notes_search and notes_get. Both answer the compound venue question from the
 packet, including its pointer summary. This is a small integration check, not an answer
 accuracy benchmark or a measured latency improvement. Source data remains unchanged.
 

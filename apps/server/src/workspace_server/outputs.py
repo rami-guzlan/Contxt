@@ -10,7 +10,7 @@ WHAT A FILE WAS MADE FROM, when the app can know:
 - a skill run that makes files worked in `skill-runs/<date>-<skill>/`: the run's task says what
   was asked of which skill, and the Brain's record says what each run was handed;
 - an export from the app wrote it: its artifact, and the work that made that;
-- an AI in a conversation saved it and said so (the Brain's `record_output`): what that
+- an AI in a conversation saved it and said so (the Brain's `outputs_save`): what that
   conversation asked and got.
 
 Anything else was made outside the app, and the page says so.

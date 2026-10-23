@@ -112,4 +112,4 @@ class ProjectFactPointers(unittest.TestCase):
     def test_model_without_tools_is_not_told_to_open_project_pointers(self):
         result = self.context("What budget is approved for the Harbor workshop?",
                               tools=False, record=False)
-        self.assertNotIn("Open one with get_note", result.text)
+        self.assertNotIn("Open one with notes_get", result.text)

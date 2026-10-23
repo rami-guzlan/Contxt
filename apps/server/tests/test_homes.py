@@ -235,14 +235,14 @@ def test_every_setup_runs_the_brain_this_environment_installed():
 
 
 def test_every_app_gets_the_instruction_that_makes_it_ask_first():
-    """A model reads the Brain only when it calls get_task_context, and it forgets most on a
+    """A model reads the Brain only when it calls gnomon_get_context, and it forgets most on a
     follow-up: connecting any app also says where to put a standing instruction to ask first."""
     vault = os.path.join("C:\\", "Contxt", "brain", "vault")
     setups = {c: brain_setup(c, python=sys.executable, vault=vault) for c in BRAIN_CLIENTS}
     instructions = {s["instruction"] for s in setups.values()}
     assert len(instructions) == 1  # one text, wherever it goes
     (text,) = instructions
-    assert "get_task_context" in text and "session_id" in text and "propose_note" in text
+    assert "gnomon_get_context" in text and "session_id" in text and "notes_propose" in text
     assert setups["claude-code"]["instruction_where"].startswith("~/.claude/CLAUDE.md")
     assert setups["codex"]["instruction_where"].startswith("~/.codex/AGENTS.md")
     assert "User Rules" in setups["cursor"]["instruction_where"]
@@ -255,7 +255,7 @@ def test_connect_prints_the_instruction_to_add(tmp_path, capsys, fetched):
     code, out = run(capsys, "--home", str(tmp_path), "connect", "codex")
     assert code == 0
     assert "Then add this to ~/.codex/AGENTS.md" in out.out
-    assert "call get_task_context with my message as I wrote it" in out.out
+    assert "call gnomon_get_context with my message as I wrote it" in out.out
 
 
 def test_the_app_shows_the_same_connection(owner, brain_vault):
@@ -265,4 +265,4 @@ def test_the_app_shows_the_same_connection(owner, brain_vault):
     clients = {c["client"]: c for c in body["clients"]}
     assert set(clients) == set(BRAIN_CLIENTS)
     assert "-m brainkit --vault" in clients["claude-code"]["command"]
-    assert "get_task_context" in clients["cursor"]["instruction"]
+    assert "gnomon_get_context" in clients["cursor"]["instruction"]
