@@ -600,7 +600,8 @@ def test_work_with_ai_takes_the_brains_project_id(owner, runtime, model):
     brain_project = runtime.ws.rt.brain.projects()[0]
     assert owner.ok(owner.get(f"/api/work/projects/{brain_project.id}/timeline")) == []
     started = owner.ok(
-        owner.post(f"/api/work/projects/{brain_project.id}/ask", json={"prompt": "Draft notes."}), 201
+        owner.post(f"/api/work/projects/{brain_project.id}/ask", json={"prompt": "Draft notes."}),
+        201,
     )
     finish(owner, started["run"]["id"])
     (line,) = owner.ok(owner.get(f"/api/work/projects/{brain_project.id}/timeline"))
