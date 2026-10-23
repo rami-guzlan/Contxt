@@ -38,6 +38,7 @@ text inside a proposal can change who is asking.
 """
 from __future__ import annotations
 
+import contextvars
 import datetime as _dt
 
 import fnmatch
@@ -326,6 +327,9 @@ def forget_learned(brain, rule_id) -> dict:
                    {"status": "forgotten", "id": rule_id})
 
 
+# The proposal a new one replaces while the owner moves a piece to another home
+# (destinations.apply): its own words waiting are not a duplicate.
+REPLACING: contextvars.ContextVar[str] = contextvars.ContextVar("replacing", default="")
 DEFAULT_SESSION_BUDGET = 12
 CLOSE = 0.75  # a live note this near may say the same thing (review.CLOSE)
 
@@ -613,6 +617,8 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
                            {"status": "duplicate", "id": duplicate.id})
     waiting = pending_duplicate(st, kind, text, source) if kind in ("note.create",
                                                             "note.update") else None
+    if waiting is not None and waiting.id == REPLACING.get():
+        waiting = None  # the piece being moved to this new home is not a repeat of itself
     if waiting is not None:
         return _result(f"The same proposal is already waiting for review ({waiting.id}).",
                        {"status": "duplicate", "proposal_id": waiting.id,

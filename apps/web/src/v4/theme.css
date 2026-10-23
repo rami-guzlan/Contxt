@@ -1,0 +1,153 @@
+/* The v4 design's tokens (Gnomon Prototype v4): light and dark, from the design file itself.
+   index.html applies a kept choice to <html data-theme>; with none, the system's is used. */
+
+:root,
+[data-theme="light"] {
+  --bg: #faf9f6;
+  --surface: #fff;
+  --ink: #1d1c1a;
+  --ink2: #5a5852;
+  --muted: #78756e; /* the design's #8a877f, a step darker for text contrast (WCAG AA) */
+  --faint: #a4a19a;
+  --line: #efede7;
+  --line2: #e6e3dc;
+  --soft: #f3f1ec;
+  --nav: #efede7;
+  --gray: #dcd9d1;
+  --shadow: 0 1px 2px rgba(30, 25, 15, 0.04), 0 8px 28px rgba(30, 25, 15, 0.05);
+  --shadow2: 0 2px 4px rgba(30, 25, 15, 0.04), 0 24px 60px rgba(30, 25, 15, 0.12);
+  --code: #1d1c1a;
+  --scrim: rgba(29, 28, 26, 0.28);
+  --focus: oklch(0.58 0.14 250);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1a1917;
+    --surface: #22211e;
+    --ink: #eeece6;
+    --ink2: #b3b0a8;
+    --muted: #8f8c84;
+    --faint: #6f6c65;
+    --line: #2c2b28;
+    --line2: #383732;
+    --soft: #2a2926;
+    --nav: #2a2926;
+    --gray: #3a3935;
+    --shadow: 0 0 0 1px #2c2b28;
+    --shadow2: 0 0 0 1px #34332f, 0 24px 60px rgba(0, 0, 0, 0.5);
+    --code: #111110;
+    --scrim: rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+
+[data-theme="dark"] {
+  --bg: #1a1917;
+  --surface: #22211e;
+  --ink: #eeece6;
+  --ink2: #b3b0a8;
+  --muted: #8f8c84;
+  --faint: #6f6c65;
+  --line: #2c2b28;
+  --line2: #383732;
+  --soft: #2a2926;
+  --nav: #2a2926;
+  --gray: #3a3935;
+  --shadow: 0 0 0 1px #2c2b28;
+  --shadow2: 0 0 0 1px #34332f, 0 24px 60px rgba(0, 0, 0, 0.5);
+  --code: #111110;
+  --scrim: rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Geist, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+a:hover {
+  opacity: 0.8;
+}
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.gn-hover:hover {
+  background: var(--soft) !important;
+}
+
+.gn-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes gnPulse {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.68 0.16 35 / 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 26px oklch(0.68 0.16 35 / 0);
+  }
+}
+@keyframes gnDot {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .gn-aside {
+    display: none !important;
+  }
+  .gn-page {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}

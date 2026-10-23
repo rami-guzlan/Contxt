@@ -2082,6 +2082,11 @@ class BrainKitAdapter:
                 edits["layer" if "layer" in target and "area" not in target else "area"] = area
                 edits["topic"] = topic
                 edits["placement"] = "chosen"
+            if decision.get("destination"):
+                # Kept in another home: its kind, then that home's own fields.
+                moved = dict(decision["destination"])
+                edits["destination"] = str(moved.pop("destination", ""))
+                edits.update({str(k): v for k, v in moved.items() if v not in (None, "")})
             items.append(
                 {
                     "id": decision["proposal_id"],

@@ -99,6 +99,9 @@ class DecisionItem(Body):
     minor: bool | None = None  # edit: a typo or cleanup, not new knowledge
     state: str | None = None  # mark: stale | disputed (with a reason)
     confidence: str | None = None  # verify: confirmed | inferred | disputed | unknown
+    # approve: keep it somewhere else ({"destination": note|kept|sheet|progress|task|taste,
+    # and that home's fields}); the piece keeps its source (Release 1 plan, M03)
+    destination: dict[str, Any] | None = None
 
 
 class ReceiptCorrectionIn(Body):

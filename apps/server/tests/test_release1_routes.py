@@ -67,3 +67,40 @@ def test_scout_finds_new_and_changed_files_and_stays_quiet_on_saves_and_renames(
     assert [d["kind"] for d in changed["differences"]] == ["changed"]
     root = owner.put("/api/scout", json={"folders": [{"path": os.path.abspath(os.sep)}]})
     assert root.status_code == 422
+
+
+def test_a_proposal_kept_in_another_home_from_the_app_keeps_its_source(owner):
+    made = owner.ok(
+        owner.post(
+            "/api/brain/proposals",
+            json={
+                "title": "Write plainly",
+                "statement": "Headlines say the thing plainly.",
+                "kind": "rule",
+                "evidence": "the owner said so",
+            },
+        ),
+        201,
+    )
+    pid = made.get("proposal_id") or made["proposal"]["proposal_id"]
+    done = owner.ok(
+        owner.post(
+            "/api/brain/decisions",
+            json={
+                "decisions": [
+                    {
+                        "action": "approve",
+                        "proposal_id": pid,
+                        "destination": {
+                            "destination": "taste",
+                            "lens": "works",
+                            "kind": "principle",
+                        },
+                    }
+                ]
+            },
+        )
+    )
+    assert done["results"][0]["ok"], done
+    taste = owner.ok(owner.get("/api/brain/taste"))
+    assert any("plainly" in e["text"] for e in taste["lenses"]["works"])
