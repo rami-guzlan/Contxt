@@ -1,0 +1,225 @@
+{
+ "about": "Brain map evaluation (Release 1 plan, section 10.5). Labelled on Oct 21, 2026, before any run, and never tuned on. `expect` is any-of: an answer is correct when it contains one of the terms (case and spacing ignored) and cites the needed note. Scope questions read packages/brain/tests/evals/scope.json; gap questions are requests the packet misses today (the zero-config misses lists of Oct 20 and 21: demo Brains, and dental and foodbank, tuning and validation) whose answer is in the Brain. LongMemEval questions are the first 20 short-answer questions of the frozen development cohort, chosen by the script; the release cohort and the sealed Brains are never read.",
+ "scope": {
+  "Who is the developer on the bakery site?": [
+   "Tomas Reyes"
+  ],
+  "When are the menu photos due for the Harbor Street bakery website?": [
+   "November 8",
+   "Nov 8"
+  ],
+  "Why did we pick Shopify for the bakery site?": [
+   "pickup scheduling",
+   "pickup"
+  ],
+  "How much money do we have for the bakery site?": [
+   "6,500",
+   "6500"
+  ],
+  "Write the product page copy for the croissant box on the bakery site.": [
+   "tax"
+  ],
+  "Where does the Harbor Street bakery website stand?": [
+   "December 1",
+   "Dec 1"
+  ],
+  "Which platform runs the pickup ordering for the bakery?": [
+   "Shopify"
+  ],
+  "Who edits the audio for Long Table?": [
+   "Ines Moreau"
+  ],
+  "When does the first Long Table episode need to be mixed?": [
+   "November 15",
+   "Nov 15"
+  ],
+  "Are we recording Long Table season 3 remotely?": [
+   "in person",
+   "Eastside"
+  ],
+  "What's the budget for Long Table podcast season 3?": [
+   "9,000",
+   "9000"
+  ],
+  "Draft the booking email to our next Long Table guest.": [
+   "question list",
+   "a week before",
+   "week ahead",
+   "one week"
+  ],
+  "Where does Long Table season 3 stand?": [
+   "ten episodes",
+   "10 episodes",
+   "March"
+  ],
+  "Who mixes our episodes?": [
+   "Ines Moreau"
+  ],
+  "Who's our contact at the movers for the office move?": [
+   "Dana Kim"
+  ],
+  "When does internet need to be working at Pine Avenue?": [
+   "January 8",
+   "Jan 8"
+  ],
+  "Are we taking the old desks to the Pine Avenue office?": [
+   "keeping",
+   "keep the old desks",
+   "yes"
+  ],
+  "What's the budget for the office move to Pine Avenue?": [
+   "14,000",
+   "14000"
+  ],
+  "Make a packing checklist for the office move.": [
+   "inventory"
+  ],
+  "Where does the office move to Pine Avenue stand?": [
+   "January 15",
+   "Jan 15"
+  ],
+  "Who do I call at Northline Moving?": [
+   "Dana Kim"
+  ],
+  "Who is our program officer for the arts council grant?": [
+   "Samir Haddad"
+  ],
+  "When are the letters of support due for the grant?": [
+   "January 20",
+   "Jan 20"
+  ],
+  "How many years of funding is the arts council grant asking for?": [
+   "two years",
+   "2 years"
+  ],
+  "How much are we requesting in the arts council grant application?": [
+   "48,000",
+   "48000"
+  ],
+  "Write the budget table for the arts council grant application.": [
+   "nearest hundred",
+   "rounded"
+  ],
+  "Where does the arts council grant application stand?": [
+   "February 2",
+   "Feb 2"
+  ],
+  "How much are we asking the arts council for?": [
+   "48,000",
+   "48000"
+  ]
+ },
+ "gaps": [
+  {
+   "brain": "entrepreneur",
+   "request": "Should I put $10k into a friend's climbing gym startup?",
+   "need": "investing-approach",
+   "expect": [
+    "10%",
+    "15,000",
+    "5,000"
+   ]
+  },
+  {
+   "brain": "entrepreneur",
+   "request": "What's our monthly recurring revenue right now?",
+   "need": "ventures-loopline-metrics",
+   "expect": [
+    "38,400",
+    "38400"
+   ]
+  },
+  {
+   "brain": "entrepreneur",
+   "request": "Can we fit a call with Tomas at 9 on Tuesday?",
+   "need": "me-schedule",
+   "expect": [
+    "deep work",
+    "13:00",
+    "1 pm",
+    "after 1"
+   ]
+  },
+  {
+   "brain": "knowledge-company",
+   "request": "Someone from a 600-person plant just registered for the webinar. What happens to that lead?",
+   "need": "sales-handoff-webinars",
+   "expect": [
+    "Sam Okafor"
+   ]
+  },
+  {
+   "brain": "knowledge-company",
+   "request": "What keeps plant managers up at night?",
+   "need": "customers-pains",
+   "expect": [
+    "downtime",
+    "skilled operators",
+    "scrap"
+   ]
+  },
+  {
+   "brain": "knowledge-company",
+   "request": "Write something for LinkedIn that gets floor supervisors to sign up for the next webinar",
+   "need": "marketing-linkedin-rules",
+   "expect": [
+    "first comment"
+   ]
+  },
+  {
+   "brain": "programmer",
+   "request": "Fix the retry backoff bug in my task queue",
+   "need": "practices-testing",
+   "expect": [
+    "failing test"
+   ]
+  },
+  {
+   "brain": "programmer",
+   "request": "Who has to approve splitting the dispatcher into two services?",
+   "need": "people-team",
+   "expect": [
+    "Dana Whitfield"
+   ]
+  },
+  {
+   "brain": "dental",
+   "vault": "packages/brain/tests/evals/general/dental/vault",
+   "request": "Can you help me write an email to the team about the Saturday hours? I want to explain how we'll rotate who works them, that it's paid at the regular rate plus whatever we agreed, and ask people to tell me their preferences by the end of next week.",
+   "need": "saturday-staffing-rota",
+   "expect": [
+    "Marisol",
+    "Patrice",
+    "Tallow Creek"
+   ]
+  },
+  {
+   "brain": "dental",
+   "vault": "packages/brain/tests/evals/general/dental/vault",
+   "request": "If someone calls after hours with a toothache or a knocked out tooth, what's supposed to happen? I want to make sure the voicemail message is right.",
+   "need": "regular-opening-hours",
+   "expect": [
+    "answering service"
+   ]
+  },
+  {
+   "brain": "foodbank",
+   "vault": "packages/brain/tests/evals/general/foodbank/vault",
+   "request": "how many volunteers do we need for the holiday drive sort day",
+   "need": "repack-session-times",
+   "expect": [
+    "25"
+   ]
+  },
+  {
+   "brain": "foodbank",
+   "vault": "packages/brain/tests/evals/general/foodbank/vault",
+   "request": "I need one paragraph on how last year's holiday drive went, for the donor newsletter.",
+   "need": "no-frozen-turkey-dropoffs",
+   "expect": [
+    "2,300",
+    "400 pounds"
+   ]
+  }
+ ]
+}
