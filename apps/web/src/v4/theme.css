@@ -142,7 +142,15 @@ select {
   }
 }
 
+/* The menu button shows only where the sidebar is hidden. */
+.gn-menu {
+  display: none;
+}
+
 @media (max-width: 760px) {
+  .gn-menu {
+    display: inline-block;
+  }
   .gn-aside {
     display: none !important;
   }
