@@ -141,6 +141,8 @@ class PoliciesIn(Body):
     # Scoped standing permissions: [{type, origin, area, paused}].
     standing: list[dict[str, Any]] | None = None
     retrieval_policy: str | None = None  # relaxed, standard or careful
+    mode: str | None = None  # governed (suggestions wait) or auto (in with undo, capped)
+    auto_paused: bool | None = None  # pause Auto by hand
 
 
 class CatchUpItemIn(Body):

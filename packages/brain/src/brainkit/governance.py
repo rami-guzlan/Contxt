@@ -273,6 +273,8 @@ def captures_apply(brain, who, kind, origin, area="") -> bool:
     if any(_covers(r, kind, origin, area) and not r.get("paused")
            for r in config.governance.get("standing") or [] if isinstance(r, dict)):
         return True
+    if mode_of(config) == "auto" and not config.governance.get("auto_paused"):
+        return kind not in SHAPING  # Auto: in with undo, except what shapes every AI
     return capture_policy(config).get(kind, {}).get(origin) == "apply"
 
 
@@ -759,7 +761,10 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         # Auto's cap (Release 1 plan, M08): what an AI or a swept folder puts in on its own
         # pauses after so many changes a day, and says so; the rest waits in Catch up.
         cap, done = auto_cap(config), auto_applied_since(brain, hours=24)
-        if done >= cap:
+        if config.governance.get("auto_paused"):
+            applies = False
+            header["paused"] = "Auto is paused by you: changes wait in Catch up."
+        elif done >= cap:
             applies = False
             header["paused"] = (f"Auto is paused: {done} changes went in on their own in the "
                                 f"last 24 hours, and the cap is {cap}.")
@@ -987,6 +992,10 @@ def inbox(brain, **_ignored):
             "statement_status": proposal.target.get("statement_status") or "",
             "effective": str(proposal.target.get("as_of") or ""),
             "op_id": proposal.target.get("op_id") or "",
+            # What it is and where it came from, as the capture policy names them
+            # ("fact:chat"), and its origin ("file:...", "conversation:...", "scout:...").
+            "capture": str(proposal.meta.get("capture") or ""),
+            "origin": str(proposal.target.get("origin") or ""),
             "destination": destinations.label(proposal.kind, proposal.target),
             "current_body": (st.index.note(proposal.target.get("id")).body
                              if proposal.kind != "note.create"
@@ -1830,10 +1839,19 @@ POLICY = {
     # Release 1 plan, M08 and M05: Auto's daily cap, the scoped standing permissions and the
     # named retrieval policy.
     "auto_daily_cap": ("governance", "auto_daily_cap", "cap"),
+    # Governed (suggestions wait) or Auto (the owner's AI and swept folders go in with undo,
+    # capped and pausable): design contracts 9 and 17.
+    "mode": ("governance", "mode", "mode"),
+    "auto_paused": ("governance", "auto_paused", "bool"),
     "standing": ("governance", "standing", "standing"),
     "retrieval_policy": ("governance", "retrieval_policy", "retrieval"),
 }
 RETRIEVAL_POLICIES = ("relaxed", "standard", "careful")
+MODES = ("governed", "auto")
+
+
+def mode_of(config) -> str:
+    return "auto" if str(config.governance.get("mode") or "") == "auto" else "governed"
 
 
 def policies(brain) -> dict:
@@ -1863,6 +1881,8 @@ def policies(brain) -> dict:
         "redact_cloud": redact_cloud(config),
         "capture_types": list(CAPTURE_TYPES),
         "capture_origins": list(CAPTURE_ORIGINS),
+        "mode": mode_of(config),
+        "auto_paused": bool(data["governance"].get("auto_paused", False)),
         "auto_daily_cap": auto_cap(config),
         "auto_applied_today": auto_applied_since(brain, hours=24),
         "standing": [dict(r) for r in data["governance"].get("standing") or []
@@ -1898,6 +1918,11 @@ def _policy_value(st, key, kind, value):
         except (TypeError, ValueError):
             return None, f"{key} is a whole number"
         return (number, None) if 0 <= number <= 1000 else (None, f"{key} is between 0 and 1000")
+    if kind == "mode":
+        text = str(value or "").strip().lower()
+        if text not in MODES:
+            return None, f"mode is one of {', '.join(MODES)}"
+        return text, None
     if kind == "retrieval":
         text = str(value or "").strip().lower()
         if text not in RETRIEVAL_POLICIES:

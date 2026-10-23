@@ -6,7 +6,14 @@ import mimetypes
 import os
 
 from fastapi import APIRouter, FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
+from pydantic import BaseModel, Field
 
 from workspace_core.errors import Unauthenticated
 
@@ -42,6 +49,34 @@ def login(token: str, request: Request) -> Response:
         httponly=True,
         samesite="strict",
         secure=secure,
+        max_age=60 * 60 * 24 * 30,
+    )
+    return response
+
+
+class LoginIn(BaseModel):
+    token: str = Field(min_length=1, max_length=400)
+
+
+@router.post("/auth/login", status_code=204)
+def login_posted(body: LoginIn, request: Request) -> Response:
+    """The same exchange as GET /auth/login, for the sign-in page: the key travels in the
+    body, never in the address bar or the browser's history, and a wrong key is a JSON 401
+    the page can explain."""
+    try:
+        request.app.state.ws.actors.authenticate(body.token)
+    except Unauthenticated:
+        return JSONResponse(
+            {"error": {"code": "unauthenticated", "message": "That sign-in key is not valid."}},
+            status_code=401,
+        )
+    response = Response(status_code=204)
+    response.set_cookie(
+        cookie_name(request.app.state.ws),
+        body.token,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
         max_age=60 * 60 * 24 * 30,
     )
     return response

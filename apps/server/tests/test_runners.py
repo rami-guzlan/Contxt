@@ -593,3 +593,15 @@ def test_work_with_ai_makes_one_job_in_the_project_and_shows_it_on_the_timeline(
         "claude",
     )
     assert line["model"] and line["asked_by"]
+
+
+def test_work_with_ai_takes_the_brains_project_id(owner, runtime, model):
+    """The page knows a project by the Brain's id: its first job makes the workspace row."""
+    brain_project = runtime.ws.rt.brain.projects()[0]
+    assert owner.ok(owner.get(f"/api/work/projects/{brain_project.id}/timeline")) == []
+    started = owner.ok(
+        owner.post(f"/api/work/projects/{brain_project.id}/ask", json={"prompt": "Draft notes."}), 201
+    )
+    finish(owner, started["run"]["id"])
+    (line,) = owner.ok(owner.get(f"/api/work/projects/{brain_project.id}/timeline"))
+    assert line["task_id"] == started["task"]["id"]

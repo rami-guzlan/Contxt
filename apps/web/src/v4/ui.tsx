@@ -224,12 +224,14 @@ export function Chip({ children, on = false, onClick }: { children: ReactNode; o
 /** A dialog: focus moves into it, Esc closes it, the page behind is covered. */
 export function Modal({ title, eyebrow, onClose, children, width = 560 }: { title: string; eyebrow?: string; onClose: () => void; children: ReactNode; width?: number }) {
   const box = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
-    box.current?.focus();
-    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    box.current?.focus(); // once, when it opens: a parent re-rendering never steals typing
+    const key = (e: KeyboardEvent) => e.key === "Escape" && close.current();
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [onClose]);
+  }, []);
   return (
     <div onClick={onClose} style={css("position:fixed;inset:0;background:var(--scrim);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px")}>
       <div

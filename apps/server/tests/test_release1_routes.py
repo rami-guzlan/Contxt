@@ -104,3 +104,25 @@ def test_a_proposal_kept_in_another_home_from_the_app_keeps_its_source(owner):
     assert done["results"][0]["ok"], done
     taste = owner.ok(owner.get("/api/brain/taste"))
     assert any("plainly" in e["text"] for e in taste["lenses"]["works"])
+
+
+def test_governed_or_auto_and_a_manual_pause_are_policy_settings(owner):
+    assert owner.ok(owner.get("/api/brain/policies"))["mode"] == "governed"
+    changed = owner.ok(owner.put("/api/brain/policies", json={"mode": "auto", "auto_paused": True}))
+    assert (changed["policy"]["mode"], changed["policy"]["auto_paused"]) == ("auto", True)
+    assert owner.put("/api/brain/policies", json={"mode": "chaos"}).status_code == 422
+
+
+def test_waiting_proposals_say_what_they_are_and_where_they_came_from(owner):
+    owner.ok(owner.post("/api/brain/proposals", json={
+        "title": "Studio hours", "statement": "The studio opens at nine.", "kind": "fact",
+        "evidence": "the owner said so"}), 201)
+    (row,) = owner.ok(owner.get("/api/brain/proposals"))
+    assert "capture" in row and "origin" in row
+
+
+def test_signing_in_by_post_keeps_the_key_out_of_the_address(client, owner_token):
+    bad = client.post("/auth/login", json={"token": "wst_wrong"}, headers={"X-Workspace-CSRF": "1"})
+    assert bad.status_code == 401 and bad.json()["error"]["code"] == "unauthenticated"
+    good = client.post("/auth/login", json={"token": owner_token}, headers={"X-Workspace-CSRF": "1"})
+    assert good.status_code == 204 and good.cookies

@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { CORRECTIONS, type Receipt as ReceiptData, type ReceiptItem, useCorrect, useReceipt } from "../api";
 import { css } from "../css";
+import { RECEIPT_OPENED_KEY } from "../hooks/home";
 import { Btn, Failure, Loading, S } from "../ui";
 
 function items(rows: ReceiptItem[], key: (r: ReceiptItem) => string) {
@@ -27,6 +28,15 @@ function sections(r: ReceiptData) {
   ];
 }
 
+/** Home's quick start counts a receipt opened (a per-viewer convenience). */
+function markOpened() {
+  try {
+    window.localStorage.setItem(RECEIPT_OPENED_KEY, new Date().toISOString());
+  } catch {
+    // storage blocked: the quick start step can still be marked by hand
+  }
+}
+
 export function ReceiptView({ id, defaultOpen = false }: { id: string; defaultOpen?: boolean }) {
   const q = useReceipt(id);
   const [open, setOpen] = useState(defaultOpen);
@@ -38,7 +48,10 @@ export function ReceiptView({ id, defaultOpen = false }: { id: string; defaultOp
   return (
     <div style={css("display:flex;flex-direction:column;border-radius:18px;border:1px solid var(--line);background:var(--surface)")}>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (!open) markOpened();
+          setOpen((v) => !v);
+        }}
         aria-expanded={open}
         style={css("display:flex;align-items:center;gap:10px;padding:12px 18px;border:0;background:transparent;color:var(--ink);text-align:left;flex-wrap:wrap")}
       >

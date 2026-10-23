@@ -151,7 +151,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <button className="gn-hover" onClick={() => navigate("/?tour=1")} style={css(navStyle(false))}>
                 Take the 1-minute tour
               </button>
-              <a className="gn-hover" href="/onboarding" style={css(navStyle(false))}>
+              <a className="gn-hover" href="/onboarding/index.html" style={css(navStyle(false))}>
                 Open the guided onboarding
               </a>
               <button className="gn-hover" onClick={() => navigate("/?quickstart=1")} style={css(navStyle(false))}>

@@ -147,6 +147,9 @@ export interface Proposal {
   effective: string;
   destination?: string;
   op_id: string;
+  /** What it is and where it came from, as the capture policy names them ("fact:chat"). */
+  capture?: string;
+  origin?: string;
   target: Record<string, unknown>;
 }
 
@@ -326,6 +329,8 @@ export const useBrainMap = (area?: string, page = 1) =>
   useQuery({ queryKey: ["brain", "map", area ?? "", page], queryFn: () => get<BrainMapPage>(`/api/brain/map${query({ area, page })}`) });
 
 export interface Policy {
+  mode: "governed" | "auto";
+  auto_paused: boolean;
   preset: string;
   presets: string[];
   auto_daily_cap: number;
