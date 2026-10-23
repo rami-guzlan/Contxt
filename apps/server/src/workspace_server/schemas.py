@@ -134,6 +134,10 @@ class PoliciesIn(Body):
     cross_check: bool | None = None  # the weekly cross-check of your beliefs
     challenger: bool | None = None  # the external challenger (off until turned on)
     redact_cloud: bool | None = None  # sensitive spans redacted for cloud models (decision 13)
+    auto_daily_cap: int | None = Field(default=None, ge=0, le=1000)  # Auto's daily cap
+    # Scoped standing permissions: [{type, origin, area, paused}].
+    standing: list[dict[str, Any]] | None = None
+    retrieval_policy: str | None = None  # relaxed, standard or careful
 
 
 class CatchUpItemIn(Body):

@@ -1821,7 +1821,13 @@ POLICY = {
     "challenger": ("governance", "challenger", "bool"),
     # Sensitive spans redacted in what a cloud model reads (decision 13).
     "redact_cloud": ("governance", "redact_cloud", "bool"),
+    # Release 1 plan, M08 and M05: Auto's daily cap, the scoped standing permissions and the
+    # named retrieval policy.
+    "auto_daily_cap": ("governance", "auto_daily_cap", "cap"),
+    "standing": ("governance", "standing", "standing"),
+    "retrieval_policy": ("governance", "retrieval_policy", "retrieval"),
 }
+RETRIEVAL_POLICIES = ("relaxed", "standard", "careful")
 
 
 def policies(brain) -> dict:
@@ -1851,6 +1857,14 @@ def policies(brain) -> dict:
         "redact_cloud": redact_cloud(config),
         "capture_types": list(CAPTURE_TYPES),
         "capture_origins": list(CAPTURE_ORIGINS),
+        "auto_daily_cap": auto_cap(config),
+        "auto_applied_today": auto_applied_since(brain, hours=24),
+        "standing": [dict(r) for r in data["governance"].get("standing") or []
+                     if isinstance(r, dict)],
+        "retrieval_policy": str(data["governance"].get("retrieval_policy")
+                                or data.get("retrieval_policy") or "standard"),
+        "retrieval_policies": list(RETRIEVAL_POLICIES),
+        "learned": learned_rules(brain),
     }
 
 
@@ -1872,6 +1886,36 @@ def _policy_value(st, key, kind, value):
     if kind == "patterns":
         items = value if isinstance(value, list) else [value]
         return [str(p).strip() for p in items if str(p or "").strip()], None
+    if kind == "cap":
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return None, f"{key} is a whole number"
+        return (number, None) if 0 <= number <= 1000 else (None, f"{key} is between 0 and 1000")
+    if kind == "retrieval":
+        text = str(value or "").strip().lower()
+        if text not in RETRIEVAL_POLICIES:
+            return None, f"retrieval_policy is one of {', '.join(RETRIEVAL_POLICIES)}"
+        return text, None
+    if kind == "standing":
+        if not isinstance(value, list):
+            return None, "standing is a list of {type, origin, area, paused}"
+        out = []
+        for rule in value:
+            if not isinstance(rule, dict):
+                return None, "each standing permission is {type, origin, area, paused}"
+            kind_ = str(rule.get("type") or "").strip()
+            origin = str(rule.get("origin") or "").strip()
+            area = str(rule.get("area") or "*").strip() or "*"
+            if kind_ not in CAPTURE_TYPES:
+                return None, f"{kind_!r} is not a capture type ({', '.join(CAPTURE_TYPES)})"
+            if origin not in CAPTURE_ORIGINS:
+                return None, f"{origin!r} is not an origin ({', '.join(CAPTURE_ORIGINS)})"
+            if area != "*" and area not in st.config.areas:
+                return None, f"{area!r} is not an area"
+            out.append({"type": kind_, "origin": origin, "area": area,
+                        "paused": bool(rule.get("paused"))})
+        return out, None
     if kind == "preset":
         text = str(value or "").strip().lower()
         if text not in PRESETS:

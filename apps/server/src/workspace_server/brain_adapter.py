@@ -1210,6 +1210,29 @@ class BrainKitAdapter:
         data: dict[str, Any] = self.brain.use(found, days=days).data
         return data
 
+    def taste(self) -> dict[str, Any]:
+        return dict(self.brain.taste().data)
+
+    def propose_taste(self, text: str, **fields: Any) -> dict[str, Any]:
+        with self._lock:
+            found = self.brain.propose_taste(text, **fields)
+        if found.is_error:
+            raise ValidationFailed(found.text)
+        return dict(found.data, message=found.text)
+
+    def learned(self) -> list[dict[str, Any]]:
+        return list(self.brain.learned().data.get("rules") or [])
+
+    def forget_learned(self, rule_id: str) -> dict[str, Any]:
+        with self._lock:
+            found = self.brain.forget_learned(rule_id)
+        if found.is_error:
+            raise NotFound(found.text, id=rule_id)
+        return dict(found.data)
+
+    def brain_map(self, *, area: str | None = None, page: int = 1) -> dict[str, Any]:
+        return dict(self.brain.brain_map(area=area, page=page).data)
+
     def requests_in(self, session_id: str) -> list[dict[str, Any]]:
         found = self.brain.requests(session=session_id, limit=50)
         return list(reversed(found.data.get("requests") or []))
