@@ -18,6 +18,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import type { BrainArea, BrainEntrySummary, BrainFile, BrainHistoryRecord, InventoryItem, StateColumn, StateRow, StateSheet } from "../../api/types";
 import { type TasteEntry, useBrainMap, useForgetLearned, useLearned, useProposals, useProposeTaste, useTaste } from "../api";
+import { AutoBanner } from "../components/AutoBanner";
 import { css } from "../css";
 import {
   DERIVED,
@@ -131,6 +132,7 @@ export function BrainPage() {
 
   return (
     <div className="gn-page" style={css(WRAP)}>
+      <AutoBanner />
       <div style={css("display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap")}>
         <div style={css("display:flex;flex-direction:column;gap:8px")}>
           <h1 style={css(S.h1)}>What your AI knows</h1>

@@ -22,6 +22,8 @@ import {
   useQuickStartMemory,
   useTell,
 } from "../hooks/home";
+import { HeartbeatBar, RecentBeats, WorldRightNow } from "../components/Heartbeat";
+import { useHeartbeat } from "../hooks/heartbeat";
 import { Btn, Empty, Failure, Later, Loaded, Loading, plural, S, when } from "../ui";
 
 /** In Auto mode changes go in on their own, so Home shows what was applied instead of what waits. */
@@ -668,7 +670,7 @@ function AutoHome({ policy }: { policy: Policy }) {
   const proposals = useProposals();
   const points = useBrainCheckpoints();
   const projects = useBrainProjects();
-  const { catalog, shape } = useBrainShape();
+  const heartbeat = useHeartbeat();
   const undo = useUndo();
   const [undoing, setUndoing] = useState<string | null>(null);
 
@@ -680,52 +682,30 @@ function AutoHome({ policy }: { policy: Policy }) {
   const waiting = proposals.data ?? [];
   const need = waiting[0];
   const active = (projects.data ?? []).filter((p) => p.active);
-  const dayAuto = auto.filter((p) => lastDay(p.at));
-  const counts = ["Added", "Updated", "Retired"].map((k) => ({ k, n: dayAuto.filter((p) => changeVerb(p) === k).length }));
+  const agent = heartbeat.data?.cli_label ?? "your AI";
 
   const status = paused ? `Paused: ${done} changes went in on their own today, the cap is ${cap}` : `${done} of ${cap} today${lastAt ? ` · last change ${when(lastAt)}` : ""}`;
   const waits = proposals.isLoading ? "" : waiting.length ? ` ${plural(waiting.length, "change")} ${waiting.length === 1 ? "waits" : "wait"} for you.` : " Nothing waits for you.";
-  const sub = `${plural(done, "change")} went in on ${done === 1 ? "its" : "their"} own in the last 24 hours.${waits}${
+  const sub = `${status}. ${plural(done, "change")} went in on ${done === 1 ? "its" : "their"} own in the last 24 hours.${waits}${
     paused ? " Until the cap resets, new changes wait in Catch up." : ""
   }`;
 
   return (
-    <div className="gn-page" style={css("max-width:1080px;margin:0 auto;padding:40px 64px 96px;display:flex;flex-direction:column;gap:44px;box-sizing:border-box")}>
+    <div className="gn-page" style={css("max-width:1120px;margin:0 auto;padding:40px 64px 96px;display:flex;flex-direction:column;gap:40px;box-sizing:border-box")}>
       <div style={css("display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding-top:16px")}>
         <span style={css("font:400 14px Geist;color:var(--muted)")}>{today()}</span>
         <h1 style={css("margin:0;font:400 46px/1.1 Newsreader;letter-spacing:-.02em")}>{greeting()}</h1>
         <span style={css("font:400 17px/1.5 Geist;color:var(--ink2);max-width:640px")}>{paused ? "Auto-governance is paused." : "Your Brain is keeping itself."}</span>
       </div>
       <TellAsk projects={active} />
-      <div
-        role="status"
-        style={css("display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px;border-radius:99px;background:var(--surface);box-shadow:var(--shadow);align-self:center;flex-wrap:wrap")}
-      >
-        <span
-          aria-hidden="true"
-          style={css(`width:8px;height:8px;border-radius:50%;flex:none;background:${paused ? "var(--faint)" : "oklch(0.7 0.14 150)"};${paused ? "" : "animation:gnDot 1.6s infinite"}`)}
-        />
-        <span style={css("font:500 13px Geist")}>Auto-governed</span>
-        <span style={css("font:400 13px Geist;color:var(--muted)")}>{status}</span>
-        <button
-          type="button"
-          disabled
-          title="Pausing by hand isn’t available yet. Auto pauses on its own at the daily cap."
-          style={css("padding:5px 12px;border-radius:99px;border:1px solid var(--line2);background:transparent;font:500 12px Geist;color:var(--ink);opacity:.55")}
-        >
-          Pause
-        </button>
-        <button type="button" onClick={() => navigate("/settings?tab=approval")} style={css("border:0;background:transparent;font:400 12px Geist;color:var(--muted);padding:0 4px")}>
-          Settings
-        </button>
-      </div>
-      <span style={css("font:400 15px/1.55 Geist;color:var(--ink2);text-align:center;max-width:680px;align-self:center;margin-top:-24px")}>{sub}</span>
+      <HeartbeatBar />
+      <span style={css("font:400 14px/1.55 Geist;color:var(--muted);text-align:center;max-width:680px;align-self:center;margin-top:-28px")}>{sub}</span>
       {proposals.error ? <Failure error={proposals.error} retry={() => void proposals.refetch()} /> : null}
       {need ? (
         <button
           type="button"
           onClick={() => navigate("/brain/cards")}
-          style={css("display:flex;align-items:center;gap:16px;padding:18px 22px;border-radius:20px;border:1px dashed oklch(0.68 0.14 35);background:var(--surface);text-align:left;color:var(--ink);margin-top:-16px")}
+          style={css("display:flex;align-items:center;gap:16px;padding:18px 22px;border-radius:20px;border:1px dashed oklch(0.68 0.14 35);background:var(--surface);text-align:left;color:var(--ink);margin-top:-20px")}
         >
           <span aria-hidden="true" style={css("width:36px;height:36px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;background:oklch(0.74 0.12 35 / .2);font:500 15px Geist")}>
             !
@@ -737,64 +717,12 @@ function AutoHome({ policy }: { policy: Policy }) {
           <span style={css("font:500 13px Geist")}>Decide →</span>
         </button>
       ) : null}
-      <section aria-label="Goals" style={css("display:flex;flex-direction:column;gap:14px")}>
-        <div style={css("display:flex;justify-content:space-between;align-items:baseline")}>
-          <h2 style={css("margin:0;font:400 30px Newsreader")}>
-            Goals
-            <Later />
-          </h2>
-          <button type="button" disabled style={css("border:0;background:transparent;font:400 13px Geist;color:var(--muted);opacity:.55")}>
-            All goals →
-          </button>
-        </div>
-        <Empty title="Goals are a later phase">When they arrive, each goal shows how far along it is and what moved it.</Empty>
-      </section>
-      <section aria-label="Projects" style={css("display:flex;flex-direction:column;gap:14px")}>
-        <div style={css("display:flex;justify-content:space-between;align-items:baseline")}>
-          <h2 style={css("margin:0;font:400 30px Newsreader")}>Projects</h2>
-          <button type="button" onClick={() => navigate("/projects")} style={css("border:0;background:transparent;font:400 13px Geist;color:var(--muted)")}>
-            All projects →
-          </button>
-        </div>
-        <Loaded q={projects} empty={() => (active.length ? null : <Empty title="No active projects yet" />)}>
-          {() => (
-            <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px")}>
-              {active.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => navigate(`/projects/${encodeURIComponent(p.id)}`)}
-                  style={css("padding:20px;border-radius:20px;border:1px solid var(--line);background:transparent;display:flex;flex-direction:column;gap:10px;text-align:left;color:var(--ink)")}
-                >
-                  <span style={css("font:500 15px Geist")}>{p.title}</span>
-                  <span style={css("font:400 14px/1.5 Geist;color:var(--ink2)")}>{p.current || p.summary || "Nothing recorded about where it stands yet."}</span>
-                  <span style={css("font:400 12px Geist;color:var(--muted);margin-top:auto")}>{p.updated ? `Updated ${when(p.updated)}` : p.status}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </Loaded>
-      </section>
-      <section aria-label="Your Brain" style={css("display:flex;flex-direction:column;gap:18px")}>
-        <div style={css("display:flex;justify-content:space-between;align-items:baseline")}>
-          <h2 style={css("margin:0;font:400 30px Newsreader")}>Your Brain</h2>
-          <button type="button" onClick={() => navigate("/brain")} style={css("border:0;background:transparent;font:400 13px Geist;color:var(--muted)")}>
-            Open Brain →
-          </button>
-        </div>
-        {catalog.error ? <Failure error={catalog.error} retry={() => void catalog.refetch()} /> : shape ? <AreaBar areas={shape.areas} height={14} /> : <Loading />}
-        {shape ? <span style={css(S.muted)}>{shape.entries ? shape.line : "Your Brain is empty so far."}</span> : null}
-        <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px")}>
-          {counts.map((c) => (
-            <div key={c.k} style={css(`padding:14px 16px;border-radius:16px;background:${tint(KH[c.k] ?? 265)};display:flex;flex-direction:column;gap:2px`)}>
-              <span style={css("font:400 28px Newsreader;color:var(--ink)")}>{points.isLoading ? "…" : c.n}</span>
-              <span style={css("font:400 13px Geist;color:var(--ink2)")}>{c.k} today</span>
-            </div>
-          ))}
-        </div>
-        <div style={css("background:var(--surface);border-radius:20px;box-shadow:var(--shadow);padding:6px 22px")}>
+      <WorldRightNow />
+      <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:20px;align-items:start")}>
+        <RecentBeats />
+        <section id="what-it-did" aria-label="What it did, and why" style={css("background:var(--surface);border-radius:22px;box-shadow:var(--shadow);padding:6px 22px")}>
           <div style={css("display:flex;justify-content:space-between;padding:14px 0 8px")}>
-            <span style={css("font:500 13px Geist;color:var(--muted)")}>What went in on its own, and why</span>
+            <span style={css("font:500 13px Geist;color:var(--muted)")}>What {agent} did, and why</span>
             <button type="button" onClick={() => navigate("/activity?tab=changes")} style={css("border:0;background:transparent;font:400 12px Geist;color:var(--muted)")}>
               Full log →
             </button>
@@ -846,9 +774,11 @@ function AutoHome({ policy }: { policy: Policy }) {
               </>
             )}
           </Loaded>
-        </div>
-        <span style={css("font:400 13px/1.5 Geist;color:var(--muted)")}>Guardrails: must-holds and private notes still wait for you. Every change is an undo point.</span>
-      </section>
+        </section>
+      </div>
+      <span style={css("font:400 13px/1.55 Geist;color:var(--muted)")}>
+        The heartbeat only reads. It never sends, posts or spends. Must-holds, private notes and sealed projects wait for you or are skipped, and every change it makes is an undo point.
+      </span>
     </div>
   );
 }
