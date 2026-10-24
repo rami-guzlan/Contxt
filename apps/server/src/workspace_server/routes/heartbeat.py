@@ -7,8 +7,11 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import Field
 
+from workspace_core.errors import PermissionDenied, ValidationFailed
+
 from ..deps import Who
 from ..heartbeat import Heartbeat
+from ..heartbeat.n8n import SECRET_HEADER
 from ..schemas import Body
 
 router = APIRouter(prefix="/api/heartbeat")
@@ -106,3 +109,44 @@ def set_connector(
         feeds=body.feeds,
         cadence_minutes=body.cadence_minutes,
     )
+
+
+# ------------------------------------------------------------------ reads through n8n
+
+# Addresses an n8n on this computer posts from; anything else is refused.
+LOCAL = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+class N8nReadIn(Body):
+    name: str = Field(max_length=200)
+    workflow: dict[str, Any]
+    feeds: list[str] | None = None
+    connector_id: str | None = Field(default=None, max_length=240)
+
+
+@router.post("/n8n", status_code=201)
+def add_n8n(body: N8nReadIn, request: Request, who: Who) -> dict[str, Any]:
+    """A connector read by an n8n workflow: checked read-only by code, off until turned on.
+    The secret its workflow posts with comes back this once."""
+    return _heartbeat(request).add_n8n(
+        who,
+        name=body.name,
+        workflow=body.workflow,
+        feeds=body.feeds,
+        connector_id=body.connector_id,
+    )
+
+
+@router.post("/inbox/{connector_id}")
+async def inbox(connector_id: str, request: Request) -> dict[str, Any]:
+    """Where an n8n workflow on this computer posts what it read, with its connector's secret
+    (not the owner's sign-in: n8n posts here, and only from this computer)."""
+    host = request.client.host if request.client else ""
+    if host not in LOCAL:
+        raise PermissionDenied("Only an n8n on this computer may post here.")
+    try:
+        body = await request.json()
+    except ValueError as exc:
+        raise ValidationFailed("Post the items as JSON.") from exc
+    secret = request.headers.get(SECRET_HEADER, "")
+    return _heartbeat(request).receive(connector_id, secret, body)

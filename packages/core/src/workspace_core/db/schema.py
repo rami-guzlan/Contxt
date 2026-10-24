@@ -542,7 +542,7 @@ heartbeat_connectors = sa.Table(
     sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
     sa.Column("name", sa.String(200), nullable=False),
     sa.Column("cli", sa.String(40), nullable=False),  # claude | codex | gnomon
-    sa.Column("how", sa.String(16), nullable=False),  # mcp | computer | folder
+    sa.Column("how", sa.String(16), nullable=False),  # mcp | computer | folder | n8n
     sa.Column("cadence_minutes", sa.Integer),  # its own, when slower than the heartbeat's
     sa.Column("feeds", sa.JSON, nullable=False),  # region ids
     sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.false()),
@@ -555,7 +555,25 @@ heartbeat_connectors = sa.Table(
     sa.Column("tools", sa.JSON, nullable=False),  # the read-only tools, by name
     sa.Column("found_in", sa.String(400), nullable=False, server_default=""),
     sa.Column("present", sa.Boolean, nullable=False, server_default=sa.true()),
+    # An n8n read: the workflow as approved (checked read-only), its id in n8n, and the hash
+    # of the secret it sends with what it posts (never the secret itself).
+    sa.Column("workflow", sa.JSON),
+    sa.Column("workflow_id", sa.String(64)),
+    sa.Column("secret_hash", sa.String(64)),
     *_record(archivable=False),
+)
+
+# What n8n workflows posted, waiting for the next beat: it reads them like any read (a beat
+# that takes them marks them with its id; a beat that stopped leaves them for the next).
+heartbeat_inbox = sa.Table(
+    "heartbeat_inbox",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("connector_id", sa.String(240), nullable=False, index=True),
+    sa.Column("item", sa.JSON, nullable=False),
+    sa.Column("received_at", TS, nullable=False),
+    sa.Column("beat_id", ID),
 )
 
 # One beat: what it read, what it changed, what waits and what it held back, and what it used.
