@@ -1,7 +1,8 @@
 // One project (v4 isProject, Release 1): Context, Tasks, Files and Outputs, all reading the same
 // project record and task IDs. A pending update shows beside the approved value, never over it.
-// Outputs are drafts that keep the record versions they read and never change records. The
-// Board is a later phase: its tab is shown, never pretended to work.
+// Outputs are drafts that keep the record versions they read and never change records. Tasks
+// hold Work with AI, the agent orchestrators, the agent tasks and the person's own tasks, with
+// the orchestrators' activity beside them; Outputs groups what runs made by orchestrator and run.
 
 import { type ReactNode, type RefObject, useCallback, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
@@ -10,6 +11,7 @@ import type { BrainProjectDetail, OutputFile, TaskItem } from "../../api/types";
 import { type Proposal, useAsk, useProposals, useSourceStatus, useWorkAsk, useWorkTimeline, type WorkJob } from "../api";
 import { DistillThread } from "../components/DistillThread";
 import { ProposalCard } from "../components/ProposalCard";
+import { AgentTasks, type Go, OrchestratorActivity, OrchestratorOutputs, OrchestratorSheets, OrchestratorsPanel } from "../components/Orchestrators";
 import { ReceiptView } from "../components/Receipt";
 import { css, cx } from "../css";
 import {
@@ -34,14 +36,13 @@ import {
 import { Btn, Chip, Empty, Failure, Later, Loading, Modal, S, Status, when } from "../ui";
 import { ProjectStatus } from "./Projects";
 
-type Tab = "context" | "tasks" | "files" | "outputs" | "workspace";
+type Tab = "context" | "tasks" | "files" | "outputs";
 
 const TABS: [Tab, string, string][] = [
   ["context", "Context", "What your AI knows and sends"],
   ["tasks", "Tasks", "What needs doing"],
   ["files", "Files", "Sources for this project"],
   ["outputs", "Outputs", "What AI work produced"],
-  ["workspace", "Board", "Custom layout · Later"],
 ];
 
 const tabStyle = (on: boolean) =>
@@ -89,6 +90,13 @@ export function ProjectPage() {
     );
   }
   const p = project.data;
+  // Where the orchestrators' links go: Outputs (one orchestrator's runs), its sheet in
+  // Context, or Catch up for a proposal.
+  const go = (to: Go, orchestrator?: string) => {
+    if (to === "cards") navigate("/brain/catch-up");
+    else if (to === "sheet") setParams({});
+    else setParams(orchestrator ? { tab: "outputs", runs: orchestrator } : { tab: "outputs" });
+  };
 
   return (
     <div className="gn-page">
@@ -113,19 +121,9 @@ export function ProjectPage() {
         </div>
       </div>
       {tab === "context" ? <ContextView p={p} /> : null}
-      {tab === "tasks" ? <TasksView p={p} /> : null}
+      {tab === "tasks" ? <TasksView p={p} onGo={go} /> : null}
       {tab === "files" ? <FilesView p={p} /> : null}
-      {tab === "outputs" ? <OutputsView p={p} /> : null}
-      {tab === "workspace" ? (
-        <div style={css(SECTION)}>
-          <div style={css("display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:14px;background:var(--soft);flex-wrap:wrap")}>
-            <Later />
-            <span style={css("font:400 14px Geist;flex:1;min-width:220px")}>
-              The configurable board is a later phase. Release 1 projects use Context, Tasks, Files and Outputs.
-            </span>
-          </div>
-        </div>
-      ) : null}
+      {tab === "outputs" ? <OutputsView p={p} runs={params.get("runs") ?? "all"} onRuns={(runs) => setParams({ tab: "outputs", runs })} onSheet={() => go("sheet")} /> : null}
     </div>
   );
 }
@@ -151,6 +149,9 @@ function ContextView({ p }: { p: BrainProjectDetail }) {
 
   return (
     <div style={css("max-width:1120px;margin:0 auto;padding:28px 64px 96px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:56px;box-sizing:border-box")}>
+      <div style={css("grid-column:1 / -1")}>
+        <OrchestratorSheets projectId={p.id} />
+      </div>
       {proposals.error ? (
         <div style={css("grid-column:1 / -1")}>
           <Failure error={proposals.error} retry={() => void proposals.refetch()} />
@@ -784,12 +785,19 @@ const JOB_WORDS: Record<string, [string, string]> = {
   canceled: ["excluded", "Stopped"],
 };
 
-function TasksView({ p }: { p: BrainProjectDetail }) {
+function TasksView({ p, onGo }: { p: BrainProjectDetail; onGo: (to: Go, orchestrator?: string) => void }) {
   return (
-    <div style={css(SECTION)}>
+    <div style={css(SECTION + ";gap:28px")}>
       <WorkWithAI p={p} />
       <Timeline p={p} />
-      <ProjectTodos p={p} />
+      <OrchestratorsPanel projectId={p.id} onGo={onGo} />
+      <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:24px;align-items:start")}>
+        <div style={css("display:flex;flex-direction:column;gap:22px")}>
+          <AgentTasks projectId={p.id} />
+          <ProjectTodos p={p} />
+        </div>
+        <OrchestratorActivity projectId={p.id} onGo={onGo} />
+      </div>
     </div>
   );
 }
@@ -938,7 +946,10 @@ function ProjectTodos({ p }: { p: BrainProjectDetail }) {
   const list = flatTasks(tasks.data);
   return (
     <div style={css("display:flex;flex-direction:column;gap:10px")}>
-      <span style={css("font:400 15px/1.5 Geist;color:var(--ink2)")}>Tasks stay tasks, not memory. Your edits and accepted proposals update the same task IDs.</span>
+      <div style={css("display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap")}>
+        <span style={css("font:500 15px Geist")}>Your tasks</span>
+        <span style={css("font:400 12.5px Geist;color:var(--muted)")}>For people. Tasks stay tasks, not memory.</span>
+      </div>
       {tasks.isLoading ? (
         <Loading what="Loading tasks" />
       ) : tasks.error ? (
@@ -1079,7 +1090,7 @@ function FilesView({ p }: { p: BrainProjectDetail }) {
 
 // ------------------------------------------------------------------ Outputs
 
-function OutputsView({ p }: { p: BrainProjectDetail }) {
+function OutputsView({ p, runs, onRuns, onSheet }: { p: BrainProjectDetail; runs: string; onRuns: (runs: string) => void; onSheet: () => void }) {
   const outputs = useOutputs();
   const timeline = useWorkTimeline(p.id);
   const files = (outputs.data?.files ?? []).filter((f) => f.project === p.id);
@@ -1088,12 +1099,14 @@ function OutputsView({ p }: { p: BrainProjectDetail }) {
   const loading = outputs.isLoading || timeline.isLoading;
   return (
     <div style={css(SECTION)}>
-      <span style={css("font:400 15px/1.5 Geist;color:var(--ink2)")}>
-        What AI work produced here. Outputs never change records; to keep something from one, capture it and review the proposal.
+      <span style={css("font:400 15px/1.5 Geist;color:var(--ink2);max-width:680px")}>
+        What AI work produced here, grouped by orchestrator and run. Final outputs sit on top, with the trail that led to them. Outputs never change records; to keep something, capture it and review the proposal.
       </span>
+      <OrchestratorOutputs projectId={p.id} tab={runs} onTab={onRuns} onSheet={onSheet} />
+      {runs === "all" || runs === "other" ? <span style={css("font:500 15px Geist")}>Other outputs</span> : null}
       {outputs.error ? <Failure error={outputs.error} retry={() => void outputs.refetch()} /> : null}
       {timeline.error ? <Failure error={timeline.error} retry={() => void timeline.refetch()} /> : null}
-      {loading ? (
+      {runs !== "all" && runs !== "other" ? null : loading ? (
         <Loading what="Loading outputs" />
       ) : (
         <div style={css(LIST)}>

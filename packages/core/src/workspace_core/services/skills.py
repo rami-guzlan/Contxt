@@ -34,6 +34,7 @@ from .tasks import Tasks
 
 RUN = "skill"  # the template of a skill run
 WORK = "work"  # the template of a Work with AI run (a project's Tasks)
+ORCHESTRATE = "orchestrator"  # an agent orchestrator's own run, or one of its agents' runs
 DRAFT = "skill-draft"  # the template of improving a skill, or writing a new one
 # What a skill makes (its `artifacts`) that is a file made on this computer: such a skill runs
 # in a folder of its own, with file and Python tools.
@@ -714,7 +715,10 @@ class Skills:
         is a new version of the same result."""
         who.require("runs.write")
         task = self._task_of_run(
-            who, run_id, (RUN, WORK), "This run is not a skill run (nor a Work with AI run)."
+            who,
+            run_id,
+            (RUN, WORK, ORCHESTRATE),
+            "This run is not a skill run (nor a Work with AI or orchestrator run).",
         )
         text = str(text or "").strip()
         if not text:

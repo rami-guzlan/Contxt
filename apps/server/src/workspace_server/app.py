@@ -30,6 +30,7 @@ from .library import Library
 from .mcp import tools as mcp_tools
 from .mcp.protocol import McpHandler
 from .models import Models
+from .orchestration import Orchestration
 from .outputs import Outputs
 from .routes import (
     agent,
@@ -47,6 +48,7 @@ from .routes import (
     loop,
     mcp,
     notes,
+    orchestrators,
     outputs,
     proof,
     release1,
@@ -177,6 +179,8 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     runtime = runtime or open_runtime(settings or Settings.from_env())
     mcp_tools.AGENT_WORK = runtime.agent  # knowledge_run starts work in the background
     mcp_tools.WORK_WITH_AI = WorkWithAI(runtime.ws, runtime.runners)  # work_ask
+    orchestration = Orchestration(runtime.ws, runtime.runners)
+    mcp_tools.orchestrator_tools.ORCHESTRATION = orchestration  # the orchestrators_ tools
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -196,6 +200,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     app.state.brain = runtime.brain
     app.state.templates = runtime.templates
     app.state.runners = runtime.runners
+    app.state.orchestration = orchestration
     app.state.mcp = McpHandler(runtime.ws, runtime.templates, runtime.runners.contracts)
 
     @app.exception_handler(WorkspaceError)
@@ -210,6 +215,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         agents,
         brain,
         outputs,
+        orchestrators,
         proof,
         skills,
         bus,

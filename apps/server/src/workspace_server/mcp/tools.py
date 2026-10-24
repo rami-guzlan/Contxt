@@ -1225,6 +1225,12 @@ TOOLS: dict[str, Tool] = {
 }
 
 
+# The agent orchestrators' tools (orchestrator_tools.py), built on the helpers above.
+from . import orchestrator_tools  # noqa: E402
+
+TOOLS.update({t.name: t for t in orchestrator_tools.TOOLS})
+
+
 # The names these tools had before the MCP Tools.md surface: still answered for a version.
 ALIASES = {
     "get_state": "sheets_get",
