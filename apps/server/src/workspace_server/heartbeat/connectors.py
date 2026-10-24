@@ -252,7 +252,8 @@ def _stdio_tools(spec: dict[str, Any], timeout: float) -> list[dict[str, Any]]:
             lines.put(line)
         lines.put(None)
 
-    threading.Thread(target=pump, daemon=True).start()
+    pumping = threading.Thread(target=pump, daemon=True)
+    pumping.start()
     deadline = time.monotonic() + timeout
 
     def send(message: dict[str, Any]) -> None:
@@ -307,6 +308,10 @@ def _stdio_tools(spec: dict[str, Any], timeout: float) -> list[dict[str, Any]]:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(timeout=3)
+        pumping.join(timeout=3)
+        if proc.stdout:
+            proc.stdout.close()
 
 
 def _http_tools(spec: dict[str, Any], timeout: float) -> list[dict[str, Any]]:
