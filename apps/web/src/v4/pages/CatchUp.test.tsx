@@ -289,3 +289,16 @@ describe("Card mode", () => {
     expect(await screen.findByText("All caught up.")).toBeInTheDocument();
   });
 });
+
+describe("Catch up, auto-governed", () => {
+  it("opens on What changed, with the governor's reason, Edit and Undo", async () => {
+    const went = { at: new Date().toISOString(), kind: "fact", id: "note-regs", title: "388 registered", source: "HubSpot", capture: "fact:connector", path: null, live: true, checkpoint: "cp_1", by_governor: true, reason: "Registrations went from 364 to 388" };
+    const calls = api({ "GET /api/brain/policies": policy({ mode: "auto" }), "GET /api/brain/catch-up": plan({ handled: [went] }) });
+    renderAt(<CatchUpPage />, { path: "/brain/catch-up", route: "/brain/catch-up" });
+    expect(await screen.findByText("388 registered")).toBeInTheDocument();
+    expect(screen.getByText(/Why your AI kept it: Registrations went from 364 to 388/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/brain/notes/note-regs");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/checkpoints/cp_1/undo")).toBe(true));
+  });
+});

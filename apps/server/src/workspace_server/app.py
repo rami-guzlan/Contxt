@@ -115,6 +115,8 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         if settings.brain_vault
         else None
     )
+    if adapter is not None:
+        adapter.migrate_governance()
     ws = Workspace.open(
         settings.data_dir,
         database_url=settings.database_url,

@@ -7,6 +7,7 @@ import { NavLink, useLocation, useNavigate } from "react-router";
 import { useHome, useMe } from "../api/hooks";
 import { useTheme } from "../lib/theme";
 import { useProposals } from "./api";
+import { AutoNotice } from "./components/AutoNotice";
 import { css } from "./css";
 import { Later, S } from "./ui";
 
@@ -203,6 +204,7 @@ export function Shell({ children }: { children: ReactNode }) {
         >
           Menu
         </button>
+        <AutoNotice />
         {children}
       </main>
     </div>

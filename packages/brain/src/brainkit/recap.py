@@ -97,7 +97,10 @@ def since(brain, moment: str):
                             "capture": str(record.get("capture") or ""),
                             "path": record.get("path") if kind == "file.add" else None,
                             "live": bool(note is not None and note.live),
-                            "checkpoint": points.get(str(record.get("proposal") or ""))})
+                            "checkpoint": points.get(str(record.get("proposal") or "")),
+                            # Auto: the governing AI kept it, and why (the auto default)
+                            "by_governor": record.get("applied_by") == "governor",
+                            "reason": str(record.get("reason") or "")})
         elif action in DECIDED:
             decided[action] = decided.get(action, 0) + 1
             if action == "approved":

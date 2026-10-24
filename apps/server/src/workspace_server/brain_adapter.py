@@ -1282,6 +1282,14 @@ class BrainKitAdapter:
         data: dict[str, Any] = self.brain.policies().data
         return data
 
+    def migrate_governance(self) -> dict[str, Any] | None:
+        """Release 1 ships auto-governed: a Brain from before switches to Auto once, with a
+        notice the owner can reverse; after that, their choice stands."""
+        from brainkit import governance
+
+        with self._lock:
+            return governance.migrate(self.brain)
+
     def set_policies(self, changes: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             result = self.brain.set_policies(changes)

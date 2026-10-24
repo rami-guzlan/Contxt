@@ -1384,6 +1384,9 @@ export interface WentIn {
   path: string | null;
   live: boolean;
   checkpoint: string | null;
+  /** Auto: the governing AI kept it, with this reason. */
+  by_governor?: boolean;
+  reason?: string;
 }
 
 export interface Recap {

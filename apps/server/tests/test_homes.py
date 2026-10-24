@@ -266,3 +266,11 @@ def test_the_app_shows_the_same_connection(owner, brain_vault):
     assert set(clients) == set(BRAIN_CLIENTS)
     assert "-m brainkit --vault" in clients["claude-code"]["command"]
     assert "gnomon_get_context" in clients["cursor"]["instruction"]
+
+
+def test_a_new_brain_starts_auto_governed_with_no_notice(tmp_path):
+    made = homes.create_home(str(tmp_path), homes.find_starter("empty"), port=8802)
+    with open(os.path.join(made["vault"], "brain.json"), encoding="utf-8") as handle:
+        governance = json.load(handle)["governance"]
+    assert governance["mode"] == "auto" and governance["gov_version"] == 2
+    assert "auto_notice" not in governance

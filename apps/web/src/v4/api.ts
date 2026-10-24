@@ -331,6 +331,10 @@ export const useBrainMap = (area?: string, page = 1) =>
 export interface Policy {
   mode: "governed" | "auto";
   auto_paused: boolean;
+  /** The one-time notice of the switch to Auto (Release 1 ships auto-governed), until dismissed. */
+  auto_notice: { at: string; was: string } | null;
+  /** What the owner governs themselves in Auto: "area:<id>", "project:<id>", "sheet:<id>", "packet:<id>". */
+  self_governed: string[];
   preset: string;
   presets: string[];
   auto_daily_cap: number;
@@ -353,6 +357,20 @@ export function useSetPolicy() {
     mutationFn: (changes: Partial<Policy>) => put<{ policy: Policy }>("/api/brain/policies", changes),
     onSuccess: () => refresh("brain"),
   });
+}
+
+/** "Govern this myself" and "Hand it back" for one area of an auto-governed Brain. */
+export function useGovernMyself(key: string) {
+  const policy = usePolicy();
+  const set = useSetPolicy();
+  const mine = policy.data?.self_governed ?? [];
+  const governed = mine.includes(key);
+  return {
+    governed,
+    pending: set.isPending,
+    error: set.error,
+    toggle: () => set.mutate({ self_governed: governed ? mine.filter((k) => k !== key) : [...mine, key] }),
+  };
 }
 
 // ------------------------------------------------------------------ connections

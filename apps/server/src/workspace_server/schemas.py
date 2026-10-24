@@ -143,6 +143,10 @@ class PoliciesIn(Body):
     retrieval_policy: str | None = None  # relaxed, standard or careful
     mode: str | None = None  # governed (suggestions wait) or auto (in with undo, capped)
     auto_paused: bool | None = None  # pause Auto by hand
+    # The areas the owner governs themselves ("Govern this myself"): area:<id>, project:<id>,
+    # sheet:<id>, packet:<id>.
+    self_governed: list[str] | None = None
+    auto_notice: None = None  # sent as null: dismiss the one-time notice of the switch to Auto
 
 
 class CatchUpItemIn(Body):

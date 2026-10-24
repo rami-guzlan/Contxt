@@ -301,7 +301,7 @@ function ApprovalBody({ policy }: { policy: Policy }) {
           {(
             [
               ["governed", "Governed", "Suggestions wait in Catch up for your yes."],
-              ["auto", "Auto", "Trusted pieces go in by themselves, with undo, capped and pausable."],
+              ["auto", "Auto · On by default", "Your AI keeps the Brain itself. Every change is an undo point with its reason. Must-holds, private notes, sealed projects and anything customer-facing or that spends still wait."],
             ] as const
           ).map(([id, label, hint]) => (
             <button
@@ -329,7 +329,7 @@ function ApprovalBody({ policy }: { policy: Policy }) {
         </div>
         <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px")}>
           {[
-            ["Rules from a chat or folder still wait", "What changes how every AI behaves never goes in from a chat or a folder by itself."],
+            ["What must wait still waits", "Must-holds, private notes, sealed projects, anything customer-facing or that spends money, and conflicts with no clear precedence."],
             ["Every change has an undo", "Applied changes show in Activity with an undo point."],
             [`Pauses itself at ${policy.auto_daily_cap} changes a day`, "After that, everything waits for you until tomorrow."],
           ].map(([t, d]) => (
