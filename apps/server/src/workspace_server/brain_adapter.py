@@ -1462,6 +1462,7 @@ class BrainKitAdapter:
         heard: list[str] | None = None,
         made_by: list[str] | None = None,
         capture_origin: str | None = None,
+        reason: str | None = None,
     ) -> BrainProposal:
         source = f"{WORKSPACE_SOURCE}{proposer}"
         door = {"capture_origin": capture_origin} if capture_origin else {}
@@ -1486,7 +1487,7 @@ class BrainKitAdapter:
                     "task" if destination == "todo" else destination,
                     statement,
                     title=title,
-                    reason=f"{destination} proposed from the workspace",
+                    reason=reason or f"{destination} proposed from the workspace",
                     as_of=extra.get("as_of"),
                     **cited,
                     **place,
@@ -1499,6 +1500,7 @@ class BrainKitAdapter:
                 message=result.text,
                 proposal_id=result.data.get("proposal_id"),
                 checkpoint_id=_checkpoint_id(result.data),
+                waits=[str(w) for w in result.data.get("waits") or []],
             )
         must = extra.pop("must_hold", None) or {}
         # Dates the Brain checks like any other field.
@@ -1524,7 +1526,8 @@ class BrainKitAdapter:
                 scope=None if revises else scope or None,
                 evidence=evidence,
                 source=source,
-                reason=f"{kind} proposed from the workspace"
+                reason=reason
+                or f"{kind} proposed from the workspace"
                 + (f", a change to {revises}" if revises else ""),
                 force_pending=True,
                 supersedes=", ".join(replaces or []) or None,
@@ -1550,6 +1553,7 @@ class BrainKitAdapter:
             proposal_id=data.get("proposal_id"),
             entry_id=data.get("id"),
             checkpoint_id=_checkpoint_id(data),
+            waits=[str(w) for w in data.get("waits") or []],
         )
 
     def propose_many(self, items: list[dict[str, Any]], *, proposer: str) -> list[BrainProposal]:

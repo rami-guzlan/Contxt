@@ -1571,6 +1571,8 @@ class Brain:
         destination: str | None = None,
         place: dict[str, Any] | None = None,
         capture_origin: str | None = None,
+        reason: str | None = None,
+        flags: list[str] | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
 
@@ -1597,7 +1599,8 @@ class Brain:
         given) and `source_excerpt` (the source's own words). A heartbeat read names its item
         as `connector:<connector>:<item>` instead, with the same fields, and says so with
         `capture_origin="connector"`: governance then decides whether it goes in with undo or
-        waits."""
+        waits. `reason` says why, in plain words (an Auto change records it); `flags` marks it
+        `customer_facing` or `spends`, which always wait for the owner."""
         who.require("brain.propose")
         title, statement = " ".join(str(title or "").split()), str(statement or "").strip()
         if not title or not statement:
@@ -1721,6 +1724,10 @@ class Brain:
             if not DAY.match(text):
                 raise ValidationFailed(f"{name} is a date, YYYY-MM-DD.", field=name)
             extra[name] = text
+        for flag in flags or []:
+            if flag not in ("customer_facing", "spends"):
+                raise ValidationFailed("flags are customer_facing or spends.", field="flags")
+            extra[flag] = True
         said = str(said_by or "").strip().lower()
         if said:
             # Who said it, from the proposer (brain-logic plan 7.1); else the Brain reads it
@@ -1750,6 +1757,12 @@ class Brain:
             return BrainProposal(
                 status="duplicate", message="Already proposed with this key.", proposal_id=prior
             )
+        # Who brought it and why, only when said (an older Brain port knows neither).
+        door: dict[str, Any] = {"extra": extra} if extra else {}
+        if capture_origin:
+            door["capture_origin"] = capture_origin
+        if " ".join(str(reason or "").split()):
+            door["reason"] = " ".join(str(reason).split())[:300]
         result = self.rt.brain.propose(
             title=title,
             statement=statement,
@@ -1766,8 +1779,7 @@ class Brain:
             origin=origin,
             heard=heard,
             made_by=made_by,
-            **({"extra": extra} if extra else {}),
-            capture_origin=capture_origin,
+            **door,
         )
         data: dict[str, Any] = {
             "title": title,

@@ -936,7 +936,9 @@ class Heartbeat:
             'text}, {"kind": "progress", "project": id, "text": what moved, "next_up": text}, '
             '{"kind": "task", "project": id, "text": the task, "due": "", "owner": ""}, '
             '{"kind": "note", "area": region id, "topic": name, "text": the fact, '
-            '"revises": an entry id or null}. Write only what the item says; never invent. '
+            '"revises": an entry id or null}. Add "customer_facing": true to a write a '
+            'customer would see, and "spends": true to one about spending money. Write only '
+            "what the item says; never invent. "
             "If a must-hold protects what an item says (it would quote or change it), name it "
             'in "protected_by". Then a new headline (one short sentence) for each region that '
             "got a line, and a status line for each project that moved. Reply with one JSON "
@@ -1222,6 +1224,12 @@ class Heartbeat:
             "source_excerpt": item["text"] or item["title"],
             "as_of": at if re.fullmatch(r"\d{4}-\d{2}-\d{2}", at) else None,
             "capture_origin": "connector",
+            # A plain reason: an Auto change records it as why the governor kept it.
+            "reason": _flat(
+                f"{write.get('reason') or 'It changed'} (from {item['connector_name']}, "
+                "read by the heartbeat)",
+                300,
+            ),
         }
         if kind == "sheet":
             value = _flat(write.get("value"), 300)
@@ -1255,6 +1263,7 @@ class Heartbeat:
             kind="fact",
             topic=None if write.get("revises") else topic,
             revises=write.get("revises") or None,
+            flags=[f for f in ("customer_facing", "spends") if write.get(f) is True] or None,
             **cited,
         )
 
@@ -1406,9 +1415,8 @@ class Heartbeat:
                     details.append(f"{item['connector_name']}: {text} → {label}")
                 elif made.status in ("pending", "applied"):
                     counts["waits"] += 1
-                    said = (
-                        "Waits for you (a must-hold change): " if must_change else "Waits for you: "
-                    )
+                    why = ["a must-hold change"] if must_change else list(made.waits or [])
+                    said = f"Waits for you ({', '.join(why)}): " if why else "Waits for you: "
                     line = self._line(
                         beat_id,
                         item,

@@ -103,7 +103,9 @@ class FakeCli:
         return FakeProc(self, argv, kwargs)
 
     def reads(self):
-        return [c for c in self.calls if (c["config"] or {}).get("mcpServers") or "exec" in c["argv"]]
+        return [
+            c for c in self.calls if (c["config"] or {}).get("mcpServers") or "exec" in c["argv"]
+        ]
 
     def judges(self):
         return [c for c in self.calls if c not in self.reads()]
@@ -258,9 +260,7 @@ def test_a_server_whose_tools_cannot_be_listed_is_not_read(owner, hb, cli_home):
 # ---------------------------------------------------------------------- read-only
 
 
-def test_a_beat_only_reads_with_a_connector_that_would_allow_a_send(
-    owner, hb, fake_cli, cli_home
-):
+def test_a_beat_only_reads_with_a_connector_that_would_allow_a_send(owner, hb, fake_cli, cli_home):
     found(owner)
     done = beat(owner)
     assert done["status"] == "done", done
@@ -402,7 +402,8 @@ def test_an_undone_line_is_not_written_again(owner, runtime, fake_cli):
     undone = owner.ok(owner.post(f"/api/heartbeat/lines/{line['id']}/undo"))
     assert undone["status"] == "undone"
     assert "won't write that again" in undone["line"]
-    left = [p for p in runtime.ws.brain.proposals(runtime.ws.owner()) if p.get("id") == line["proposal_id"]]
+    waiting = runtime.ws.brain.proposals(runtime.ws.owner())
+    left = [p for p in waiting if p.get("id") == line["proposal_id"]]
     assert left == []  # the waiting change was turned down
     # The item changes a little; the judge would make the same write again.
     fake_cli.items = [dict(ITEM, title="Morgan approved hero option B (edited)")]
@@ -445,9 +446,11 @@ def test_an_item_a_must_hold_protects_is_held_back(owner, runtime, hb, fake_cli,
     monkeypatch.setattr(
         hb,
         "protecting",
-        lambda text: {"id": "rules-pricing", "line": "Never share pricing until it is final."}
-        if "pricing" in text.lower()
-        else None,
+        lambda text: (
+            {"id": "rules-pricing", "line": "Never share pricing until it is final."}
+            if "pricing" in text.lower()
+            else None
+        ),
     )
     fake_cli.items = [dict(ITEM, id="sheet-4", title="Pricing sheet v4", text="Draft pricing v4")]
     done = beat(owner)
@@ -570,3 +573,37 @@ def test_a_real_must_hold_protects_what_its_words_name(owner, runtime, hb):
     held = hb.protecting("Pricing sheet v4 is edited, still on the Draft tab: new pricing.")
     assert held and "pricing" in str(held.get("line")).lower()
     assert hb.protecting("Morgan approved hero option B.") is None
+
+
+def test_each_write_goes_through_the_one_proposal_path_as_a_connector_read(
+    owner, runtime, monkeypatch
+):
+    found(owner)
+    seen = []
+    real = runtime.ws.brain.propose
+    monkeypatch.setattr(
+        runtime.ws.brain, "propose", lambda who, **kw: seen.append(kw) or real(who, **kw)
+    )
+    beat(owner)
+    (call,) = seen
+    assert call["capture_origin"] == "connector"
+    assert call["sources"] == ["connector:claude:mail:msg-1"]
+    assert call["source_speaker"] == "Morgan" and call["as_of"] == "2026-09-28"
+    assert call["reason"].startswith("Morgan approved it by email.")
+    assert call["destination"] == "progress" and call["place"]["project"] == PROJECT
+
+
+def test_a_write_that_still_waits_in_auto_says_why(owner, runtime, hb, monkeypatch):
+    found(owner)
+    monkeypatch.setattr(
+        hb,
+        "_propose",
+        lambda *a: BrainProposal(
+            status="pending", message="It waits.", proposal_id="p-2", waits=["sealed project"]
+        ),
+    )
+    done = beat(owner)
+    assert done["waits"] == 1 and done["changes"] == 0
+    (line,) = rows(runtime, schema.heartbeat_lines)
+    assert line["status"] == "waiting"
+    assert line["wrote"] == "Waits for you (sealed project): Website Redesign › latest progress"
