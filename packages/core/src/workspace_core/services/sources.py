@@ -205,7 +205,12 @@ class Sources:
         if self.status(who, [item_id])[item_id].status != "failed":
             raise Conflict("Only a capture whose reading failed can be tried again.")
         requests = self.distill.requests(who, item_id=item_id, limit=20)
-        failed = next(r for r in requests if r.status in FAILED)
+        failed = next((r for r in requests if r.status in FAILED), None)
+        if failed is None:
+            # It failed before any model read it: its transcription. That is retried apart.
+            raise Conflict(
+                "Its transcription failed, not its reading: try the transcription again."
+            )
         return self.distill.request(who, item_ids=[item_id], assignee_id=failed.assignee_id)
 
     def exclude(self, who: Principal, item_id: str, *, reason: str = "") -> SourceStatus:

@@ -297,6 +297,14 @@ def _decision(item: dict[str, Any]) -> dict[str, Any]:
             out["topic"] = topic
         if title:
             out["title"] = title
+        destination = item.get("destination")
+        if destination is not None:
+            if not isinstance(destination, dict) or not str(destination.get("destination") or ""):
+                raise ValidationFailed(
+                    "A new home names its destination and that home's fields.",
+                    field="destination",
+                )
+            out["destination"] = {str(k): v for k, v in destination.items()}
         if body is not None:  # approved in the person's own words
             out["body"] = body
         if summary:

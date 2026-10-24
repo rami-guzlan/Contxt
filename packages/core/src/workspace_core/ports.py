@@ -487,6 +487,24 @@ class BrainPort(Protocol):
         """The requests one conversation made, oldest first: an answer's receipts."""
         ...
 
+    def taste(self) -> dict[str, Any]:
+        """The owner's taste, by lens (brainkit taste.py)."""
+        ...
+
+    def propose_taste(self, text: str, **fields: Any) -> dict[str, Any]:
+        """Propose one taste entry; it waits or applies as governance says."""
+        ...
+
+    def learned(self) -> list[dict[str, Any]]:
+        """The "ask first" rules the owner's undos taught."""
+        ...
+
+    def forget_learned(self, rule_id: str) -> dict[str, Any]: ...
+
+    def brain_map(self, *, area: str | None = None, page: int = 1) -> dict[str, Any]:
+        """The whole Brain map, paged (brainkit brainmap.py)."""
+        ...
+
     def correct(
         self, packet_id: str, kind: str, *, item: str = "", note: str = ""
     ) -> dict[str, Any]:
@@ -1041,6 +1059,21 @@ class NoBrain:
 
     def requests_in(self, session_id: str) -> list[dict[str, Any]]:
         return []
+
+    def taste(self) -> dict[str, Any]:
+        return {"lenses": {"looks": [], "feels": [], "works": []}, "words": {}, "count": 0}
+
+    def propose_taste(self, text: str, **fields: Any) -> dict[str, Any]:
+        return {"status": "unavailable"}
+
+    def learned(self) -> list[dict[str, Any]]:
+        return []
+
+    def forget_learned(self, rule_id: str) -> dict[str, Any]:
+        return {"status": "missing"}
+
+    def brain_map(self, *, area: str | None = None, page: int = 1) -> dict[str, Any]:
+        return {"lines": [], "page": 1, "pages": 1, "levels": {}}
 
     def correct(
         self, packet_id: str, kind: str, *, item: str = "", note: str = ""

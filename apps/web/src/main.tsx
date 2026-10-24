@@ -3,8 +3,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 
-import { App } from "./App";
-import "./styles.css";
+import { App } from "./v4/App";
+import "./v4/theme.css";
 
 const client = new QueryClient({
   defaultOptions: {

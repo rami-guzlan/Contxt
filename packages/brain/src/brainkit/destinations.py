@@ -173,9 +173,13 @@ def apply(brain, proposal, *, actor, edits=None, body=None):
     target = dict(proposal.target)
     cited = {k: target.get(k) for k in governance.SOURCE_KEYS}
     if moved and moved != current:
-        made = propose(brain, moved, text, principal=actor, reason=f"moved from "
-                       f"{label(proposal.kind, target)}", as_of=target.get("as_of"),
-                       **cited, **edits)
+        token = governance.REPLACING.set(proposal.id)
+        try:
+            made = propose(brain, moved, text, principal=actor, reason=f"moved from "
+                           f"{label(proposal.kind, target)}", as_of=target.get("as_of"),
+                           **cited, **edits)
+        finally:
+            governance.REPLACING.reset(token)
         if made.is_error:
             return made
         kept = (governance.approve(brain, made.data["proposal_id"], actor=actor)

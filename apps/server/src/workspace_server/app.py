@@ -49,6 +49,7 @@ from .routes import (
     notes,
     outputs,
     proof,
+    release1,
     runners,
     skills,
     system,
@@ -224,6 +225,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         live,
         loop,
         mcp,
+        release1,
     )
     for module in routers:
         app.include_router(module.router)

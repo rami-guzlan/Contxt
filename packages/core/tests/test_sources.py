@@ -87,3 +87,17 @@ def test_an_excluded_capture_stays_out_until_it_is_included(ws, owner, note, con
         ws.distill.request(owner, item_ids=[note.id], assignee_id=connect().actor_id)
     ws.sources.include(owner, note.id)
     assert _status(ws, owner, note).status == "captured"
+
+
+def test_reading_again_after_a_failed_transcription_says_to_retry_the_transcription(
+    ws, owner, note
+):
+    from workspace_core.db import schema
+    from workspace_core.errors import Conflict
+
+    with ws.rt.write() as tx:  # as the speech worker leaves a transcription that failed
+        row = tx.one(schema.context_items, note.id, "note")
+        tx.update(schema.context_items, row, {"shadow_status": "failed"})
+    assert ws.sources.status(owner, [note.id])[note.id].status == "failed"
+    with pytest.raises(Conflict, match="transcription"):
+        ws.sources.retry(owner, note.id)

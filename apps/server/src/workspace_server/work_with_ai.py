@@ -16,7 +16,7 @@ import sqlalchemy as sa
 
 from workspace_core.db import schema
 from workspace_core.domain.policy import Principal
-from workspace_core.errors import ValidationFailed
+from workspace_core.errors import NotFound, ValidationFailed
 from workspace_core.services.skills import WORK
 
 from .runners import Runners
@@ -60,7 +60,7 @@ class WorkWithAI:
             raise ValidationFailed(
                 f"A prompt is at most {MAX_PROMPT:,} characters.", field="prompt"
             )
-        project = self.ws.projects.get(who, project_id)
+        project = self.project(who, project_id, make=True)
         lines = [prompt]
         if skill:
             lines.append(f"Use the Brain skill {skill} (get_brain_skill) and follow its steps.")
@@ -86,8 +86,28 @@ class WorkWithAI:
         run = self.runners.start(who, runner, task.id)  # assigns the CLI's model, readies it
         return {"task": self.ws.tasks.get(who, task.id).to_dict(), "run": run.to_dict()}
 
+    def project(self, who: Principal, project_id: str, *, make: bool = False) -> Any:
+        """The workspace project for an id the page has: the Brain's project id (its Focus)
+        or the workspace's own. The Brain's project gets its workspace row on first use."""
+        found = self.ws.projects.find_by_brain_ref(who, project_id)
+        if found is not None:
+            return found
+        try:
+            return self.ws.projects.get(who, project_id)
+        except NotFound:
+            if not make:
+                return None
+            brain = next((p for p in self.ws.rt.brain.projects() if p.id == project_id), None)
+            if brain is None:
+                raise
+            return self.ws.projects.create(who, title=brain.title, brain_ref=brain.id)
+
     def timeline(self, who: Principal, project_id: str) -> list[dict[str, Any]]:
         """Every Work with AI job in the project, newest first, with what it did."""
+        project = self.project(who, project_id)
+        if project is None:
+            return []  # no job has run in this project yet
+        project_id = project.id
         who.require("tasks.read", project_id)
         tasks = [
             t

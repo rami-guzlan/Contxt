@@ -38,6 +38,7 @@ text inside a proposal can change who is asking.
 """
 from __future__ import annotations
 
+import contextvars
 import datetime as _dt
 
 import fnmatch
@@ -272,6 +273,8 @@ def captures_apply(brain, who, kind, origin, area="") -> bool:
     if any(_covers(r, kind, origin, area) and not r.get("paused")
            for r in config.governance.get("standing") or [] if isinstance(r, dict)):
         return True
+    if mode_of(config) == "auto" and not config.governance.get("auto_paused"):
+        return kind not in SHAPING  # Auto: in with undo, except what shapes every AI
     return capture_policy(config).get(kind, {}).get(origin) == "apply"
 
 
@@ -326,6 +329,9 @@ def forget_learned(brain, rule_id) -> dict:
                    {"status": "forgotten", "id": rule_id})
 
 
+# The proposal a new one replaces while the owner moves a piece to another home
+# (destinations.apply): its own words waiting are not a duplicate.
+REPLACING: contextvars.ContextVar[str] = contextvars.ContextVar("replacing", default="")
 DEFAULT_SESSION_BUDGET = 12
 CLOSE = 0.75  # a live note this near may say the same thing (review.CLOSE)
 
@@ -613,6 +619,8 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
                            {"status": "duplicate", "id": duplicate.id})
     waiting = pending_duplicate(st, kind, text, source) if kind in ("note.create",
                                                             "note.update") else None
+    if waiting is not None and waiting.id == REPLACING.get():
+        waiting = None  # the piece being moved to this new home is not a repeat of itself
     if waiting is not None:
         return _result(f"The same proposal is already waiting for review ({waiting.id}).",
                        {"status": "duplicate", "proposal_id": waiting.id,
@@ -753,7 +761,10 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         # Auto's cap (Release 1 plan, M08): what an AI or a swept folder puts in on its own
         # pauses after so many changes a day, and says so; the rest waits in Catch up.
         cap, done = auto_cap(config), auto_applied_since(brain, hours=24)
-        if done >= cap:
+        if config.governance.get("auto_paused"):
+            applies = False
+            header["paused"] = "Auto is paused by you: changes wait in Catch up."
+        elif done >= cap:
             applies = False
             header["paused"] = (f"Auto is paused: {done} changes went in on their own in the "
                                 f"last 24 hours, and the cap is {cap}.")
@@ -981,6 +992,10 @@ def inbox(brain, **_ignored):
             "statement_status": proposal.target.get("statement_status") or "",
             "effective": str(proposal.target.get("as_of") or ""),
             "op_id": proposal.target.get("op_id") or "",
+            # What it is and where it came from, as the capture policy names them
+            # ("fact:chat"), and its origin ("file:...", "conversation:...", "scout:...").
+            "capture": str(proposal.meta.get("capture") or ""),
+            "origin": str(proposal.target.get("origin") or ""),
             "destination": destinations.label(proposal.kind, proposal.target),
             "current_body": (st.index.note(proposal.target.get("id")).body
                              if proposal.kind != "note.create"
@@ -1821,7 +1836,22 @@ POLICY = {
     "challenger": ("governance", "challenger", "bool"),
     # Sensitive spans redacted in what a cloud model reads (decision 13).
     "redact_cloud": ("governance", "redact_cloud", "bool"),
+    # Release 1 plan, M08 and M05: Auto's daily cap, the scoped standing permissions and the
+    # named retrieval policy.
+    "auto_daily_cap": ("governance", "auto_daily_cap", "cap"),
+    # Governed (suggestions wait) or Auto (the owner's AI and swept folders go in with undo,
+    # capped and pausable): design contracts 9 and 17.
+    "mode": ("governance", "mode", "mode"),
+    "auto_paused": ("governance", "auto_paused", "bool"),
+    "standing": ("governance", "standing", "standing"),
+    "retrieval_policy": ("governance", "retrieval_policy", "retrieval"),
 }
+RETRIEVAL_POLICIES = ("relaxed", "standard", "careful")
+MODES = ("governed", "auto")
+
+
+def mode_of(config) -> str:
+    return "auto" if str(config.governance.get("mode") or "") == "auto" else "governed"
 
 
 def policies(brain) -> dict:
@@ -1851,6 +1881,16 @@ def policies(brain) -> dict:
         "redact_cloud": redact_cloud(config),
         "capture_types": list(CAPTURE_TYPES),
         "capture_origins": list(CAPTURE_ORIGINS),
+        "mode": mode_of(config),
+        "auto_paused": bool(data["governance"].get("auto_paused", False)),
+        "auto_daily_cap": auto_cap(config),
+        "auto_applied_today": auto_applied_since(brain, hours=24),
+        "standing": [dict(r) for r in data["governance"].get("standing") or []
+                     if isinstance(r, dict)],
+        "retrieval_policy": str(data["governance"].get("retrieval_policy")
+                                or data.get("retrieval_policy") or "standard"),
+        "retrieval_policies": list(RETRIEVAL_POLICIES),
+        "learned": learned_rules(brain),
     }
 
 
@@ -1872,6 +1912,41 @@ def _policy_value(st, key, kind, value):
     if kind == "patterns":
         items = value if isinstance(value, list) else [value]
         return [str(p).strip() for p in items if str(p or "").strip()], None
+    if kind == "cap":
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return None, f"{key} is a whole number"
+        return (number, None) if 0 <= number <= 1000 else (None, f"{key} is between 0 and 1000")
+    if kind == "mode":
+        text = str(value or "").strip().lower()
+        if text not in MODES:
+            return None, f"mode is one of {', '.join(MODES)}"
+        return text, None
+    if kind == "retrieval":
+        text = str(value or "").strip().lower()
+        if text not in RETRIEVAL_POLICIES:
+            return None, f"retrieval_policy is one of {', '.join(RETRIEVAL_POLICIES)}"
+        return text, None
+    if kind == "standing":
+        if not isinstance(value, list):
+            return None, "standing is a list of {type, origin, area, paused}"
+        out = []
+        for rule in value:
+            if not isinstance(rule, dict):
+                return None, "each standing permission is {type, origin, area, paused}"
+            kind_ = str(rule.get("type") or "").strip()
+            origin = str(rule.get("origin") or "").strip()
+            area = str(rule.get("area") or "*").strip() or "*"
+            if kind_ not in CAPTURE_TYPES:
+                return None, f"{kind_!r} is not a capture type ({', '.join(CAPTURE_TYPES)})"
+            if origin not in CAPTURE_ORIGINS:
+                return None, f"{origin!r} is not an origin ({', '.join(CAPTURE_ORIGINS)})"
+            if area != "*" and area not in st.config.areas:
+                return None, f"{area!r} is not an area"
+            out.append({"type": kind_, "origin": origin, "area": area,
+                        "paused": bool(rule.get("paused"))})
+        return out, None
     if kind == "preset":
         text = str(value or "").strip().lower()
         if text not in PRESETS:
