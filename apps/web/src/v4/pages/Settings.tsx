@@ -21,6 +21,7 @@ import {
 } from "../../api/hooks";
 import type { AiApp, RunnerStatus } from "../../api/types";
 import { useForgetLearned, usePolicy, useSetPolicy, type Policy } from "../api";
+import { PullBudget } from "../components/BrainV4";
 import { css } from "../css";
 import { useCancelTtb, useRunnerSignIn, useStartTtb, useTtbCases, useTtbGates, useTtbOverview, useTtbRuns, useTtbState, useTtbWatch, type TtbBar, type TtbRunKind } from "../hooks/agents";
 import { Btn, Empty, Failure, Later, Loaded, Loading, Modal, S, Status, plural, when } from "../ui";
@@ -160,6 +161,7 @@ function Apps() {
       </Loaded>
       <Runners />
       <AskBrainFirst />
+      <PullBudget />
       {asking ? (
         <Modal title={`Connect ${asking.label}?`} eyebrow="YOUR AI APPS" onClose={() => setAsking(null)}>
           <span style={css("font:400 14px/1.55 Geist;color:var(--ink2)")}>

@@ -20,6 +20,10 @@ const LABELS = [
   "SIGN-IN EXPIRED · AI",
   "RECOVERY · AFTER RESTART",
   "WORDS-ONLY · SEARCH",
+  "STALE · BRAIN MAP",
+  "OVER BUDGET · PULL",
+  "CUT TO FIT · BRAIN MAP",
+  "SEALED · PROJECT",
 ];
 
 describe("States page", () => {

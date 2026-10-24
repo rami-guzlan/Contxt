@@ -21,7 +21,17 @@ function sections(r: ReceiptData) {
       n: `${r.sent.length} · ${r.tokens.packet.toLocaleString()} tokens`,
       items: items(r.sent, (x) => [x.form, x.tokens ? `${x.tokens} tok` : ""].filter(Boolean).join(" · ") || x.id),
     },
-    { l: "Full sources opened", n: String(r.opened.length), items: items(r.opened, (x) => (x.tokens ? `${x.tokens} tok` : x.id)) },
+    {
+      l: "Opened by the AI after the packet",
+      n: r.pull_budget?.items ? `${r.opened.length} of ${r.pull_budget.items}` : String(r.opened.length),
+      items: [
+        ...r.opened.map((x) => ({ t: x.address ?? x.title ?? x.id, k: x.tokens ? `${x.tokens.toLocaleString()} tok` : "" })),
+        ...(r.refused ?? []).map((x) => ({ t: `${x.address} · ${x.says}`, k: x.status === "over_pull_budget" ? "named only" : "not found" })),
+      ],
+      foot: r.pull_budget?.items
+        ? `Pull budget: ${r.opened.length} of ${r.pull_budget.items} used, about ${r.pull_budget.used_tokens.toLocaleString()} of ${(r.pull_budget.tokens ?? 0).toLocaleString()} tokens. Pulls past the budget are named, not opened.`
+        : "",
+    },
     { l: "Didn't fit", n: String(r.did_not_fit.length), items: items(r.did_not_fit, (x) => x.why ?? "named, not sent") },
     { l: "Already delivered this session", n: String(r.already_delivered.length), items: items(r.already_delivered, (x) => x.id) },
     { l: "Unknown", n: String(r.unknown.length), items: r.unknown.map((u) => ({ t: u, k: "" })) },
@@ -88,6 +98,7 @@ export function ReceiptView({ id, defaultOpen = false }: { id: string; defaultOp
                       <span style={css("font:400 11.5px 'Geist Mono';color:var(--muted);white-space:nowrap")}>{x.k}</span>
                     </div>
                   ))}
+                  {"foot" in s && s.foot ? <span style={css("font:400 12px/1.45 Geist;color:var(--muted)")}>{s.foot}</span> : null}
                 </div>
               ))}
               <details style={css("padding:10px 0;border-top:1px solid var(--line)")}>

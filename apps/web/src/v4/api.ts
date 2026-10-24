@@ -192,6 +192,18 @@ export interface ReceiptItem {
   tokens?: number;
   why?: string;
   at?: string;
+  /** A pull after the packet: the address it opened (note-id#heading, file#section). */
+  address?: string;
+  kind?: string;
+}
+
+/** A pull after the packet that was not opened: past the pull budget, or gone. */
+export interface RefusedPull {
+  address: string;
+  name: string;
+  status: "over_pull_budget" | "not_found";
+  gone_at: string | null;
+  says: string;
 }
 
 export interface Receipt {
@@ -203,6 +215,9 @@ export interface Receipt {
   partition: string | null;
   sent: ReceiptItem[];
   opened: ReceiptItem[];
+  refused?: RefusedPull[];
+  pull_budget?: { items?: number; tokens?: number; used_items: number; used_tokens: number };
+  map_cut?: Record<string, number>;
   did_not_fit: ReceiptItem[];
   already_delivered: ReceiptItem[];
   unknown: string[];

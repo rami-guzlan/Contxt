@@ -17,6 +17,7 @@ import {
   useWeekly,
 } from "../../api/hooks";
 import type { AiRequest, BrainCheckpoint, TaskItem } from "../../api/types";
+import { SessionSearch } from "../components/BrainV4";
 import { ReceiptView } from "../components/Receipt";
 import { css } from "../css";
 import { useRecentRequests, type UndoRefusal, undoRefusal, useUndoPoint } from "../hooks/activity";
@@ -186,6 +187,7 @@ function Requests() {
           ))}
         </div>
       ) : null}
+      <SessionSearch />
       <Loaded
         q={q}
         empty={(d) =>
