@@ -1715,8 +1715,13 @@ class Heartbeat:
                     "headline_at": row.get("headline_at"),
                     "updated_at": mine[0]["written_at"] if mine else None,
                     "lines": mine[:50],
+                    # Items, not writes: one item that moved two homes is one new line.
                     "new_this_beat": len(
-                        [x for x in mine if x["new_this_beat"] and x["status"] != "undone"]
+                        {
+                            (x["beat_id"], x["source_id"])
+                            for x in mine
+                            if x["new_this_beat"] and x["status"] != "undone"
+                        }
                     ),
                     "projects": listed,
                 }
