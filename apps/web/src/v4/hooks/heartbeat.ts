@@ -14,7 +14,7 @@ export interface HbConnector {
   name: string;
   cli: string;
   cli_label: string;
-  how: "mcp" | "computer" | "folder";
+  how: "mcp" | "computer" | "folder" | "n8n";
   how_label: string;
   cadence_minutes: number | null;
   feeds: string[];
@@ -26,6 +26,8 @@ export interface HbConnector {
   tools: string[];
   found_in: string;
   present: boolean;
+  /** An n8n read: the fix the knowledge agent suggested after its workflow failed, waiting. */
+  fix?: string | null;
 }
 
 export interface HbBeat {
@@ -257,4 +259,18 @@ export function useSuggestN8n() {
     mutationFn: () => post<{ suggested: string[]; already: string[]; without_workflow: string[]; line: string }>("/api/heartbeat/n8n/suggest"),
     onSuccess: () => refresh(),
   });
+}
+
+/** Ask the knowledge agent for a fix to a failed n8n read, or keep or skip the one it made. */
+export function useN8nFix() {
+  const refresh = useHeartbeatRefresh();
+  const suggest = useMutation({
+    mutationFn: (id: string) => post<HbConnector>(`/api/heartbeat/n8n/${encodeURIComponent(id)}/fix`),
+    onSuccess: () => refresh(),
+  });
+  const decide = useMutation({
+    mutationFn: ({ id, keep }: { id: string; keep: boolean }) => put<HbConnector>(`/api/heartbeat/n8n/${encodeURIComponent(id)}/fix`, { keep }),
+    onSuccess: () => refresh(),
+  });
+  return { suggest, decide };
 }

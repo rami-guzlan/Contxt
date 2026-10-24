@@ -295,6 +295,26 @@ describe("Settings, Heartbeat", () => {
     expect(calls.find((c) => c.path === "/api/heartbeat/connectors/claude%3Amail")?.body).toEqual({ cadence_minutes: 60 });
   });
 
+  it("asks for a fix to a failed n8n read, and keeps it with your yes", async () => {
+    const failed = connector({ id: "n8n:gmail", name: "Gmail through n8n", how: "n8n", how_label: "n8n", cli: "n8n", cli_label: "n8n", status: "error", status_line: "n8n: Credentials not found." });
+    const calls = api({
+      "GET /api/heartbeat/status": status({ connectors: [failed] }),
+      "POST /api/heartbeat/n8n/n8n%3Agmail/fix": { ...failed, fix: "Sorted newest first." },
+    });
+    renderAt(<HeartbeatSettings />);
+    await userEvent.click(await screen.findByRole("button", { name: "Suggest a fix" }));
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/heartbeat/n8n/n8n%3Agmail/fix")).toBe(true);
+  });
+
+  it("shows a suggested fix with Keep and Skip", async () => {
+    const waiting = connector({ id: "n8n:gmail", name: "Gmail through n8n", how: "n8n", how_label: "n8n", cli: "n8n", cli_label: "n8n", status: "error", fix: "Sorted newest first." });
+    const calls = api({ "GET /api/heartbeat/status": status({ connectors: [waiting] }), "PUT /api/heartbeat/n8n/n8n%3Agmail/fix": { ...waiting, fix: null } });
+    renderAt(<HeartbeatSettings />);
+    expect(await screen.findByText(/Suggested fix: Sorted newest first./)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Keep" }));
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ keep: true });
+  });
+
   it("says so when no connector has been found", async () => {
     api({ "GET /api/heartbeat/status": status({ connectors: [], cost: { with_changes: null, nothing_new: null, beats: 0, unknown: 0 } }) });
     renderAt(<HeartbeatSettings />);

@@ -3,7 +3,7 @@
 // from the beats' own records.
 
 import { css } from "../css";
-import { costLine, type HbConnector, useHeartbeat, useHeartbeatSettings, useRegions, useRescan, useSetConnector } from "../hooks/heartbeat";
+import { costLine, type HbConnector, useHeartbeat, useHeartbeatSettings, useN8nFix, useRegions, useRescan, useSetConnector } from "../hooks/heartbeat";
 import { Failure, Loading } from "../ui";
 import { N8nHost } from "./N8nHost";
 
@@ -31,6 +31,7 @@ export function HeartbeatSettings() {
   const save = useHeartbeatSettings();
   const rescan = useRescan();
   const toggle = useSetConnector();
+  const fixes = useN8nFix();
   if (status.isLoading) return <Loading what="Reading the heartbeat" />;
   if (status.error || !status.data) return <Failure error={status.error} retry={() => void status.refetch()} />;
   const s = status.data;
@@ -88,6 +89,8 @@ export function HeartbeatSettings() {
         {rescan.data ? <span style={css("font:400 13px Geist;color:var(--ink2);padding-bottom:8px")}>{rescan.data.line}</span> : null}
         {rescan.error ? <Failure error={rescan.error} /> : null}
         {toggle.error ? <Failure error={toggle.error} /> : null}
+        {fixes.suggest.error ? <Failure error={fixes.suggest.error} /> : null}
+        {fixes.decide.error ? <Failure error={fixes.decide.error} /> : null}
         {s.connectors.length ? (
           s.connectors.map((c) => {
             const feeds = c.feeds.length ? `Feeds ${c.feeds.map((f) => names.get(f) ?? f).join(", ")}` : "Feeds any region it fits";
@@ -103,6 +106,21 @@ export function HeartbeatSettings() {
                     {items}
                   </span>
                   {c.status_line ? <span style={css("font:400 12px/1.45 Geist;color:var(--ink2)")}>{c.status_line}</span> : null}
+                  {c.how === "n8n" && c.fix ? (
+                    <span style={css("display:flex;gap:8px;align-items:center;flex-wrap:wrap;font:400 12.5px/1.45 Geist")}>
+                      Suggested fix: {c.fix}
+                      <button type="button" disabled={fixes.decide.isPending} onClick={() => fixes.decide.mutate({ id: c.id, keep: true })} style={css(chip(true))}>
+                        Keep
+                      </button>
+                      <button type="button" disabled={fixes.decide.isPending} onClick={() => fixes.decide.mutate({ id: c.id, keep: false })} style={css(chip(false))}>
+                        Skip
+                      </button>
+                    </span>
+                  ) : c.how === "n8n" && c.status === "error" ? (
+                    <button type="button" disabled={fixes.suggest.isPending} onClick={() => fixes.suggest.mutate(c.id)} style={css(chip(false) + ";align-self:flex-start")}>
+                      {fixes.suggest.isPending ? "Asking…" : "Suggest a fix"}
+                    </button>
+                  ) : null}
                 </div>
                 <span style={css("font:400 12.5px Geist;color:var(--ink2);min-width:160px")}>{feeds}</span>
                 {c.how === "folder" ? (

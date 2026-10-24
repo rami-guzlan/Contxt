@@ -560,6 +560,9 @@ heartbeat_connectors = sa.Table(
     sa.Column("workflow", sa.JSON),
     sa.Column("workflow_id", sa.String(64)),
     sa.Column("secret_hash", sa.String(64)),
+    # A fix the knowledge agent suggested after its workflow failed: {workflow, why}, waiting
+    # for the owner to keep or skip it.
+    sa.Column("workflow_fix", sa.JSON),
     *_record(archivable=False),
 )
 

@@ -18,6 +18,8 @@ import secrets
 from typing import Any
 
 SECRET_HEADER = "x-gnomon-secret"
+ERROR_WORKFLOW = "gnomonerrors"  # Gnomon's own workflow in its n8n that reports failures
+ERROR_PATH = "/api/heartbeat/n8n/errors"
 
 # Nodes that only start a workflow or shape its items.
 SHAPING = frozenset(
@@ -155,7 +157,8 @@ def prepare(
     copy["id"] = "gnomon" + hashlib.sha256(connector_id.encode("utf-8")).hexdigest()[:10]
     copy.setdefault("name", f"Gnomon: {connector_id}")
     copy.setdefault("connections", {})
-    copy.setdefault("settings", {})
+    settings = copy.setdefault("settings", {})
+    settings["errorWorkflow"] = ERROR_WORKFLOW  # a failure is reported to Gnomon
     for node in copy.get("nodes") or []:
         if isinstance(node, dict) and node.get("type") == HTTP:
             params = node.setdefault("parameters", {})
@@ -166,3 +169,58 @@ def prepare(
                 headerParameters={"parameters": [{"name": SECRET_HEADER, "value": secret}]},
             )
     return copy
+
+
+def error_reporter(inbox_url: str, secret: str) -> dict[str, Any]:
+    """Gnomon's own workflow in its n8n: when one of Gnomon's workflows fails, it posts which
+    one and why to Gnomon, with its own secret. It reads nothing and changes nothing else."""
+    return {
+        "id": ERROR_WORKFLOW,
+        "name": "Gnomon: report a failure",
+        "nodes": [
+            {
+                "id": "failed",
+                "name": "A Gnomon workflow failed",
+                "type": "n8n-nodes-base.errorTrigger",
+                "typeVersion": 1,
+                "position": [0, 0],
+                "parameters": {},
+            },
+            {
+                "id": "report",
+                "name": "Tell Gnomon",
+                "type": HTTP,
+                "typeVersion": 4.2,
+                "position": [220, 0],
+                "parameters": {
+                    "method": "POST",
+                    "url": inbox_url.rstrip("/") + ERROR_PATH,
+                    "sendHeaders": True,
+                    "headerParameters": {"parameters": [{"name": SECRET_HEADER, "value": secret}]},
+                    "sendBody": True,
+                    "specifyBody": "json",
+                    "jsonBody": "={{ $json }}",
+                },
+            },
+        ],
+        "connections": {
+            "A Gnomon workflow failed": {
+                "main": [[{"node": "Tell Gnomon", "type": "main", "index": 0}]]
+            }
+        },
+        "settings": {"executionOrder": "v1"},
+    }
+
+
+def failure_of(body: Any) -> tuple[str, str]:
+    """(the failed workflow's id, why, in a line) from what n8n's Error Trigger sends."""
+
+    def part(of: Any, key: str) -> dict[str, Any]:
+        found = of.get(key) if isinstance(of, dict) else None
+        return found if isinstance(found, dict) else {}
+
+    workflow, execution = part(body, "workflow"), part(body, "execution")
+    error = part(execution, "error")
+    message = str(error.get("message") or "it stopped with an error").strip()
+    node = str(execution.get("lastNodeExecuted") or "").strip()
+    return str(workflow.get("id") or ""), message[:300] + (f" (at {node})" if node else "")

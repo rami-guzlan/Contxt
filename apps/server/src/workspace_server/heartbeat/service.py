@@ -303,6 +303,7 @@ class Heartbeat:
             "present": bool(row["present"]),
             "workflow_id": row.get("workflow_id"),
             "has_workflow": bool(row.get("workflow")),
+            "fix": (row.get("workflow_fix") or {}).get("why") if row.get("workflow_fix") else None,
         }
 
     def connectors(self, who: Principal) -> list[dict[str, Any]]:
@@ -661,6 +662,11 @@ class Heartbeat:
         secret, kept = n8n.new_secret()
         copy = n8n.prepare(row["workflow"], row["id"], self.inbox_url, secret)
         try:
+            if active and not host.error_secret_hash():
+                # Once: Gnomon's own workflow that reports a failure of any of its workflows.
+                said, said_hash = n8n.new_secret()
+                host.put_workflow(n8n.error_reporter(self.inbox_url, said), active=False)
+                host.keep_error_secret_hash(said_hash)
             workflow_id = host.put_workflow(copy, active=active)
         except (OSError, RuntimeError, ValueError) as exc:
             raise Conflict(f"n8n could not take the workflow: {exc}") from exc
@@ -749,6 +755,93 @@ class Heartbeat:
             "line": said,
         }
 
+    # ---------------------------------------------------------------- upkeep of n8n reads
+
+    def n8n_failed(self, secret: str, body: Any) -> dict[str, Any]:
+        """Gnomon's error-report workflow says one of its workflows failed: that connector
+        shows the error, until it works again (a post to its inbox) or the owner fixes it."""
+        host = self.n8n_host
+        if host is None or not n8n.secret_ok(secret, host.error_secret_hash()):
+            raise PermissionDenied("Not a report this secret may send.")
+        workflow_id, why = n8n.failure_of(body)
+        with self.ws.rt.write() as tx:
+            rows = tx.rows(
+                sa.select(schema.heartbeat_connectors).where(
+                    schema.heartbeat_connectors.c.workspace_id == tx.workspace_id,
+                    schema.heartbeat_connectors.c.workflow_id == workflow_id,
+                )
+            )
+            for row in rows:
+                tx.update(
+                    schema.heartbeat_connectors,
+                    row,
+                    {
+                        "status": "error",
+                        "status_line": f"n8n: {why}. Fix it in n8n, or ask for a suggested fix.",
+                    },
+                )
+        return {"connectors": [r["id"] for r in rows]}
+
+    def suggest_fix(self, who: Principal, connector_id: str) -> dict[str, Any]:
+        """The knowledge agent drafts a fix for an n8n read whose workflow failed: checked to
+        only read, then waiting for the owner to keep or skip it (one model call, on request)."""
+        who.require("workspace.admin")
+        row = self._n8n_row(connector_id)
+        prompt = (
+            "An n8n workflow that reads an app for Gnomon failed. Fix it so it works, changing "
+            "as little as you can. It must stay read-only: app nodes may only use their read "
+            "operations, no Code or Function node, and its one HTTP request posts to the same "
+            'inbox. Reply with one JSON object only: {"why": "<one plain sentence on what '
+            'you changed>", "workflow": <the whole workflow>}.\n'
+            f"What n8n said: {row['status_line']}\n" + json.dumps(row["workflow"])
+        )
+        answer, _spent = self._ask(who, self.cli(), prompt)
+        try:
+            found = json_answer(answer)
+        except ValueError as exc:
+            raise Conflict("The suggested fix could not be read. Try again.") from exc
+        workflow = found.get("workflow")
+        problems = n8n.check_workflow(workflow, connector_id)
+        if problems:
+            raise Conflict(
+                "The suggested fix would not only read, so it was dropped: " + " ".join(problems)
+            )
+        fix = {"workflow": workflow, "why": _flat(found.get("why"), 300) or "A suggested fix."}
+        with self.ws.rt.write() as tx:
+            current = tx.one(schema.heartbeat_connectors, connector_id, "connector")
+            current = tx.update(schema.heartbeat_connectors, current, {"workflow_fix": fix})
+        return self._connector_view(current)
+
+    def decide_fix(self, who: Principal, connector_id: str, keep: bool) -> dict[str, Any]:
+        """Keep the suggested fix (checked again; into n8n if the read is on) or skip it."""
+        who.require("workspace.admin")
+        row = self._n8n_row(connector_id)
+        fix = row.get("workflow_fix")
+        if not fix:
+            raise Conflict("No suggested fix waits for this connector.")
+        values: dict[str, Any] = {"workflow_fix": None}
+        if keep:
+            problems = n8n.check_workflow(fix["workflow"], connector_id)
+            if problems:
+                raise Conflict("That fix does not only read: " + " ".join(problems))
+            values.update(
+                workflow=fix["workflow"], status_line="Fixed. It reads again on its next run."
+            )
+            if row["enabled"]:
+                values.update(self._to_n8n({**row, "workflow": fix["workflow"]}, True))
+                values["status"] = "ok"
+        with self.ws.rt.write() as tx:
+            current = tx.one(schema.heartbeat_connectors, connector_id, "connector")
+            current = tx.update(schema.heartbeat_connectors, current, values)
+        return self._connector_view(current)
+
+    def _n8n_row(self, connector_id: str) -> dict[str, Any]:
+        with self.ws.rt.read() as tx:
+            row = tx.get(schema.heartbeat_connectors, connector_id)
+        if row is None or row["how"] != "n8n":
+            raise NotFound(f"No n8n read {connector_id}.", id=connector_id)
+        return dict(row)
+
     def receive(self, connector_id: str, secret: str, body: Any) -> dict[str, Any]:
         """What an n8n workflow posted, kept for the next beat. Only an approved n8n read,
         with its own secret, may post."""
@@ -759,6 +852,12 @@ class Heartbeat:
                 raise PermissionDenied("Not a connector this secret may post to.")
             if not row["enabled"]:
                 raise Conflict(f"{row['name']} is off: nothing it posts is kept.")
+            if row["status"] == "error":
+                tx.update(
+                    schema.heartbeat_connectors,
+                    row,
+                    {"status": "ok", "status_line": "Working again: n8n posted what it read."},
+                )
             for item in items:
                 tx.insert(
                     schema.heartbeat_inbox,

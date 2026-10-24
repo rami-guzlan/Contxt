@@ -213,6 +213,19 @@ class N8nHost:
         elif os.path.exists(marker):
             os.remove(marker)
 
+    def error_secret_hash(self) -> str | None:
+        """The hash of the secret Gnomon's error-report workflow posts with (None: not set up)."""
+        try:
+            with open(os.path.join(self.root, "errors.sha256"), encoding="utf-8") as handle:
+                return handle.read().strip() or None
+        except OSError:
+            return None
+
+    def keep_error_secret_hash(self, kept: str) -> None:
+        os.makedirs(self.root, exist_ok=True)
+        with open(os.path.join(self.root, "errors.sha256"), "w", encoding="utf-8") as handle:
+            handle.write(kept)
+
     def starts_with_gnomon(self) -> bool:
         return self.installed() and os.path.exists(os.path.join(self.root, "start-with-gnomon"))
 

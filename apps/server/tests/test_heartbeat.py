@@ -1034,21 +1034,8 @@ def test_a_beat_takes_what_n8n_posted_once_and_spends_no_tokens_reading_it(
 
 
 def test_turning_an_n8n_read_on_puts_it_into_gnomons_n8n_active_with_a_fresh_secret(owner, hb):
-    class Hosted:
-        def __init__(self):
-            self.put = []
-
-        def installed(self):
-            return True
-
-        def put_workflow(self, workflow, *, active):
-            self.put.append((workflow, active))
-            return workflow["id"]
-
-        def close(self):
-            pass
-
-    hosted = Hosted()
+    hosted = HostedN8n()
+    hosted.error_hash = "set up already"
     hb.n8n_host = hosted
     made = owner.ok(
         owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
@@ -1101,3 +1088,96 @@ def test_the_connector_search_suggests_a_workflow_per_known_app_off_until_turned
     assert refused.status_code == 409
     again = owner.ok(owner.post("/api/heartbeat/n8n/suggest"))
     assert again["suggested"] == [] and sorted(again["already"]) == ["Gmail", "Notion", "Slack"]
+
+
+class HostedN8n:
+    """Gnomon's n8n as the heartbeat uses it: what went in, and the error report's secret."""
+
+    def __init__(self):
+        self.put = []
+        self.error_hash = None
+
+    def installed(self):
+        return True
+
+    def put_workflow(self, workflow, *, active):
+        self.put.append((workflow, active))
+        return workflow["id"]
+
+    def error_secret_hash(self):
+        return self.error_hash
+
+    def keep_error_secret_hash(self, kept):
+        self.error_hash = kept
+
+    def close(self):
+        pass
+
+
+def secret_in(workflow):
+    post = next(n for n in workflow["nodes"] if n["type"] == "n8n-nodes-base.httpRequest")
+    return post["parameters"]["headerParameters"]["parameters"][0]["value"]
+
+
+def test_a_failed_n8n_read_shows_its_error_until_it_posts_again(owner, client, hb, monkeypatch):
+    monkeypatch.setattr(hb_routes, "LOCAL", hb_routes.LOCAL | {"testclient"})
+    hosted = HostedN8n()
+    hb.n8n_host = hosted
+    owner.ok(
+        owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
+    )
+    owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": True}))
+    (reporter, _), (read, _) = hosted.put  # the error report first, once
+    assert reporter["id"] == n8n_reads.ERROR_WORKFLOW
+    assert read["settings"]["errorWorkflow"] == n8n_reads.ERROR_WORKFLOW
+    owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": False}))
+    owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": True}))
+    assert [w["id"] for w, _ in hosted.put].count(n8n_reads.ERROR_WORKFLOW) == 1
+    failure = {
+        "workflow": {"id": read["id"]},
+        "execution": {
+            "error": {"message": "Credentials not found"},
+            "lastNodeExecuted": "Recent mail",
+        },
+    }
+    report = lambda secret: client.post(  # noqa: E731
+        "/api/heartbeat/n8n/errors", json=failure, headers={n8n_reads.SECRET_HEADER: secret}
+    )
+    assert report("wrong").status_code == 403
+    assert report(secret_in(reporter)).json() == {"connectors": [N8N_ID]}
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert rows[N8N_ID]["status"] == "error"
+    assert "Credentials not found (at Recent mail)" in rows[N8N_ID]["status_line"]
+    secret = secret_in(hosted.put[-1][0])
+    hb.receive(N8N_ID, secret, {"items": [ITEM]})
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert rows[N8N_ID]["status"] == "ok"
+
+
+def test_a_suggested_fix_is_checked_then_kept_only_with_the_owners_yes(owner, hb, monkeypatch):
+    hosted = HostedN8n()
+    hb.n8n_host = hosted
+    owner.ok(
+        owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
+    )
+    owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": True}))
+    fixed = n8n_workflow({"name": "Newest first", "type": "n8n-nodes-base.sort", "parameters": {}})
+    unsafe = n8n_workflow(
+        {"name": "Reply", "type": "n8n-nodes-base.gmail", "parameters": {"operation": "send"}}
+    )
+    answers = iter(
+        [
+            json.dumps({"why": "It sends now.", "workflow": unsafe}),
+            json.dumps({"why": "Sorted newest first.", "workflow": fixed}),
+        ]
+    )
+    monkeypatch.setattr(hb, "_ask", lambda who, cli, prompt: (next(answers), 900))
+    refused = owner.post(f"/api/heartbeat/n8n/{N8N_ID}/fix")
+    assert refused.status_code == 409 and "would not only read" in refused.text
+    waiting = owner.ok(owner.post(f"/api/heartbeat/n8n/{N8N_ID}/fix"))
+    assert waiting["fix"] == "Sorted newest first."
+    before = len(hosted.put)
+    kept = owner.ok(owner.put(f"/api/heartbeat/n8n/{N8N_ID}/fix", json={"keep": True}))
+    assert kept["fix"] is None and len(hosted.put) == before + 1  # back into n8n, active
+    assert any(n["name"] == "Newest first" for n in hosted.put[-1][0]["nodes"])
+    assert owner.put(f"/api/heartbeat/n8n/{N8N_ID}/fix", json={"keep": True}).status_code == 409
