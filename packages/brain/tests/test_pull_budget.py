@@ -48,7 +48,7 @@ class PullBudgetTest(unittest.TestCase):
         self.open("note-1")
         over = self.open("note-2")
         self.assertTrue(over.is_error)
-        self.assertEqual(over.data["status"], "over_budget")
+        self.assertEqual(over.data["status"], "over_pull_budget")
         self.assertIn("Note 2", over.text)
         self.assertNotIn("Fact number 2.", over.text)
         self.brain.context("Anything else?", session_id=self.session)

@@ -1822,6 +1822,9 @@ POLICY = {
     "auto_apply_scopes": ("governance", "auto_apply_scopes", "patterns"),
     "max_proposals_per_session": ("governance", "max_proposals_per_session", "count"),
     "retention_days": ("sessions", "retention_days", "count"),
+    # The pull budget (v4, section 6): what an AI may open after each packet.
+    "pull_items": ("pulls", "items", "count"),
+    "pull_tokens": ("pulls", "tokens", "count"),
     "capture": ("governance", "capture", "capture"),
     "preset": ("governance", "preset", "preset"),
     # A day to think before a rule, a standing note or a must-hold changes (off by default).
@@ -1850,6 +1853,12 @@ RETRIEVAL_POLICIES = ("relaxed", "standard", "careful")
 MODES = ("governed", "auto")
 
 
+def pull_policy(config) -> dict:
+    from .api import pull_budget
+    items, tokens = pull_budget(config)
+    return {"pull_items": items, "pull_tokens": tokens}
+
+
 def mode_of(config) -> str:
     return "auto" if str(config.governance.get("mode") or "") == "auto" else "governed"
 
@@ -1867,6 +1876,7 @@ def policies(brain) -> dict:
         "max_proposals_per_session": int(data["governance"].get("max_proposals_per_session")
                                          or DEFAULT_SESSION_BUDGET),
         "retention_days": retention_days(config),
+        **pull_policy(config),
         "approver": config.approver,
         "preset": preset_of(config),
         "presets": list(PRESETS),

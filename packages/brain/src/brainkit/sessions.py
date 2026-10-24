@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS episodes (
 CREATE TABLE IF NOT EXISTS agent_runs (
     id TEXT PRIMARY KEY, at TEXT, action TEXT, ending TEXT, record TEXT);
 CREATE TABLE IF NOT EXISTS sent_back (at TEXT, ref TEXT, violations TEXT);
+CREATE TABLE IF NOT EXISTS pull_refusals (
+    session_id TEXT, packet_id TEXT, address TEXT, name TEXT, status TEXT, gone_at TEXT,
+    at TEXT);
+CREATE INDEX IF NOT EXISTS pull_refusals_packet ON pull_refusals(packet_id);
 CREATE TABLE IF NOT EXISTS model_daily (
     day TEXT NOT NULL, job TEXT NOT NULL, model TEXT NOT NULL,
     calls INTEGER NOT NULL DEFAULT 0, tokens_in INTEGER NOT NULL DEFAULT 0,
@@ -347,6 +351,70 @@ class Ledger:
                 "WHERE session_id = ? AND packet_id = ? AND rowid > ?",
                 (session_id, FOLLOWUP, low)).fetchone()
         return int(row["n"] or 0), int(row["t"] or 0)
+
+    def map_went_stale(self, session_id: str) -> bool:
+        """Since this conversation's latest packet, its AI opened something the map named
+        and found it gone: its next packet carries a fresh map."""
+        with self._connect() as conn:
+            packets = self._packets_in(conn, session_id)
+            if not packets:
+                return False
+            row = conn.execute(
+                "SELECT 1 FROM pull_refusals WHERE session_id = ? AND packet_id = ? AND "
+                "status = 'not_found' LIMIT 1", (session_id, packets[-1]["id"])).fetchone()
+        return row is not None
+
+    def record_refusal(self, session_id: str, address: str, name: str, status: str,
+                       gone_at: str | None = None) -> None:
+        """A pull that was not opened, under the request it followed: `over_pull_budget`
+        (named only) or `not_found` (gone since the map was built), for its receipt."""
+        with self._connect() as conn:
+            packets = self._packets_in(conn, session_id)
+            packet_id = packets[-1]["id"] if packets else ""
+            conn.execute(
+                "INSERT INTO pull_refusals (session_id, packet_id, address, name, status, "
+                "gone_at, at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (session_id, packet_id, str(address), str(name or address), str(status),
+                 gone_at, util.now_iso()))
+
+    def refusals(self, packet_id: str) -> list[dict]:
+        """The pulls refused after one packet, in order."""
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT address, name, status, gone_at, at FROM pull_refusals "
+                "WHERE packet_id = ? ORDER BY rowid", (str(packet_id),))]
+
+    def search_sessions(self, query: str, *, limit: int = 20) -> list[dict]:
+        """Past conversations whose requests, or what they were handed, use every word of
+        `query`: each with its id, when it ran, its app and its packets, newest first."""
+        words = [w for w in util.terms(query) if len(w) > 1][:8]
+        if not words:
+            return []
+        where = " AND ".join("(LOWER(p.request) LIKE ? OR LOWER(p.text) LIKE ?)"
+                             for _ in words)
+        params: list = []
+        for word in words:
+            params += [f"%{word}%", f"%{word}%"]
+        with self._connect() as conn:
+            hits = conn.execute(
+                "SELECT p.session_id, MAX(p.at) AS last FROM packets p "
+                f"WHERE p.session_id NOT LIKE '{WORK}:%' AND {where} "
+                "GROUP BY p.session_id ORDER BY last DESC LIMIT ?",
+                params + [max(1, min(int(limit), 100))]).fetchall()
+            out = []
+            for hit in hits:
+                session = conn.execute(
+                    "SELECT label, created, seen FROM sessions WHERE id = ?",
+                    (hit["session_id"],)).fetchone()
+                packets = conn.execute(
+                    "SELECT id, at, request FROM packets WHERE session_id = ? "
+                    "ORDER BY at, rowid", (hit["session_id"],)).fetchall()
+                out.append({"session_id": hit["session_id"],
+                            "app": (session["label"] if session is not None else "") or "",
+                            "started": packets[0]["at"] if packets else "",
+                            "last": hit["last"],
+                            "packets": [dict(r) for r in packets]})
+        return out
 
     def record_items(self, session_id: str, packet_id: str, items) -> None:
         """Items opened after a packet (`packet_id` "followup"), or handed out some other
@@ -1144,6 +1212,7 @@ class Ledger:
         with self._connect() as conn:
             conn.execute("DELETE FROM deliveries WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM packets WHERE at < ?", (cutoff,))
+            conn.execute("DELETE FROM pull_refusals WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM brief_decisions WHERE at < ?", (cutoff,))
             conn.execute("DELETE FROM sessions WHERE seen < ?", (cutoff,))
             conn.execute("DELETE FROM model_calls WHERE at < ?", (cutoff,))
