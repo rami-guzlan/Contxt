@@ -1478,7 +1478,7 @@ class Brain:
         """The source reference of a proposal that names a capture (Release 1 plan, M02):
         the first `context_item:` source, at the version and hash the run read (or the one
         stored now, outside a run). Empty when it names no capture."""
-        cited = next((s for s in sources if s.startswith("context_item:")), "")
+        cited = next((s for s in sources if s.startswith(("context_item:", "connector:"))), "")
         if not cited:
             if any(str(v or "").strip() for v in (locator, speaker, excerpt)):
                 raise ValidationFailed(
@@ -1496,6 +1496,8 @@ class Brain:
             ),
             None,
         )
+        if cited.startswith("connector:"):
+            read = {}  # an item a heartbeat read through a connector: its id is the reference
         if read is None:
             with self.rt.read() as tx:
                 row = tx.first(
@@ -1568,6 +1570,9 @@ class Brain:
         source_excerpt: str | None = None,
         destination: str | None = None,
         place: dict[str, Any] | None = None,
+        capture_origin: str | None = None,
+        reason: str | None = None,
+        flags: list[str] | None = None,
     ) -> BrainProposal:
         """Submit distilled long-term context. It becomes durable only when approved.
 
@@ -1591,7 +1596,11 @@ class Brain:
         The source reference (Release 1 plan, M02): when the proposal names a capture among
         its sources, the Brain records it with the version and hash that was read, and
         `source_locator` (a moment, page, row or message), `source_speaker` (unknown when not
-        given) and `source_excerpt` (the source's own words)."""
+        given) and `source_excerpt` (the source's own words). A heartbeat read names its item
+        as `connector:<connector>:<item>` instead, with the same fields, and says so with
+        `capture_origin="connector"`: governance then decides whether it goes in with undo or
+        waits. `reason` says why, in plain words (an Auto change records it); `flags` marks it
+        `customer_facing` or `spends`, which always wait for the owner."""
         who.require("brain.propose")
         title, statement = " ".join(str(title or "").split()), str(statement or "").strip()
         if not title or not statement:
@@ -1715,6 +1724,10 @@ class Brain:
             if not DAY.match(text):
                 raise ValidationFailed(f"{name} is a date, YYYY-MM-DD.", field=name)
             extra[name] = text
+        for flag in flags or []:
+            if flag not in ("customer_facing", "spends"):
+                raise ValidationFailed("flags are customer_facing or spends.", field="flags")
+            extra[flag] = True
         said = str(said_by or "").strip().lower()
         if said:
             # Who said it, from the proposer (brain-logic plan 7.1); else the Brain reads it
@@ -1744,6 +1757,12 @@ class Brain:
             return BrainProposal(
                 status="duplicate", message="Already proposed with this key.", proposal_id=prior
             )
+        # Who brought it and why, only when said (an older Brain port knows neither).
+        door: dict[str, Any] = {"extra": extra} if extra else {}
+        if capture_origin:
+            door["capture_origin"] = capture_origin
+        if " ".join(str(reason or "").split()):
+            door["reason"] = " ".join(str(reason).split())[:300]
         result = self.rt.brain.propose(
             title=title,
             statement=statement,
@@ -1760,7 +1779,7 @@ class Brain:
             origin=origin,
             heard=heard,
             made_by=made_by,
-            **({"extra": extra} if extra else {}),
+            **door,
         )
         data: dict[str, Any] = {
             "title": title,

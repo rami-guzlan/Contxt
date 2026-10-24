@@ -82,6 +82,8 @@ class BrainProposal:
     sections: int = 0
     project: str | None = None
     checkpoint_id: str | None = None
+    # Why a change still waits for the owner in Auto ("must-hold", "private", ...).
+    waits: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -257,6 +259,11 @@ class BrainPort(Protocol):
         # The runs that made the outputs it cites (`work:<run>`): what only repeats the brief
         # one of them was handed cannot be promoted from its output (circular evidence).
         made_by: list[str] | None = None,
+        # Who brought it to the door (`app`, `chat`, `folder`, `connector`): governance says
+        # whether it goes in with undo or waits.
+        capture_origin: str | None = None,
+        # Why it is proposed, in plain words: what an Auto change records as its reason.
+        reason: str | None = None,
     ) -> BrainProposal: ...
 
     def proposals(self) -> list[dict[str, Any]]: ...

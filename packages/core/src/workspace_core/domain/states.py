@@ -180,3 +180,28 @@ ORCHESTRATOR_AGENT = StateMachine(
     initial="queued",
     active={"working", "waiting"},
 )
+
+# One heartbeat beat: it runs, then it is done (its record says what it read and wrote) or it
+# failed (its record says why). A beat ends exactly once.
+BEAT = StateMachine(
+    "beat",
+    {"running": {"done", "failed"}, "done": set(), "failed": set()},
+    initial="running",
+    active={"running"},
+)
+
+# One line a beat wrote into a region. A line that only notes an item, or whose write went in,
+# waits, was held back or refused, can be undone once; an undone line stays undone, and the
+# next beat does not write it again.
+HEARTBEAT_LINE = StateMachine(
+    "heartbeat line",
+    {
+        "noted": {"undone"},
+        "applied": {"undone"},
+        "waiting": {"undone", "applied"},
+        "held": {"undone"},
+        "refused": {"undone"},
+        "undone": set(),
+    },
+    initial="noted",
+)

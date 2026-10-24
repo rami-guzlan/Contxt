@@ -22,6 +22,7 @@ import {
 import type { AiApp, RunnerStatus } from "../../api/types";
 import { useForgetLearned, usePolicy, useSetPolicy, type Policy } from "../api";
 import { PullBudget } from "../components/BrainV4";
+import { HeartbeatSettings } from "../components/HeartbeatSettings";
 import { css } from "../css";
 import { useCancelTtb, useRunnerSignIn, useStartTtb, useTtbCases, useTtbGates, useTtbOverview, useTtbRuns, useTtbState, useTtbWatch, type TtbBar, type TtbRunKind } from "../hooks/agents";
 import { Btn, Empty, Failure, Later, Loaded, Loading, Modal, S, Status, plural, when } from "../ui";
@@ -329,6 +330,7 @@ function ApprovalBody({ policy }: { policy: Policy }) {
           ) : null}
           {policy.mode === "auto" && policy.auto_paused ? <Status kind="disputed">Paused by you: everything waits</Status> : null}
         </div>
+        {policy.mode === "auto" ? <HeartbeatSettings /> : null}
         <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px")}>
           {[
             ["What must wait still waits", "Must-holds, private notes, sealed projects, anything customer-facing or that spends money, and conflicts with no clear precedence."],

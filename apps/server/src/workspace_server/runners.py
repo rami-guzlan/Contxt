@@ -464,6 +464,36 @@ def usage_of(message: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def codex_usage(stream: str) -> dict[str, Any] | None:
+    """What `codex exec --json` says a turn used (its `usage` lines, added up), or None when
+    it says nothing."""
+    tokens_in = tokens_out = cached = 0
+    said = False
+    for line in stream.splitlines():
+        try:
+            found = json.loads(line)
+        except ValueError:
+            continue
+        usage = found.get("usage") if isinstance(found, dict) else None
+        if not isinstance(usage, dict):
+            continue
+        said = True
+        tokens_in += int(usage.get("input_tokens") or 0)
+        tokens_out += int(usage.get("output_tokens") or 0)
+        cached += int(usage.get("cached_input_tokens") or 0)
+    if not said:
+        return None
+    return {
+        "model": "codex",
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "cache_read": cached,
+        "cache_write": 0,
+        "cost": None,
+        "ms": None,
+    }
+
+
 def _text_of(content: Any) -> str:
     """A tool result's text: given as a string, or as parts (text, or an image it looked at)."""
     if isinstance(content, str):
@@ -1089,6 +1119,185 @@ class Runners:
             raise Conflict(f"{spec.label} could not answer: {reason[:200]}")
         self._expired.discard(spec.id)
         return found
+
+    def read_through(
+        self,
+        who: Principal,
+        runner: str,
+        *,
+        server: str,
+        spec: dict[str, Any],
+        allowed: list[str],
+        refused: list[str],
+        prompt: str,
+        timeout: float = 240.0,
+    ) -> dict[str, Any]:
+        """One read-only read of one connector by the CLI that has it (the heartbeat): the CLI
+        gets that one MCP server and may call exactly the `allowed` tools, which Gnomon listed
+        and found to only read; every other tool of the server is refused by name too, and
+        with no one to ask (headless), nothing else can run. No built-in tools. The server's
+        entry (which may hold a token) goes into a file made for this read and deleted after
+        it. Returns {"text": the answer, "usage": what the CLI said it used, or None}."""
+        who.require("workspace.admin")
+        if not allowed:
+            raise Conflict("No tool of this connector only reads: it is not read.")
+        spec_of = self._spec(runner)
+        command = self._ready(spec_of)
+        folder = tempfile.mkdtemp(prefix="workspace-beat-")
+        try:
+            if spec_of.id == "claude":
+                return self._read_claude(
+                    spec_of, command, folder, server, spec, allowed, refused, prompt, timeout
+                )
+            if spec_of.id == "codex":
+                return self._read_codex(spec_of, command, folder, server, allowed, prompt, timeout)
+            raise Conflict(f"Gnomon does not read connectors through {spec_of.label} yet.")
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    def _read_claude(
+        self,
+        spec: RunnerSpec,
+        command: list[str],
+        folder: str,
+        server: str,
+        entry: dict[str, Any],
+        allowed: list[str],
+        refused: list[str],
+        prompt: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        fenced = self._fence(spec, command)
+        config = os.path.join(folder, "mcp.json")
+        with open(config, "w", encoding="utf-8") as handle:
+            json.dump({"mcpServers": {server: entry}}, handle)
+        argv = [
+            *command,
+            "-p",
+            "--output-format",
+            "json",
+            *fenced,
+            "--tools",
+            "",
+            "--mcp-config",
+            config,
+            "--strict-mcp-config",
+            "--allowedTools",
+            *[f"mcp__{server}__{tool}" for tool in allowed],
+            *(
+                ["--disallowedTools", *[f"mcp__{server}__{tool}" for tool in refused]]
+                if refused
+                else []
+            ),
+            "--permission-mode",
+            "dontAsk",
+            "--no-session-persistence",
+        ]
+        env = dict(os.environ, MCP_TIMEOUT="60000", ENABLE_CLAUDEAI_MCP_SERVERS="false")
+        try:
+            proc = self.popen(
+                argv,
+                cwd=folder,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+                **_quiet(),
+            )
+        except OSError as exc:
+            raise Conflict(f"Could not start {spec.label}: {exc}") from exc
+        try:
+            out, err = proc.communicate(prompt, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            _kill(proc)
+            raise Conflict(f"{spec.label} took too long to read.") from exc
+        try:
+            found = json.loads(out or "{}")
+        except ValueError as exc:
+            raise Conflict(
+                f"{spec.label} gave an answer that could not be read: {error_line(err, out)}"
+            ) from exc
+        if not isinstance(found, dict) or found.get("is_error"):
+            reason = (
+                str(found.get("result") or "it stopped") if isinstance(found, dict) else "stopped"
+            )
+            if AUTH_FAILED.search(reason):
+                raise Conflict(self._login_failed(spec))
+            raise Conflict(f"{spec.label} could not read: {reason[:200]}")
+        self._expired.discard(spec.id)
+        return {"text": str(found.get("result") or ""), "usage": usage_of(found)}
+
+    def _read_codex(
+        self,
+        spec: RunnerSpec,
+        command: list[str],
+        folder: str,
+        server: str,
+        allowed: list[str],
+        prompt: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        """Codex reads with its own settings (where the server and its sign-in live), with
+        every other MCP server turned off, this one's tools limited to `allowed`, and its
+        sandbox read-only."""
+        from .heartbeat.connectors import codex_servers
+
+        last = os.path.join(folder, "answer.txt")
+        others = [
+            arg
+            for name in codex_servers()
+            if name != server
+            for arg in ("-c", f"mcp_servers.{name}.enabled=false")
+        ]
+        argv = [
+            *command,
+            "exec",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--color",
+            "never",
+            "--json",
+            "-c",
+            f"mcp_servers.{server}.enabled_tools={json.dumps(allowed)}",
+            *others,
+            "--output-last-message",
+            last,
+            "-",
+        ]
+        try:
+            proc = self.popen(
+                argv,
+                cwd=folder,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                **_quiet(),
+            )
+        except OSError as exc:
+            raise Conflict(f"Could not start {spec.label}: {exc}") from exc
+        try:
+            out, err = proc.communicate(prompt, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            _kill(proc)
+            raise Conflict(f"{spec.label} took too long to read.") from exc
+        if proc.returncode:
+            said = f"{err}\n{out}"
+            if AUTH_FAILED.search(said) or OTHER_AUTH.search(said):
+                raise Conflict(self._login_failed(spec))
+            raise Conflict(f"{spec.label} could not read: {error_line(err, out)}")
+        try:
+            with open(last, encoding="utf-8") as handle:
+                answer = handle.read()
+        except OSError as exc:
+            raise Conflict(f"{spec.label} gave no answer.") from exc
+        return {"text": answer, "usage": codex_usage(out or "")}
 
     def get(self, who: Principal, run_id: str) -> LocalRun:
         who.require("workspace.admin")

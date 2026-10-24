@@ -1516,8 +1516,11 @@ class BrainKitAdapter:
         extra: dict[str, Any] | None = None,
         heard: list[str] | None = None,
         made_by: list[str] | None = None,
+        capture_origin: str | None = None,
+        reason: str | None = None,
     ) -> BrainProposal:
         source = f"{WORKSPACE_SOURCE}{proposer}"
+        door = {"capture_origin": capture_origin} if capture_origin else {}
         if sources:
             source += "; sources: " + ", ".join(sources)
         area, _, topic_name = (topic or "").partition("/")
@@ -1539,10 +1542,11 @@ class BrainKitAdapter:
                     "task" if destination == "todo" else destination,
                     statement,
                     title=title,
-                    reason=f"{destination} proposed from the workspace",
+                    reason=reason or f"{destination} proposed from the workspace",
                     as_of=extra.get("as_of"),
                     **cited,
                     **place,
+                    **door,
                 )
             if result.is_error and result.data.get("status") != "duplicate":
                 return BrainProposal(status="refused", message=result.text)
@@ -1550,6 +1554,8 @@ class BrainKitAdapter:
                 status=str(result.data.get("status") or "pending"),
                 message=result.text,
                 proposal_id=result.data.get("proposal_id"),
+                checkpoint_id=_checkpoint_id(result.data),
+                waits=[str(w) for w in result.data.get("waits") or []],
             )
         must = extra.pop("must_hold", None) or {}
         # Dates the Brain checks like any other field.
@@ -1575,7 +1581,8 @@ class BrainKitAdapter:
                 scope=None if revises else scope or None,
                 evidence=evidence,
                 source=source,
-                reason=f"{kind} proposed from the workspace"
+                reason=reason
+                or f"{kind} proposed from the workspace"
                 + (f", a change to {revises}" if revises else ""),
                 force_pending=True,
                 supersedes=", ".join(replaces or []) or None,
@@ -1589,6 +1596,7 @@ class BrainKitAdapter:
                 made_by=made_by or None,
                 **must_fields,
                 **dated,
+                **door,
             )
         data = result.data
         status = str(data.get("status") or ("refused" if result.is_error else "pending"))
@@ -1599,6 +1607,8 @@ class BrainKitAdapter:
             message=result.text,
             proposal_id=data.get("proposal_id"),
             entry_id=data.get("id"),
+            checkpoint_id=_checkpoint_id(data),
+            waits=[str(w) for w in data.get("waits") or []],
         )
 
     def propose_many(self, items: list[dict[str, Any]], *, proposer: str) -> list[BrainProposal]:
@@ -2181,6 +2191,14 @@ class BrainKitAdapter:
                 dependents=result.data.get("dependents") or [],
             )
         return {"undone": result.data.get("undone"), "checkpoint": result.data.get("checkpoint")}
+
+
+def _checkpoint_id(data: dict[str, Any]) -> str | None:
+    """The undo point of a change that went in at once, when the Brain made one."""
+    found = data.get("checkpoint")
+    if isinstance(found, dict):
+        found = found.get("id")
+    return str(found) if found else None
 
 
 def _revision(meta: dict[str, Any]) -> str | None:
