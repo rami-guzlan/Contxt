@@ -1188,11 +1188,11 @@ class Runners:
         timeout: float,
         extra: list[str] | None = None,
         until_result: bool = False,
-        server: str = "",
+        servers: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Start Claude Code with the account's connectors and read what it writes: its init
         message only, or (`until_result`) through to its result, unless the init shows that
-        `server` has not loaded, when it is stopped there."""
+        one of `servers` has not loaded, when it is stopped there."""
         folder = tempfile.mkdtemp(prefix="workspace-account-")
         argv = [
             *command,
@@ -1231,8 +1231,9 @@ class Runners:
             last = messages[-1]
             if not until_result:
                 return True
-            if last.get("subtype") == "init" and server:
-                return not _mcp_tools(last).get(server)  # not loaded yet: try again
+            if last.get("subtype") == "init" and servers:
+                ready = _mcp_tools(last)
+                return any(not ready.get(s) for s in servers)  # not all loaded: try again
             return last.get("type") == "result"
 
         try:
@@ -1259,22 +1260,67 @@ class Runners:
         with no one to ask (headless), nothing else can run. No built-in tools. The server's
         entry (which may hold a token) goes into a file made for this read and deleted after
         it. Returns {"text": the answer, "usage": what the CLI said it used, or None}."""
+        if runner == "claude":
+            return self.read_many(
+                who,
+                servers={server: spec},
+                allowed={server: allowed},
+                refused={server: refused},
+                prompt=prompt,
+                timeout=timeout,
+            )
         who.require("workspace.admin")
         if not allowed:
             raise Conflict("No tool of this connector only reads: it is not read.")
         spec_of = self._spec(runner)
         command = self._ready(spec_of)
-        if spec_of.id == "claude" and spec.get("account"):
-            return self._read_account(spec_of, command, server, allowed, refused, prompt, timeout)
         folder = tempfile.mkdtemp(prefix="workspace-beat-")
         try:
-            if spec_of.id == "claude":
-                return self._read_claude(
-                    spec_of, command, folder, server, spec, allowed, refused, prompt, timeout
-                )
             if spec_of.id == "codex":
                 return self._read_codex(spec_of, command, folder, server, allowed, prompt, timeout)
             raise Conflict(f"Gnomon does not read connectors through {spec_of.label} yet.")
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    def read_many(
+        self,
+        who: Principal,
+        *,
+        servers: dict[str, dict[str, Any]],
+        allowed: dict[str, list[str]],
+        refused: dict[str, list[str]],
+        prompt: str,
+        timeout: float = 300.0,
+    ) -> dict[str, Any]:
+        """One read-only read of several connectors in one Claude Code run (the heartbeat
+        reads every due connector at once, so Claude Code starts, and loads its tools, once).
+        It may call exactly the `allowed` tools of each server, which Gnomon found to only
+        read; every other tool of those servers is refused by name too; no built-in tools and
+        nobody to ask. Connectors from Claude Code's settings files go into a file made for
+        this read (deleted after it, as it may hold a token) and nothing else loads; the
+        Claude account's connectors (`account`) load with the account instead, and the run
+        waits for them. Returns {"text", "usage", "loaded": the servers that loaded, or None}."""
+        who.require("workspace.admin")
+        servers = {s: e for s, e in servers.items() if allowed.get(s)}
+        if not servers:
+            raise Conflict("No tool of these connectors only reads: they are not read.")
+        spec_of = self._spec("claude")
+        command = self._ready(spec_of)
+        limits = [
+            "--allowedTools",
+            *[f"mcp__{s}__{tool}" for s in servers for tool in allowed[s]],
+        ]
+        no = [f"mcp__{s}__{tool}" for s in servers for tool in refused.get(s) or []]
+        if no:
+            limits += ["--disallowedTools", *no]
+        accounts = {bool(e.get("account")) for e in servers.values()}
+        if accounts == {True}:
+            return self._read_account(spec_of, command, list(servers), limits, prompt, timeout)
+        if True in accounts:
+            raise Conflict("The account's connectors and the settings' connectors read apart.")
+        folder = tempfile.mkdtemp(prefix="workspace-beat-")
+        try:
+            return self._read_claude(spec_of, command, folder, servers, limits, prompt, timeout)
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
@@ -1282,59 +1328,51 @@ class Runners:
         self,
         spec: RunnerSpec,
         command: list[str],
-        server: str,
-        allowed: list[str],
-        refused: list[str],
+        servers: list[str],
+        limits: list[str],
         prompt: str,
         timeout: float,
     ) -> dict[str, Any]:
-        """One read of a connector of the person's Claude account: Claude Code may call
-        exactly the `allowed` tools (every other tool of the server is refused by name too),
-        with no built-in tool and nobody to ask. Tried again while the connector has not loaded
-        yet (it loads in the background)."""
-        limits = [
-            "--allowedTools",
-            *[f"mcp__{server}__{tool}" for tool in allowed],
-            *(
-                ["--disallowedTools", *[f"mcp__{server}__{tool}" for tool in refused]]
-                if refused
-                else []
-            ),
-        ]
-        for _ in range(ACCOUNT_TRIES):
+        """One read of connectors of the person's Claude account. Tried again while one has
+        not loaded yet (they load in the background); the last try reads with what loaded."""
+        for attempt in range(ACCOUNT_TRIES):
+            waiting = [] if attempt == ACCOUNT_TRIES - 1 else servers
             messages = self._account_start(
-                spec, command, prompt, timeout, extra=limits, until_result=True, server=server
+                spec, command, prompt, timeout, extra=limits, until_result=True, servers=waiting
             )
             result = messages[-1]
             if result.get("type") == "result":
                 break
         else:
-            raise Conflict(f"{spec.label} could not load this connector from your account.")
+            raise Conflict(f"{spec.label} could not load these connectors from your account.")
+        init = next((m for m in messages if m.get("subtype") == "init"), {})
+        loaded = sorted(s for s in servers if _mcp_tools(init).get(s))
         if result.get("is_error"):
             reason = str(result.get("result") or "it stopped")
             if AUTH_FAILED.search(reason):
                 raise Conflict(self._login_failed(spec))
             raise Conflict(f"{spec.label} could not read: {reason[:200]}")
         self._expired.discard(spec.id)
-        return {"text": str(result.get("result") or ""), "usage": usage_of(result)}
+        return {
+            "text": str(result.get("result") or ""),
+            "usage": usage_of(result),
+            "loaded": loaded,
+        }
 
     def _read_claude(
         self,
         spec: RunnerSpec,
         command: list[str],
         folder: str,
-        server: str,
-        entry: dict[str, Any],
-        allowed: list[str],
-        refused: list[str],
+        servers: dict[str, dict[str, Any]],
+        limits: list[str],
         prompt: str,
         timeout: float,
     ) -> dict[str, Any]:
         fenced = self._fence(spec, command)
         config = os.path.join(folder, "mcp.json")
         with open(config, "w", encoding="utf-8") as handle:
-            json.dump({"mcpServers": {server: entry}}, handle)
-        loading = ["--mcp-config", config, "--strict-mcp-config"]
+            json.dump({"mcpServers": servers}, handle)
         argv = [
             *command,
             "-p",
@@ -1343,14 +1381,10 @@ class Runners:
             *fenced,
             "--tools",
             "",
-            *loading,
-            "--allowedTools",
-            *[f"mcp__{server}__{tool}" for tool in allowed],
-            *(
-                ["--disallowedTools", *[f"mcp__{server}__{tool}" for tool in refused]]
-                if refused
-                else []
-            ),
+            "--mcp-config",
+            config,
+            "--strict-mcp-config",
+            *limits,
             "--permission-mode",
             "dontAsk",
             "--no-session-persistence",
@@ -1390,7 +1424,7 @@ class Runners:
                 raise Conflict(self._login_failed(spec))
             raise Conflict(f"{spec.label} could not read: {reason[:200]}")
         self._expired.discard(spec.id)
-        return {"text": str(found.get("result") or ""), "usage": usage_of(found)}
+        return {"text": str(found.get("result") or ""), "usage": usage_of(found), "loaded": None}
 
     def _read_codex(
         self,

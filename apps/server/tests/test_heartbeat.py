@@ -70,7 +70,7 @@ class FakeProc:
         yield json.dumps(self.cli.account_init) + "\n"
         if not reading:
             return
-        answer = {"cursor": "2026-09-28T12:40:00Z", "items": self.cli.items}
+        answer = self.cli.read_answer(self.argv)
         yield json.dumps({"type": "result", "result": json.dumps(answer), "usage": USAGE}) + "\n"
 
     def poll(self):
@@ -94,7 +94,7 @@ class FakeProc:
         if (config or {}).get("mcpServers") or str(prompt or "").startswith("Read, read-only"):
             if self.cli.read_error:
                 return json.dumps({"is_error": True, "result": self.cli.read_error}), ""
-            answer = {"cursor": "2026-09-28T12:40:00Z", "items": self.cli.items}
+            answer = self.cli.read_answer(argv)
             return json.dumps({"result": json.dumps(answer), "usage": USAGE}), ""
         return json.dumps({"result": json.dumps(self.cli.judge(prompt)), "usage": USAGE}), ""
 
@@ -110,6 +110,7 @@ class FakeCli:
         self.account_init = {"type": "system", "subtype": "init", "mcp_servers": [], "tools": []}
         self.account_list = "No MCP servers configured.\n"  # `claude mcp list`
         self.items = [dict(ITEM)]
+        self.items_by = None  # {server: [items]} when a read covers more than one
         self.read_error = None
         self.writes = lambda item: [
             {
@@ -119,6 +120,26 @@ class FakeCli:
                 "reason": "Morgan approved it by email.",
             }
         ]
+
+    def read_answer(self, argv):
+        """A read of every server the run may use: the first gets the items, unless
+        `items_by` names each server's."""
+        allowed = argv[argv.index("--allowedTools") + 1 :] if "--allowedTools" in argv else []
+        servers = []
+        for name in allowed:
+            if not name.startswith("mcp__"):
+                break
+            server = name.split("__")[1]
+            if server not in servers:
+                servers.append(server)
+        if "exec" in argv:
+            servers = servers or ["tracker"]
+        by = self.items_by or {servers[0] if servers else "": self.items}
+        return {
+            "connectors": {
+                s: {"cursor": "2026-09-28T12:40:00Z", "items": by.get(s, [])} for s in servers
+            }
+        }
 
     def judge(self, prompt):
         shown = json.loads(prompt.split("\n\n", 1)[1])
@@ -239,10 +260,12 @@ def hb(runtime, client):
 
 
 def found(owner, *, codex=False):
-    """Find connectors in the CLIs; the Codex tracker stays off unless a test reads it."""
+    """Find connectors in the CLIs; the Codex tracker stays off unless a test reads it. The
+    mail server is read every beat here (a new one is read hourly), so a test can beat twice."""
     result = owner.ok(owner.post("/api/heartbeat/connectors/rescan"))
     if not codex:
         owner.ok(owner.put("/api/heartbeat/connectors/codex:tracker", json={"enabled": False}))
+    owner.ok(owner.put("/api/heartbeat/connectors/claude:mail", json={"cadence_minutes": 0}))
     return result
 
 
@@ -831,3 +854,60 @@ def test_a_server_name_before_the_verb_still_reads():
     assert conn.read_only({"name": "slack_list_channels"}, "slack")
     assert not conn.read_only({"name": "notion-create-pages"}, "claude.ai Notion")
     assert not conn.read_only({"name": "notion-duplicate-page"}, "claude.ai Notion")
+
+
+def add_claude_server(name):
+    """One more MCP server in Claude Code's own settings (the fake one, under another name)."""
+    path = os.path.join(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    data["mcpServers"][name] = dict(data["mcpServers"]["mail"])
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle)
+
+
+def test_due_connectors_in_claude_codes_settings_are_read_in_one_run(owner, fake_cli):
+    add_claude_server("docs")
+    found(owner)
+    owner.ok(owner.put("/api/heartbeat/connectors/claude:docs", json={"enabled": True}))
+    fake_cli.items_by = {
+        "mail": [dict(ITEM)],
+        "docs": [dict(ITEM, id="doc-1", title="Run of show v3", text="Session 1 moved.")],
+    }
+    done = beat(owner)
+    (read,) = fake_cli.reads()  # one Claude Code run for both
+    assert sorted(read["config"]["mcpServers"]) == ["docs", "mail"]
+    assert "--strict-mcp-config" in read["argv"]
+    assert done["items"] == 2 and done["connectors_read"] == 2
+    assert done["tokens"] == 240  # one read and one judge, each counted once
+
+
+def test_an_account_and_a_settings_connector_take_two_runs_not_more(owner, fake_cli):
+    fake_cli.account_init = ACCOUNT_INIT
+    fake_cli.account_list = ACCOUNT_LIST
+    found(owner)
+    owner.ok(owner.put(f"/api/heartbeat/connectors/claude:{NOTION}", json={"enabled": True}))
+    beat(owner)
+    reads = fake_cli.reads()
+    assert len(reads) == 2
+    fenced, account = sorted(reads, key=lambda r: r["config"] is None)
+    assert list(fenced["config"]["mcpServers"]) == ["mail"]
+    assert account["config"] is None and "--strict-mcp-config" not in account["argv"]
+
+
+def test_a_connector_read_for_the_first_time_looks_back_a_week(owner, fake_cli):
+    found(owner)
+    beat(owner)
+    (read,) = fake_cli.reads()
+    assert "the last 7 days" in read["prompt"]
+    fake_cli.calls.clear()
+    beat(owner)
+    (again,) = fake_cli.reads()
+    assert "the last 7 days" not in again["prompt"] and "2026-09-28T12:40:00Z" in again["prompt"]
+
+
+def test_a_new_connector_that_reads_through_a_cli_is_read_hourly(owner):
+    owner.ok(owner.post("/api/heartbeat/connectors/rescan"))
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert rows["claude:mail"]["cadence_minutes"] == 60
+    assert rows["scout"]["cadence_minutes"] is None  # Scout costs no tokens: every beat

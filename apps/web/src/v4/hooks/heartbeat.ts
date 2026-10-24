@@ -172,7 +172,8 @@ export function useRescan() {
 export function useSetConnector() {
   const refresh = useHeartbeatRefresh();
   return useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => put<HbConnector>(`/api/heartbeat/connectors/${encodeURIComponent(id)}`, { enabled }),
+    mutationFn: ({ id, ...change }: { id: string; enabled?: boolean; cadence_minutes?: number }) =>
+      put<HbConnector>(`/api/heartbeat/connectors/${encodeURIComponent(id)}`, change),
     onSuccess: () => refresh(),
   });
 }

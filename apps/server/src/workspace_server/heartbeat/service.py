@@ -44,6 +44,8 @@ from ..scout import Scout
 from . import connectors as conn
 
 log = logging.getLogger(__name__)
+CLI_CADENCE = 60  # minutes between reads of a new connector that reads through a CLI
+FIRST_LOOK = "the last 7 days"  # how far back a connector's first read looks
 ACCOUNT_TTL = 1800.0  # seconds a listing of the Claude account's connectors is kept
 ACCOUNT_PLACE = "Your Claude account"
 
@@ -391,7 +393,9 @@ class Heartbeat:
                             "id": cid,
                             "workspace_id": tx.workspace_id,
                             **values,
-                            "cadence_minutes": 60 if f.how == "computer" else None,
+                            # A read through a CLI costs tokens: hourly unless the
+                            # owner says otherwise. Scout (no tokens) reads every beat.
+                            "cadence_minutes": CLI_CADENCE,
                             "feeds": [],
                             "enabled": on,
                             "status": status if status != "ok" or on else "off",
@@ -818,43 +822,30 @@ class Heartbeat:
             out.append(row)
         return out
 
-    def _read(self, owner: Principal, row: dict[str, Any]) -> dict[str, Any]:
-        """What changed in one connector since its cursor: {items, cursor, usage}."""
-        if row["how"] == "folder":
-            return self._read_scout(owner, row)
-        found = self._find(owner, row)
-        if found is None:
-            raise ConnectorProblem("off", "No longer in the CLI's settings.", present=False)
-        status, line, allowed, refused = self._check(found)
-        if status != "ok":
-            raise ConnectorProblem(status, line, tools=allowed)
-        server = conn.safe_server(found.name)
-        since = row["cursor"] or "the last 24 hours"
-        prompt = (
-            f"Read, read-only, what changed in {found.name} since {since}. Use only these "
-            f"tools: {', '.join(allowed)}. Never send, post, reply, create, change, delete or "
-            "pay for anything; you have no tool that can. Reply with one JSON object only: "
-            '{"cursor": "<the newest time or marker you saw>", "items": [{"id": "<the '
-            'item\'s own id>", "title": "...", "text": "<what it says or what changed, at most '
-            '600 characters>", "at": "<ISO 8601 time>", "url": "", "speaker": "<who wrote it, '
-            'or empty>", "private": false}]}. Mark private true for anything marked private '
-            f"or confidential. At most {MAX_ITEMS} items, newest first; none: an empty list."
+    def _read_prompt(self, parts: list[tuple[str, str, str, list[str]]]) -> str:
+        """What a read asks for: per connector (server, name, since, its tools), what changed."""
+        listed = "\n".join(
+            f"- {name} (server {server}), since {since}. Its tools: {', '.join(tools)}."
+            for server, name, since, tools in parts
         )
-        got = self.runners.read_through(
-            owner,
-            found.cli,
-            server=server,
-            spec=found.spec,
-            allowed=allowed,
-            refused=refused,
-            prompt=prompt,
+        return (
+            "Read, read-only, what changed in each of these connectors since the time given. "
+            "Use only the tools listed for each. Never send, post, reply, create, change, "
+            "delete or pay for anything; you have no tool that can. Reply with one JSON object "
+            'only: {"connectors": {"<server>": {"cursor": "<the newest time or marker you '
+            'saw>", "items": [{"id": "<the item\'s own id>", "title": "...", "text": "<what it '
+            'says or what changed, at most 600 characters>", "at": "<ISO 8601 time>", "url": '
+            '"", "speaker": "<who wrote it, or empty>", "private": false}]}}}, with an entry '
+            "for every server below. Mark private true for anything marked private or "
+            f"confidential. At most {MAX_ITEMS} items a connector, newest first; none: an "
+            "empty list.\n" + listed
         )
-        try:
-            answer = json_answer(got.get("text") or "")
-        except ValueError as exc:
-            raise ConnectorProblem("error", "Its answer could not be read.") from exc
+
+    def _items(self, part: Any, row: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+        """(items, cursor) from one connector's part of a read's answer."""
+        part = part if isinstance(part, dict) else {}
         items = []
-        for raw in (answer.get("items") or [])[:MAX_ITEMS]:
+        for raw in (part.get("items") or [])[:MAX_ITEMS]:
             if not isinstance(raw, dict) or not str(raw.get("id") or "").strip():
                 continue
             items.append(
@@ -868,8 +859,100 @@ class Heartbeat:
                     "private": raw.get("private") is True,
                 }
             )
-        cursor = _flat(answer.get("cursor"), 200) or row["cursor"]
-        return {"items": items, "cursor": cursor, "usage": got.get("usage"), "tools": allowed}
+        return items, _flat(part.get("cursor"), 200) or row["cursor"]
+
+    def _read_cli(self, owner: Principal, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        """Read every due connector of the CLIs: {connector id: {items, cursor, usage} or the
+        problem}. Claude Code reads all of its connectors in one run (one for those in its
+        settings files, one for the Claude account's), so it starts, and loads its tools, once
+        a beat; the run's tokens are counted once. Codex reads one connector a run."""
+        out: dict[str, Any] = {}
+        groups: dict[str, list[tuple[dict[str, Any], conn.Found, list[str], list[str]]]] = {}
+        for row in rows:
+            found = self._find(owner, row)
+            if found is None:
+                out[row["id"]] = ConnectorProblem(
+                    "off", "No longer in the CLI's settings.", present=False
+                )
+                continue
+            status, line, allowed, refused = self._check(found)
+            if status != "ok":
+                out[row["id"]] = ConnectorProblem(status, line, tools=allowed)
+                continue
+            key = (
+                f"codex:{row['id']}"
+                if found.cli == "codex"
+                else ("claude:account" if found.spec.get("account") else "claude:settings")
+            )
+            groups.setdefault(key, []).append((row, found, allowed, refused))
+        for key, members in groups.items():
+            servers = {conn.safe_server(f.name): (r, f, a, x) for r, f, a, x in members}
+            prompt = self._read_prompt(
+                [
+                    (server, f.name, r["cursor"] or FIRST_LOOK, a)
+                    for server, (r, f, a, _x) in servers.items()
+                ]
+            )
+            try:
+                if key.startswith("codex:"):
+                    ((server, (r, f, a, x)),) = servers.items()
+                    got = self.runners.read_through(
+                        owner,
+                        "codex",
+                        server=server,
+                        spec=f.spec,
+                        allowed=a,
+                        refused=x,
+                        prompt=prompt,
+                    )
+                else:
+                    got = self.runners.read_many(
+                        owner,
+                        servers={s: m[1].spec for s, m in servers.items()},
+                        allowed={s: m[2] for s, m in servers.items()},
+                        refused={s: m[3] for s, m in servers.items()},
+                        prompt=prompt,
+                    )
+                answer = json_answer(got.get("text") or "")
+            except WorkspaceError as exc:
+                for r, *_rest in members:
+                    out[r["id"]] = exc
+                continue
+            except ValueError:
+                for r, *_rest in members:
+                    out[r["id"]] = ConnectorProblem("error", "Its answer could not be read.")
+                continue
+            parts = answer.get("connectors") if isinstance(answer.get("connectors"), dict) else {}
+            loaded = got.get("loaded")
+            first = True
+            for server, (r, _f, a, _x) in servers.items():
+                if loaded is not None and server not in loaded:
+                    out[r["id"]] = ConnectorProblem(
+                        "error",
+                        "Claude Code could not load it from your account just now. The next "
+                        "beat tries again.",
+                    )
+                    continue
+                part = parts.get(server) if parts else (answer if len(servers) == 1 else None)
+                items, cursor = self._items(part, r)
+                out[r["id"]] = {
+                    "items": items,
+                    "cursor": cursor,
+                    "usage": got.get("usage") if first else None,
+                    "shared": not first,  # the run's tokens went with the first connector
+                    "tools": a,
+                }
+                first = False
+        return out
+
+    def _read(self, owner: Principal, row: dict[str, Any]) -> dict[str, Any]:
+        """What changed in one connector since its cursor: {items, cursor, usage}."""
+        if row["how"] == "folder":
+            return self._read_scout(owner, row)
+        got = self._read_cli(owner, [row])[row["id"]]
+        if isinstance(got, BaseException):
+            raise got
+        return dict(got)
 
     def _read_scout(self, owner: Principal, row: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -1034,12 +1117,18 @@ class Heartbeat:
         fresh: list[dict[str, Any]] = []
         reads: dict[str, dict[str, Any]] = {}
         limited: str | None = None
+        through_cli = [r for r in due if r["how"] != "folder"]
+        if through_cli and self._running is not None:
+            self._running["reading"] = through_cli[0]["id"]
+        batch = self._read_cli(owner, through_cli) if through_cli else {}
         for row in due:
             if self._running is not None:
                 self._running["reading"] = row["id"]
             entry: dict[str, Any] = {"id": row["id"], "name": row["name"], "read": False}
             try:
-                got = self._read(owner, row)
+                got = batch[row["id"]] if row["id"] in batch else self._read(owner, row)
+                if isinstance(got, BaseException):
+                    raise got
             except ConnectorProblem as problem:
                 self._connector_problem(owner, row, problem)
                 entry["status"] = problem.status
@@ -1059,7 +1148,7 @@ class Heartbeat:
             if self._running is not None:
                 self._running["read"].append(row["id"])
             spent = tokens_of(got.get("usage"))
-            if row["how"] != "folder":
+            if row["how"] != "folder" and not got.get("shared"):
                 if spent is None:
                     unknown += 1
                 else:
