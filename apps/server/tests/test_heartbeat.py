@@ -636,3 +636,53 @@ def test_in_auto_a_connector_change_goes_in_shows_on_home_undoes_and_is_not_repe
     again = beat(owner)
     assert again["changes"] == 0 and again["waits"] == 0
     assert [r["status"] for r in rows(runtime, schema.heartbeat_lines)] == ["undone"]
+
+
+def test_a_scout_file_reaches_the_judge_with_its_words(owner, fake_cli, tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "run-of-show.md").write_text(
+        "# Run of show\n\nSession 1 moves to Thursday at 10:00.\n", encoding="utf-8"
+    )
+    owner.ok(owner.put("/api/scout", json={"folders": [{"path": str(docs)}]}))
+    found(owner)
+    owner.ok(owner.put("/api/heartbeat/connectors/claude:mail", json={"enabled": False}))
+    owner.ok(owner.put("/api/heartbeat/connectors/scout", json={"enabled": True}))
+    assert beat(owner)["items"] == 1
+    (judge,) = fake_cli.judges()
+    assert "Session 1 moves to Thursday at 10:00." in json.dumps(judge, default=str)
+
+
+def test_a_refused_write_stays_in_the_beat_record_not_the_region(owner, fake_cli):
+    found(owner)
+    fake_cli.writes = lambda item: [
+        {"kind": "progress", "project": PROJECT, "text": item["text"], "reason": "said so"},
+        {
+            "kind": "sheet",
+            "sheet": "no-such-sheet",
+            "row": "x",
+            "column": "y",
+            "value": "z",
+            "reason": "a sheet that is not there",
+        },
+    ]
+    done = beat(owner)
+    assert any("not written" in d for d in done["details"]), done["details"]
+    regions = {r["id"]: r for r in owner.ok(owner.get("/api/heartbeat/regions"))}
+    assert [line["status"] for line in regions["state"]["lines"]] != []
+    assert all(line["status"] != "refused" for line in regions["state"]["lines"])
+
+
+def test_a_task_due_date_written_another_way_is_left_out_not_refused(owner, runtime, fake_cli):
+    found(owner)
+    fake_cli.writes = lambda item: [
+        {
+            "kind": "task",
+            "project": PROJECT,
+            "text": "Send the reminder emails.",
+            "due": "Tuesday",
+            "reason": "the run of show says so",
+        }
+    ]
+    done = beat(owner)
+    assert done["changes"] + done["waits"] == 1, done["details"]

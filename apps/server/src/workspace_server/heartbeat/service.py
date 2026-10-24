@@ -58,6 +58,25 @@ HOW_LABELS = {"mcp": "MCP", "computer": "Computer use", "folder": "Folder"}
 LOCK_MINUTES = 20  # a beat that holds the lock longer than this has stopped: its lock expires
 BACKOFF_MINUTES = 30  # after a provider limit, scheduled beats wait this long
 MAX_ITEMS = 25  # items read from one connector in one beat
+FILE_WORDS = 4000  # characters of a Scout file the judge reads
+
+
+def _file_words(ws: Any, path: str, name: str) -> str:
+    """The words of a file Scout found, as Capture would read them, cut to FILE_WORDS: the judge
+    decides from what the file says, not from its name."""
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read(8_000_000)
+    except OSError:
+        return ""
+    extractor = getattr(ws.rt, "extractor", None)
+    text = extractor.extract(data, name, None) if extractor is not None else None
+    if text is None:
+        text = data.decode("utf-8", errors="replace")
+    text = text.strip()
+    return text if len(text) <= FILE_WORDS else text[:FILE_WORDS] + " [cut to fit]"
+
+
 WRITE_KINDS = ("sheet", "progress", "task", "note")
 LIMIT = re.compile(
     r"rate.?limit|usage limit|quota|\b429\b|too many requests|limit (?:reached|exceeded)|"
@@ -811,12 +830,14 @@ class Heartbeat:
             if diff.get("quiet"):
                 continue
             name = str(diff["path"]).replace("\\", "/").rsplit("/", 1)[-1]
+            words = _file_words(self.ws, str(diff["path"]), name)
             items.append(
                 {
                     "id": str(diff["path"])[:300],
                     "title": name,
                     "text": f"{'A new file' if diff['kind'] == 'new' else 'A new version of'} "
-                    f"{name} in a Scout folder.",
+                    f"{name} in a Scout folder."
+                    + (f" It says:\n{words}" if words else " Its words could not be read."),
                     "at": found.get("last_inspection") or "",
                     "url": "",
                     "speaker": "",
@@ -934,10 +955,11 @@ class Heartbeat:
             "changed, and what it updates: none, or writes of these kinds, each with its "
             'reason: {"kind": "sheet", "sheet": id, "row": key, "column": name, "value": '
             'text}, {"kind": "progress", "project": id, "text": what moved, "next_up": text}, '
-            '{"kind": "task", "project": id, "text": the task, "due": "", "owner": ""}, '
-            '{"kind": "note", "area": region id, "topic": name, "text": the fact, '
-            '"revises": an entry id or null}. Add "customer_facing": true to a write a '
-            'customer would see, and "spends": true to one about spending money. Write only '
+            '{"kind": "task", "project": id, "text": the task, "due": "YYYY-MM-DD" or "", '
+            '"owner": ""}, {"kind": "note", "area": region id, "topic": a short '
+            'lowercase-hyphenated name, "text": the fact, "revises": an entry id or null}. '
+            "Prefer one write per item: the one place it belongs. "
+            'Add "customer_facing": true to a write a customer would see, and "spends": true to one about spending money. Write only '
             "what the item says; never invent. "
             "If a must-hold protects what an item says (it would quote or change it), name it "
             'in "protected_by". Then a new headline (one short sentence) for each region that '
@@ -1249,14 +1271,21 @@ class Heartbeat:
                 **cited,
             )
         if kind == "task":
+            # A due date the model wrote another way is left out, not refused.
+            due = str(write.get("due") or "")
             return self.ws.brain.propose(
                 owner,
                 statement=_flat(write.get("text"), 300),
                 destination="todo",
-                place={k: write.get(k) or "" for k in ("project", "due", "owner")},
+                place={
+                    "project": write.get("project") or "",
+                    "owner": write.get("owner") or "",
+                    "due": due if re.fullmatch(r"\d{4}-\d{2}-\d{2}", due) else "",
+                },
                 **cited,
             )
-        topic = f"{write.get('area')}/{write.get('topic')}" if write.get("topic") else None
+        name = re.sub(r"[^a-z0-9]+", "-", str(write.get("topic") or "").lower()).strip("-")
+        topic = f"{write.get('area')}/{name}" if name else None
         return self.ws.brain.propose(
             owner,
             statement=_flat(write.get("text"), 1200),
@@ -1655,7 +1684,12 @@ class Heartbeat:
         projects = {p["id"]: p for p in brain["projects"]}
         out = []
         for region in brain["regions"]:
-            mine = [self._line_view(r, names, latest) for r in rows if r["region"] == region["id"]]
+            # A write the Brain refused stays in its beat's record, not in the region's lines.
+            mine = [
+                self._line_view(r, names, latest)
+                for r in rows
+                if r["region"] == region["id"] and r["status"] != "refused"
+            ]
             row = kept.get(region["id"]) or {}
             statuses = dict(row.get("projects") or {})
             listed = []
