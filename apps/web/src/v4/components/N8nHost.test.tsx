@@ -24,4 +24,15 @@ describe("n8n on this computer", () => {
     await userEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(calls.find((c) => c.method === "POST")?.body).toEqual({ action: "stop" });
   });
+
+  it("searches the CLIs and says which workflows it suggested", async () => {
+    const calls = mockApi({
+      "GET /api/heartbeat/n8n/host": status({ installed: true, running: true, line: "Running." }),
+      "POST /api/heartbeat/n8n/suggest": { suggested: ["Gmail", "Notion"], already: [], without_workflow: ["node_repl"], line: "Suggested 2 n8n workflows: Gmail, Notion. No workflow yet for node_repl." },
+    });
+    renderAt(<N8nHost />);
+    await userEvent.click(await screen.findByRole("button", { name: "Suggest workflows" }));
+    expect(await screen.findByText(/Suggested 2 n8n workflows: Gmail, Notion/)).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/heartbeat/n8n/suggest")).toBe(true);
+  });
 });

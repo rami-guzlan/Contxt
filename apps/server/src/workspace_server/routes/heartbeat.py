@@ -166,3 +166,10 @@ def n8n_host(request: Request, who: Who) -> dict[str, Any]:
 def n8n_host_act(body: N8nHostIn, request: Request, who: Who) -> dict[str, Any]:
     """Host n8n here: install it (once, in the background), start it or stop it."""
     return _heartbeat(request).n8n_act(who, body.action)
+
+
+@router.post("/n8n/suggest")
+def suggest_n8n(request: Request, who: Who) -> dict[str, Any]:
+    """Search every connected CLI for connectors, then suggest an n8n workflow for each app
+    Gnomon has one for (off until signed in to in n8n and turned on)."""
+    return _heartbeat(request).suggest_n8n(who)

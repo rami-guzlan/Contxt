@@ -49,6 +49,7 @@ from ..runners import RUNNERS, Runners, usage_of
 from ..scout import Scout
 from . import connectors as conn
 from . import n8n
+from . import n8n_templates as templates
 
 log = logging.getLogger(__name__)
 CLI_CADENCE = 60  # minutes between reads of a new connector that reads through a CLI
@@ -64,6 +65,7 @@ CLI_LABELS = {
     "codex": "Codex CLI",
     "gemini": "Gemini CLI",
     "gnomon": "Gnomon",
+    "n8n": "n8n",
 }
 HOW_LABELS = {"mcp": "MCP", "computer": "Computer use", "folder": "Folder", "n8n": "n8n"}
 TOKENLESS = ("folder", "n8n")  # reads that cost no tokens: Scout, and n8n workflows
@@ -399,7 +401,12 @@ class Heartbeat:
                     # One of the account's connectors reads the person's own account (their
                     # mail, their CRM): it starts off until they turn it on.
                     mine = bool(f.spec.get("account"))
-                    on = status == "ok" and not mine
+                    on = status == "ok" and not mine and f.cli != "gemini"
+                    if f.cli == "gemini":
+                        line = (
+                            "Found in Gemini CLI. Gnomon does not read through Gemini yet; "
+                            "it can suggest an n8n workflow for it."
+                        )
                     if mine and status == "ok":
                         line += " Off until you turn it on: it reads your own account."
                     tx.insert(
@@ -522,6 +529,10 @@ class Heartbeat:
             if row is None or row["workspace_id"] != tx.workspace_id:
                 raise NotFound(f"No connector {connector_id}.", id=connector_id)
             values: dict[str, Any] = {}
+            if enabled and row["cli"] == "gemini":
+                raise Conflict(
+                    "Gnomon does not read through Gemini yet. Suggest an n8n workflow for it."
+                )
             if enabled and row["how"] == "n8n":
                 problems = n8n.check_workflow(row["workflow"], row["id"])
                 if problems:
@@ -574,6 +585,7 @@ class Heartbeat:
         workflow: dict[str, Any],
         feeds: list[str] | None = None,
         connector_id: str | None = None,
+        line: str | None = None,
     ) -> dict[str, Any]:
         """A connector read by an n8n workflow on this computer, with the person's own n8n
         credentials. Its workflow is checked by code to only read (and to post to this
@@ -599,7 +611,8 @@ class Heartbeat:
             "feeds": [str(f) for f in feeds or []][:20],
             "enabled": False,
             "status": "off",
-            "status_line": "Waits for your yes: it reads with your n8n sign-ins, read-only.",
+            "status_line": line
+            or "Waits for your yes: it reads with your n8n sign-ins, read-only.",
             "tools": [],
             "found_in": "n8n on this computer",
             "present": True,
@@ -680,6 +693,61 @@ class Heartbeat:
         except RuntimeError as exc:
             raise Conflict(str(exc)) from exc
         return result
+
+    def suggest_n8n(self, who: Principal) -> dict[str, Any]:
+        """The connector search, then an n8n workflow suggested for each app it found that
+        Gnomon has one for. A suggestion is off until the person signs in to that app in n8n
+        and turns it on here; one already suggested is left as it is."""
+        who.require("workspace.admin")
+        self.rescan(who)
+        rows = self._connectors()
+        have = {r["id"] for r in rows if r["how"] == "n8n"}
+        suggested: list[str] = []
+        already: list[str] = []
+        without: set[str] = set()
+        apps: set[str] = set()
+        for row in rows:
+            if row["how"] in TOKENLESS:
+                continue
+            app = templates.app_of(row["name"])
+            if app is None:
+                without.add(row["name"])
+                continue
+            label = templates.label_of(app)
+            if app in apps:
+                continue
+            apps.add(app)
+            cid = f"n8n:{app}"
+            if cid in have:
+                already.append(label)
+                continue
+            where = CLI_LABELS.get(row["cli"], row["cli"])
+            self.add_n8n(
+                who,
+                name=f"{label} through n8n",
+                workflow=templates.workflow_for(app, cid, self.inbox_url),
+                feeds=list(row["feeds"] or []),
+                connector_id=cid,
+                line=(
+                    f"Suggested from {row['name']} in {where}. In n8n, sign in to {label} on "
+                    f"its Read {label} node, then turn it on here."
+                ),
+            )
+            suggested.append(label)
+        said = (
+            f"Suggested {len(suggested)} n8n workflow{'s' if len(suggested) != 1 else ''}: "
+            f"{', '.join(suggested)}."
+            if suggested
+            else "No new workflow to suggest."
+        )
+        if without:
+            said += f" No workflow yet for {', '.join(sorted(without))}."
+        return {
+            "suggested": suggested,
+            "already": already,
+            "without_workflow": sorted(without),
+            "line": said,
+        }
 
     def receive(self, connector_id: str, secret: str, body: Any) -> dict[str, Any]:
         """What an n8n workflow posted, kept for the next beat. Only an approved n8n read,

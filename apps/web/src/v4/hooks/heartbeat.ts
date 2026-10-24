@@ -249,3 +249,12 @@ export function useN8nHostAction() {
     onSuccess: () => refresh(),
   });
 }
+
+/** The connector search across every CLI, then n8n workflows suggested for the apps found. */
+export function useSuggestN8n() {
+  const refresh = useHeartbeatRefresh();
+  return useMutation({
+    mutationFn: () => post<{ suggested: string[]; already: string[]; without_workflow: string[]; line: string }>("/api/heartbeat/n8n/suggest"),
+    onSuccess: () => refresh(),
+  });
+}

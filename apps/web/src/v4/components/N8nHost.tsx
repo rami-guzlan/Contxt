@@ -2,12 +2,13 @@
 // the heartbeat spends no tokens reading. Install once, start or stop, and open it to sign in.
 
 import { css } from "../css";
-import { useN8nHost, useN8nHostAction } from "../hooks/heartbeat";
+import { useN8nHost, useN8nHostAction, useSuggestN8n } from "../hooks/heartbeat";
 import { Btn, Failure, Loading } from "../ui";
 
 export function N8nHost() {
   const host = useN8nHost();
   const act = useN8nHostAction();
+  const suggest = useSuggestN8n();
   if (host.isLoading) return <Loading what="Looking for n8n" />;
   if (host.error || !host.data) return <Failure error={host.error} retry={() => void host.refetch()} />;
   const h = host.data;
@@ -38,7 +39,14 @@ export function N8nHost() {
           Start n8n
         </Btn>
       )}
+      {h.installed ? (
+        <Btn kind="ghostSm" disabled={suggest.isPending} onClick={() => suggest.mutate()}>
+          {suggest.isPending ? "Searching your CLIs…" : "Suggest workflows"}
+        </Btn>
+      ) : null}
+      {suggest.data ? <span style={css("flex-basis:100%;font:400 12.5px/1.45 Geist;color:var(--ink2)")}>{suggest.data.line}</span> : null}
       {act.error ? <Failure error={act.error} /> : null}
+      {suggest.error ? <Failure error={suggest.error} /> : null}
     </div>
   );
 }

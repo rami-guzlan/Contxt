@@ -1062,3 +1062,42 @@ def test_turning_an_n8n_read_on_puts_it_into_gnomons_n8n_active_with_a_fresh_sec
     assert hb.receive(N8N_ID, secret, {"items": [ITEM]}) == {"kept": 1}
     owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": False}))
     assert hosted.put[-1][1] is False
+
+
+from workspace_server.heartbeat import n8n_templates  # noqa: E402
+
+
+def test_every_suggested_workflow_only_reads_and_posts_once_to_its_inbox():
+    for app in n8n_templates.APPS:
+        cid = f"n8n:{app}"
+        workflow = n8n_templates.workflow_for(app, cid, "http://127.0.0.1:8787")
+        assert n8n_reads.check_workflow(workflow, cid) == [], app
+        (post,) = [n for n in workflow["nodes"] if n["type"] == "n8n-nodes-base.httpRequest"]
+        assert post["executeOnce"] is True
+    assert n8n_templates.app_of("claude.ai Gmail") == "gmail"
+    assert n8n_templates.app_of("claude.ai Google Drive") == "google-drive"
+    assert n8n_templates.app_of("node_repl") is None
+
+
+def test_the_connector_search_suggests_a_workflow_per_known_app_off_until_turned_on(
+    owner, fake_cli, tmp_path, monkeypatch
+):
+    gemini = tmp_path / "gemini"
+    gemini.mkdir()
+    (gemini / "settings.json").write_text(
+        json.dumps({"mcpServers": {"slack": {"command": "slack-mcp"}}}), encoding="utf-8"
+    )
+    monkeypatch.setenv("GEMINI_CLI_HOME", str(gemini))
+    fake_cli.account_init = ACCOUNT_INIT
+    fake_cli.account_list = ACCOUNT_LIST
+    found = owner.ok(owner.post("/api/heartbeat/n8n/suggest"))
+    assert sorted(found["suggested"]) == ["Gmail", "Notion", "Slack"]
+    assert "mail" in found["without_workflow"]
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    notion = rows["n8n:notion"]
+    assert notion["enabled"] is False and "sign in to Notion" in notion["status_line"]
+    assert rows["gemini:slack"]["enabled"] is False
+    refused = owner.put("/api/heartbeat/connectors/gemini:slack", json={"enabled": True})
+    assert refused.status_code == 409
+    again = owner.ok(owner.post("/api/heartbeat/n8n/suggest"))
+    assert again["suggested"] == [] and sorted(again["already"]) == ["Gmail", "Notion", "Slack"]
