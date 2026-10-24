@@ -77,9 +77,10 @@ GATE_WORDS = {
         re.I,
     ),
 }
-# A connected tool whose name says it writes, posts, sends or spends: never in an agent's own
-# run, only in the run for an action the owner said yes to. A name that starts by reading
-# (list_posts, get_campaign) reads.
+# Only a connected tool whose name starts by reading (list_posts, get_campaign) and says
+# nothing that acts is in an agent's own run; every other tool (one that writes, posts, sends,
+# spends, or does something its name doesn't make plain) is only in the run for an action
+# the owner said yes to.
 ACTING = frozenset(
     [
         "post",
@@ -114,10 +115,9 @@ READING = frozenset(
 
 
 def acts(tool: str) -> bool:
+    """Could this tool change something outside? Yes unless its name plainly only reads."""
     words = [w for w in re.split(r"[^a-z0-9]+", tool.split("__")[-1].lower()) if w]
-    if not words or words[0] in READING:
-        return False
-    return any(w in ACTING for w in words)
+    return not words or words[0] not in READING or any(w in ACTING for w in words)
 
 
 TOOL = re.compile(

@@ -309,3 +309,21 @@ def test_a_cli_that_cannot_start_stops_the_run_with_why(owner, fake, brain_proje
         owner.post(f"/api/projects/{brain_project}/orchestrators/{orc['id']}/run", json={}), 201
     )
     assert run["status"] == "stopped" and "not installed" in run["note"]
+
+
+def test_only_a_tool_whose_name_plainly_reads_is_in_an_agents_own_run():
+    from workspace_core.services.orchestrators import acts
+
+    for reads in ("list_posts", "mcp__hubspot__get_campaign", "search_messages", "read_file"):
+        assert not acts(reads), reads
+    for could_act in (
+        "create_post",
+        "read_and_delete",
+        "get_or_send",
+        "submit_order",
+        "approve_invoice",
+        "launch_campaign",
+        "mcp__slack__chat",
+        "",
+    ):
+        assert acts(could_act), could_act
