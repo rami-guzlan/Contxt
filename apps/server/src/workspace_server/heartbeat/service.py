@@ -1778,11 +1778,18 @@ class HeartbeatWorker:
         self.interval = max(1.0, float(interval))
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._looked = False  # whether it looked for connectors since the server started
 
     def run_once(self) -> dict[str, Any] | None:
+        owner = self.heartbeat.ws.owner()
+        if not self._looked and not self.heartbeat.connectors(owner):
+            # A new Brain: find the connectors in the CLIs once, as "Find connectors" would.
+            self._looked = True
+            self.heartbeat.rescan(owner)
+        self._looked = True
         if not self.heartbeat.due():
             return None
-        if not any(c["enabled"] for c in self.heartbeat.connectors(self.heartbeat.ws.owner())):
+        if not any(c["enabled"] for c in self.heartbeat.connectors(owner)):
             return None
         return self.heartbeat.beat(self.heartbeat.ws.owner(), "schedule")
 

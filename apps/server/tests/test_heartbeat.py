@@ -607,3 +607,10 @@ def test_a_write_that_still_waits_in_auto_says_why(owner, runtime, hb, monkeypat
     (line,) = rows(runtime, schema.heartbeat_lines)
     assert line["status"] == "waiting"
     assert line["wrote"] == "Waits for you (sealed project): Website Redesign › latest progress"
+
+
+def test_a_new_brain_finds_its_connectors_on_the_first_look(owner, hb):
+    worker = hb_service.HeartbeatWorker(hb)
+    worker.run_once()
+    names = {c["id"] for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert "claude:mail" in names
