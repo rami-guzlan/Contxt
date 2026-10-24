@@ -959,8 +959,8 @@ class Heartbeat:
             '"owner": ""}, {"kind": "note", "area": region id, "topic": a short '
             'lowercase-hyphenated name, "text": the fact, "revises": an entry id or null}. '
             "Prefer one write per item: the one place it belongs. "
-            'Add "customer_facing": true to a write a customer would see, and "spends": true to one about spending money. Write only '
-            "what the item says; never invent. "
+            'Add "customer_facing": true to a write a customer would see, and "spends": true '
+            "to one about spending money. Write only what the item says; never invent. "
             "If a must-hold protects what an item says (it would quote or change it), name it "
             'in "protected_by". Then a new headline (one short sentence) for each region that '
             "got a line, and a status line for each project that moved. Reply with one JSON "
