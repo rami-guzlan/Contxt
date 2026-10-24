@@ -137,3 +137,90 @@ def test_signing_in_by_post_keeps_the_key_out_of_the_address(client, owner_token
         "/auth/login", json={"token": owner_token}, headers={"X-Workspace-CSRF": "1"}
     )
     assert good.status_code == 204 and good.cookies
+
+
+def test_a_brain_from_before_opens_auto_governed_once_with_a_notice(tmp_path, clock):
+    import json
+
+    from tests import fixture as brain_fixture
+
+    from workspace_server.app import open_runtime
+    from workspace_server.settings import Settings
+
+    vault = brain_fixture.build(str(tmp_path / "brain"))
+    path = os.path.join(vault, "brain.json")
+    with open(path, encoding="utf-8") as handle:
+        config = json.load(handle)
+    for key in ("mode", "gov_version"):
+        config["governance"].pop(key)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(config, handle)
+
+    def opened():
+        settings = Settings(
+            data_dir=str(tmp_path / "data"),
+            brain_vault=vault,
+            owner_token="wst_" + "t" * 32,
+            name="Test",
+            timezone="UTC",
+            exports_dir=str(tmp_path / "x"),
+            web_dist=str(tmp_path / "w"),
+        )
+        runtime = open_runtime(settings, clock=clock)
+        policy = runtime.brain.policies()
+        runtime.close()
+        return policy
+
+    first = opened()
+    assert first["mode"] == "auto" and first["auto_notice"]["was"] == "governed"
+    with open(path, encoding="utf-8") as handle:
+        config = json.load(handle)
+    config["governance"]["mode"] = "governed"  # the owner reversed it
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(config, handle)
+    assert opened()["mode"] == "governed"  # once only
+
+
+def test_govern_this_myself_and_dismissing_the_notice_are_policy_settings(owner):
+    policy = owner.ok(owner.put("/api/brain/policies", json={"self_governed": ["area:clients"]}))[
+        "policy"
+    ]
+    assert policy["self_governed"] == ["area:clients"]
+    assert owner.put("/api/brain/policies", json={"self_governed": ["clients"]}).status_code == 422
+    assert owner.put("/api/brain/policies", json={"auto_notice": None}).status_code == 200
+
+
+def test_the_map_view_lore_sections_and_session_search_are_readable(owner):
+    view = owner.ok(owner.get("/api/brain/map/view"))
+    assert view["text"].startswith("## Brain map · partial")
+    assert view["tokens"] <= view["limit"] == 250
+    assert isinstance(view["sealed"], int) and "levels" in view
+    whole = owner.ok(owner.get("/api/brain/map", params={"tier": "levels"}))
+    assert whole["tier"] == "levels" and len(whole["lines"]) == 5
+    assert owner.get("/api/brain/map", params={"tier": "nope"}).status_code == 422
+    made = owner.ok(
+        owner.post(
+            "/api/brain/lore",
+            json={
+                "title": "Two exports, one slide",
+                "story": "The slide quoted the older export.",
+                "pattern": "A number without the version it came from.",
+                "words": ["registrations", "total"],
+            },
+        ),
+        201,
+    )
+    assert made["status"] in ("pending", "applied")
+    assert isinstance(owner.ok(owner.get("/api/brain/lore")), list)
+    assert owner.get("/api/brain/open", params={"address": "never-was#x"}).status_code == 404
+    assert owner.get("/api/brain/sections/never-was").status_code == 404
+    assert owner.ok(owner.get("/api/brain/sessions/search", params={"q": "lighthouse"})) == []
+
+
+def test_the_owner_sets_the_pull_budget_through_the_policy(owner):
+    policy = owner.ok(owner.get("/api/brain/policies"))
+    assert (policy["pull_items"], policy["pull_tokens"]) == (2, 1500)
+    changed = owner.ok(
+        owner.put("/api/brain/policies", json={"pull_items": 3, "pull_tokens": 3000})
+    )
+    assert (changed["policy"]["pull_items"], changed["policy"]["pull_tokens"]) == (3, 3000)

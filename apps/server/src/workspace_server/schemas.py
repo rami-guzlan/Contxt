@@ -143,6 +143,13 @@ class PoliciesIn(Body):
     retrieval_policy: str | None = None  # relaxed, standard or careful
     mode: str | None = None  # governed (suggestions wait) or auto (in with undo, capped)
     auto_paused: bool | None = None  # pause Auto by hand
+    # The areas the owner governs themselves ("Govern this myself"): area:<id>, project:<id>,
+    # sheet:<id>, packet:<id>.
+    self_governed: list[str] | None = None
+    auto_notice: None = None  # sent as null: dismiss the one-time notice of the switch to Auto
+    # The pull budget: what an AI may open after each packet (v4, section 6).
+    pull_items: int | None = Field(default=None, ge=1, le=20)
+    pull_tokens: int | None = Field(default=None, ge=100, le=3650)
 
 
 class CatchUpItemIn(Body):
@@ -307,6 +314,36 @@ class WorkAskIn(Body):
     skill: str | None = Field(default=None, max_length=120)
     agent: str | None = Field(default=None, max_length=120)
     runner: str = Field(default="claude", max_length=20)
+
+
+class OrchestratorAgentIn(Body):
+    id: str | None = Field(default=None, max_length=40)
+    profile: str = Field(max_length=120)
+    new_profile: bool = False
+    role: str = Field(default="", max_length=600)
+    works_by: str = Field(default="files", max_length=20)
+    cli: str = Field(default="claude", max_length=20)
+    model: str | None = Field(default=None, max_length=60)
+    tools: list[str] = Field(default_factory=list, max_length=20)
+
+
+class OrchestratorIn(Body):
+    name: str = Field(max_length=120)
+    goal: str = Field(default="", max_length=2000)
+    cli: str = Field(default="claude", max_length=20)
+    model: str | None = Field(default=None, max_length=60)
+    trigger: str = Field(default="gnomon", max_length=16)
+    agents: list[OrchestratorAgentIn] = Field(default_factory=list, max_length=8)
+    expected_version: int | None = None
+
+
+class OrchestratorRunIn(Body):
+    steer: str = Field(default="", max_length=1000)
+
+
+class GateDecisionIn(Body):
+    decision: str = Field(pattern="^(approve|decline)$")
+    quote: str = Field(default="", max_length=300)
 
 
 class AskIn(Body):

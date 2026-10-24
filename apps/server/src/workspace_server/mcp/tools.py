@@ -423,6 +423,149 @@ def run_workflow(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[s
     return text, {"run": run.to_dict()}
 
 
+# ---------------------------------------------------------------------- the heartbeat
+# Set by the app when it starts: the heartbeat (heartbeat.status and the rest in MCP Tools.md).
+HEARTBEAT: Any = None
+CONFIRMED = {
+    "type": "object",
+    "description": "The user's yes, in their exact words: {quote}. Ask first, in one plain "
+    "sentence; never confirm on their behalf or reuse an old yes.",
+    "properties": {"quote": {"type": "string"}},
+    "required": ["quote"],
+}
+
+
+def _confirmed(args: dict[str, Any], doing: str) -> tuple[str, dict[str, Any], bool] | None:
+    """None when the user's yes came with the call; else the answer that asks for it."""
+    said = args.get("confirmed_by_user")
+    if isinstance(said, dict) and str(said.get("quote") or "").strip():
+        return None
+    return (
+        f"needs_user_confirmation: ask the user, in one plain sentence, whether to {doing}. "
+        "When they agree, call again with confirmed_by_user: {quote: their exact words}.",
+        {"error": "needs_user_confirmation"},
+        True,
+    )
+
+
+def _beat_line(beat: dict[str, Any]) -> str:
+    if beat.get("skipped"):
+        return str(beat.get("line") or "No beat now.")
+    if beat.get("status") == "running":
+        return f"Beat {beat['beat_id']} started."
+    tokens = beat.get("tokens")
+    used = f"{tokens} tokens" if tokens is not None else "tokens unknown"
+    if beat.get("nothing_new"):
+        return (
+            f"Beat {beat['id']}: read {beat['connectors_read']} connectors, nothing new ({used})."
+        )
+    return (
+        f"Beat {beat['id']} ({beat['status']}): read {beat['connectors_read']} connectors, "
+        f"{beat['items']} items, {beat['changes']} changes, {beat['waits']} wait for the user, "
+        f"{beat['held']} held back ({used})."
+        + ("".join(f"\n- {d}" for d in beat.get("details") or []))
+    )
+
+
+def heartbeat_status(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    if HEARTBEAT is None:
+        return "The heartbeat is not running here.", {}, True
+    found = HEARTBEAT.status(ws.owner())
+    last = found.get("last_beat")
+    text = (
+        f"Heartbeat every {found['cadence']} min, quiet hours {found['quiet_hours']}, "
+        f"{'paused' if found['paused'] else 'on'}: {found['line']} "
+        + (f"Last beat {last['started_at']}. " if last else "No beat yet. ")
+        + (f"Next {found['next_beat_at']}. " if found.get("next_beat_at") else "")
+        + "Connectors: "
+        + (
+            ", ".join(
+                f"{c['name']} ({c['cli_label']}, {c['how_label']}, "
+                f"{'on' if c['enabled'] else 'off'})"
+                for c in found["connectors"]
+            )
+            or "none"
+        )
+        + "."
+    )
+    return text, found, False
+
+
+def heartbeat_beat(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    """Run one beat now, as the owner's work: it only reads, then writes through governance."""
+    if HEARTBEAT is None:
+        return "The heartbeat is not running here.", {}, True
+    found = HEARTBEAT.beat(ws.owner(), "ai", wait=True)
+    return _beat_line(found), found, bool(found.get("skipped"))
+
+
+def heartbeat_beats(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    if HEARTBEAT is None:
+        return "The heartbeat is not running here.", {}, True
+    rows = HEARTBEAT.beats(
+        ws.owner(), since=_str(args, "since"), limit=int(args.get("limit") or 10)
+    )
+    return "\n".join(_beat_line(b) for b in rows) or "No beats yet.", {"beats": rows}, False
+
+
+def heartbeat_regions(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    if HEARTBEAT is None:
+        return "The heartbeat is not running here.", {}, True
+    rows = HEARTBEAT.regions(ws.owner())
+    parts = []
+    for region in rows:
+        parts.append(f"## {region['name']}: {region['headline'] or 'nothing yet'}")
+        for line in region["lines"][:5]:
+            parts.append(
+                f"- [{line['id']}] {line['text']} ({line['connector']}, {line['cli_label']}, "
+                f"{line['at']}) {line['wrote']} [{line['status']}]"
+            )
+        for project in region["projects"]:
+            parts.append(f"- project {project['title']}: {project['status']}")
+    return "\n".join(parts), {"regions": rows}, False
+
+
+def heartbeat_undo(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    """Undo one line's write, with the user's yes; the next beat won't repeat it."""
+    if HEARTBEAT is None:
+        return "The heartbeat is not running here.", {}, True
+    asked = _confirmed(args, "undo that heartbeat line")
+    if asked:
+        return asked
+    found = HEARTBEAT.undo(ws.owner(), str(_str(args, "line_id", True)))
+    return found["line"], found, False
+
+
+def heartbeat_configure(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any], bool]:
+    """Change the heartbeat's cadence, quiet hours, pause or connectors, with the user's yes."""
+    if HEARTBEAT is None:
+        return "The heartbeat is not running here.", {}, True
+    asked = _confirmed(args, "change the heartbeat's settings")
+    if asked:
+        return asked
+    chosen = args.get("connectors")
+    found = HEARTBEAT.configure(
+        ws.owner(),
+        cadence=args.get("cadence"),
+        quiet=_str(args, "quiet_hours"),
+        paused=args.get("paused") if isinstance(args.get("paused"), bool) else None,
+        connectors=[c for c in chosen if isinstance(c, dict)] if isinstance(chosen, list) else None,
+    )
+    return f"Heartbeat settings saved: {found['line']}", found, False
+
+
 def _strings(args: dict[str, Any], name: str) -> list[str] | None:
     """A list of short texts, given as a list or (as some clients send one) a single string."""
     value = args.get(name)
@@ -1221,8 +1364,87 @@ TOOLS: dict[str, Tool] = {
             run_workflow,
             "tasks.claim",
         ),
+        Tool(
+            "heartbeat_status",
+            "The heartbeat (heartbeat.status): cadence, quiet hours, the last and next beat, "
+            "paused or not, and the connectors (CLI, how, the regions each feeds, on or off).",
+            _obj({}),
+            heartbeat_status,
+            "brain.read",
+        ),
+        Tool(
+            "heartbeat_beat",
+            "Run one beat now (heartbeat.beat): it reads, read-only, what changed in the "
+            "connectors, and writes it into the Brain's regions through governance. Returns "
+            "beat_id, connectors read, items, changes, waits and tokens. A beat never sends, "
+            "posts, replies or spends; must-hold conflicts come back as waiting.",
+            _obj({}),
+            heartbeat_beat,
+            "brain.propose",
+        ),
+        Tool(
+            "heartbeat_beats",
+            "Recent beats with their details (heartbeat.beats), newest first.",
+            _obj(
+                {
+                    "since": {"type": "string", "description": "ISO 8601: beats from then on."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                }
+            ),
+            heartbeat_beats,
+            "brain.read",
+        ),
+        Tool(
+            "heartbeat_regions",
+            "Live status per Brain region (heartbeat.regions): headline, lines (text, "
+            "connector, CLI, time, what it wrote), and the projects in it with their status.",
+            _obj({}),
+            heartbeat_regions,
+            "brain.read",
+        ),
+        Tool(
+            "heartbeat_undo",
+            "Undo one line a beat wrote (heartbeat.undo); the next beat won't write it again. "
+            "Needs the user's yes.",
+            _obj({"line_id": {"type": "string"}, "confirmed_by_user": CONFIRMED}, ["line_id"]),
+            heartbeat_undo,
+            "brain.propose",
+        ),
+        Tool(
+            "heartbeat_configure",
+            "Change the heartbeat (heartbeat.configure): cadence (5, 15, 30 or 60 minutes), "
+            "quiet hours (off, night, nights_weekends), pause, and connectors on or off "
+            "([{id, enabled}]). An admin change: needs the user's yes.",
+            _obj(
+                {
+                    "cadence": {"type": "integer", "enum": [5, 15, 30, 60]},
+                    "quiet_hours": {"type": "string", "enum": ["off", "night", "nights_weekends"]},
+                    "paused": {"type": "boolean"},
+                    "connectors": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string"},
+                                "enabled": {"type": "boolean"},
+                            },
+                            "required": ["id"],
+                        },
+                    },
+                    "confirmed_by_user": CONFIRMED,
+                }
+            ),
+            heartbeat_configure,
+            "brain.propose",
+        ),
     )
 }
+
+
+# The agent orchestrators' tools (orchestrator_tools.py), built on the helpers above.
+from . import orchestrator_tools  # noqa: E402
+
+TOOLS.update({t.name: t for t in orchestrator_tools.TOOLS})
 
 
 # The names these tools had before the MCP Tools.md surface: still answered for a version.

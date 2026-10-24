@@ -1230,8 +1230,55 @@ class BrainKitAdapter:
             raise NotFound(found.text, id=rule_id)
         return dict(found.data)
 
-    def brain_map(self, *, area: str | None = None, page: int = 1) -> dict[str, Any]:
-        return dict(self.brain.brain_map(area=area, page=page).data)
+    def brain_map(
+        self, *, area: str | None = None, page: int = 1, tier: str | None = None
+    ) -> dict[str, Any]:
+        found = self.brain.brain_map(area=area, page=page, tier=tier)
+        if found.is_error:
+            raise ValidationFailed(found.text)
+        return dict(found.data)
+
+    def map_view(self) -> dict[str, Any]:
+        """Every tier whole, the short map as a packet sends it, what it cut, and how many
+        sealed projects it leaves out (for the owner's own view only)."""
+        return dict(self.brain.map_view().data)
+
+    def sections(self, item_id: str) -> dict[str, Any]:
+        found = self.brain.sections(item_id)
+        if found.is_error:
+            raise NotFound(found.text, id=item_id)
+        return dict(found.data)
+
+    def open_address(self, address: str) -> dict[str, Any]:
+        """One part by its address, as the owner reads it (no conversation, no budget)."""
+        found = self.brain.open(address)
+        if found.data.get("status") == "not_found":
+            raise NotFound(found.text, address=address, gone_at=found.data.get("gone_at"))
+        if found.is_error:
+            raise ValidationFailed(found.text)
+        return dict(found.data)
+
+    def lore(self) -> list[dict[str, Any]]:
+        return list(self.brain.lore().data.get("lessons") or [])
+
+    def lesson(self, lesson_id: str) -> dict[str, Any]:
+        found = self.brain.lesson(lesson_id)
+        if found.is_error:
+            raise NotFound(found.text, id=lesson_id)
+        return dict(found.data)
+
+    def propose_lesson(self, **fields: Any) -> dict[str, Any]:
+        with self._lock:
+            found = self.brain.propose_lesson(**fields)
+        if found.is_error:
+            raise ValidationFailed(found.text)
+        return dict(found.data, message=found.text)
+
+    def sessions_search(self, query: str, *, limit: int = 10) -> list[dict[str, Any]]:
+        found = self.brain.sessions_search(query, limit=limit)
+        if found.is_error:
+            raise ValidationFailed(found.text)
+        return list(found.data.get("sessions") or [])
 
     def requests_in(self, session_id: str) -> list[dict[str, Any]]:
         found = self.brain.requests(session=session_id, limit=50)
@@ -1281,6 +1328,14 @@ class BrainKitAdapter:
     def policies(self) -> dict[str, Any]:
         data: dict[str, Any] = self.brain.policies().data
         return data
+
+    def migrate_governance(self) -> dict[str, Any] | None:
+        """Release 1 ships auto-governed: a Brain from before switches to Auto once, with a
+        notice the owner can reverse; after that, their choice stands."""
+        from brainkit import governance
+
+        with self._lock:
+            return governance.migrate(self.brain)
 
     def set_policies(self, changes: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
@@ -1461,8 +1516,11 @@ class BrainKitAdapter:
         extra: dict[str, Any] | None = None,
         heard: list[str] | None = None,
         made_by: list[str] | None = None,
+        capture_origin: str | None = None,
+        reason: str | None = None,
     ) -> BrainProposal:
         source = f"{WORKSPACE_SOURCE}{proposer}"
+        door = {"capture_origin": capture_origin} if capture_origin else {}
         if sources:
             source += "; sources: " + ", ".join(sources)
         area, _, topic_name = (topic or "").partition("/")
@@ -1484,10 +1542,12 @@ class BrainKitAdapter:
                     "task" if destination == "todo" else destination,
                     statement,
                     title=title,
-                    reason=f"{destination} proposed from the workspace",
+                    reason=reason or f"{destination} proposed from the workspace",
                     as_of=extra.get("as_of"),
+                    flags={k: True for k in ("customer_facing", "spends") if extra.get(k)},
                     **cited,
                     **place,
+                    **door,
                 )
             if result.is_error and result.data.get("status") != "duplicate":
                 return BrainProposal(status="refused", message=result.text)
@@ -1495,6 +1555,8 @@ class BrainKitAdapter:
                 status=str(result.data.get("status") or "pending"),
                 message=result.text,
                 proposal_id=result.data.get("proposal_id"),
+                checkpoint_id=_checkpoint_id(result.data),
+                waits=[str(w) for w in result.data.get("waits") or []],
             )
         must = extra.pop("must_hold", None) or {}
         # Dates the Brain checks like any other field.
@@ -1520,7 +1582,8 @@ class BrainKitAdapter:
                 scope=None if revises else scope or None,
                 evidence=evidence,
                 source=source,
-                reason=f"{kind} proposed from the workspace"
+                reason=reason
+                or f"{kind} proposed from the workspace"
                 + (f", a change to {revises}" if revises else ""),
                 force_pending=True,
                 supersedes=", ".join(replaces or []) or None,
@@ -1534,6 +1597,7 @@ class BrainKitAdapter:
                 made_by=made_by or None,
                 **must_fields,
                 **dated,
+                **door,
             )
         data = result.data
         status = str(data.get("status") or ("refused" if result.is_error else "pending"))
@@ -1544,6 +1608,8 @@ class BrainKitAdapter:
             message=result.text,
             proposal_id=data.get("proposal_id"),
             entry_id=data.get("id"),
+            checkpoint_id=_checkpoint_id(data),
+            waits=[str(w) for w in data.get("waits") or []],
         )
 
     def propose_many(self, items: list[dict[str, Any]], *, proposer: str) -> list[BrainProposal]:
@@ -2126,6 +2192,14 @@ class BrainKitAdapter:
                 dependents=result.data.get("dependents") or [],
             )
         return {"undone": result.data.get("undone"), "checkpoint": result.data.get("checkpoint")}
+
+
+def _checkpoint_id(data: dict[str, Any]) -> str | None:
+    """The undo point of a change that went in at once, when the Brain made one."""
+    found = data.get("checkpoint")
+    if isinstance(found, dict):
+        found = found.get("id")
+    return str(found) if found else None
 
 
 def _revision(meta: dict[str, Any]) -> str | None:

@@ -17,10 +17,12 @@ import {
   useWeekly,
 } from "../../api/hooks";
 import type { AiRequest, BrainCheckpoint, TaskItem } from "../../api/types";
+import { SessionSearch } from "../components/BrainV4";
 import { ReceiptView } from "../components/Receipt";
 import { css } from "../css";
 import { useRecentRequests, type UndoRefusal, undoRefusal, useUndoPoint } from "../hooks/activity";
 import { Btn, Empty, Failure, Loaded, Loading, S, plural, when } from "../ui";
+import { AutoArea } from "../components/AutoArea";
 
 type Tab = "requests" | "report" | "changes" | "tasks";
 const TABS: [Tab, string][] = [
@@ -186,6 +188,7 @@ function Requests() {
           ))}
         </div>
       ) : null}
+      <SessionSearch />
       <Loaded
         q={q}
         empty={(d) =>
@@ -459,6 +462,7 @@ function Changes() {
   const [sub, setSub] = useState<"events" | "undo">("events");
   return (
     <div style={css("display:flex;flex-direction:column;gap:18px")}>
+      <AutoArea govKey="area:*" area="undo points" what="Every change it makes is an undo point here, with its reason. Undo any of them, or a whole beat." regions={[]} />
       <div role="tablist" aria-label="Changes" style={css("display:flex;gap:6px;flex-wrap:wrap")}>
         {(
           [

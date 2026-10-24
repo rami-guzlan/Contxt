@@ -11,7 +11,7 @@ their origin is read from it (`origin_of`), so nothing has to be rewritten.
 """
 from __future__ import annotations
 
-from . import baseline, history, statements, util
+from . import baseline, history, levels, statements, util
 from . import frontmatter as fm
 
 ORIGIN_KINDS = {
@@ -116,6 +116,8 @@ def note_row(st, note, *, created=None, changes=0, use=None) -> dict:
         "added": note.added, "updated": util.day_text(note.meta.get("updated")),
         "revised": util.day_text(note.meta.get("revised")),
         "verified": note.verified, "confidence": note.confidence,
+        # how far it has come (levels.py): canon, confirmed, kept, tentative
+        "level": levels.of(note), "level_label": levels.label(levels.of(note)),
         # a person confirmed it since it went live (`verified`), not only approved it
         "checked": bool(str(note.meta.get("verified") or "").strip()),
         "stale": note.stale_reason(today, days) if note.live else None,

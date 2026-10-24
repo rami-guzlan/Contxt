@@ -7,6 +7,7 @@ import shutil
 import unittest
 
 from brainkit import brainmap, focus, util
+from brainkit import frontmatter as fm
 from brainkit import safeguards_eval as se
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,8 +35,9 @@ class BrainMapTest(unittest.TestCase):
 
     def test_the_first_packet_carries_the_map_and_the_next_one_does_not_repeat_it(self):
         first = self.ask("When do invoices go out?")
-        self.assertIn("Brain map: a partial list", first.text)
-        self.assertIn("Harbor Street bakery website (also the bakery site)", first.text)
+        self.assertIn("## Brain map · partial", first.text)
+        self.assertIn("absent here doesn't mean absent from the Brain", first.text)
+        self.assertIn("Harbor Street bakery website (aka “the bakery site”)", first.text)
         self.assertEqual(first.data["map_included"], "full")
         again = self.ask("What else is due this week?", first.data["session_id"])
         self.assertNotIn("Brain map", again.text)
@@ -49,7 +51,7 @@ class BrainMapTest(unittest.TestCase):
         again = self.ask("What is going on?", first.data["session_id"])
         self.assertEqual(again.data["map_included"], "changes")
         self.assertIn("Brain map changed: + project Office move to Pine Avenue", again.text)
-        self.assertNotIn("Brain map: a partial list", again.text)
+        self.assertNotIn("## Brain map · partial", again.text)
 
     def test_a_brief_without_the_startup_context_has_no_map(self):
         found = self.ask("When do invoices go out?", include_kernel=False, record=False)
@@ -75,6 +77,60 @@ class BrainMapTest(unittest.TestCase):
         everything = self.brain.brain_map()
         self.assertIn("project Harbor Street bakery website [active] also the bakery site",
                       everything.data["lines"])
+
+    def seal(self, name):
+        st = self.brain.state()
+        project = next(f for f in st.index.focuses.values() if f.title == name)
+        path = os.path.join(self.vault, project.note.path)
+        meta, body, _errors = fm.parse(util.read_text(path))
+        meta["sealed"] = True
+        util.atomic_write(path, fm.dump(meta, body))
+
+    def test_a_sealed_project_is_left_out_with_no_name_and_no_count(self):
+        made = focus.create_focus(self.brain, "Quiet client rebrand", "Rebrand, sealed.")
+        self.assertFalse(made.is_error, made.text)
+        self.seal("Quiet client rebrand")
+        first = self.ask("What projects are active?")
+        self.assertNotIn("Quiet client rebrand", first.text)
+        self.assertNotIn("+1 more", first.text)
+        self.assertNotIn("sealed", first.text.lower())
+        whole = self.brain.brain_map(tier="projects")
+        self.assertNotIn("Quiet client rebrand", whole.text)
+        view = self.brain.map_view()
+        self.assertEqual(view.data["sealed"], 1)  # the owner's own view says one is there
+        self.assertNotIn("Quiet client rebrand", view.data["text"])
+
+    def test_a_tier_cut_to_fit_ends_with_more_and_gnomon_map_returns_it_whole(self):
+        st = self.brain.state()
+        found = brainmap.build(st, self.brain, st.scopes.chain("person:me"), [])
+        found["projects"] = [{"id": f"p{i}", "name": f"Project {i}", "aka": [],
+                              "status": "active", "address": f"p{i}"} for i in range(9)]
+        shown = brainmap.render(found)
+        self.assertIn("; +3 more", shown["text"])
+        self.assertEqual(shown["cut"]["projects"], 3)
+        whole = brainmap.full(found, tier="projects")
+        self.assertEqual(len(whole["lines"]), 9)
+        self.assertIn("Project 8 [active] (open: p8)", whole["lines"])
+
+    def test_the_map_counts_entries_by_level_and_lists_lore_titles(self):
+        se.add_notes(self.vault, [
+            {"id": "always-sign-off", "area": "work", "topic": "money", "kind": "rule",
+             "title": "Sign-off", "load": "domain", "applies_to": ["work"],
+             "triggers": ["invoice"], "must_text": "The owner signs off every invoice",
+             "body": "The owner signs off every invoice."},
+            {"id": "checked-fact", "area": "work", "topic": "money", "kind": "fact",
+             "title": "Bank", "verified": "2026-10-01", "body": "We bank locally."},
+            {"id": "lore_two_exports", "area": "work", "topic": "lore", "kind": "lesson",
+             "load": "manual", "title": "Two exports, one slide",
+             "body": "## Story\n\nTwo numbers.\n\n## Pattern\n\nNo version.\n\n"
+                     "## Words\n\nregistrations, total\n"}])
+        found = self.ask("When do invoices go out?")
+        self.assertIn("Lore: Two exports, one slide", found.text)
+        self.assertIn("By level: canon 1 · confirmed 1 · kept", found.text)
+        self.assertIn("exhaust 0", found.text)
+        self.assertIn("Must-hold domains: The owner signs off every invoice", found.text)
+        self.assertEqual(self.brain.brain_map(tier="lore").data["lines"],
+                         ["Two exports, one slide (open: lore_two_exports#story)"])
 
 
 if __name__ == "__main__":

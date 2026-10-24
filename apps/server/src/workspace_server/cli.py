@@ -337,6 +337,7 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     from .checks import CheckWorker
     from .digests import DigestWorker
     from .flows import WorkflowWorker
+    from .heartbeat import HeartbeatWorker
     from .library import LibraryWorker
     from .speech import TranscriptionWorker
     from .worker import Worker
@@ -355,6 +356,10 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     checker = None if args.no_worker else CheckWorker(runtime.ws, runtime.runners)
     challenger = None if args.no_worker else ChallengerWorker(runtime.ws, runtime.runners)
     librarian = None if args.no_worker else LibraryWorker(runtime.ws, runtime.library)
+    # The heartbeat beats while the computer (and the server) is on.
+    beats = (
+        None if args.no_worker or runtime.heartbeat is None else HeartbeatWorker(runtime.heartbeat)
+    )
     flows = (
         None
         if args.no_worker
@@ -378,6 +383,8 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
         challenger.start()
     if librarian:
         librarian.start()
+    if beats:
+        beats.start()
     if flows:
         flows.start()
     # The local model service the retrieval engine runs on (one per machine, shared by the app
@@ -418,6 +425,8 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
             checker.stop()
         if librarian:
             librarian.stop()
+        if beats:
+            beats.stop()
         if challenger:
             challenger.stop()
         if flows:

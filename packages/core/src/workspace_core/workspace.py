@@ -47,6 +47,7 @@ from .services.loop import Loop
 from .services.movein import MovingIn
 from .services.notes import Note, Notes
 from .services.onboarding import Onboarding
+from .services.orchestrators import Orchestrators
 from .services.projects import Projects
 from .services.prompts import Prompts
 from .services.runtime import Runtime
@@ -104,6 +105,7 @@ class Workspace:
         self.handoffs = Handoffs(rt)
         self.handoffs.agents = self.agents
         self.loop = Loop(rt, self.brain)
+        self.orchestrators = Orchestrators(rt, self.tasks, self.agents)
 
     # ---------------------------------------------------------------- lifecycle
 

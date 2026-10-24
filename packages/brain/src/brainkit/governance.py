@@ -134,7 +134,7 @@ def auto_applies(config, principal: str, scope: str) -> bool:
 # `folder` (a folder the brain sweeps). Anyone else's changes to shared knowledge follow
 # scopes (auto_applies) and wait for the approver.
 CAPTURE_TYPES = statements.CAPTURE_TYPES
-CAPTURE_ORIGINS = ("app", "chat", "folder")
+CAPTURE_ORIGINS = ("app", "chat", "folder", "connector")  # connector: a heartbeat read
 # What changes how every AI behaves, and changes to what is there, never apply from a chat or
 # a folder under any preset; a person may still let them in, one type at a time.
 SHAPING = ("preference", "rule", "convention", "change")
@@ -148,7 +148,8 @@ def _matrix(chat: tuple, folder: tuple, *, files_wait: bool = False) -> dict:
         apply_file = kind == "file" and not files_wait
         out[kind] = {"app": "apply",
                      "chat": "apply" if kind in chat or apply_file else "wait",
-                     "folder": "apply" if kind in folder or apply_file else "wait"}
+                     "folder": "apply" if kind in folder or apply_file else "wait",
+                     "connector": "wait"}  # Governed: what a heartbeat read waits
     return out
 
 
@@ -274,8 +275,70 @@ def captures_apply(brain, who, kind, origin, area="") -> bool:
            for r in config.governance.get("standing") or [] if isinstance(r, dict)):
         return True
     if mode_of(config) == "auto" and not config.governance.get("auto_paused"):
-        return kind not in SHAPING  # Auto: in with undo, except what shapes every AI
+        return True  # Auto: the governing AI keeps it, with undo; auto_waits says what waits
     return capture_policy(config).get(kind, {}).get(origin) == "apply"
+
+
+# What waits for the owner even in Auto (design contracts, amendment 2026-10-23; the auto
+# default prompt, section 2): a must-hold, a private item, a sealed project, anything
+# customer-facing or that spends money, a lesson, and an area the owner governs themselves.
+# A conflict with no clear precedence waits by the checks before this one (never newest-wins).
+SELF_GOVERNED = "self_governed"  # brain.json governance: ["area:<id>", "project:<id>", ...]
+
+
+def auto_waits(st, config, *, area, partition, target, base, text) -> list[str]:
+    """Why an Auto change still waits for the owner, in words (empty: it may go in)."""
+    waits = []
+    if target.get("load") == MUST_HOLD or target.get("critical") or (
+            base is not None and (base.must_hold or base.critical)):
+        waits.append("must-hold")
+    if str(target.get("classification") or "") in ("confidential", "restricted")             or util.text_flags(text):
+        waits.append("private")
+    spec = (config.data.get("partitions") or {}).get(partition or "") or {}
+    if partition and spec.get("sealed"):
+        waits.append("sealed project")
+    if target.get("kind") == "lesson":
+        waits.append("lesson")  # a lesson shapes every AI: proposed ones wait in Catch up
+    if target.get("customer_facing"):
+        waits.append("customer-facing")
+    if target.get("spends"):
+        waits.append("spends")
+    mine = set(config.governance.get(SELF_GOVERNED) or [])
+    if "area:*" in mine or f"area:{area}" in mine or (partition and (
+            f"project:{partition}" in mine or f"packet:{partition}" in mine)):
+        waits.append("governed by you")
+    return waits
+
+
+GOV_VERSION = 2  # 2: Release 1 ships auto-governed
+
+
+def migrate(brain, *, fresh=False) -> dict | None:
+    """Release 1 ships auto-governed. A Brain from before switches to Auto once and keeps a
+    notice the owner can reverse; a new Brain (`fresh`) starts in Auto with no notice. After
+    that the owner's choice stands. Returns the notice, or None."""
+    import json
+
+    path = brain.vault.path("brain.json")
+    with open(path, encoding="utf-8") as handle:
+        raw = json.load(handle)
+    gov = raw.setdefault("governance", {})
+    try:
+        version = int(gov.get("gov_version") or 0)
+    except (TypeError, ValueError):
+        version = 0
+    if version >= GOV_VERSION:
+        return None
+    was = mode_of(brain.state().config)
+    gov["mode"], gov["gov_version"] = "auto", GOV_VERSION
+    notice = None if fresh or was == "auto" else {"at": util.now_iso(), "was": was}
+    if notice:
+        gov["auto_notice"] = notice
+    brain.vault.touch(path)
+    util.atomic_write(path, json.dumps(raw, indent=2, ensure_ascii=False) + "\n")
+    brain.after_write([path], "Auto-governance on by default" if fresh else
+                      "Auto-governance on by default: switched once, reversible in Settings")
+    return notice
 
 
 LEARNED = "learned.json"  # the "ask first" rules the owner's undos taught (vault root)
@@ -744,6 +807,14 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         applies = captures_apply(brain, who, capture, capture_origin, area)
     if taught and not applies:
         header["learned"] = taught["says"]
+    flags = {k: bool(target.pop(k)) for k in ("customer_facing", "spends") if k in target}
+    header.update({k: v for k, v in flags.items() if v})
+    if applies and not force_pending and mode_of(config) == "auto"             and capture_origin in ("chat", "folder", "connector"):
+        waits = auto_waits(st, config, area=area, partition=partition,
+                           target={**target, **flags}, base=base, text=text)
+        if waits:
+            applies = False
+            header["waits"] = ", ".join(waits)
     held = None
     if applies and not force_pending:
         # Nothing goes in on its own over a note it may disagree with, or over a baseline:
@@ -798,12 +869,14 @@ def propose_note(brain, *, area=None, topic=None, text=None, scope=None, load=No
         + (f" It would have applied at once, but it waits: {held['why']} "
            f"(“{held['title']}”, {held['id']})." if held else "")
         + (f" {header['paused']}" if header.get("paused") else "")
+        + (f" It waits for you even in Auto: {header['waits']}." if header.get("waits") else "")
         + (f" It waits because you undid one like it: {header['learned']}"
            if header.get("learned") else "")
         + (f" Similar existing notes: {header['similar']}." if similar else "")
         + placement_note,
         {"status": "pending", "proposal_id": proposal_id, "id": note_id, "path": relpath,
          "paused": bool(header.get("paused")),
+         "waits": [w for w in str(header.get("waits") or "").split(", ") if w],
          "similar": similar, "suggested": header.get("suggested"), "held": held,
          "commit": outcome.get("commit")})
 
@@ -1276,6 +1349,8 @@ def _apply(brain, proposal_id, header, target, text, *, actor, auto=False, propo
               "created": str(header.get("created") or "")}
     if header.get("capture"):
         record["capture"] = str(header["capture"])
+        if auto and mode_of(st.config) == "auto" and not str(header["capture"]).endswith(":app"):
+            record["applied_by"] = "governor"  # the governing AI kept it, with this reason
     if kind in ("note.update", "note.archive"):
         record["previous_hash"] = current.body_hash
     if header.get("reason"):
@@ -1822,6 +1897,9 @@ POLICY = {
     "auto_apply_scopes": ("governance", "auto_apply_scopes", "patterns"),
     "max_proposals_per_session": ("governance", "max_proposals_per_session", "count"),
     "retention_days": ("sessions", "retention_days", "count"),
+    # The pull budget (v4, section 6): what an AI may open after each packet.
+    "pull_items": ("pulls", "items", "count"),
+    "pull_tokens": ("pulls", "tokens", "count"),
     "capture": ("governance", "capture", "capture"),
     "preset": ("governance", "preset", "preset"),
     # A day to think before a rule, a standing note or a must-hold changes (off by default).
@@ -1845,9 +1923,19 @@ POLICY = {
     "auto_paused": ("governance", "auto_paused", "bool"),
     "standing": ("governance", "standing", "standing"),
     "retrieval_policy": ("governance", "retrieval_policy", "retrieval"),
+    # The auto default (2026-10-23): the areas the owner governs themselves ("Govern this
+    # myself"), and the one-time notice of the switch, which the owner dismisses.
+    "self_governed": ("governance", SELF_GOVERNED, "governed_areas"),
+    "auto_notice": ("governance", "auto_notice", "notice"),
 }
 RETRIEVAL_POLICIES = ("relaxed", "standard", "careful")
 MODES = ("governed", "auto")
+
+
+def pull_policy(config) -> dict:
+    from .api import pull_budget
+    items, tokens = pull_budget(config)
+    return {"pull_items": items, "pull_tokens": tokens}
 
 
 def mode_of(config) -> str:
@@ -1867,6 +1955,7 @@ def policies(brain) -> dict:
         "max_proposals_per_session": int(data["governance"].get("max_proposals_per_session")
                                          or DEFAULT_SESSION_BUDGET),
         "retention_days": retention_days(config),
+        **pull_policy(config),
         "approver": config.approver,
         "preset": preset_of(config),
         "presets": list(PRESETS),
@@ -1883,6 +1972,8 @@ def policies(brain) -> dict:
         "capture_origins": list(CAPTURE_ORIGINS),
         "mode": mode_of(config),
         "auto_paused": bool(data["governance"].get("auto_paused", False)),
+        "auto_notice": data["governance"].get("auto_notice") or None,
+        "self_governed": list(data["governance"].get(SELF_GOVERNED) or []),
         "auto_daily_cap": auto_cap(config),
         "auto_applied_today": auto_applied_since(brain, hours=24),
         "standing": [dict(r) for r in data["governance"].get("standing") or []
@@ -1918,6 +2009,17 @@ def _policy_value(st, key, kind, value):
         except (TypeError, ValueError):
             return None, f"{key} is a whole number"
         return (number, None) if 0 <= number <= 1000 else (None, f"{key} is between 0 and 1000")
+    if kind == "governed_areas":
+        items = value if isinstance(value, list) else [value]
+        found = sorted({str(v).strip() for v in items if str(v or "").strip()})
+        bad = [v for v in found
+               if not re.match(r"^(area|project|sheet|packet):([\w:.-]+|\*)$", v)]
+        if bad:
+            return None, (f"{', '.join(bad)} is not an area to govern (area:<id> or area:* for "
+                          "all of them, project:<id>, sheet:<id> or packet:<id>)")
+        return found, None
+    if kind == "notice":
+        return (None, None) if not value else (None, "auto_notice can only be dismissed")
     if kind == "mode":
         text = str(value or "").strip().lower()
         if text not in MODES:

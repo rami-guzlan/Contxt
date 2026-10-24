@@ -47,7 +47,9 @@ BRAIN = {
         "client:acme": {"owner": "person:alex", "label": "Acme"},
         "client:globex": {"owner": "person:alex", "label": "Globex"},
     },
-    "governance": {"approver": "person:alex", "auto_apply_own_scope": True},
+    # Governed, and past the one-time switch to Auto: the tests of what waits stay governed.
+    "governance": {"approver": "person:alex", "auto_apply_own_scope": True,
+                   "mode": "governed", "gov_version": 2},
     "kernel": {"action_policy": "Never send anything to a client without Alex's approval."},
     "git": {"auto_commit": False},
 }

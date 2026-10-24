@@ -25,11 +25,13 @@ from .builtin_checks import BuiltinChecks
 from .deps import error_response
 from .difference import Differences
 from .extractor import DocumentExtractor
+from .heartbeat import Heartbeat
 from .knowledge_agent import AgentWork
 from .library import Library
 from .mcp import tools as mcp_tools
 from .mcp.protocol import McpHandler
 from .models import Models
+from .orchestration import Orchestration
 from .outputs import Outputs
 from .routes import (
     agent,
@@ -41,12 +43,14 @@ from .routes import (
     compose,
     connections,
     goals,
+    heartbeat,
     legacy,
     library,
     live,
     loop,
     mcp,
     notes,
+    orchestrators,
     outputs,
     proof,
     release1,
@@ -81,6 +85,7 @@ class Runtime:
     agent: AgentWork
     library: Library
     testing: TestTheBrain
+    heartbeat: Heartbeat | None = None  # the scheduled read-only loop (heartbeat/)
     closed: bool = False
     # Where the AI apps on this computer keep their own instructions files (a test's
     # scratch folder in tests): Ask the Brain first writes there, with the person's yes.
@@ -115,6 +120,8 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         if settings.brain_vault
         else None
     )
+    if adapter is not None:
+        adapter.migrate_governance()
     ws = Workspace.open(
         settings.data_dir,
         database_url=settings.database_url,
@@ -168,6 +175,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
             ws,
             builtin=BuiltinChecks(settings.data_dir, ws, adapter, differences),
         ),
+        heartbeat=Heartbeat(ws, runners),
     )
 
 
@@ -175,6 +183,12 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     runtime = runtime or open_runtime(settings or Settings.from_env())
     mcp_tools.AGENT_WORK = runtime.agent  # knowledge_run starts work in the background
     mcp_tools.WORK_WITH_AI = WorkWithAI(runtime.ws, runtime.runners)  # work_ask
+    orchestration = Orchestration(runtime.ws, runtime.runners)
+    mcp_tools.orchestrator_tools.ORCHESTRATION = orchestration  # the orchestrators_ tools
+    if runtime.heartbeat is None:
+        runtime.heartbeat = Heartbeat(runtime.ws, runtime.runners)
+    runtime.heartbeat.runners = runtime.runners  # the CLIs this app starts (a test's stand-in)
+    mcp_tools.HEARTBEAT = runtime.heartbeat  # heartbeat_*
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -194,6 +208,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     app.state.brain = runtime.brain
     app.state.templates = runtime.templates
     app.state.runners = runtime.runners
+    app.state.orchestration = orchestration
     app.state.mcp = McpHandler(runtime.ws, runtime.templates, runtime.runners.contracts)
 
     @app.exception_handler(WorkspaceError)
@@ -208,6 +223,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         agents,
         brain,
         outputs,
+        orchestrators,
         proof,
         skills,
         bus,
@@ -226,6 +242,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         loop,
         mcp,
         release1,
+        heartbeat,
     )
     for module in routers:
         app.include_router(module.router)

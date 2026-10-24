@@ -148,3 +148,60 @@ PROJECT = StateMachine(
     },
     initial="active",
 )
+
+# One run of a project's agent orchestrator (services/orchestrators.py): it runs until it has
+# its final output, waits while a gate (spend, post, customer-facing) needs the owner's yes,
+# and ends done or stopped. A waiting run goes back to running once every gate is decided and
+# the final is still to come.
+ORCHESTRATOR_RUN = StateMachine(
+    "orchestrator run",
+    {
+        "running": {"waiting", "done", "stopped"},
+        "waiting": {"running", "done", "stopped"},
+        "done": set(),
+        "stopped": set(),
+    },
+    initial="running",
+    active={"running", "waiting"},
+)
+
+# One agent in one orchestrator run: queued until spawned, working on its CLI (or waiting for
+# the owner to start a CLI that runs from a copied prompt), then reported. A reported agent
+# works again only to do an action the owner said yes to.
+ORCHESTRATOR_AGENT = StateMachine(
+    "orchestrator agent",
+    {
+        "queued": {"working", "waiting", "stopped"},
+        "waiting": {"working", "stopped"},
+        "working": {"reported", "stopped"},
+        "reported": {"working", "waiting", "stopped"},
+        "stopped": {"working"},
+    },
+    initial="queued",
+    active={"working", "waiting"},
+)
+
+# One heartbeat beat: it runs, then it is done (its record says what it read and wrote) or it
+# failed (its record says why). A beat ends exactly once.
+BEAT = StateMachine(
+    "beat",
+    {"running": {"done", "failed"}, "done": set(), "failed": set()},
+    initial="running",
+    active={"running"},
+)
+
+# One line a beat wrote into a region. A line that only notes an item, or whose write went in,
+# waits, was held back or refused, can be undone once; an undone line stays undone, and the
+# next beat does not write it again.
+HEARTBEAT_LINE = StateMachine(
+    "heartbeat line",
+    {
+        "noted": {"undone"},
+        "applied": {"undone"},
+        "waiting": {"undone", "applied"},
+        "held": {"undone"},
+        "refused": {"undone"},
+        "undone": set(),
+    },
+    initial="noted",
+)

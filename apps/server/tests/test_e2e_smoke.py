@@ -193,7 +193,8 @@ def test_two_brain_processes_share_one_conversation(home, apps):
     )
     assert "# Startup context" in stale
 
-    # Governed writes: the owner's own scope applies at once as a commit; shared rules wait.
+    # A new Brain is auto-governed: the owner's own scope and a shared rule from their AI both
+    # go in at once as commits (undo points); a must-hold would still wait.
     before = commits(home["brain"])
     own, error = first.call(
         "notes_propose",
@@ -217,7 +218,7 @@ def test_two_brain_processes_share_one_conversation(home, apps):
         scope="company",
         evidence="said in this conversation",
     )
-    assert not error and any(w in shared.lower() for w in ("wait", "review", "inbox")), shared
+    assert not error and "appl" in shared.lower(), shared
     made, error = first.call(
         "projects_create",
         name="Spring open house",

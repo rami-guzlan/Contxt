@@ -68,10 +68,77 @@ def forget_learned(rule_id: str, who: Who, ws: WS) -> dict[str, Any]:
 
 
 @router.get("/brain/map")
-def brain_map(who: Who, ws: WS, area: str | None = None, page: int = 1) -> dict[str, Any]:
-    """The Brain map: what it holds that this person may see, paged (names are data)."""
+def brain_map(
+    who: Who, ws: WS, area: str | None = None, page: int = 1, tier: str | None = None
+) -> dict[str, Any]:
+    """The Brain map: what it holds that this person may see, paged (names are data); with
+    `tier`, that tier whole."""
     who.require("brain.read")
-    return ws.rt.brain.brain_map(area=area, page=page)
+    return ws.rt.brain.brain_map(area=area, page=page, tier=tier)
+
+
+@router.get("/brain/map/view")
+def brain_map_view(who: Who, ws: WS) -> dict[str, Any]:
+    """The map card: every tier whole, the short map exactly as a packet sends it, which
+    tiers it cut, and how many sealed projects it leaves out (only the owner sees that)."""
+    who.require("brain.read")
+    return ws.rt.brain.map_view()
+
+
+@router.get("/brain/sections/{item_id:path}")
+def sections(item_id: str, who: Who, ws: WS) -> dict[str, Any]:
+    """Every section address in one note, lesson or file, to copy."""
+    who.require("brain.read")
+    return ws.rt.brain.sections(item_id)
+
+
+@router.get("/brain/open")
+def open_address(address: str, who: Who, ws: WS) -> dict[str, Any]:
+    """One part by its address (note-id#heading, file#section, lore_id#story)."""
+    who.require("brain.read")
+    return ws.rt.brain.open_address(address)
+
+
+class LessonIn(Body):
+    title: str = Field(max_length=120)
+    story: str = Field(max_length=2000)
+    pattern: str = Field(max_length=600)
+    words: list[str] = Field(default_factory=list, max_length=20)
+    evidence: str = Field(default="", max_length=2000)
+
+
+@router.get("/brain/lore")
+def lore(who: Who, ws: WS) -> list[dict[str, Any]]:
+    """The Lore shelf: every lesson with its level and address."""
+    who.require("brain.read")
+    return ws.rt.brain.lore()
+
+
+@router.get("/brain/lore/{lesson_id}")
+def lesson(lesson_id: str, who: Who, ws: WS) -> dict[str, Any]:
+    who.require("brain.read")
+    return ws.rt.brain.lesson(lesson_id)
+
+
+@router.post("/brain/lore", status_code=201)
+def propose_lesson(body: LessonIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Propose a lesson: it waits in Catch up (Keep, Edit first, Skip) like any other."""
+    who.require("brain.propose")
+    return ws.rt.brain.propose_lesson(
+        title=body.title,
+        story=body.story,
+        pattern=body.pattern,
+        words=body.words,
+        evidence=body.evidence,
+        capture_origin="app",
+    )
+
+
+@router.get("/brain/sessions/search")
+def sessions_search(q: str, who: Who, ws: WS, limit: int = 10) -> list[dict[str, Any]]:
+    """Past conversations whose receipts match: session id, date, app, what it was given."""
+    who.require("brain.read")
+    return ws.rt.brain.sessions_search(q, limit=limit)
 
 
 def _scout(request: Request) -> Scout:

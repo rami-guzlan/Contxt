@@ -62,7 +62,8 @@ class MCPServerTests(unittest.TestCase):
                                  "gnomon_health", "notes_challenge", "agents_list",
                                  "agents_get", "sheets_get", "sheets_propose_update", "todos_update",
                                  "gnomon_map", "receipts_get", "taste_get", "taste_propose",
-                                 "gaps_flag"})
+                                 "gaps_flag", "gnomon_open", "lore_list", "lore_get",
+                                 "lore_propose", "activity_sessions_search"})
         first = self.call("gnomon_get_context", {"request": "How long do web design projects run?"})
         self.assertFalse(first["isError"], first)
         text = first["content"][0]["text"]

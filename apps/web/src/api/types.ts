@@ -359,6 +359,9 @@ export interface EntryUses {
 export interface InventoryItem {
   type: "note" | "skill" | "reference";
   id: string;
+  /** How far it has come (v4): canon, confirmed, kept, tentative. Notes only. */
+  level?: string;
+  level_label?: string;
   title: string;
   summary: string;
   kind: string;
@@ -1384,6 +1387,9 @@ export interface WentIn {
   path: string | null;
   live: boolean;
   checkpoint: string | null;
+  /** Auto: the governing AI kept it, with this reason. */
+  by_governor?: boolean;
+  reason?: string;
 }
 
 export interface Recap {

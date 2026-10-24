@@ -8,7 +8,7 @@
 // auto-keep.
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { useBrainEntry } from "../../api/hooks";
 import { type Policy, type Proposal, useDecide, useForgetLearned, useLearned, usePolicy, useProposals, useScout, useSetPolicy, useUndo } from "../api";
@@ -26,6 +26,7 @@ import {
   useSetAside,
 } from "../hooks/catchup";
 import { Btn, Failure, Loading, Page, S, Status, Tabs, plural, when } from "../ui";
+import { AutoArea } from "../components/AutoArea";
 
 // ------------------------------------------------------------------ what a proposal is
 
@@ -822,8 +823,19 @@ function WhatChanged() {
                     <div style={css("flex:1;min-width:0;display:flex;flex-direction:column;gap:4px")}>
                       <span style={css(`font:400 14.5px/1.45 Geist;${u ? "text-decoration:line-through;color:var(--muted)" : ""}`)}>{x.title}</span>
                       <span style={css("font:400 12px Geist;color:var(--muted)")}>{[x.source, x.capture, x.path].filter(Boolean).join(" · ")}</span>
+                      {x.reason ? (
+                        <span style={css("font:400 12.5px/1.45 Geist;color:var(--ink2)")}>
+                          {x.by_governor ? "Why your AI kept it: " : "Why: "}
+                          {x.reason}
+                        </span>
+                      ) : null}
                     </div>
                     <span style={css("font:400 12px Geist;color:var(--muted);white-space:nowrap")}>{when(x.at)}</span>
+                    {x.id && x.live && !x.path ? (
+                      <Link to={`/brain/notes/${encodeURIComponent(x.id)}`} style={css("font:500 12.5px Geist;color:var(--ink);text-decoration:none")}>
+                        Edit
+                      </Link>
+                    ) : null}
                     {x.checkpoint ? (
                       <button
                         onClick={() => undo.mutate(x.checkpoint as string, { onSuccess: () => setUndone((s) => ({ ...s, [k]: true })) })}
@@ -878,9 +890,14 @@ type StackItem =
 
 /** The Catch up tab: what needs you, or what changed. The Brain page embeds it. */
 export function CatchUpPanel() {
-  const [view, setView] = useState<"needs" | "changed">("needs");
+  // Auto-governed, Catch up opens on What changed (by day, with Edit and Undo); the few
+  // things that still wait are one tab away. Governed, it opens on what waits.
+  const policy = usePolicy();
+  const [picked, setView] = useState<"needs" | "changed" | null>(null);
+  const view = picked ?? (policy.data?.mode === "auto" ? "changed" : "needs");
   return (
     <div style={css("display:flex;flex-direction:column;gap:22px")}>
+      <AutoArea govKey="area:*" area="Catch up" what="It keeps what your AIs and connectors bring in, each with an undo point. Only what must wait is under Needs you." regions={[]} />
       <Tabs
         label="Catch up"
         value={view}

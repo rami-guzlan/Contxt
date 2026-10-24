@@ -18,6 +18,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import type { BrainArea, BrainEntrySummary, BrainFile, BrainHistoryRecord, InventoryItem, StateColumn, StateRow, StateSheet } from "../../api/types";
 import { type TasteEntry, useBrainMap, useForgetLearned, useLearned, useProposals, useProposeTaste, useTaste } from "../api";
+import { AutoBanner } from "../components/AutoBanner";
 import { css } from "../css";
 import {
   DERIVED,
@@ -47,7 +48,9 @@ import {
   useTeach,
 } from "../hooks/brain";
 import { Btn, Empty, Failure, Later, Loaded, Loading, Modal, plural, S, Status, when } from "../ui";
+import { LevelChip, LoreShelf, MapCard, SectionAddresses } from "../components/BrainV4";
 import { CatchUpPanel } from "./CatchUp";
+import { AutoArea } from "../components/AutoArea";
 
 // ------------------------------------------------------------------ shared bits
 
@@ -131,6 +134,7 @@ export function BrainPage() {
 
   return (
     <div className="gn-page" style={css(WRAP)}>
+      <AutoBanner />
       <div style={css("display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap")}>
         <div style={css("display:flex;flex-direction:column;gap:8px")}>
           <h1 style={css(S.h1)}>What your AI knows</h1>
@@ -408,7 +412,11 @@ function KnowsTab({ go }: { go: (id: TabId) => void }) {
         </Link>
       </div>
 
+      <MapCard />
+
       <BrainMapCard regions={regions} areas={areas} count={byArea} onArea={openArea} />
+
+      <LoreShelf />
 
       <div ref={memoryRef}>
         <LongTermMemory catalog={catalog} inventory={inventory.data} area={area} setArea={setArea} />
@@ -713,6 +721,7 @@ function LongTermMemory({
   setArea: (key: string) => void;
 }) {
   const uses = useMemo(() => new Map((inventory ?? []).map((i) => [i.id, i.uses])), [inventory]);
+  const level = useMemo(() => new Map((inventory ?? []).map((i) => [i.id, i.level])), [inventory]);
   return (
     <div style={css(SECTION)}>
       <div style={css("display:flex;flex-direction:column;gap:4px")}>
@@ -772,7 +781,7 @@ function LongTermMemory({
                 <div style={css("display:flex;flex-direction:column")}>
                   {notes.length === 0 ? <span style={css(S.muted)}>No notes in this area yet.</span> : null}
                   {notes.map((n) => (
-                    <AreaNote key={n.id} note={n} uses={uses.get(n.id)} known={Boolean(inventory)} />
+                    <AreaNote key={n.id} note={n} uses={uses.get(n.id)} level={level.get(n.id)} known={Boolean(inventory)} />
                   ))}
                 </div>
               </div>
@@ -784,7 +793,7 @@ function LongTermMemory({
   );
 }
 
-function AreaNote({ note, uses, known }: { note: BrainEntrySummary; uses?: InventoryItem["uses"]; known: boolean }) {
+function AreaNote({ note, uses, level, known }: { note: BrainEntrySummary; uses?: InventoryItem["uses"]; level?: string; known: boolean }) {
   const unused = known && (uses?.d30 ?? 0) === 0;
   const meta = !known ? note.summary : unused ? "Not used in 30 days · tidy up?" : `Used ${uses?.d7 ?? 0}× this week`;
   return (
@@ -792,7 +801,10 @@ function AreaNote({ note, uses, known }: { note: BrainEntrySummary; uses?: Inven
       to={`/brain/notes/${encodeURIComponent(note.id)}`}
       style={css("padding:14px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:4px;text-align:left;color:var(--ink);text-decoration:none")}
     >
-      <span style={css(`font:400 15px Geist;color:${unused ? "var(--muted)" : "var(--ink)"}`)}>{note.title}</span>
+      <span style={css("display:flex;gap:8px;align-items:center;flex-wrap:wrap")}>
+        <span style={css(`font:400 15px Geist;color:${unused ? "var(--muted)" : "var(--ink)"}`)}>{note.title}</span>
+        <LevelChip level={level} />
+      </span>
       <span style={css(`font:400 13px Geist;color:${unused ? "oklch(0.58 0.12 35)" : "var(--muted)"}`)}>{meta}</span>
     </Link>
   );
@@ -1434,6 +1446,7 @@ function NotesTab() {
                       <span style={css("flex:1;font:400 14px Geist;display:flex;gap:10px;align-items:center;min-width:0")}>
                         <span style={css(dotStyle(hueOf(n.area)))} />
                         {n.title}
+                        <LevelChip level={n.level} />
                       </span>
                       <span style={css("width:140px;font:400 13px Geist;color:var(--ink2)")}>{n.area_label || n.area}</span>
                       <span style={css("width:110px;font:400 13px Geist;color:var(--ink2)")}>{n.owner || "No owner"}</span>
@@ -1929,6 +1942,7 @@ export function NotePage() {
                 <div style={css("display:flex;gap:8px;flex-wrap:wrap;align-items:center")}>
                   <span style={css(`padding:4px 11px;border-radius:99px;font:500 12px Geist;background:${tint(h)};color:${ink(h)}`)}>{d?.area_label || d?.area || "Brain"}</span>
                   <Status kind={kind}>{words}</Status>
+                  <LevelChip level={d?.level} />
                   {archived ? <Status kind="excluded">Archived: your AIs don't receive it</Status> : null}
                   {e.stale ? <Status kind="analysis">Due for a check{e.stale_reason ? `: ${e.stale_reason}` : ""}</Status> : null}
                 </div>
@@ -1941,6 +1955,7 @@ export function NotePage() {
                   </button>
                 ))}
               </div>
+              <SectionAddresses id={noteId} />
               {tab === "about" ? <NoteAbout id={noteId} entry={e} details={details} meta={current.data?.meta} archived={archived} /> : null}
               {tab === "versions" ? <NoteVersions id={noteId} /> : null}
               {tab === "use" ? <NoteUse id={noteId} /> : null}
@@ -2374,9 +2389,12 @@ export function SheetPage() {
   const derived = useDerivedSheet(sheetId, Boolean(derivedName));
   const sheet = useSheet(derivedName ? "" : sheetId);
   const back = (
-    <Link to="/brain?tab=sheets" style={css("align-self:flex-start;font:400 14px Geist;color:var(--muted);text-decoration:none")}>
-      ← Sheets
-    </Link>
+    <>
+      <Link to="/brain?tab=sheets" style={css("align-self:flex-start;font:400 14px Geist;color:var(--muted);text-decoration:none")}>
+        ← Sheets
+      </Link>
+      <AutoArea govKey={`sheet:${sheetId}`} area="this sheet" what="It writes the current values from each beat. Every cell keeps its history, and your own edits stay yours." regions={[]} />
+    </>
   );
   const wrap = "max-width:1240px;margin:0 auto;padding:48px 56px 96px;display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;box-sizing:border-box";
   if (derivedName) {

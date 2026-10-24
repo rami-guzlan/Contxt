@@ -272,6 +272,17 @@ def has_brain(home: str) -> bool:
     return os.path.isfile(os.path.join(home, "brain", MARK))
 
 
+def start_auto_governed(vault: str) -> None:
+    """A new Brain starts auto-governed, past the one-time switch (no notice to show)."""
+    path = os.path.join(vault, "brain.json")
+    with open(path, encoding="utf-8") as handle:
+        config = json.load(handle)
+    governance = config.setdefault("governance", {})
+    governance.update(mode="auto", gov_version=2)
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
+
+
 def create_home(
     home: str, starter: Starter, *, port: int = 8787, name: str | None = None
 ) -> dict[str, str]:
@@ -294,6 +305,7 @@ def create_home(
     from brainkit import builtin
 
     builtin.copy_into(os.path.join(brain, "vault"))  # the skills every Brain comes with
+    start_auto_governed(os.path.join(brain, "vault"))
     for folder in ("data", "outputs"):
         os.makedirs(os.path.join(home, folder), exist_ok=True)
     write_startup_files(brain)
