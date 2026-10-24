@@ -1,6 +1,7 @@
 """The heartbeat: connectors found in the CLIs, read-only reads, the beat, regions and undo."""
 
 import inspect
+import io
 import json
 import os
 import sys
@@ -38,13 +39,47 @@ ITEM = {
 }
 
 
+class FakeStream:
+    def __init__(self, proc):
+        self.proc = proc
+
+    def __iter__(self):
+        return self.proc.streamed()
+
+
 class FakeProc:
     def __init__(self, cli, argv, kwargs):
         self.cli, self.argv, self.kwargs = cli, list(argv), kwargs
         self.returncode = 0
+        self.pid = 0
+        cli.started.append({"argv": self.argv, "env": dict(kwargs.get("env") or {})})
+        if "stream-json" in self.argv:  # Claude Code with the account's connectors
+            self.stdin = io.StringIO()
+            self.stdin.close = lambda: None  # keep what was written readable
+            self.stdout = FakeStream(self)
+
+    def streamed(self):
+        """What Claude Code writes, line by line: its init message, then for a read (once the
+        prompt is in) its result."""
+        prompt = self.stdin.getvalue()
+        reading = prompt.startswith("Read, read-only")
+        if reading:
+            self.cli.calls.append({"argv": self.argv, "prompt": prompt, "config": None})
+        else:
+            self.cli.listings.append(self.argv)
+        yield json.dumps(self.cli.account_init) + "\n"
+        if not reading:
+            return
+        answer = {"cursor": "2026-09-28T12:40:00Z", "items": self.cli.items}
+        yield json.dumps({"type": "result", "result": json.dumps(answer), "usage": USAGE}) + "\n"
+
+    def poll(self):
+        return 0
 
     def communicate(self, prompt=None, timeout=None):
         argv = self.argv
+        if argv[-2:] == ["mcp", "list"]:
+            return self.cli.account_list, ""
         config = None
         if "--mcp-config" in argv:
             with open(argv[argv.index("--mcp-config") + 1], encoding="utf-8") as handle:
@@ -56,7 +91,7 @@ class FakeProc:
                 handle.write(json.dumps({"cursor": "c1", "items": self.cli.items}))
             usage = {"type": "turn.completed", "usage": {"input_tokens": 50, "output_tokens": 5}}
             return json.dumps(usage) + "\n", ""
-        if (config or {}).get("mcpServers"):  # a read through one connector
+        if (config or {}).get("mcpServers") or str(prompt or "").startswith("Read, read-only"):
             if self.cli.read_error:
                 return json.dumps({"is_error": True, "result": self.cli.read_error}), ""
             answer = {"cursor": "2026-09-28T12:40:00Z", "items": self.cli.items}
@@ -70,6 +105,10 @@ class FakeCli:
 
     def __init__(self):
         self.calls = []
+        self.listings = []  # Claude Code started to list the account's connectors
+        self.started = []  # every start, with its environment
+        self.account_init = {"type": "system", "subtype": "init", "mcp_servers": [], "tools": []}
+        self.account_list = "No MCP servers configured.\n"  # `claude mcp list`
         self.items = [dict(ITEM)]
         self.read_error = None
         self.writes = lambda item: [
@@ -104,7 +143,11 @@ class FakeCli:
 
     def reads(self):
         return [
-            c for c in self.calls if (c["config"] or {}).get("mcpServers") or "exec" in c["argv"]
+            c
+            for c in self.calls
+            if (c["config"] or {}).get("mcpServers")
+            or "exec" in c["argv"]
+            or str(c["prompt"] or "").startswith("Read, read-only")
         ]
 
     def judges(self):
@@ -703,3 +746,88 @@ def test_an_item_that_moved_two_homes_counts_once_as_new(owner, fake_cli):
     regions = {r["id"]: r for r in owner.ok(owner.get("/api/heartbeat/regions"))}
     assert len(regions["state"]["lines"]) == 2  # one per write, each with its own undo
     assert regions["state"]["new_this_beat"] == 1
+
+
+NOTION = "claude_ai_Notion"
+ACCOUNT_INIT = {
+    "type": "system",
+    "subtype": "init",
+    "mcp_servers": [
+        {"name": "claude.ai Notion", "status": "connected"},
+        {"name": "claude.ai Gmail", "status": "needs-auth"},
+        {"name": "mail", "status": "connected"},
+    ],
+    "tools": [
+        "Bash",
+        f"mcp__{NOTION}__notion-search",
+        f"mcp__{NOTION}__notion-fetch",
+        f"mcp__{NOTION}__notion-create-pages",
+        f"mcp__{NOTION}__notion-update-page",
+        "mcp__mail__list_messages",
+    ],
+}
+
+
+ACCOUNT_LIST = (
+    "claude.ai Notion: https://mcp.notion.com/mcp - Connected\n"
+    "claude.ai Gmail: https://gmailmcp.googleapis.com/mcp/v1 - Needs authentication\n"
+    "mail: python fake_mcp_server.py - Connected\n"
+)
+
+
+def test_claude_account_connectors_are_found_from_claude_codes_start_and_start_off(owner, fake_cli):
+    fake_cli.account_init = ACCOUNT_INIT
+    fake_cli.account_list = ACCOUNT_LIST
+    found(owner)
+    (listing,) = fake_cli.listings  # every connector named was there the first time
+    assert "--strict-mcp-config" not in listing  # the account's connectors load
+    (started,) = [c for c in fake_cli.started if "stream-json" in c["argv"]]
+    assert started["env"]["ENABLE_CLAUDEAI_MCP_SERVERS"] == "true"
+    assert "MCP_CONNECTION_NONBLOCKING" not in started["env"]
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    notion = rows[f"claude:{NOTION}"]
+    assert notion["name"] == "claude.ai Notion" and notion["found_in"] == "Your Claude account"
+    assert notion["enabled"] is False and notion["status"] == "off"
+    assert sorted(notion["tools"]) == ["notion-fetch", "notion-search"]
+    assert "turn it on" in notion["status_line"]
+    assert rows["claude:claude_ai_Gmail"]["status"] == "unhealthy_sign_in"
+    assert "claude:mail" in rows and not any(k.startswith("claude:claude_ai_mail") for k in rows)
+    assert fake_cli.judges() == []  # listing makes no model call of its own
+
+
+def test_a_connector_still_loading_is_tried_again_then_said_plainly(owner, fake_cli):
+    fake_cli.account_init = {**ACCOUNT_INIT, "mcp_servers": [], "tools": []}
+    fake_cli.account_list = ACCOUNT_LIST
+    found(owner)
+    assert len(fake_cli.listings) == 4  # it loads in the background: tried again
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    notion = rows[f"claude:{NOTION}"]
+    assert notion["status"] == "error" and "could not reach it just now" in notion["status_line"]
+
+
+def test_an_account_connector_reads_with_only_its_read_only_tools(owner, fake_cli):
+    fake_cli.account_init = ACCOUNT_INIT
+    fake_cli.account_list = ACCOUNT_LIST
+    found(owner)
+    owner.ok(owner.put("/api/heartbeat/connectors/claude:mail", json={"enabled": False}))
+    owner.ok(owner.put(f"/api/heartbeat/connectors/claude:{NOTION}", json={"enabled": True}))
+    assert beat(owner)["items"] == 1
+    (read,) = fake_cli.reads()
+    argv = read["argv"]
+    assert "--strict-mcp-config" not in argv and read["config"] is None
+    allowed = argv[argv.index("--allowedTools") + 1 : argv.index("--disallowedTools")]
+    assert sorted(allowed) == [f"mcp__{NOTION}__notion-fetch", f"mcp__{NOTION}__notion-search"]
+    refused = argv[argv.index("--disallowedTools") + 1 : argv.index("--permission-mode")]
+    assert "--max-turns" not in argv  # a read may take the turns its tools need
+    assert f"mcp__{NOTION}__notion-create-pages" in refused
+    assert argv[argv.index("--tools") + 1] == ""  # no built-in tools
+    assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
+    (started,) = [c for c in fake_cli.started if c["argv"] == argv]
+    assert started["env"]["ENABLE_CLAUDEAI_MCP_SERVERS"] == "true"
+
+
+def test_a_server_name_before_the_verb_still_reads():
+    assert conn.read_only({"name": "notion-search"}, "claude.ai Notion")
+    assert conn.read_only({"name": "slack_list_channels"}, "slack")
+    assert not conn.read_only({"name": "notion-create-pages"}, "claude.ai Notion")
+    assert not conn.read_only({"name": "notion-duplicate-page"}, "claude.ai Notion")
