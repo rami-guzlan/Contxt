@@ -1230,8 +1230,55 @@ class BrainKitAdapter:
             raise NotFound(found.text, id=rule_id)
         return dict(found.data)
 
-    def brain_map(self, *, area: str | None = None, page: int = 1) -> dict[str, Any]:
-        return dict(self.brain.brain_map(area=area, page=page).data)
+    def brain_map(
+        self, *, area: str | None = None, page: int = 1, tier: str | None = None
+    ) -> dict[str, Any]:
+        found = self.brain.brain_map(area=area, page=page, tier=tier)
+        if found.is_error:
+            raise ValidationFailed(found.text)
+        return dict(found.data)
+
+    def map_view(self) -> dict[str, Any]:
+        """Every tier whole, the short map as a packet sends it, what it cut, and how many
+        sealed projects it leaves out (for the owner's own view only)."""
+        return dict(self.brain.map_view().data)
+
+    def sections(self, item_id: str) -> dict[str, Any]:
+        found = self.brain.sections(item_id)
+        if found.is_error:
+            raise NotFound(found.text, id=item_id)
+        return dict(found.data)
+
+    def open_address(self, address: str) -> dict[str, Any]:
+        """One part by its address, as the owner reads it (no conversation, no budget)."""
+        found = self.brain.open(address)
+        if found.data.get("status") == "not_found":
+            raise NotFound(found.text, address=address, gone_at=found.data.get("gone_at"))
+        if found.is_error:
+            raise ValidationFailed(found.text)
+        return dict(found.data)
+
+    def lore(self) -> list[dict[str, Any]]:
+        return list(self.brain.lore().data.get("lessons") or [])
+
+    def lesson(self, lesson_id: str) -> dict[str, Any]:
+        found = self.brain.lesson(lesson_id)
+        if found.is_error:
+            raise NotFound(found.text, id=lesson_id)
+        return dict(found.data)
+
+    def propose_lesson(self, **fields: Any) -> dict[str, Any]:
+        with self._lock:
+            found = self.brain.propose_lesson(**fields)
+        if found.is_error:
+            raise ValidationFailed(found.text)
+        return dict(found.data, message=found.text)
+
+    def sessions_search(self, query: str, *, limit: int = 10) -> list[dict[str, Any]]:
+        found = self.brain.sessions_search(query, limit=limit)
+        if found.is_error:
+            raise ValidationFailed(found.text)
+        return list(found.data.get("sessions") or [])
 
     def requests_in(self, session_id: str) -> list[dict[str, Any]]:
         found = self.brain.requests(session=session_id, limit=50)

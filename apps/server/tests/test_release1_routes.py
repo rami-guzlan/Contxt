@@ -137,3 +137,39 @@ def test_signing_in_by_post_keeps_the_key_out_of_the_address(client, owner_token
         "/auth/login", json={"token": owner_token}, headers={"X-Workspace-CSRF": "1"}
     )
     assert good.status_code == 204 and good.cookies
+
+
+def test_the_map_view_lore_sections_and_session_search_are_readable(owner):
+    view = owner.ok(owner.get("/api/brain/map/view"))
+    assert view["text"].startswith("## Brain map · partial")
+    assert view["tokens"] <= view["limit"] == 250
+    assert isinstance(view["sealed"], int) and "levels" in view
+    whole = owner.ok(owner.get("/api/brain/map", params={"tier": "levels"}))
+    assert whole["tier"] == "levels" and len(whole["lines"]) == 5
+    assert owner.get("/api/brain/map", params={"tier": "nope"}).status_code == 422
+    made = owner.ok(
+        owner.post(
+            "/api/brain/lore",
+            json={
+                "title": "Two exports, one slide",
+                "story": "The slide quoted the older export.",
+                "pattern": "A number without the version it came from.",
+                "words": ["registrations", "total"],
+            },
+        ),
+        201,
+    )
+    assert made["status"] in ("pending", "applied")
+    assert isinstance(owner.ok(owner.get("/api/brain/lore")), list)
+    assert owner.get("/api/brain/open", params={"address": "never-was#x"}).status_code == 404
+    assert owner.get("/api/brain/sections/never-was").status_code == 404
+    assert owner.ok(owner.get("/api/brain/sessions/search", params={"q": "lighthouse"})) == []
+
+
+def test_the_owner_sets_the_pull_budget_through_the_policy(owner):
+    policy = owner.ok(owner.get("/api/brain/policies"))
+    assert (policy["pull_items"], policy["pull_tokens"]) == (2, 1500)
+    changed = owner.ok(
+        owner.put("/api/brain/policies", json={"pull_items": 3, "pull_tokens": 3000})
+    )
+    assert (changed["policy"]["pull_items"], changed["policy"]["pull_tokens"]) == (3, 3000)

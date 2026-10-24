@@ -143,6 +143,9 @@ class PoliciesIn(Body):
     retrieval_policy: str | None = None  # relaxed, standard or careful
     mode: str | None = None  # governed (suggestions wait) or auto (in with undo, capped)
     auto_paused: bool | None = None  # pause Auto by hand
+    # The pull budget: what an AI may open after each packet (v4, section 6).
+    pull_items: int | None = Field(default=None, ge=1, le=20)
+    pull_tokens: int | None = Field(default=None, ge=100, le=3650)
 
 
 class CatchUpItemIn(Body):
