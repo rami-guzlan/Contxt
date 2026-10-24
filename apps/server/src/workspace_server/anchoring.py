@@ -227,6 +227,15 @@ class Contracts:
         with self._lock:
             self._by_credential.pop(credential_id, None)
 
+    def task_of(self, who: Principal) -> str | None:
+        """The task of the run this credential was made for, if it is one of the runs under
+        way: how an orchestrator's tools tell the orchestrator from its agents."""
+        if not who.credential_id:
+            return None
+        with self._lock:
+            found = self._by_credential.get(who.credential_id)
+        return str(found["contract"].get("task") or "") or None if found else None
+
     def line(self, who: Principal) -> str | None:
         if not who.credential_id:
             return None

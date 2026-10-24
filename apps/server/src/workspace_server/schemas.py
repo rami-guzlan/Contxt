@@ -309,6 +309,36 @@ class WorkAskIn(Body):
     runner: str = Field(default="claude", max_length=20)
 
 
+class OrchestratorAgentIn(Body):
+    id: str | None = Field(default=None, max_length=40)
+    profile: str = Field(max_length=120)
+    new_profile: bool = False
+    role: str = Field(default="", max_length=600)
+    works_by: str = Field(default="files", max_length=20)
+    cli: str = Field(default="claude", max_length=20)
+    model: str | None = Field(default=None, max_length=60)
+    tools: list[str] = Field(default_factory=list, max_length=20)
+
+
+class OrchestratorIn(Body):
+    name: str = Field(max_length=120)
+    goal: str = Field(default="", max_length=2000)
+    cli: str = Field(default="claude", max_length=20)
+    model: str | None = Field(default=None, max_length=60)
+    trigger: str = Field(default="gnomon", max_length=16)
+    agents: list[OrchestratorAgentIn] = Field(default_factory=list, max_length=8)
+    expected_version: int | None = None
+
+
+class OrchestratorRunIn(Body):
+    steer: str = Field(default="", max_length=1000)
+
+
+class GateDecisionIn(Body):
+    decision: str = Field(pattern="^(approve|decline)$")
+    quote: str = Field(default="", max_length=300)
+
+
 class AskIn(Body):
     question: str = Field(max_length=4000)
 

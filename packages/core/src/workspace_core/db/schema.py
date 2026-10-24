@@ -465,3 +465,69 @@ goal_boards = sa.Table(
     sa.Column("suggestions", sa.JSON, nullable=False),
     *_record(archivable=False),
 )
+
+# A project's agent orchestrators (services/orchestrators.py): a goal, the CLI and model it runs
+# on, how it starts (from Gnomon, or from a connected AI too) and the agents it spawns, each with
+# a profile from Agents, a role, how it works, its own CLI and model, and the connected tools it
+# may use. Its slug is how a connected AI names it ("run promo-check").
+orchestrators = sa.Table(
+    "orchestrators",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("project_id", ID, sa.ForeignKey("projects.id"), nullable=False, index=True),
+    sa.Column("slug", sa.String(80), nullable=False),
+    sa.Column("name", sa.String(120), nullable=False),
+    sa.Column("goal", sa.Text, nullable=False, server_default=""),
+    sa.Column("cli", sa.String(20), nullable=False),
+    sa.Column("model", sa.String(60), nullable=False, server_default=""),
+    sa.Column("trigger", sa.String(16), nullable=False, server_default="gnomon"),  # gnomon | ai
+    sa.Column("sheet", sa.String(160), nullable=False),
+    sa.Column("agents", sa.JSON, nullable=False),
+    sa.Column("revision", sa.Integer, nullable=False, server_default="1"),
+    *_record(),
+    sa.UniqueConstraint("project_id", "slug"),
+)
+
+# One run of an orchestrator: the spec it ran (a copy, so later edits leave it whole), its
+# status, the steer, its own task, each agent's state and task, the trail of what the agents
+# reported, the gates waiting for the owner's yes, and the final output pinned on top.
+orchestrator_runs = sa.Table(
+    "orchestrator_runs",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("orchestrator_id", ID, sa.ForeignKey("orchestrators.id"), nullable=False, index=True),
+    sa.Column("project_id", ID, sa.ForeignKey("projects.id"), nullable=False, index=True),
+    sa.Column("status", sa.String(16), nullable=False, index=True),
+    sa.Column("trigger", sa.String(16), nullable=False),  # gnomon | ai
+    sa.Column("asked_by", sa.String(120), nullable=False, server_default=""),
+    sa.Column("steer", sa.Text, nullable=False, server_default=""),
+    sa.Column("task_id", ID, sa.ForeignKey("tasks.id")),
+    sa.Column("spec", sa.JSON, nullable=False),
+    sa.Column("agents", sa.JSON, nullable=False),
+    sa.Column("trail", sa.JSON, nullable=False),
+    sa.Column("gates", sa.JSON, nullable=False),
+    sa.Column("final", sa.JSON),
+    sa.Column("note", sa.Text, nullable=False, server_default=""),
+    sa.Column("started_at", TS, nullable=False),
+    sa.Column("finished_at", TS),
+    *_record(archivable=False),
+)
+
+# An orchestrator's auto Context sheet: one cell per thing found (What), with its value, its
+# source and the agent that found it, as of the run that filled it last.
+orchestrator_cells = sa.Table(
+    "orchestrator_cells",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("orchestrator_id", ID, sa.ForeignKey("orchestrators.id"), nullable=False, index=True),
+    sa.Column("run_id", ID, sa.ForeignKey("orchestrator_runs.id"), nullable=False),
+    sa.Column("what", sa.String(200), nullable=False),
+    sa.Column("value", sa.Text, nullable=False),
+    sa.Column("source", sa.String(300), nullable=False),
+    sa.Column("agent", sa.String(120), nullable=False),
+    *_record(archivable=False),
+    sa.UniqueConstraint("orchestrator_id", "what"),
+)

@@ -642,8 +642,11 @@ class Runners:
             except Exception:
                 log.warning("Could not tidy the run folder %s", folder, exc_info=True)
 
-    def start(self, who: Principal, runner_id: str, task_id: str) -> LocalRun:
-        """Run one task now with this machine's CLI, acting as the task's model."""
+    def start(
+        self, who: Principal, runner_id: str, task_id: str, *, model: str | None = None
+    ) -> LocalRun:
+        """Run one task now with this machine's CLI, acting as the task's model; `model` is
+        the CLI's own name for the model to use (an orchestrator's agent picks one)."""
         who.require("workspace.admin")
         self.sweep()
         spec = self._spec(runner_id)
@@ -725,6 +728,7 @@ class Runners:
             "stream-json",
             "--verbose",
             *fenced,
+            *(["--model", model] if model else []),
             "--tools",
             ",".join(FILE_TOOLS) if copying else ",".join(web),
             "--mcp-config",
