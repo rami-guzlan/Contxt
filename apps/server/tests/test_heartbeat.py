@@ -614,3 +614,25 @@ def test_a_new_brain_finds_its_connectors_on_the_first_look(owner, hb):
     worker.run_once()
     names = {c["id"] for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
     assert "claude:mail" in names
+
+
+def test_in_auto_a_connector_change_goes_in_shows_on_home_undoes_and_is_not_repeated(
+    owner, runtime, fake_cli
+):
+    """The definition of done's loop, against the real Brain: connector change, beat, the
+    region line and the project's status with their source, undo, and the next beat leaves it."""
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner)
+    done = beat(owner)
+    assert done["changes"] == 1 and done["waits"] == 0, done
+    (line,) = rows(runtime, schema.heartbeat_lines)
+    assert line["status"] == "applied" and line["checkpoint_id"]
+    regions = {r["id"]: r for r in owner.ok(owner.get("/api/heartbeat/regions"))}
+    (shown,) = regions["state"]["lines"]
+    assert shown["connector"] == "mail" and shown["cli_label"] == "Claude Code"
+    assert regions["state"]["projects"][0]["status"] == "Hero option B approved"
+    owner.ok(owner.post(f"/api/heartbeat/lines/{line['id']}/undo"))
+    fake_cli.items = [dict(ITEM, title="Morgan approved hero option B (edited)")]
+    again = beat(owner)
+    assert again["changes"] == 0 and again["waits"] == 0
+    assert [r["status"] for r in rows(runtime, schema.heartbeat_lines)] == ["undone"]

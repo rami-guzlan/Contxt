@@ -304,7 +304,8 @@ def auto_waits(st, config, *, area, partition, target, base, text) -> list[str]:
     if target.get("spends"):
         waits.append("spends")
     mine = set(config.governance.get(SELF_GOVERNED) or [])
-    if f"area:{area}" in mine or (partition and f"project:{partition}" in mine):
+    if "area:*" in mine or f"area:{area}" in mine or (partition and (
+            f"project:{partition}" in mine or f"packet:{partition}" in mine)):
         waits.append("governed by you")
     return waits
 
@@ -2011,10 +2012,11 @@ def _policy_value(st, key, kind, value):
     if kind == "governed_areas":
         items = value if isinstance(value, list) else [value]
         found = sorted({str(v).strip() for v in items if str(v or "").strip()})
-        bad = [v for v in found if not re.match(r"^(area|project|sheet|packet):[\w:.-]+$", v)]
+        bad = [v for v in found
+               if not re.match(r"^(area|project|sheet|packet):([\w:.-]+|\*)$", v)]
         if bad:
-            return None, (f"{', '.join(bad)} is not an area to govern (area:<id>, "
-                          "project:<id>, sheet:<id> or packet:<id>)")
+            return None, (f"{', '.join(bad)} is not an area to govern (area:<id> or area:* for "
+                          "all of them, project:<id>, sheet:<id> or packet:<id>)")
         return found, None
     if kind == "notice":
         return (None, None) if not value else (None, "auto_notice can only be dismissed")

@@ -26,6 +26,7 @@ import {
   useSetAside,
 } from "../hooks/catchup";
 import { Btn, Failure, Loading, Page, S, Status, Tabs, plural, when } from "../ui";
+import { AutoArea } from "../components/AutoArea";
 
 // ------------------------------------------------------------------ what a proposal is
 
@@ -896,6 +897,7 @@ export function CatchUpPanel() {
   const view = picked ?? (policy.data?.mode === "auto" ? "changed" : "needs");
   return (
     <div style={css("display:flex;flex-direction:column;gap:22px")}>
+      <AutoArea govKey="area:*" area="Catch up" what="It keeps what your AIs and connectors bring in, each with an undo point. Only what must wait is under Needs you." regions={[]} />
       <Tabs
         label="Catch up"
         value={view}

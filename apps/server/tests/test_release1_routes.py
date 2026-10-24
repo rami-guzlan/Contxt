@@ -188,6 +188,8 @@ def test_govern_this_myself_and_dismissing_the_notice_are_policy_settings(owner)
     assert policy["self_governed"] == ["area:clients"]
     assert owner.put("/api/brain/policies", json={"self_governed": ["clients"]}).status_code == 422
     assert owner.put("/api/brain/policies", json={"auto_notice": None}).status_code == 200
+
+
 def test_the_map_view_lore_sections_and_session_search_are_readable(owner):
     view = owner.ok(owner.get("/api/brain/map/view"))
     assert view["text"].startswith("## Brain map · partial")

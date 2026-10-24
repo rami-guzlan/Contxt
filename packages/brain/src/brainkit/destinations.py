@@ -127,8 +127,9 @@ def propose(brain, destination, text, *, principal=None, session_id=None, reason
         mine = set(config.governance.get(governance.SELF_GOVERNED) or [])
         waits = [w for w, hit in (
             ("customer-facing", flags.get("customer_facing")), ("spends", flags.get("spends")),
-            ("governed by you", f"sheet:{target.get('sheet')}" in mine
-             or f"project:{target.get('project')}" in mine)) if hit]
+            ("governed by you", "area:*" in mine or f"sheet:{target.get('sheet')}" in mine
+             or f"project:{target.get('project')}" in mine
+             or f"packet:{target.get('project')}" in mine)) if hit]
         cap, done = governance.auto_cap(config), governance.auto_applied_since(brain, hours=24)
         if waits:
             header["waits"] = ", ".join(waits)

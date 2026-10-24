@@ -50,6 +50,7 @@ import {
 import { Btn, Empty, Failure, Later, Loaded, Loading, Modal, plural, S, Status, when } from "../ui";
 import { LevelChip, LoreShelf, MapCard, SectionAddresses } from "../components/BrainV4";
 import { CatchUpPanel } from "./CatchUp";
+import { AutoArea } from "../components/AutoArea";
 
 // ------------------------------------------------------------------ shared bits
 
@@ -2388,9 +2389,12 @@ export function SheetPage() {
   const derived = useDerivedSheet(sheetId, Boolean(derivedName));
   const sheet = useSheet(derivedName ? "" : sheetId);
   const back = (
-    <Link to="/brain?tab=sheets" style={css("align-self:flex-start;font:400 14px Geist;color:var(--muted);text-decoration:none")}>
-      ← Sheets
-    </Link>
+    <>
+      <Link to="/brain?tab=sheets" style={css("align-self:flex-start;font:400 14px Geist;color:var(--muted);text-decoration:none")}>
+        ← Sheets
+      </Link>
+      <AutoArea govKey={`sheet:${sheetId}`} area="this sheet" what="It writes the current values from each beat. Every cell keeps its history, and your own edits stay yours." regions={[]} />
+    </>
   );
   const wrap = "max-width:1240px;margin:0 auto;padding:48px 56px 96px;display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;box-sizing:border-box";
   if (derivedName) {

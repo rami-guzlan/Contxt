@@ -35,6 +35,7 @@ import {
 } from "../hooks/projects";
 import { Btn, Chip, Empty, Failure, Later, Loading, Modal, S, Status, when } from "../ui";
 import { ProjectStatus } from "./Projects";
+import { AutoArea } from "../components/AutoArea";
 
 type Tab = "context" | "tasks" | "files" | "outputs";
 
@@ -149,6 +150,9 @@ function ContextView({ p }: { p: BrainProjectDetail }) {
 
   return (
     <div style={css("max-width:1120px;margin:0 auto;padding:28px 64px 96px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:56px;box-sizing:border-box")}>
+      <div style={css("grid-column:1 / -1")}>
+        <AutoArea govKey={`packet:${p.id}`} area={`the ${p.title} packet`} what="It keeps this project's packet and live status current from each beat; open, edit and undo as usual." regions={[]} />
+      </div>
       <div style={css("grid-column:1 / -1")}>
         <OrchestratorSheets projectId={p.id} />
       </div>

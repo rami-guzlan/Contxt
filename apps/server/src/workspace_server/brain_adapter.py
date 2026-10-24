@@ -1544,6 +1544,7 @@ class BrainKitAdapter:
                     title=title,
                     reason=reason or f"{destination} proposed from the workspace",
                     as_of=extra.get("as_of"),
+                    flags={k: True for k in ("customer_facing", "spends") if extra.get(k)},
                     **cited,
                     **place,
                     **door,
