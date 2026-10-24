@@ -15,7 +15,7 @@ describe("An auto strip", () => {
     const calls = mockApi({
       "GET /api/brain/policies": policy(),
       "GET /api/heartbeat/status": status,
-      "GET /api/heartbeat/regions": { regions: [] },
+      "GET /api/heartbeat/regions": [],
       "PUT /api/brain/policies": { policy: policy({ self_governed: ["sheet:guests"] }) },
     });
     renderAt(<AutoArea govKey="sheet:guests" area="this sheet" what="It writes the current values." />);
