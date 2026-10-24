@@ -288,6 +288,13 @@ describe("Settings, Heartbeat", () => {
     expect(screen.getByText(/About 2,400 tokens a beat with changes/)).toBeInTheDocument();
   });
 
+  it("sets how often each connector is read, and Scout reads every beat", async () => {
+    const calls = api({ "PUT /api/heartbeat/connectors/claude%3Amail": connector({ cadence_minutes: 60 }) });
+    renderAt(<HeartbeatSettings />);
+    await userEvent.selectOptions(await screen.findByLabelText("How often mail is read"), "60");
+    expect(calls.find((c) => c.path === "/api/heartbeat/connectors/claude%3Amail")?.body).toEqual({ cadence_minutes: 60 });
+  });
+
   it("says so when no connector has been found", async () => {
     api({ "GET /api/heartbeat/status": status({ connectors: [], cost: { with_changes: null, nothing_new: null, beats: 0, unknown: 0 } }) });
     renderAt(<HeartbeatSettings />);

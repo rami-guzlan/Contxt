@@ -103,6 +103,29 @@ export function HeartbeatSettings() {
                   {c.status_line ? <span style={css("font:400 12px/1.45 Geist;color:var(--ink2)")}>{c.status_line}</span> : null}
                 </div>
                 <span style={css("font:400 12.5px Geist;color:var(--ink2);min-width:160px")}>{feeds}</span>
+                {c.how === "folder" ? (
+                  <span style={css("font:400 12.5px Geist;color:var(--muted)")}>Every beat · no tokens</span>
+                ) : (
+                  <label style={css("display:flex;align-items:center;gap:6px;font:400 12.5px Geist;color:var(--ink2)")}>
+                    Read
+                    <select
+                      aria-label={`How often ${c.name} is read`}
+                      value={c.cadence_minutes ?? 0}
+                      disabled={toggle.isPending}
+                      onChange={(e) => toggle.mutate({ id: c.id, cadence_minutes: Number(e.target.value) })}
+                      style={css("font:400 12.5px Geist;padding:4px 6px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink)")}
+                    >
+                      <option value={0}>every beat</option>
+                      {s.cadences
+                        .filter((v) => v > s.cadence)
+                        .map((v) => (
+                          <option key={v} value={v}>
+                            every {v === 60 ? "hour" : `${v} min`}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
                 <button
                   type="button"
                   aria-pressed={c.enabled}
