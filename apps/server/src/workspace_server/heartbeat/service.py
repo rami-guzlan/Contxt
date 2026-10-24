@@ -35,13 +35,20 @@ from workspace_core.db import schema
 from workspace_core.domain import states
 from workspace_core.domain.policy import Principal
 from workspace_core.domain.schedule import zone
-from workspace_core.errors import Conflict, NotFound, ValidationFailed, WorkspaceError
+from workspace_core.errors import (
+    Conflict,
+    NotFound,
+    PermissionDenied,
+    ValidationFailed,
+    WorkspaceError,
+)
 from workspace_core.ids import new_id
 from workspace_core.workspace import Workspace
 
 from ..runners import RUNNERS, Runners, usage_of
 from ..scout import Scout
 from . import connectors as conn
+from . import n8n
 
 log = logging.getLogger(__name__)
 CLI_CADENCE = 60  # minutes between reads of a new connector that reads through a CLI
@@ -58,7 +65,9 @@ CLI_LABELS = {
     "gemini": "Gemini CLI",
     "gnomon": "Gnomon",
 }
-HOW_LABELS = {"mcp": "MCP", "computer": "Computer use", "folder": "Folder"}
+HOW_LABELS = {"mcp": "MCP", "computer": "Computer use", "folder": "Folder", "n8n": "n8n"}
+TOKENLESS = ("folder", "n8n")  # reads that cost no tokens: Scout, and n8n workflows
+INBOX_MAX = 200  # items one post may bring
 LOCK_MINUTES = 20  # a beat that holds the lock longer than this has stopped: its lock expires
 BACKOFF_MINUTES = 30  # after a provider limit, scheduled beats wait this long
 MAX_ITEMS = 25  # items read from one connector in one beat
@@ -286,6 +295,8 @@ class Heartbeat:
             "tools": list(row["tools"] or []),
             "found_in": row["found_in"],
             "present": bool(row["present"]),
+            "workflow_id": row.get("workflow_id"),
+            "has_workflow": bool(row.get("workflow")),
         }
 
     def connectors(self, who: Principal) -> list[dict[str, Any]]:
@@ -417,6 +428,8 @@ class Heartbeat:
             for cid, row in rows.items():
                 if account is None and row["found_in"] == ACCOUNT_PLACE:
                     continue  # Claude Code could not say: leave the account's connectors be
+                if row["how"] == "n8n":
+                    continue  # read through an n8n workflow, not found in a CLI's settings
                 if cid != "scout" and cid not in checked and row["present"]:
                     tx.update(
                         schema.heartbeat_connectors,
@@ -505,6 +518,10 @@ class Heartbeat:
             if row is None or row["workspace_id"] != tx.workspace_id:
                 raise NotFound(f"No connector {connector_id}.", id=connector_id)
             values: dict[str, Any] = {}
+            if enabled and row["how"] == "n8n":
+                problems = n8n.check_workflow(row["workflow"], row["id"])
+                if problems:
+                    raise Conflict("Its workflow does not only read: " + " ".join(problems))
             if enabled is not None:
                 if enabled and row["status"] == "cannot_confirm_read_only":
                     raise Conflict(
@@ -540,6 +557,124 @@ class Heartbeat:
                     data={k: v for k, v in values.items() if k != "status_line"},
                 )
         return self._connector_view(row)
+
+    # ---------------------------------------------------------------- reads through n8n
+
+    def add_n8n(
+        self,
+        who: Principal,
+        *,
+        name: str,
+        workflow: dict[str, Any],
+        feeds: list[str] | None = None,
+        connector_id: str | None = None,
+    ) -> dict[str, Any]:
+        """A connector read by an n8n workflow on this computer, with the person's own n8n
+        credentials. Its workflow is checked by code to only read (and to post to this
+        connector's inbox); it stays off until the owner turns it on. Returns the connector
+        and the secret its workflow sends with each post, shown this once."""
+        who.require("workspace.admin")
+        name = _flat(name, 200)
+        if not name:
+            raise ValidationFailed("Name the connector.", field="name")
+        cid = connector_id or "n8n:" + (re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "x")
+        problems = n8n.check_workflow(workflow, cid)
+        if problems:
+            raise ValidationFailed(
+                "This workflow cannot read for the heartbeat: " + " ".join(problems),
+                field="workflow",
+            )
+        secret, kept = n8n.new_secret()
+        now = iso(self.ws.rt.clock.now())
+        values = {
+            "name": name,
+            "cli": "n8n",
+            "how": "n8n",
+            "feeds": [str(f) for f in feeds or []][:20],
+            "enabled": False,
+            "status": "off",
+            "status_line": "Waits for your yes: it reads with your n8n sign-ins, read-only.",
+            "tools": [],
+            "found_in": "n8n on this computer",
+            "present": True,
+            "workflow": workflow,
+            "secret_hash": kept,
+        }
+        with self.ws.rt.write() as tx:
+            row = tx.get(schema.heartbeat_connectors, cid)
+            if row is not None and row["workspace_id"] == tx.workspace_id:
+                if row["how"] != "n8n":
+                    raise Conflict(f"{cid} is a connector of another kind.")
+                row = tx.update(schema.heartbeat_connectors, row, values)
+            else:
+                row = tx.insert(
+                    schema.heartbeat_connectors,
+                    {
+                        "id": cid,
+                        "workspace_id": tx.workspace_id,
+                        **values,
+                        "cadence_minutes": None,
+                        "cursor": None,
+                        "last_read_at": None,
+                        "last_items": 0,
+                        "workflow_id": None,
+                        "created_by": who.actor_id,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                )
+            tx.emit(
+                "heartbeat.n8n_workflow_set",
+                actor_id=who.actor_id,
+                subject_type="heartbeat_connector",
+                subject_id=cid,
+                data={"name": name, "nodes": len(workflow.get("nodes") or [])},
+            )
+        return {"connector": self._connector_view(row), "secret": secret}
+
+    def receive(self, connector_id: str, secret: str, body: Any) -> dict[str, Any]:
+        """What an n8n workflow posted, kept for the next beat. Only an approved n8n read,
+        with its own secret, may post."""
+        items = n8n.items_of(body)[:INBOX_MAX]
+        with self.ws.rt.write() as tx:
+            row = tx.get(schema.heartbeat_connectors, connector_id)
+            if row is None or row["how"] != "n8n" or not n8n.secret_ok(secret, row["secret_hash"]):
+                raise PermissionDenied("Not a connector this secret may post to.")
+            if not row["enabled"]:
+                raise Conflict(f"{row['name']} is off: nothing it posts is kept.")
+            for item in items:
+                tx.insert(
+                    schema.heartbeat_inbox,
+                    {
+                        "id": tx.new_id("hbi"),
+                        "workspace_id": tx.workspace_id,
+                        "connector_id": connector_id,
+                        "item": item,
+                        "received_at": tx.now,
+                        "beat_id": None,
+                    },
+                )
+        return {"kept": len(items)}
+
+    def _read_n8n(self, row: dict[str, Any]) -> dict[str, Any]:
+        """A read through n8n: what its workflow posted since the last beat took (0 tokens)."""
+        if n8n.check_workflow(row["workflow"], row["id"]):
+            raise ConnectorProblem("off", "Its workflow no longer only reads, so it is off.")
+        table = schema.heartbeat_inbox
+        with self.ws.rt.read() as tx:
+            waiting = tx.rows(
+                sa.select(table)
+                .where(table.c.connector_id == row["id"], table.c.beat_id.is_(None))
+                .order_by(table.c.received_at)
+                .limit(MAX_ITEMS * 4)
+            )
+        items, _cursor = self._items({"items": [w["item"] for w in waiting]}, row)
+        return {
+            "items": items,
+            "cursor": row["cursor"],
+            "usage": None,
+            "inbox": [w["id"] for w in waiting],
+        }
 
     # ---------------------------------------------------------------- status
 
@@ -949,6 +1084,8 @@ class Heartbeat:
         """What changed in one connector since its cursor: {items, cursor, usage}."""
         if row["how"] == "folder":
             return self._read_scout(owner, row)
+        if row["how"] == "n8n":
+            return self._read_n8n(row)
         got = self._read_cli(owner, [row])[row["id"]]
         if isinstance(got, BaseException):
             raise got
@@ -1117,7 +1254,7 @@ class Heartbeat:
         fresh: list[dict[str, Any]] = []
         reads: dict[str, dict[str, Any]] = {}
         limited: str | None = None
-        through_cli = [r for r in due if r["how"] != "folder"]
+        through_cli = [r for r in due if r["how"] not in TOKENLESS]
         if through_cli and self._running is not None:
             self._running["reading"] = through_cli[0]["id"]
         batch = self._read_cli(owner, through_cli) if through_cli else {}
@@ -1148,7 +1285,7 @@ class Heartbeat:
             if self._running is not None:
                 self._running["read"].append(row["id"])
             spent = tokens_of(got.get("usage"))
-            if row["how"] != "folder" and not got.get("shared"):
+            if row["how"] not in TOKENLESS and not got.get("shared"):
                 if spent is None:
                     unknown += 1
                 else:
@@ -1280,6 +1417,12 @@ class Heartbeat:
                             "beat_id": beat_id,
                             "seen_at": tx.now,
                         },
+                    )
+                taken = read["got"].get("inbox") or []
+                if taken:  # what an n8n workflow posted: this beat took it
+                    inbox = schema.heartbeat_inbox
+                    tx.conn.execute(
+                        inbox.update().where(inbox.c.id.in_(taken)).values(beat_id=beat_id)
                     )
                 current = tx.one(schema.heartbeat_connectors, cid, "connector")
                 values: dict[str, Any] = {

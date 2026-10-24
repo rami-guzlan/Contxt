@@ -911,3 +911,123 @@ def test_a_new_connector_that_reads_through_a_cli_is_read_hourly(owner):
     rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
     assert rows["claude:mail"]["cadence_minutes"] == 60
     assert rows["scout"]["cadence_minutes"] is None  # Scout costs no tokens: every beat
+
+
+# ---------------------------------------------------------------------- reads through n8n
+
+from workspace_server.heartbeat import n8n as n8n_reads  # noqa: E402
+from workspace_server.routes import heartbeat as hb_routes  # noqa: E402
+
+N8N_ID = "n8n:gmail"
+
+
+def n8n_workflow(*extra, connector=N8N_ID, url=None):
+    """A schedule, a Gmail read, a filter and the post to this connector's inbox."""
+    return {
+        "name": "Gmail for Gnomon",
+        "nodes": [
+            {"name": "Every hour", "type": "n8n-nodes-base.scheduleTrigger", "parameters": {}},
+            {
+                "name": "Recent mail",
+                "type": "n8n-nodes-base.gmail",
+                "parameters": {"resource": "message", "operation": "getAll"},
+            },
+            {"name": "From people I know", "type": "n8n-nodes-base.filter", "parameters": {}},
+            {
+                "name": "To Gnomon",
+                "type": "n8n-nodes-base.httpRequest",
+                "parameters": {
+                    "method": "POST",
+                    "url": url or f"http://127.0.0.1:8787/api/heartbeat/inbox/{connector}",
+                },
+            },
+            *extra,
+        ],
+    }
+
+
+def test_a_workflow_runs_as_a_read_only_when_every_node_only_reads():
+    assert n8n_reads.check_workflow(n8n_workflow(), N8N_ID) == []
+    refused = {
+        "a send": {
+            "name": "Reply",
+            "type": "n8n-nodes-base.gmail",
+            "parameters": {"operation": "send"},
+        },
+        "code": {"name": "Anything", "type": "n8n-nodes-base.code", "parameters": {}},
+        "another address": {
+            "name": "Out",
+            "type": "n8n-nodes-base.httpRequest",
+            "parameters": {"method": "GET", "url": "https://example.com"},
+        },
+        "an unknown node": {
+            "name": "X",
+            "type": "n8n-nodes-base.somethingNew",
+            "parameters": {"operation": "getAll"},
+        },
+    }
+    for why, node in refused.items():
+        assert n8n_reads.check_workflow(n8n_workflow(node), N8N_ID), why
+    assert n8n_reads.check_workflow(n8n_workflow(connector="n8n:other"), N8N_ID)  # wrong inbox
+    away = n8n_workflow(url="https://example.com/api/heartbeat/inbox/n8n:gmail")
+    assert n8n_reads.check_workflow(away, N8N_ID)  # not this computer
+    assert n8n_reads.check_workflow({"nodes": []}, N8N_ID)
+
+
+def test_an_n8n_read_is_checked_off_until_turned_on_and_its_secret_is_shown_once(owner):
+    bad = owner.post(
+        "/api/heartbeat/n8n",
+        json={
+            "name": "Gmail",
+            "workflow": n8n_workflow(
+                {
+                    "name": "Reply",
+                    "type": "n8n-nodes-base.gmail",
+                    "parameters": {"operation": "send"},
+                }
+            ),
+        },
+    )
+    assert bad.status_code == 422 and "not a read" in bad.text
+    made = owner.ok(
+        owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
+    )
+    assert made["connector"]["id"] == N8N_ID and made["connector"]["enabled"] is False
+    assert len(made["secret"]) > 30
+    status = owner.ok(owner.get("/api/heartbeat/status"))
+    assert made["secret"] not in json.dumps(status)  # kept as a hash only
+
+
+def test_only_an_approved_n8n_read_with_its_secret_posts_from_this_computer(
+    owner, client, monkeypatch
+):
+    made = owner.ok(
+        owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
+    )
+    secret = {n8n_reads.SECRET_HEADER: made["secret"]}
+    post = lambda headers: client.post(  # noqa: E731
+        f"/api/heartbeat/inbox/{N8N_ID}", json={"items": [ITEM]}, headers=headers
+    )
+    assert post(secret).status_code == 403  # the test client is not this computer
+    monkeypatch.setattr(hb_routes, "LOCAL", hb_routes.LOCAL | {"testclient"})
+    assert post({n8n_reads.SECRET_HEADER: "wrong"}).status_code == 403
+    assert post(secret).status_code == 409  # off until turned on
+    owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": True}))
+    assert post(secret).json() == {"kept": 1}
+
+
+def test_a_beat_takes_what_n8n_posted_once_and_spends_no_tokens_reading_it(
+    owner, client, fake_cli, monkeypatch
+):
+    monkeypatch.setattr(hb_routes, "LOCAL", hb_routes.LOCAL | {"testclient"})
+    made = owner.ok(
+        owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
+    )
+    owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": True}))
+    headers = {n8n_reads.SECRET_HEADER: made["secret"]}
+    client.post(f"/api/heartbeat/inbox/{N8N_ID}", json=[{"json": ITEM}], headers=headers)
+    done = beat(owner)
+    assert done["items"] == 1 and fake_cli.reads() == []  # no CLI read: n8n read it
+    assert done["tokens"] == 120 and done["tokens_unknown"] == 0  # the judge alone
+    again = beat(owner)
+    assert again["items"] == 0 and again["nothing_new"]
