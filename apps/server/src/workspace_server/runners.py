@@ -186,6 +186,8 @@ GEMINI_NOISE = ("Loaded cached credentials.",)
 # How a Claude Code keeps the person's own settings files, and so their hooks, out of what the
 # app starts: `--restricted` where it has it; before that, loading project settings only, which
 # the run's own folder does not have. Read from the CLI's help, once per command.
+ACCOUNT_TRIES = 4  # starts of Claude Code to wait out the account's connectors loading
+ACCOUNT_LINE = re.compile(r"^(claude\.ai [^:\n]+):", re.M)  # in `claude mcp list`
 FENCES = (
     ("--restricted", ("--restricted",)),
     ("--setting-sources", ("--setting-sources", "project")),
@@ -1120,6 +1122,125 @@ class Runners:
         self._expired.discard(spec.id)
         return found
 
+    def account_servers(self, who: Principal, timeout: float = 90.0) -> list[dict[str, Any]]:
+        """The MCP servers a signed-in Claude Code loads from the person's Claude account
+        (claude.ai connectors), each with its status and its tools' names. They live in the
+        account, not in a settings file, so they come from Claude Code itself: `claude mcp
+        list` names them, and the first line Claude Code writes when it starts (its init
+        message) gives their tools; the run is stopped there, before it answers. They load in
+        the background, so a start that missed some is tried again (ACCOUNT_TRIES)."""
+        who.require("workspace.admin")
+        spec_of = self._spec("claude")
+        command = self._ready(spec_of)
+        expected = self._account_names(command)
+        best: dict[str, Any] = {}
+        for _ in range(ACCOUNT_TRIES if expected else 1):
+            init = self._account_start(spec_of, command, "Reply OK.", timeout)[0]
+            named = {
+                str(s.get("name")) for s in init.get("mcp_servers") or [] if isinstance(s, dict)
+            }
+            if len(named & expected) >= len(set(best.get("named") or ()) & expected):
+                best = {**init, "named": named}
+            if expected <= named:
+                break
+        if best.get("subtype") != "init":
+            raise Conflict(f"{spec_of.label} did not say which connectors your account has.")
+        tools = _mcp_tools(best)
+        found = []
+        for server in best.get("mcp_servers") or []:
+            if isinstance(server, dict):
+                name = str(server.get("name") or "")
+                found.append(
+                    {
+                        "name": name,
+                        "status": str(server.get("status") or ""),
+                        "tools": sorted(tools.get(_safe(name), [])),
+                    }
+                )
+        for name in sorted(expected - set(best.get("named") or ())):
+            found.append({"name": name, "status": "pending", "tools": []})
+        return found
+
+    def _account_names(self, command: list[str]) -> set[str]:
+        """The account's connectors by name, as `claude mcp list` prints them."""
+        try:
+            proc = self.popen(
+                [*command, "mcp", "list"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=_account_env(),
+                **_quiet(),
+            )
+            out, _ = proc.communicate(timeout=180)
+        except (OSError, subprocess.TimeoutExpired):
+            return set()
+        return {m.group(1).strip() for m in ACCOUNT_LINE.finditer(out or "")}
+
+    def _account_start(
+        self,
+        spec: RunnerSpec,
+        command: list[str],
+        prompt: str,
+        timeout: float,
+        extra: list[str] | None = None,
+        until_result: bool = False,
+        server: str = "",
+    ) -> list[dict[str, Any]]:
+        """Start Claude Code with the account's connectors and read what it writes: its init
+        message only, or (`until_result`) through to its result, unless the init shows that
+        `server` has not loaded, when it is stopped there."""
+        folder = tempfile.mkdtemp(prefix="workspace-account-")
+        argv = [
+            *command,
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            # No fence here: Claude Code loads the account's connectors only with every
+            # setting source (--restricted and --setting-sources both leave them out). No other
+            # tool runs: none built in, only those allowed, and nobody to ask.
+            "--tools",
+            "",
+            *(extra or ["--max-turns", "1"]),
+            "--permission-mode",
+            "dontAsk",
+            "--no-session-persistence",
+        ]
+        try:
+            proc = self.popen(
+                argv,
+                cwd=folder,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=_account_env(),
+                **_quiet(),
+            )
+        except OSError as exc:
+            shutil.rmtree(folder, ignore_errors=True)
+            raise Conflict(f"Could not start {spec.label}: {exc}") from exc
+
+        def stop(messages: list[dict[str, Any]]) -> bool:
+            last = messages[-1]
+            if not until_result:
+                return True
+            if last.get("subtype") == "init" and server:
+                return not _mcp_tools(last).get(server)  # not loaded yet: try again
+            return last.get("type") == "result"
+
+        try:
+            return _messages(proc, prompt, timeout, stop) or [{}]
+        finally:
+            _kill(proc)
+            shutil.rmtree(folder, ignore_errors=True)
+
     def read_through(
         self,
         who: Principal,
@@ -1143,6 +1264,8 @@ class Runners:
             raise Conflict("No tool of this connector only reads: it is not read.")
         spec_of = self._spec(runner)
         command = self._ready(spec_of)
+        if spec_of.id == "claude" and spec.get("account"):
+            return self._read_account(spec_of, command, server, allowed, refused, prompt, timeout)
         folder = tempfile.mkdtemp(prefix="workspace-beat-")
         try:
             if spec_of.id == "claude":
@@ -1154,6 +1277,46 @@ class Runners:
             raise Conflict(f"Gnomon does not read connectors through {spec_of.label} yet.")
         finally:
             shutil.rmtree(folder, ignore_errors=True)
+
+    def _read_account(
+        self,
+        spec: RunnerSpec,
+        command: list[str],
+        server: str,
+        allowed: list[str],
+        refused: list[str],
+        prompt: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        """One read of a connector of the person's Claude account: Claude Code may call
+        exactly the `allowed` tools (every other tool of the server is refused by name too),
+        with no built-in tool and nobody to ask. Tried again while the connector has not loaded
+        yet (it loads in the background)."""
+        limits = [
+            "--allowedTools",
+            *[f"mcp__{server}__{tool}" for tool in allowed],
+            *(
+                ["--disallowedTools", *[f"mcp__{server}__{tool}" for tool in refused]]
+                if refused
+                else []
+            ),
+        ]
+        for _ in range(ACCOUNT_TRIES):
+            messages = self._account_start(
+                spec, command, prompt, timeout, extra=limits, until_result=True, server=server
+            )
+            result = messages[-1]
+            if result.get("type") == "result":
+                break
+        else:
+            raise Conflict(f"{spec.label} could not load this connector from your account.")
+        if result.get("is_error"):
+            reason = str(result.get("result") or "it stopped")
+            if AUTH_FAILED.search(reason):
+                raise Conflict(self._login_failed(spec))
+            raise Conflict(f"{spec.label} could not read: {reason[:200]}")
+        self._expired.discard(spec.id)
+        return {"text": str(result.get("result") or ""), "usage": usage_of(result)}
 
     def _read_claude(
         self,
@@ -1171,6 +1334,7 @@ class Runners:
         config = os.path.join(folder, "mcp.json")
         with open(config, "w", encoding="utf-8") as handle:
             json.dump({"mcpServers": {server: entry}}, handle)
+        loading = ["--mcp-config", config, "--strict-mcp-config"]
         argv = [
             *command,
             "-p",
@@ -1179,9 +1343,7 @@ class Runners:
             *fenced,
             "--tools",
             "",
-            "--mcp-config",
-            config,
-            "--strict-mcp-config",
+            *loading,
             "--allowedTools",
             *[f"mcp__{server}__{tool}" for tool in allowed],
             *(
@@ -1738,6 +1900,56 @@ class Runners:
                 project_id=task.project_id,
                 data={"local_run": run.id, "model": run.actor_id, **data},
             )
+
+
+def _account_env() -> dict[str, str]:
+    """What a headless Claude Code needs to load the Claude account's connectors: it leaves
+    them out unless asked, and lists them only once they have connected (not in the background)."""
+    env = dict(os.environ, MCP_TIMEOUT="60000", ENABLE_CLAUDEAI_MCP_SERVERS="true")
+    env.pop("MCP_CONNECTION_NONBLOCKING", None)
+    return env
+
+
+def _messages(
+    proc: Any, prompt: str, timeout: float, stop: Callable[[list[dict[str, Any]]], bool]
+) -> list[dict[str, Any]]:
+    """The JSON lines a CLI writes (stream-json), until `stop` says so or `timeout` passes."""
+    got: list[dict[str, Any]] = []
+
+    def read() -> None:
+        try:
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+            for line in proc.stdout:
+                try:
+                    message = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(message, dict):
+                    got.append(message)
+                    if stop(got):
+                        return
+        except (OSError, ValueError):
+            pass
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    reader.join(timeout)
+    return list(got)
+
+
+def _mcp_tools(init: dict[str, Any]) -> dict[str, list[str]]:
+    """{server, as tool names carry it: [its tools]} from Claude Code's init message."""
+    tools: dict[str, list[str]] = {}
+    for name in init.get("tools") or []:
+        if isinstance(name, str) and name.startswith("mcp__") and name.count("__") >= 2:
+            _, server, tool = name.split("__", 2)
+            tools.setdefault(server, []).append(tool)
+    return tools
+
+
+def _safe(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", name) or "server"
 
 
 def _kill(proc: Any) -> None:

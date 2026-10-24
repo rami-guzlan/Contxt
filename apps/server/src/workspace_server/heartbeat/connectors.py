@@ -12,6 +12,10 @@ from the CLI's file each time and handed to the CLI for that read alone; Gnomon 
 connector's name, its kind and the names of its read-only tools, never a credential, an
 environment value or a token.
 
+Claude Code also loads the connectors of the person's Claude account (claude.ai): they live
+in the account, not in a file, so Claude Code lists them itself when it starts (its first line,
+read before it answers); those start off, since a read reaches the person's own account.
+
 Read-only, provably: Gnomon itself asks the server for its tools (`tools/list`, the only
 request this client can make besides starting the session) and keeps those that only read: a
 `readOnlyHint` of true or, when a tool has no annotations, a name that starts with a read verb.
@@ -151,6 +155,25 @@ def _codex() -> list[Found]:
     return out
 
 
+ACCOUNT = "claude.ai "  # how Claude Code names a connector of the person's Claude account
+
+
+def from_account(servers: list[dict[str, Any]]) -> list[Found]:
+    """The Claude account's connectors, as Claude Code listed them when it started: each with
+    its status there and its tools' names (no annotations come with them, so only names that
+    plainly read are kept)."""
+    out = []
+    for s in servers:
+        name = str(s.get("name") or "")
+        if not name.startswith(ACCOUNT) or name[len(ACCOUNT) :].lower() in OWN_SERVERS:
+            continue
+        spec = {"account": True, "status": str(s.get("status") or ""), "tools": s.get("tools")}
+        out.append(
+            Found(f"claude:{safe_server(name)}", name, "claude", "mcp", "Your Claude account", spec)
+        )
+    return out
+
+
 def codex_servers() -> list[str]:
     """Every MCP server name in the Codex settings (a read turns all but one off)."""
     return [f.name for f in _codex()]
@@ -185,8 +208,11 @@ def read_only(tool: dict[str, Any], server: str = "") -> bool:
     if isinstance(annotations, dict) and "readOnlyHint" in annotations:
         return annotations.get("readOnlyHint") is True
     prefix = words(server)
-    if prefix and said[: len(prefix)] == prefix and len(said) > len(prefix):
-        said = said[len(prefix) :]  # slack_list_channels: the server's name, then the verb
+    for start in range(len(prefix)):  # slack_list_channels, or Notion's notion-search under
+        tail = prefix[start:]  # "claude.ai Notion": the server's name, then the verb
+        if said[: len(tail)] == tail and len(said) > len(tail):
+            said = said[len(tail) :]
+            break
     return said[0] in READ_VERBS
 
 

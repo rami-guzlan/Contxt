@@ -44,6 +44,8 @@ from ..scout import Scout
 from . import connectors as conn
 
 log = logging.getLogger(__name__)
+ACCOUNT_TTL = 1800.0  # seconds a listing of the Claude account's connectors is kept
+ACCOUNT_PLACE = "Your Claude account"
 
 CADENCES = (5, 15, 30, 60)
 QUIET = {"off": "Off", "night": "7pm to 7am", "nights_weekends": "Nights and weekends"}
@@ -139,6 +141,27 @@ class Heartbeat:
         self.list_tools = conn.list_tools
         self.discover = conn.discover
         self.find = conn.find
+        self._accounts: tuple[float, list[conn.Found]] | None = None
+
+    def _account(self, who: Principal, *, fresh: bool = False) -> list[conn.Found] | None:
+        """The Claude account's connectors (claude.ai), as Claude Code lists them when it
+        starts; kept for ACCOUNT_TTL so a beat does not start Claude Code once per connector.
+        None when Claude Code could not say (signed out, not here): nothing is changed then."""
+        now = time.monotonic()
+        if not fresh and self._accounts and now - self._accounts[0] < ACCOUNT_TTL:
+            return self._accounts[1]
+        try:
+            listed = conn.from_account(self.runners.account_servers(who))
+        except (WorkspaceError, OSError) as exc:
+            log.info("the Claude account's connectors could not be listed: %s", exc)
+            return self._accounts[1] if self._accounts else None
+        self._accounts = (now, listed)
+        return listed
+
+    def _find(self, who: Principal, row: dict[str, Any]) -> conn.Found | None:
+        if row.get("found_in") == ACCOUNT_PLACE:
+            return next((f for f in self._account(who) or [] if f.id == row["id"]), None)
+        return self.find(row["id"])
 
     # ---------------------------------------------------------------- settings
 
@@ -278,16 +301,36 @@ class Heartbeat:
                 [],
                 [],
             )
-        try:
-            tools = self.list_tools(found)
-        except conn.ListingFailed as exc:
-            return (
-                "cannot_confirm_read_only",
-                f"Its tools could not be listed ({exc}), so it cannot be confirmed read-only. "
-                "It is not read.",
-                [],
-                [],
-            )
+        if found.spec.get("account"):
+            # Listed by Claude Code from the account: names only, no annotations.
+            said = found.spec.get("status")
+            if said == "needs-auth":
+                return (
+                    "unhealthy_sign_in",
+                    "It needs signing in again in Claude (claude.ai, Settings, Connectors). "
+                    "It is not read until then.",
+                    [],
+                    [],
+                )
+            tools = [{"name": n} for n in found.spec.get("tools") or [] if isinstance(n, str)]
+            if said != "connected" or not tools:
+                return (
+                    "error",
+                    "Claude Code could not reach it just now. The next look tries again.",
+                    [],
+                    [],
+                )
+        else:
+            try:
+                tools = self.list_tools(found)
+            except conn.ListingFailed as exc:
+                return (
+                    "cannot_confirm_read_only",
+                    f"Its tools could not be listed ({exc}), so it cannot be confirmed "
+                    "read-only. It is not read.",
+                    [],
+                    [],
+                )
         allowed, refused = conn.keep_read_only(tools, found.name)
         if not allowed:
             return (
@@ -309,7 +352,8 @@ class Heartbeat:
         """Find connectors in my CLIs: read each CLI's settings again and list each server's
         tools. New connectors that only read start on; the owner's on/off choices stay."""
         who.require("workspace.admin")
-        found = self.discover()
+        account = self._account(who, fresh=True)
+        found = [*self.discover(), *(account or [])]
         checked = {f.id: (f, self._check(f)) for f in found}
         scout = Scout(self.ws).overview(who)
         has_folders = bool(scout.get("folders"))
@@ -335,7 +379,12 @@ class Heartbeat:
                     "present": True,
                 }
                 if row is None:
-                    on = status == "ok"
+                    # One of the account's connectors reads the person's own account (their
+                    # mail, their CRM): it starts off until they turn it on.
+                    mine = bool(f.spec.get("account"))
+                    on = status == "ok" and not mine
+                    if mine and status == "ok":
+                        line += " Off until you turn it on: it reads your own account."
                     tx.insert(
                         schema.heartbeat_connectors,
                         {
@@ -362,6 +411,8 @@ class Heartbeat:
                         {**values, "status": keep, "status_line": line},
                     )
             for cid, row in rows.items():
+                if account is None and row["found_in"] == ACCOUNT_PLACE:
+                    continue  # Claude Code could not say: leave the account's connectors be
                 if cid != "scout" and cid not in checked and row["present"]:
                     tx.update(
                         schema.heartbeat_connectors,
@@ -771,7 +822,7 @@ class Heartbeat:
         """What changed in one connector since its cursor: {items, cursor, usage}."""
         if row["how"] == "folder":
             return self._read_scout(owner, row)
-        found = self.find(row["id"])
+        found = self._find(owner, row)
         if found is None:
             raise ConnectorProblem("off", "No longer in the CLI's settings.", present=False)
         status, line, allowed, refused = self._check(found)
@@ -1715,8 +1766,13 @@ class Heartbeat:
                     "headline_at": row.get("headline_at"),
                     "updated_at": mine[0]["written_at"] if mine else None,
                     "lines": mine[:50],
+                    # Items, not writes: one item that moved two homes is one new line.
                     "new_this_beat": len(
-                        [x for x in mine if x["new_this_beat"] and x["status"] != "undone"]
+                        {
+                            (x["beat_id"], x["source_id"])
+                            for x in mine
+                            if x["new_this_beat"] and x["status"] != "undone"
+                        }
                     ),
                     "projects": listed,
                 }
