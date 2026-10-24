@@ -686,3 +686,20 @@ def test_a_task_due_date_written_another_way_is_left_out_not_refused(owner, runt
     ]
     done = beat(owner)
     assert done["changes"] + done["waits"] == 1, done["details"]
+
+
+def test_an_item_that_moved_two_homes_counts_once_as_new(owner, fake_cli):
+    found(owner)
+    fake_cli.writes = lambda item: [
+        {"kind": "progress", "project": PROJECT, "text": item["text"], "reason": "said so"},
+        {
+            "kind": "task",
+            "project": PROJECT,
+            "text": "Send Morgan the hero files.",
+            "reason": "it follows",
+        },
+    ]
+    beat(owner)
+    regions = {r["id"]: r for r in owner.ok(owner.get("/api/heartbeat/regions"))}
+    assert len(regions["state"]["lines"]) == 2  # one per write, each with its own undo
+    assert regions["state"]["new_this_beat"] == 1

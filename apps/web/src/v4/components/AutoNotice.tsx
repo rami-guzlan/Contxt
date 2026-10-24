@@ -20,7 +20,7 @@ export function AutoNotice() {
     >
       <span style={css("flex:1;min-width:220px;font:400 14px/1.5 Geist;color:var(--ink2)")}>
         <span style={css("font-weight:500;color:var(--ink)")}>Your Brain is auto-governed now.</span> Your AI keeps it current, every change
-        has an undo point and its reason, and must-holds, private notes and sealed projects still wait for you. You can go back to Governed.
+        has an undo point and its reason, and must-holds, private notes, sealed projects and proposed lessons still wait for you. You can go back to Governed.
       </span>
       <Btn kind="primarySm" disabled={set.isPending} onClick={() => set.mutate({ auto_notice: null })}>
         Keep Auto

@@ -88,15 +88,24 @@ export function HeartbeatBar() {
           <span style={css("font:500 15px Geist")}>Heartbeat · {s.paused ? "paused" : `every ${s.cadence} min`}</span>
           <span style={css("font:400 13px/1.45 Geist;color:var(--muted)")}>{barLine(s)}</span>
         </div>
-        <button
-          type="button"
-          disabled={running || s.paused}
-          title={s.paused ? "The heartbeat is paused. Resume it first." : undefined}
-          onClick={() => beat.mutate()}
-          style={css(`padding:7px 14px;border-radius:99px;background:var(--ink);color:var(--bg);border:0;font:500 12.5px Geist;cursor:pointer${running || s.paused ? ";opacity:.55" : ""}`)}
-        >
-          {running ? "Beating…" : "Beat now"}
-        </button>
+        {s.in_quiet_hours && !s.paused && !running ? (
+          <span style={css("display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap")}>
+            <span style={css("padding:7px 14px;border-radius:99px;background:var(--soft);color:var(--muted);font:500 12.5px Geist")}>Quiet hours</span>
+            <button type="button" onClick={() => beat.mutate()} style={css("border:0;background:transparent;font:500 12.5px Geist;color:var(--ink);text-decoration:underline;cursor:pointer;padding:0")}>
+              Beat once anyway
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            disabled={running || s.paused}
+            title={s.paused ? "The heartbeat is paused. Resume it first." : undefined}
+            onClick={() => beat.mutate()}
+            style={css(`padding:7px 14px;border-radius:99px;background:var(--ink);color:var(--bg);border:0;font:500 12.5px Geist;cursor:pointer${running || s.paused ? ";opacity:.55" : ""}`)}
+          >
+            {running ? "Beating…" : "Beat now"}
+          </button>
+        )}
         <button type="button" disabled={settings.isPending} onClick={() => settings.mutate({ paused: !s.paused })} style={css(PILL)}>
           {s.paused ? "Resume" : "Pause"}
         </button>
@@ -140,40 +149,78 @@ export function HeartbeatBar() {
   );
 }
 
-function LineRow({ line, full, onUndo, undoing }: { line: HbLine; full: boolean; onUndo?: () => void; undoing?: boolean }) {
-  const gone = line.status === "undone";
-  const text = cx("font:400 13.5px/1.45 Geist;flex:1;min-width:160px", line.new_this_beat && !gone && "font-weight:500", gone && "text-decoration:line-through;color:var(--muted)");
-  if (!full) {
-    return (
-      <div style={css("display:flex;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line);flex-wrap:wrap")}>
-        <span style={text}>{line.text}</span>
-        <span style={css("font:400 11.5px Geist;color:var(--muted);white-space:nowrap")}>
-          {line.connector} · {clock(line.at)}
-        </span>
-      </div>
-    );
+/** One item a beat read, with every write it made: a region shows the item once, and each write
+ * keeps its own undo (an item can move a project's progress and open a task). */
+export interface HbItem {
+  key: string;
+  first: HbLine;
+  lines: HbLine[];
+  gone: boolean;
+  fresh: boolean;
+}
+
+export function itemsOf(lines: HbLine[]): HbItem[] {
+  const out: HbItem[] = [];
+  const found = new Map<string, HbItem>();
+  for (const line of lines) {
+    const key = `${line.beat_id}|${line.source_id}`;
+    const item = found.get(key);
+    if (item) item.lines.push(line);
+    else {
+      const made = { key, first: line, lines: [line], gone: false, fresh: false };
+      found.set(key, made);
+      out.push(made);
+    }
   }
+  for (const item of out) {
+    item.gone = item.lines.every((l) => l.status === "undone");
+    item.fresh = !item.gone && item.lines.some((l) => l.new_this_beat && l.status !== "undone");
+  }
+  return out;
+}
+
+const itemText = (item: HbItem) =>
+  cx("font:400 13.5px/1.45 Geist;flex:1;min-width:160px", item.fresh && "font-weight:500", item.gone && "text-decoration:line-through;color:var(--muted)");
+
+function ItemLine({ item }: { item: HbItem }) {
   return (
-    <div style={css("display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line);flex-wrap:wrap")}>
-      <div style={css("flex:1;min-width:240px;display:flex;flex-direction:column;gap:4px")}>
-        <span style={text}>{line.text}</span>
-        <span style={css("font:400 12.5px/1.45 Geist;color:var(--muted)")}>
-          {[line.connector, line.how, line.cli_label, clock(line.at)].filter(Boolean).join(" · ")}
-        </span>
-        <span style={css("font:400 12.5px/1.45 Geist;color:var(--ink2)")}>{gone ? `Undone. ${line.wrote}` : line.wrote || "Noted, nothing written."}</span>
-        {line.reason ? <span style={css("font:400 12px/1.45 Geist;color:var(--muted)")}>Why: {line.reason}</span> : null}
-      </div>
-      {line.can_undo || gone ? (
-        <button
-          type="button"
-          aria-label={gone ? `Undone: ${line.text}` : `Undo: ${line.text}`}
-          disabled={gone || undoing}
-          onClick={onUndo}
-          style={css("border:0;background:transparent;font:500 12.5px Geist;color:var(--ink2);cursor:pointer")}
-        >
-          {gone ? "Undone" : undoing ? "Undoing…" : "Undo"}
-        </button>
-      ) : null}
+    <div style={css("display:flex;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line);flex-wrap:wrap")}>
+      <span style={itemText(item)}>{item.first.text}</span>
+      <span style={css("font:400 11.5px Geist;color:var(--muted);white-space:nowrap")}>
+        {item.first.connector} · {clock(item.first.at)}
+      </span>
+    </div>
+  );
+}
+
+function ItemRow({ item, undoing, onUndo }: { item: HbItem; undoing: string | null; onUndo: (line: HbLine) => void }) {
+  const line = item.first;
+  return (
+    <div style={css("display:flex;flex-direction:column;gap:4px;padding:12px 0;border-top:1px solid var(--line)")}>
+      <span style={itemText(item)}>{line.text}</span>
+      <span style={css("font:400 12.5px/1.45 Geist;color:var(--muted)")}>{[line.connector, line.how, line.cli_label, clock(line.at)].filter(Boolean).join(" · ")}</span>
+      {item.lines.map((w) => {
+        const gone = w.status === "undone";
+        return (
+          <div key={w.id} style={css("display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap")}>
+            <div style={css("flex:1;min-width:220px;display:flex;flex-direction:column;gap:2px")}>
+              <span style={css("font:400 12.5px/1.45 Geist;color:var(--ink2)")}>{gone ? `Undone. ${w.wrote}` : w.wrote || "Noted, nothing written."}</span>
+              {w.reason ? <span style={css("font:400 12px/1.45 Geist;color:var(--muted)")}>Why: {w.reason}</span> : null}
+            </div>
+            {w.can_undo || gone ? (
+              <button
+                type="button"
+                aria-label={gone ? `Undone: ${w.wrote || w.text}` : `Undo: ${w.wrote || w.text}`}
+                disabled={gone || undoing === w.id}
+                onClick={() => onUndo(w)}
+                style={css("border:0;background:transparent;font:500 12.5px Geist;color:var(--ink2);cursor:pointer")}
+              >
+                {gone ? "Undone" : undoing === w.id ? "Undoing…" : "Undo"}
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -213,6 +260,7 @@ export function WorldRightNow() {
                 {rows.map((rg, i) => {
                   const on = rg.id === selected;
                   const live = rg.lines.filter((l) => l.status !== "undone");
+                  const items = itemsOf(rg.lines);
                   return (
                     <div
                       key={rg.id}
@@ -238,8 +286,8 @@ export function WorldRightNow() {
                       </button>
                       {rg.lines.length ? (
                         <div style={css("display:flex;flex-direction:column")}>
-                          {rg.lines.slice(0, 3).map((l) => (
-                            <LineRow key={l.id} line={l} full={false} />
+                          {items.slice(0, 3).map((it) => (
+                            <ItemLine key={it.key} item={it} />
                           ))}
                         </div>
                       ) : null}
@@ -285,13 +333,12 @@ export function WorldRightNow() {
                   </div>
                   <div style={css("display:flex;flex-direction:column")}>
                     {sel.lines.length ? (
-                      sel.lines.map((l) => (
-                        <LineRow
-                          key={l.id}
-                          line={l}
-                          full
-                          undoing={undoing === l.id}
-                          onUndo={() => {
+                      itemsOf(sel.lines).map((it) => (
+                        <ItemRow
+                          key={it.key}
+                          item={it}
+                          undoing={undoing}
+                          onUndo={(l) => {
                             setUndoing(l.id);
                             undo.mutate(l.id, { onSettled: () => setUndoing(null) });
                           }}

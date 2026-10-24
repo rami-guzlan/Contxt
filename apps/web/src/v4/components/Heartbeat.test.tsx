@@ -114,7 +114,7 @@ const regions = [
     headline: "The website hero is settled.",
     headline_at: now,
     updated_at: now,
-    lines: [line(), line({ id: "hbl_2", text: "Pricing sheet v4 edited", status: "held", held: true, can_undo: false, reason: "", wrote: "Held back: must-hold: Never share pricing until it is final.", new_this_beat: false })],
+    lines: [line(), line({ id: "hbl_2", source_id: "connector:claude:drive:pricing", text: "Pricing sheet v4 edited", status: "held", held: true, can_undo: false, reason: "", wrote: "Held back: must-hold: Never share pricing until it is final.", new_this_beat: false })],
     new_this_beat: 1,
     projects: [{ id: "pj_web", title: "Website Redesign", status: "Hero option B approved", at: now, from: ["mail"] }],
   },
@@ -164,6 +164,18 @@ describe("The heartbeat bar", () => {
     if (title) expect(screen.getByText(title)).toBeInTheDocument();
   });
 
+  it("in quiet hours shows Beat now as off, with a way to beat once anyway", async () => {
+    const calls = api({
+      "GET /api/heartbeat/status": status({ state: "quiet", in_quiet_hours: true, line: "Quiet hours (7pm to 7am). The next beat waits until they end." }),
+      "POST /api/heartbeat/beat": { beat_id: "beat_2", status: "running" },
+    });
+    renderAt(<HeartbeatBar />);
+    expect(await screen.findByText("Quiet hours")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Beat now" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Beat once anyway" }));
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/heartbeat/beat")).toBe(true);
+  });
+
   it("lights the connector being read while a beat runs", async () => {
     api({ "GET /api/heartbeat/status": status({ running: { beat_id: "beat_2", reading: "claude:mail", read: [] } }) });
     renderAt(<HeartbeatBar />);
@@ -192,8 +204,22 @@ describe("The world right now", () => {
     expect(within(every).getByText("Wrote: Website Redesign › latest progress")).toBeInTheDocument();
     expect(within(every).getByText("Held back: must-hold: Never share pricing until it is final.")).toBeInTheDocument();
     expect(within(every).getByText("Why: Morgan approved it by email.")).toBeInTheDocument();
-    await userEvent.click(within(every).getByRole("button", { name: "Undo: Morgan approved hero option B" }));
+    await userEvent.click(within(every).getByRole("button", { name: "Undo: Wrote: Website Redesign › latest progress" }));
     expect(calls.some((c) => c.method === "POST" && c.path === "/api/heartbeat/lines/hbl_1/undo")).toBe(true);
+  });
+
+  it("shows an item that moved two homes once, with an Undo for each write", async () => {
+    const task = line({ id: "hbl_3", wrote: "Wrote: Website Redesign › task: Send Morgan the files", reason: "It follows." });
+    const two = [{ ...regions[0], lines: [line(), task], new_this_beat: 1 }];
+    const calls = api({ "GET /api/heartbeat/regions": two, "POST /api/heartbeat/lines/hbl_3/undo": { ...task, status: "undone", line: "Undone." } });
+    renderAt(<WorldRightNow />);
+    expect(await screen.findAllByText("Morgan approved hero option B")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: /State/ }));
+    const every = screen.getByRole("region", { name: "State: every line" });
+    expect(within(every).getAllByText("Morgan approved hero option B")).toHaveLength(1);
+    expect(within(every).getByText("Wrote: Website Redesign › latest progress")).toBeInTheDocument();
+    await userEvent.click(within(every).getByRole("button", { name: "Undo: Wrote: Website Redesign › task: Send Morgan the files" }));
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/heartbeat/lines/hbl_3/undo")).toBe(true);
   });
 
   it("is honest when the Brain has no regions", async () => {
