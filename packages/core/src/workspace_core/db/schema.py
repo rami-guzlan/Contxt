@@ -465,3 +465,124 @@ goal_boards = sa.Table(
     sa.Column("suggestions", sa.JSON, nullable=False),
     *_record(archivable=False),
 )
+
+# The heartbeat (apps/server heartbeat): the connectors it reads, read-only, through the CLIs on
+# this computer. Only names, kinds and the read-only tool names are kept: never a credential,
+# an environment value or a token from the CLI's own configuration.
+heartbeat_connectors = sa.Table(
+    "heartbeat_connectors",
+    metadata,
+    sa.Column("id", sa.String(240), primary_key=True),  # <cli>:<server name>, or scout
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("name", sa.String(200), nullable=False),
+    sa.Column("cli", sa.String(40), nullable=False),  # claude | codex | gnomon
+    sa.Column("how", sa.String(16), nullable=False),  # mcp | computer | folder
+    sa.Column("cadence_minutes", sa.Integer),  # its own, when slower than the heartbeat's
+    sa.Column("feeds", sa.JSON, nullable=False),  # region ids
+    sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.false()),
+    sa.Column("cursor", sa.Text),
+    sa.Column("last_read_at", TS),
+    sa.Column("last_items", sa.Integer, nullable=False, server_default="0"),
+    # ok | off | unhealthy_sign_in | provider_limit | cannot_confirm_read_only | error
+    sa.Column("status", sa.String(32), nullable=False, server_default="off"),
+    sa.Column("status_line", sa.Text, nullable=False, server_default=""),
+    sa.Column("tools", sa.JSON, nullable=False),  # the read-only tools, by name
+    sa.Column("found_in", sa.String(400), nullable=False, server_default=""),
+    sa.Column("present", sa.Boolean, nullable=False, server_default=sa.true()),
+    *_record(archivable=False),
+)
+
+# One beat: what it read, what it changed, what waits and what it held back, and what it used.
+heartbeat_beats = sa.Table(
+    "heartbeat_beats",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("status", sa.String(16), nullable=False, index=True),  # running | done | failed
+    sa.Column("trigger", sa.String(16), nullable=False),  # now | schedule | ai
+    sa.Column("started_at", TS, nullable=False, index=True),
+    sa.Column("finished_at", TS),
+    sa.Column("connectors", sa.JSON, nullable=False),  # [{id, name, items, status}]
+    sa.Column("items", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("changes", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("waits", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("held", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("tokens", sa.Integer),  # None: no CLI said what it used
+    sa.Column("tokens_unknown", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("duration_ms", sa.Integer),
+    sa.Column("errors", sa.JSON, nullable=False),
+    sa.Column("details", sa.JSON, nullable=False),  # plain lines: what it did
+    *_record(archivable=False),
+)
+
+# What a beat wrote into a region: one line per write (or per item it only noted), with its
+# source, the write and the proposal or undo point that holds it.
+heartbeat_lines = sa.Table(
+    "heartbeat_lines",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("beat_id", ID, sa.ForeignKey("heartbeat_beats.id"), nullable=False, index=True),
+    sa.Column("region", sa.String(120), nullable=False, index=True),
+    sa.Column("project", sa.String(200)),
+    sa.Column("text", sa.Text, nullable=False),
+    sa.Column("connector_id", sa.String(240), nullable=False),
+    sa.Column("cli", sa.String(40), nullable=False),
+    sa.Column("item_id", sa.String(400), nullable=False),  # connector:<id>:<item id>
+    sa.Column("item_at", TS),
+    sa.Column("wrote", sa.Text, nullable=False, server_default=""),
+    sa.Column("write", sa.JSON, nullable=False),
+    sa.Column("reason", sa.Text, nullable=False, server_default=""),
+    # noted | applied | waiting | held | refused | undone
+    sa.Column("status", sa.String(16), nullable=False),
+    sa.Column("proposal_id", sa.String(200)),
+    sa.Column("checkpoint_id", sa.String(200)),
+    sa.Column("fingerprint", sa.String(64), nullable=False, server_default=""),
+    *_record(archivable=False),
+)
+
+# The items each connector has shown, by id and content: the same item twice is not new.
+heartbeat_seen = sa.Table(
+    "heartbeat_seen",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("connector_id", sa.String(240), nullable=False, index=True),
+    sa.Column("item_id", sa.String(400), nullable=False),
+    sa.Column("digest", sa.String(64), nullable=False),
+    sa.Column("beat_id", ID, nullable=False),
+    sa.Column("seen_at", TS, nullable=False),
+    sa.UniqueConstraint("connector_id", "item_id", "digest"),
+)
+
+# Each region's live headline and its projects' status lines.
+heartbeat_regions = sa.Table(
+    "heartbeat_regions",
+    metadata,
+    sa.Column("id", sa.String(120), primary_key=True),  # the Brain area's id
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("headline", sa.Text, nullable=False, server_default=""),
+    sa.Column("headline_at", TS),
+    sa.Column("projects", sa.JSON, nullable=False),  # {project id: {status, at}}
+    *_record(archivable=False),
+)
+
+# Writes the owner undid: the next beat does not make them again.
+heartbeat_suppressions = sa.Table(
+    "heartbeat_suppressions",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("fingerprint", sa.String(64), nullable=False, unique=True),
+    sa.Column("line_id", ID, nullable=False),
+    sa.Column("created_at", TS, nullable=False),
+)
+
+# One beat at a time per Brain: the holder and when its hold runs out (a stale lock expires).
+heartbeat_locks = sa.Table(
+    "heartbeat_locks",
+    metadata,
+    _id(),  # the workspace's id: one Brain each
+    sa.Column("beat_id", ID, nullable=False),
+    sa.Column("expires_at", TS, nullable=False),
+)
