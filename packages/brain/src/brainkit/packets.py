@@ -25,7 +25,7 @@ import re
 import secrets
 from dataclasses import dataclass, field
 
-from . import capture, dissent, util
+from . import capture, dissent, levels, util
 
 BODIES = {"micro": 2, "standard": 3, "deep": 5}  # notes in full before the rest come in short
 POINTER_WORDS = 40   # the closest sentence of a note sent in short, at most
@@ -478,7 +478,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             text = note.must_text.rstrip(" .")
             flag = (f" Stale ({entry.stale}): it still applies; say it needs a check."
                     if entry.stale else "")
-            lines.append(f"- {text} (`{note.id}`).{flag}")
+            lines.append(f"- {text} (`{note.id}`) {levels.tag(note)}.{flag}")
             decisions.append(f"{note.id}: must hold, {entry.why}")
         if overflow:
             names = "; ".join(f"{m.note.title} (`{m.note.id}`)" for m in overflow)
@@ -545,8 +545,15 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         if detail.get("disputed"):
             flags += " (disputed)"
         if note.meta.get("title"):
-            return f"### {note.title}{flags}\n`{note.id}`"
-        return f"### {note.id}{flags}"
+            return f"### {note.title}{flags}   {levels.tag(note)}\n`{note.id}`"
+        return f"### {note.id}{flags}   {levels.tag(note)}"
+
+    def tagged(note) -> str:
+        """A note in short, its level in braces after its name (levels.py)."""
+        first, _, rest = shorts[note.id].partition("\n")
+        head, sep, tail = first.partition("`)")
+        first = f"{head}{sep} {levels.tag(note)}{tail}" if sep else f"{first} {levels.tag(note)}"
+        return first + (("\n" + rest) if rest else "")
 
     # A disputed note brings its other view into planning, strategy and decision work; for a
     # lookup it stays a flag (dissent.py).
@@ -562,7 +569,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             if note.id in shorts:
                 # Rendering must honor the form that fit: do not leak an unbudgeted full
                 # body or repeat the rule under ordinary knowledge. Its authority stays here.
-                lines += [shorts[note.id], "",
+                lines += [tagged(note), "",
                           f'Open the full rule with notes_get(id="{note.id}") before applying it.', ""]
             else:
                 lines += [heading(note), ""] + body(note)
@@ -586,7 +593,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         if in_short:
             lines += ["### In short", "",
                       'Open one with notes_get(id="...") when the task needs all of it.', ""]
-            lines += [shorts[n.id] for n in in_short] + [""]
+            lines += [tagged(n) for n in in_short] + [""]
     if unfit:
         lines += ["## Did not fit", "",
                   "Chosen for this request, but past this brief's budget even in short"
@@ -594,7 +601,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
                      else ", so not included here."), ""]
         for note in unfit:
             name = note.title if note.meta.get("title") else note.id
-            lines.append(f"- {name} (`{note.id}`, {note.route_key})")
+            lines.append(f"- {name} (`{note.id}`, {note.route_key}) {levels.tag(note)}")
         lines.append("")
     # Older values of what a note above gives as current: named, never handed over as if
     # they still held.
