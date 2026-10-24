@@ -95,6 +95,8 @@ class Runtime:
         if self.closed:
             return
         self.closed = True
+        if self.heartbeat is not None and self.heartbeat.n8n_host is not None:
+            self.heartbeat.n8n_host.close()  # Gnomon's own n8n stops with it
         self.testing.close()
         self.runners.close()
         self.ws.close()
@@ -175,8 +177,19 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
             ws,
             builtin=BuiltinChecks(settings.data_dir, ws, adapter, differences),
         ),
-        heartbeat=Heartbeat(ws, runners),
+        heartbeat=_heartbeat(ws, runners, settings),
     )
+
+
+def _heartbeat(ws: Workspace, runners: Runners, settings: Settings) -> Heartbeat:
+    """The heartbeat, with Gnomon's own n8n (in the data folder, when the owner hosts one) and
+    the address n8n on this computer posts what it read to."""
+    from .heartbeat.n8n_host import N8nHost
+
+    beat = Heartbeat(ws, runners)
+    beat.n8n_host = N8nHost(settings.data_dir)
+    beat.inbox_url = local_url(settings)
+    return beat
 
 
 def create_app(settings: Settings | None = None, *, runtime: Runtime | None = None) -> FastAPI:

@@ -14,7 +14,7 @@ export interface HbConnector {
   name: string;
   cli: string;
   cli_label: string;
-  how: "mcp" | "computer" | "folder";
+  how: "mcp" | "computer" | "folder" | "n8n";
   how_label: string;
   cadence_minutes: number | null;
   feeds: string[];
@@ -26,6 +26,8 @@ export interface HbConnector {
   tools: string[];
   found_in: string;
   present: boolean;
+  /** An n8n read: the fix the knowledge agent suggested after its workflow failed, waiting. */
+  fix?: string | null;
 }
 
 export interface HbBeat {
@@ -223,4 +225,52 @@ export function costLine(status: HbStatus | undefined): string {
   const plan = ` on your ${status?.cli_label ?? "CLI"} plan`;
   if (!said) return `The CLI did not say what the last ${cost.beats} beats used`;
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}${plan}`;
+}
+
+export interface N8nHostStatus {
+  installed: boolean;
+  installing?: boolean;
+  running: boolean;
+  url?: string;
+  version?: string;
+  line: string;
+}
+
+/** Gnomon's own n8n on this computer (re-read every few seconds while it installs). */
+export const useN8nHost = () =>
+  useQuery({
+    queryKey: ["heartbeat", "n8n"],
+    queryFn: () => get<N8nHostStatus>("/api/heartbeat/n8n/host"),
+    refetchInterval: (q) => (q.state.data?.installing ? 3000 : false),
+  });
+
+export function useN8nHostAction() {
+  const refresh = useHeartbeatRefresh();
+  return useMutation({
+    mutationFn: (action: "install" | "start" | "stop") => post<N8nHostStatus>("/api/heartbeat/n8n/host", { action }),
+    onSuccess: () => refresh(),
+  });
+}
+
+/** The connector search across every CLI, then n8n workflows suggested for the apps found. */
+export function useSuggestN8n() {
+  const refresh = useHeartbeatRefresh();
+  return useMutation({
+    mutationFn: () => post<{ suggested: string[]; already: string[]; without_workflow: string[]; line: string }>("/api/heartbeat/n8n/suggest"),
+    onSuccess: () => refresh(),
+  });
+}
+
+/** Ask the knowledge agent for a fix to a failed n8n read, or keep or skip the one it made. */
+export function useN8nFix() {
+  const refresh = useHeartbeatRefresh();
+  const suggest = useMutation({
+    mutationFn: (id: string) => post<HbConnector>(`/api/heartbeat/n8n/${encodeURIComponent(id)}/fix`),
+    onSuccess: () => refresh(),
+  });
+  const decide = useMutation({
+    mutationFn: ({ id, keep }: { id: string; keep: boolean }) => put<HbConnector>(`/api/heartbeat/n8n/${encodeURIComponent(id)}/fix`, { keep }),
+    onSuccess: () => refresh(),
+  });
+  return { suggest, decide };
 }

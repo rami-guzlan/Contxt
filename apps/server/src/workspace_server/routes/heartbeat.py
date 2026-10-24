@@ -150,3 +150,56 @@ async def inbox(connector_id: str, request: Request) -> dict[str, Any]:
         raise ValidationFailed("Post the items as JSON.") from exc
     secret = request.headers.get(SECRET_HEADER, "")
     return _heartbeat(request).receive(connector_id, secret, body)
+
+
+class N8nHostIn(Body):
+    action: str = Field(pattern="^(install|start|stop)$")
+
+
+@router.get("/n8n/host")
+def n8n_host(request: Request, who: Who) -> dict[str, Any]:
+    """Gnomon's own n8n: installed, installing, running, where."""
+    return _heartbeat(request).n8n_status(who)
+
+
+@router.post("/n8n/host")
+def n8n_host_act(body: N8nHostIn, request: Request, who: Who) -> dict[str, Any]:
+    """Host n8n here: install it (once, in the background), start it or stop it."""
+    return _heartbeat(request).n8n_act(who, body.action)
+
+
+@router.post("/n8n/suggest")
+def suggest_n8n(request: Request, who: Who) -> dict[str, Any]:
+    """Search every connected CLI for connectors, then suggest an n8n workflow for each app
+    Gnomon has one for (off until signed in to in n8n and turned on)."""
+    return _heartbeat(request).suggest_n8n(who)
+
+
+@router.post("/n8n/errors")
+async def n8n_errors(request: Request) -> dict[str, Any]:
+    """Where Gnomon's error-report workflow in its n8n says one of its workflows failed (with
+    that workflow's own secret, from this computer only)."""
+    host = request.client.host if request.client else ""
+    if host not in LOCAL:
+        raise PermissionDenied("Only an n8n on this computer may post here.")
+    try:
+        body = await request.json()
+    except ValueError as exc:
+        raise ValidationFailed("Post the report as JSON.") from exc
+    return _heartbeat(request).n8n_failed(request.headers.get(SECRET_HEADER, ""), body)
+
+
+class FixIn(Body):
+    keep: bool
+
+
+@router.post("/n8n/{connector_id}/fix")
+def suggest_fix(connector_id: str, request: Request, who: Who) -> dict[str, Any]:
+    """The knowledge agent suggests a fix for a failed n8n read (kept only with your yes)."""
+    return _heartbeat(request).suggest_fix(who, connector_id)
+
+
+@router.put("/n8n/{connector_id}/fix")
+def decide_fix(connector_id: str, body: FixIn, request: Request, who: Who) -> dict[str, Any]:
+    """Keep the suggested fix, or skip it."""
+    return _heartbeat(request).decide_fix(who, connector_id, body.keep)

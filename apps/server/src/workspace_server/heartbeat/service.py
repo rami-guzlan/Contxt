@@ -49,6 +49,7 @@ from ..runners import RUNNERS, Runners, usage_of
 from ..scout import Scout
 from . import connectors as conn
 from . import n8n
+from . import n8n_templates as templates
 
 log = logging.getLogger(__name__)
 CLI_CADENCE = 60  # minutes between reads of a new connector that reads through a CLI
@@ -64,6 +65,7 @@ CLI_LABELS = {
     "codex": "Codex CLI",
     "gemini": "Gemini CLI",
     "gnomon": "Gnomon",
+    "n8n": "n8n",
 }
 HOW_LABELS = {"mcp": "MCP", "computer": "Computer use", "folder": "Folder", "n8n": "n8n"}
 TOKENLESS = ("folder", "n8n")  # reads that cost no tokens: Scout, and n8n workflows
@@ -153,6 +155,10 @@ class Heartbeat:
         self.discover = conn.discover
         self.find = conn.find
         self._accounts: tuple[float, list[conn.Found]] | None = None
+        # Gnomon's own n8n, when it hosts one (open_runtime sets it), and where n8n on this
+        # computer reaches Gnomon's inbox.
+        self.n8n_host: Any = None
+        self.inbox_url = "http://127.0.0.1:8787"
 
     def _account(self, who: Principal, *, fresh: bool = False) -> list[conn.Found] | None:
         """The Claude account's connectors (claude.ai), as Claude Code lists them when it
@@ -297,6 +303,7 @@ class Heartbeat:
             "present": bool(row["present"]),
             "workflow_id": row.get("workflow_id"),
             "has_workflow": bool(row.get("workflow")),
+            "fix": (row.get("workflow_fix") or {}).get("why") if row.get("workflow_fix") else None,
         }
 
     def connectors(self, who: Principal) -> list[dict[str, Any]]:
@@ -395,7 +402,12 @@ class Heartbeat:
                     # One of the account's connectors reads the person's own account (their
                     # mail, their CRM): it starts off until they turn it on.
                     mine = bool(f.spec.get("account"))
-                    on = status == "ok" and not mine
+                    on = status == "ok" and not mine and f.cli != "gemini"
+                    if f.cli == "gemini":
+                        line = (
+                            "Found in Gemini CLI. Gnomon does not read through Gemini yet; "
+                            "it can suggest an n8n workflow for it."
+                        )
                     if mine and status == "ok":
                         line += " Off until you turn it on: it reads your own account."
                     tx.insert(
@@ -518,6 +530,10 @@ class Heartbeat:
             if row is None or row["workspace_id"] != tx.workspace_id:
                 raise NotFound(f"No connector {connector_id}.", id=connector_id)
             values: dict[str, Any] = {}
+            if enabled and row["cli"] == "gemini":
+                raise Conflict(
+                    "Gnomon does not read through Gemini yet. Suggest an n8n workflow for it."
+                )
             if enabled and row["how"] == "n8n":
                 problems = n8n.check_workflow(row["workflow"], row["id"])
                 if problems:
@@ -547,6 +563,8 @@ class Heartbeat:
                         field="cadence_minutes",
                     )
                 values["cadence_minutes"] = own or None
+            if row["how"] == "n8n" and enabled is not None:
+                values.update(self._to_n8n(row, bool(enabled)))
             if values:
                 row = tx.update(schema.heartbeat_connectors, row, values)
                 tx.emit(
@@ -568,6 +586,7 @@ class Heartbeat:
         workflow: dict[str, Any],
         feeds: list[str] | None = None,
         connector_id: str | None = None,
+        line: str | None = None,
     ) -> dict[str, Any]:
         """A connector read by an n8n workflow on this computer, with the person's own n8n
         credentials. Its workflow is checked by code to only read (and to post to this
@@ -593,7 +612,8 @@ class Heartbeat:
             "feeds": [str(f) for f in feeds or []][:20],
             "enabled": False,
             "status": "off",
-            "status_line": "Waits for your yes: it reads with your n8n sign-ins, read-only.",
+            "status_line": line
+            or "Waits for your yes: it reads with your n8n sign-ins, read-only.",
             "tools": [],
             "found_in": "n8n on this computer",
             "present": True,
@@ -632,6 +652,196 @@ class Heartbeat:
             )
         return {"connector": self._connector_view(row), "secret": secret}
 
+    def _to_n8n(self, row: dict[str, Any], active: bool) -> dict[str, Any]:
+        """Into Gnomon's own n8n, when it hosts one: the workflow, aimed at this connector's
+        inbox with a fresh secret (n8n keeps it; Gnomon its hash), active or not. Without a
+        hosted n8n, nothing changes there (the owner runs the workflow in their own)."""
+        host = self.n8n_host
+        if host is None or not host.installed() or not row.get("workflow"):
+            return {}
+        secret, kept = n8n.new_secret()
+        copy = n8n.prepare(row["workflow"], row["id"], self.inbox_url, secret)
+        try:
+            if active and not host.error_secret_hash():
+                # Once: Gnomon's own workflow that reports a failure of any of its workflows.
+                said, said_hash = n8n.new_secret()
+                host.put_workflow(n8n.error_reporter(self.inbox_url, said), active=False)
+                host.keep_error_secret_hash(said_hash)
+            workflow_id = host.put_workflow(copy, active=active)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise Conflict(f"n8n could not take the workflow: {exc}") from exc
+        return {"workflow_id": workflow_id, "secret_hash": kept}
+
+    def n8n_status(self, who: Principal) -> dict[str, Any]:
+        who.require("brain.read")
+        if self.n8n_host is None:
+            return {"installed": False, "running": False, "line": "n8n is not available here."}
+        status: dict[str, Any] = self.n8n_host.status()
+        return status
+
+    def n8n_act(self, who: Principal, action: str) -> dict[str, Any]:
+        """Host n8n here: install it, start it or stop it."""
+        who.require("workspace.admin")
+        host = self.n8n_host
+        if host is None:
+            raise Conflict("n8n is not available here.")
+        try:
+            if action == "install":
+                result: dict[str, Any] = host.install()
+            elif action == "start":
+                result = host.start()
+                host.remember(True)
+            elif action == "stop":
+                result = host.stop()
+                host.remember(False)
+            else:
+                raise ValidationFailed("Install, start or stop.", field="action")
+        except RuntimeError as exc:
+            raise Conflict(str(exc)) from exc
+        return result
+
+    def suggest_n8n(self, who: Principal) -> dict[str, Any]:
+        """The connector search, then an n8n workflow suggested for each app it found that
+        Gnomon has one for. A suggestion is off until the person signs in to that app in n8n
+        and turns it on here; one already suggested is left as it is."""
+        who.require("workspace.admin")
+        self.rescan(who)
+        rows = self._connectors()
+        have = {r["id"] for r in rows if r["how"] == "n8n"}
+        suggested: list[str] = []
+        already: list[str] = []
+        without: set[str] = set()
+        apps: set[str] = set()
+        for row in rows:
+            if row["how"] in TOKENLESS:
+                continue
+            app = templates.app_of(row["name"])
+            if app is None:
+                without.add(row["name"])
+                continue
+            label = templates.label_of(app)
+            if app in apps:
+                continue
+            apps.add(app)
+            cid = f"n8n:{app}"
+            if cid in have:
+                already.append(label)
+                continue
+            where = CLI_LABELS.get(row["cli"], row["cli"])
+            self.add_n8n(
+                who,
+                name=f"{label} through n8n",
+                workflow=templates.workflow_for(app, cid, self.inbox_url),
+                feeds=list(row["feeds"] or []),
+                connector_id=cid,
+                line=(
+                    f"Suggested from {row['name']} in {where}. In n8n, sign in to {label} on "
+                    f"its Read {label} node, then turn it on here."
+                ),
+            )
+            suggested.append(label)
+        said = (
+            f"Suggested {len(suggested)} n8n workflow{'s' if len(suggested) != 1 else ''}: "
+            f"{', '.join(suggested)}."
+            if suggested
+            else "No new workflow to suggest."
+        )
+        if without:
+            said += f" No workflow yet for {', '.join(sorted(without))}."
+        return {
+            "suggested": suggested,
+            "already": already,
+            "without_workflow": sorted(without),
+            "line": said,
+        }
+
+    # ---------------------------------------------------------------- upkeep of n8n reads
+
+    def n8n_failed(self, secret: str, body: Any) -> dict[str, Any]:
+        """Gnomon's error-report workflow says one of its workflows failed: that connector
+        shows the error, until it works again (a post to its inbox) or the owner fixes it."""
+        host = self.n8n_host
+        if host is None or not n8n.secret_ok(secret, host.error_secret_hash()):
+            raise PermissionDenied("Not a report this secret may send.")
+        workflow_id, why = n8n.failure_of(body)
+        with self.ws.rt.write() as tx:
+            rows = tx.rows(
+                sa.select(schema.heartbeat_connectors).where(
+                    schema.heartbeat_connectors.c.workspace_id == tx.workspace_id,
+                    schema.heartbeat_connectors.c.workflow_id == workflow_id,
+                )
+            )
+            for row in rows:
+                tx.update(
+                    schema.heartbeat_connectors,
+                    row,
+                    {
+                        "status": "error",
+                        "status_line": f"n8n: {why}. Fix it in n8n, or ask for a suggested fix.",
+                    },
+                )
+        return {"connectors": [r["id"] for r in rows]}
+
+    def suggest_fix(self, who: Principal, connector_id: str) -> dict[str, Any]:
+        """The knowledge agent drafts a fix for an n8n read whose workflow failed: checked to
+        only read, then waiting for the owner to keep or skip it (one model call, on request)."""
+        who.require("workspace.admin")
+        row = self._n8n_row(connector_id)
+        prompt = (
+            "An n8n workflow that reads an app for Gnomon failed. Fix it so it works, changing "
+            "as little as you can. It must stay read-only: app nodes may only use their read "
+            "operations, no Code or Function node, and its one HTTP request posts to the same "
+            'inbox. Reply with one JSON object only: {"why": "<one plain sentence on what '
+            'you changed>", "workflow": <the whole workflow>}.\n'
+            f"What n8n said: {row['status_line']}\n" + json.dumps(row["workflow"])
+        )
+        answer, _spent = self._ask(who, self.cli(), prompt)
+        try:
+            found = json_answer(answer)
+        except ValueError as exc:
+            raise Conflict("The suggested fix could not be read. Try again.") from exc
+        workflow = found.get("workflow")
+        problems = n8n.check_workflow(workflow, connector_id)
+        if problems:
+            raise Conflict(
+                "The suggested fix would not only read, so it was dropped: " + " ".join(problems)
+            )
+        fix = {"workflow": workflow, "why": _flat(found.get("why"), 300) or "A suggested fix."}
+        with self.ws.rt.write() as tx:
+            current = tx.one(schema.heartbeat_connectors, connector_id, "connector")
+            current = tx.update(schema.heartbeat_connectors, current, {"workflow_fix": fix})
+        return self._connector_view(current)
+
+    def decide_fix(self, who: Principal, connector_id: str, keep: bool) -> dict[str, Any]:
+        """Keep the suggested fix (checked again; into n8n if the read is on) or skip it."""
+        who.require("workspace.admin")
+        row = self._n8n_row(connector_id)
+        fix = row.get("workflow_fix")
+        if not fix:
+            raise Conflict("No suggested fix waits for this connector.")
+        values: dict[str, Any] = {"workflow_fix": None}
+        if keep:
+            problems = n8n.check_workflow(fix["workflow"], connector_id)
+            if problems:
+                raise Conflict("That fix does not only read: " + " ".join(problems))
+            values.update(
+                workflow=fix["workflow"], status_line="Fixed. It reads again on its next run."
+            )
+            if row["enabled"]:
+                values.update(self._to_n8n({**row, "workflow": fix["workflow"]}, True))
+                values["status"] = "ok"
+        with self.ws.rt.write() as tx:
+            current = tx.one(schema.heartbeat_connectors, connector_id, "connector")
+            current = tx.update(schema.heartbeat_connectors, current, values)
+        return self._connector_view(current)
+
+    def _n8n_row(self, connector_id: str) -> dict[str, Any]:
+        with self.ws.rt.read() as tx:
+            row = tx.get(schema.heartbeat_connectors, connector_id)
+        if row is None or row["how"] != "n8n":
+            raise NotFound(f"No n8n read {connector_id}.", id=connector_id)
+        return dict(row)
+
     def receive(self, connector_id: str, secret: str, body: Any) -> dict[str, Any]:
         """What an n8n workflow posted, kept for the next beat. Only an approved n8n read,
         with its own secret, may post."""
@@ -642,6 +852,12 @@ class Heartbeat:
                 raise PermissionDenied("Not a connector this secret may post to.")
             if not row["enabled"]:
                 raise Conflict(f"{row['name']} is off: nothing it posts is kept.")
+            if row["status"] == "error":
+                tx.update(
+                    schema.heartbeat_connectors,
+                    row,
+                    {"status": "ok", "status_line": "Working again: n8n posted what it read."},
+                )
             for item in items:
                 tx.insert(
                     schema.heartbeat_inbox,

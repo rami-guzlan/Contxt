@@ -179,9 +179,39 @@ def codex_servers() -> list[str]:
     return [f.name for f in _codex()]
 
 
+def gemini_config() -> str:
+    folder = os.environ.get("GEMINI_CLI_HOME") or os.path.join(_home(), ".gemini")
+    return os.path.join(folder, "settings.json")
+
+
+def _gemini() -> list[Found]:
+    """Gemini CLI's MCP servers (`~/.gemini/settings.json`, `mcpServers`): found for the
+    connector search and its n8n suggestions; Gnomon does not read through Gemini yet."""
+    try:
+        with open(gemini_config(), encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    servers = data.get("mcpServers") if isinstance(data, dict) else None
+    out = []
+    for name, spec in (servers or {}).items() if isinstance(servers, dict) else []:
+        if isinstance(spec, dict) and str(name).lower() not in OWN_SERVERS:
+            out.append(
+                Found(
+                    f"gemini:{name}",
+                    str(name),
+                    "gemini",
+                    _how(name, spec),
+                    "Gemini CLI settings",
+                    dict(spec),
+                )
+            )
+    return out
+
+
 def discover() -> list[Found]:
     """Every MCP server the person's CLIs are set up with, as each CLI's own file says now."""
-    return [*_claude(), *_codex()]
+    return [*_claude(), *_codex(), *_gemini()]
 
 
 def find(connector_id: str) -> Found | None:

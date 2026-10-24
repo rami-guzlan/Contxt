@@ -356,6 +356,10 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
     checker = None if args.no_worker else CheckWorker(runtime.ws, runtime.runners)
     challenger = None if args.no_worker else ChallengerWorker(runtime.ws, runtime.runners)
     librarian = None if args.no_worker else LibraryWorker(runtime.ws, runtime.library)
+    # Gnomon's own n8n starts with it when the owner left it running.
+    hosted = runtime.heartbeat.n8n_host if runtime.heartbeat is not None else None
+    if not args.no_worker and hosted is not None and hosted.starts_with_gnomon():
+        threading.Thread(target=hosted.start, daemon=True).start()
     # The heartbeat beats while the computer (and the server) is on.
     beats = (
         None if args.no_worker or runtime.heartbeat is None else HeartbeatWorker(runtime.heartbeat)
