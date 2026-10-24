@@ -501,8 +501,36 @@ class BrainPort(Protocol):
 
     def forget_learned(self, rule_id: str) -> dict[str, Any]: ...
 
-    def brain_map(self, *, area: str | None = None, page: int = 1) -> dict[str, Any]:
-        """The whole Brain map, paged (brainkit brainmap.py)."""
+    def brain_map(
+        self, *, area: str | None = None, page: int = 1, tier: str | None = None
+    ) -> dict[str, Any]:
+        """The whole Brain map, paged, or one tier whole (brainkit brainmap.py)."""
+        ...
+
+    def map_view(self) -> dict[str, Any]:
+        """The map card: every tier, the short map as sent, what it cut, sealed projects."""
+        ...
+
+    def sections(self, item_id: str) -> dict[str, Any]:
+        """Every section address in one note, lesson or file."""
+        ...
+
+    def open_address(self, address: str) -> dict[str, Any]:
+        """One part by its address (note-id#heading, file#section, lore_id#story)."""
+        ...
+
+    def lore(self) -> list[dict[str, Any]]:
+        """Every lesson, with its level and address."""
+        ...
+
+    def lesson(self, lesson_id: str) -> dict[str, Any]: ...
+
+    def propose_lesson(self, **fields: Any) -> dict[str, Any]:
+        """A lesson, proposed through governance like any other note."""
+        ...
+
+    def sessions_search(self, query: str, *, limit: int = 10) -> list[dict[str, Any]]:
+        """Past conversations whose receipts match: id, date, app, what it was given."""
         ...
 
     def correct(
@@ -1072,8 +1100,45 @@ class NoBrain:
     def forget_learned(self, rule_id: str) -> dict[str, Any]:
         return {"status": "missing"}
 
-    def brain_map(self, *, area: str | None = None, page: int = 1) -> dict[str, Any]:
+    def brain_map(
+        self, *, area: str | None = None, page: int = 1, tier: str | None = None
+    ) -> dict[str, Any]:
         return {"lines": [], "page": 1, "pages": 1, "levels": {}}
+
+    def map_view(self) -> dict[str, Any]:
+        return {
+            "areas": [],
+            "projects": [],
+            "sheets": [],
+            "must_holds": [],
+            "lore": [],
+            "levels": {},
+            "sealed": 0,
+            "text": "",
+            "cut": {},
+            "tokens": 0,
+            "limit": 250,
+            "caps": {},
+            "fingerprint": "",
+        }
+
+    def sections(self, item_id: str) -> dict[str, Any]:
+        raise NotFound("This workspace has no Brain.")
+
+    def open_address(self, address: str) -> dict[str, Any]:
+        raise NotFound("This workspace has no Brain.")
+
+    def lore(self) -> list[dict[str, Any]]:
+        return []
+
+    def lesson(self, lesson_id: str) -> dict[str, Any]:
+        raise NotFound("This workspace has no Brain.")
+
+    def propose_lesson(self, **fields: Any) -> dict[str, Any]:
+        return {"status": "unavailable"}
+
+    def sessions_search(self, query: str, *, limit: int = 10) -> list[dict[str, Any]]:
+        return []
 
     def correct(
         self, packet_id: str, kind: str, *, item: str = "", note: str = ""

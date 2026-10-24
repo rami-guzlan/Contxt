@@ -359,6 +359,9 @@ export interface EntryUses {
 export interface InventoryItem {
   type: "note" | "skill" | "reference";
   id: string;
+  /** How far it has come (v4): canon, confirmed, kept, tentative. Notes only. */
+  level?: string;
+  level_label?: string;
   title: string;
   summary: string;
   kind: string;

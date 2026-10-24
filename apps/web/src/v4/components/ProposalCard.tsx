@@ -71,6 +71,13 @@ export function ProposalCard({ p, onDone, onBrain }: { p: Proposal; onDone?: (o:
         )}
         <span style={css("font:400 12px Geist;color:var(--muted);margin-left:auto")}>destination {p.destination || p.route_key}</span>
       </div>
+      {p.target?.kind === "lesson" ? (
+        <div style={css("display:flex;align-items:center;gap:10px;flex-wrap:wrap")}>
+          <span style={css("width:10px;height:10px;border-radius:3px;background:oklch(0.66 0.1 185);flex:none")} />
+          <span style={css("font:500 10.5px 'Geist Mono';letter-spacing:.05em;color:var(--ink2);flex:1")}>PROPOSED LESSON · NOT APPROVED YET</span>
+          <span style={css("font:400 12px Geist;color:var(--muted)")}>Level if kept: kept, not verified</span>
+        </div>
+      ) : null}
       <button
         onClick={onBrain}
         disabled={!onBrain}

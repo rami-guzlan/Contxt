@@ -2,9 +2,10 @@
 
 A statement is one thing the Brain holds: who someone is (identity), how to behave (a rule, or
 its subtypes a convention or a preference), what is so (a fact), what was decided (a decision),
-how something is done (a procedure), a current value (a value, the State tier), a project, or a
-goal. The kinds a note is filed as, the capture types the presets govern, the kinds the
-workspace, distillation and the knowledge agent propose, and the choices the MCP tools and the
+how something is done (a procedure), a current value (a value, the State tier), a project, a
+goal, or a lesson (lore.py: a story, the pattern it warns about, the words that bring it up).
+The kinds a note is filed as, the capture types the presets govern, the kinds the workspace,
+distillation and the knowledge agent propose, and the choices the MCP tools and the
 command line offer all come from here.
 
 Older words keep reading: a note of kind `state` is a value and a `focus` is a project, and a
@@ -19,7 +20,8 @@ import re
 
 from . import util
 
-KINDS = ("identity", "rule", "fact", "decision", "procedure", "value", "project", "goal")
+KINDS = ("identity", "rule", "fact", "decision", "procedure", "value", "project", "goal",
+         "lesson")
 RULE_SUBTYPES = ("convention", "preference")
 # The word a note of each kind is filed under (`kind:` in its front matter). Values and projects
 # keep the words vaults already use, so every note and the kernel's headings stay as they are.
@@ -28,7 +30,7 @@ FILED = {"value": "state", "project": "focus"}
 ALIASES = {"state": "value", "focus": "project", "convention": "rule", "preference": "rule",
            "correction": "rule", "progress": "project"}
 # What a note may be proposed as (a project is made with `create_focus`, never proposed).
-NOTE_KINDS = ("fact", "rule", "identity", "state", "decision", "procedure", "goal")
+NOTE_KINDS = ("fact", "rule", "identity", "state", "decision", "procedure", "goal", "lesson")
 # What the workspace, distillation and the knowledge agent may propose, in a person's words.
 PROPOSAL_KINDS = ("fact", "rule", "preference", "convention", "decision", "procedure",
                   "identity", "state", "goal")

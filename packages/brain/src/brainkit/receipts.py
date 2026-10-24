@@ -5,7 +5,10 @@ changes afterwards and always equals the delivery:
 
     sent              every item in the packet, whole or in short, with its tokens; the
                       startup context and the Brain map when they went with it
-    opened            what the AI opened afterwards, before its next request (notes_get)
+    opened            "Opened by the AI after the packet", before its next request
+                      (gnomon_open, notes_get): each address and its tokens
+    refused           pulls past the pull budget (named only) and pulls of something gone
+                      since the map was built (not found)
     did_not_fit       chosen but past the budget, named, not sent; and the related items
                       named for one call away
     already_delivered held from earlier in the conversation, not sent again
@@ -53,8 +56,22 @@ def build(brain, packet_id: str) -> dict | None:
     if data.get("map_included") in ("full", "changes"):
         extra.append({"id": f"map:{data.get('map_fingerprint')}", "title": "Brain map",
                       "form": data["map_included"], "tokens": int(data.get("map_tokens") or 0)})
-    opened = [{**named(o["item"]), "tokens": int(o["tokens"] or 0), "at": o["at"]}
-              for o in brain.ledger.opened_after(row["session_id"], row["id"])]
+    def opened_row(o):
+        base = (named(o["item"]) if o["kind"] in ("note", "lesson")
+                else {"id": o["item"], "title": o["item"]})
+        return {**base, "address": o["item"], "kind": o["kind"],
+                "tokens": int(o["tokens"] or 0), "at": o["at"]}
+
+    opened = [opened_row(o) for o in brain.ledger.opened_after(row["session_id"], row["id"])]
+    refused = [{"address": r["address"], "name": r["name"], "status": r["status"],
+                "gone_at": r["gone_at"], "at": r["at"],
+                "says": ("named only, over the pull budget" if r["status"] == "over_pull_budget"
+                         else "not found" + (f", removed {r['gone_at']}" if r["gone_at"]
+                                             else ", gone since the map was built"))}
+               for r in brain.ledger.refusals(row["id"])]
+    lesson_tokens = data.get("lesson_tokens") or {}
+    lessons = [{**named(i), "form": "lesson in full", "tokens": int(lesson_tokens.get(i) or 0)}
+               for i in data.get("lessons_full") or []]
     did_not_fit = ([{**named(i), "why": "past this brief's budget"}
                     for i in data.get("unfit_ids") or []]
                    + [{**named(i), "why": "named as related, one call away"}
@@ -65,15 +82,21 @@ def build(brain, packet_id: str) -> dict | None:
                    + [{**named(i), "why": "a rule past the cap, listed"}
                       for i in data.get("must_hold_listed") or []])
     held = ([named(i) for i in data.get("held_ids") or []]
+            + [{**named(i), "form": "lesson, by name only"}
+               for i in data.get("lessons_named") or []]
             + [{"id": s, "title": s} for s in data.get("held_section_ids") or []])
     unknown = []
     if not data.get("note_ids") and not data.get("must_hold_ids"):
         unknown.append("Nothing in the Brain matched this request.")
     total = (int(data.get("token_count") or 0) + int(data.get("map_tokens") or 0)
-             + sum(o["tokens"] for o in opened))
+             + sum(o["tokens"] for o in opened) + sum(r["tokens"] for r in lessons))
     return {"id": row["id"], "session_id": row["session_id"], "at": row["at"],
             "request": row.get("request") or "", "scope": data.get("scope_chain") or [],
-            "partition": data.get("partition"), "sent": sent + extra, "opened": opened,
+            "partition": data.get("partition"), "sent": sent + lessons + extra,
+            "opened": opened, "refused": refused,
+            "pull_budget": {**(data.get("pull_budget") or {}), "used_items": len(opened),
+                            "used_tokens": sum(o["tokens"] for o in opened)},
+            "map_cut": data.get("map_cut") or {},
             "did_not_fit": did_not_fit, "already_delivered": held, "unknown": unknown,
             "conflicts": data.get("conflict_ids") or [], "older": data.get("older_ids") or [],
             "tokens": {"packet": int(data.get("token_count") or 0),
@@ -89,12 +112,16 @@ def render(found: dict) -> str:
                 + (f", {r['tokens']} tokens" if r.get("tokens") else "") for r in rows]
 
     lines = [f"Receipt {found['id']} for: {found['request']}", ""]
-    for label, rows, key in (("Sent", found["sent"], "form"), ("Opened afterwards",
-                             found["opened"], ""), ("Did not fit", found["did_not_fit"], "why"),
+    for label, rows, key in (("Sent", found["sent"], "form"),
+                             ("Opened by the AI after the packet", found["opened"], ""),
+                             ("Did not fit", found["did_not_fit"], "why"),
                              ("Already delivered in this conversation",
                               found["already_delivered"], "")):
         if rows:
             lines += [f"{label}:"] + items(rows, key) + [""]
+    if found.get("refused"):
+        lines += ["Asked for after the packet, not opened:"] + [
+            f"- `{r['address']}`, {r['says']}" for r in found["refused"]] + [""]
     if found["unknown"]:
         lines += ["Unknown:"] + [f"- {u}" for u in found["unknown"]] + [""]
     t = found["tokens"]

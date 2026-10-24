@@ -147,6 +147,9 @@ class PoliciesIn(Body):
     # sheet:<id>, packet:<id>.
     self_governed: list[str] | None = None
     auto_notice: None = None  # sent as null: dismiss the one-time notice of the switch to Auto
+    # The pull budget: what an AI may open after each packet (v4, section 6).
+    pull_items: int | None = Field(default=None, ge=1, le=20)
+    pull_tokens: int | None = Field(default=None, ge=100, le=3650)
 
 
 class CatchUpItemIn(Body):
