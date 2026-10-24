@@ -257,6 +257,9 @@ class BrainPort(Protocol):
         # The runs that made the outputs it cites (`work:<run>`): what only repeats the brief
         # one of them was handed cannot be promoted from its output (circular evidence).
         made_by: list[str] | None = None,
+        # Who brought it to the door (`app`, `chat`, `folder`, `connector`): governance says
+        # whether it goes in with undo or waits.
+        capture_origin: str | None = None,
     ) -> BrainProposal: ...
 
     def proposals(self) -> list[dict[str, Any]]: ...
