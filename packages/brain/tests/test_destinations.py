@@ -55,6 +55,42 @@ class DestinationTest(unittest.TestCase):
         last = state.history(self.brain, "guests", cell.id, "Status")[0]
         self.assertIn("context_item:ci_7", last.get("source", ""))
 
+    def connector_value(self, value="Confirmed for Nov 12"):
+        return destinations.propose(
+            self.brain, "sheet", "Dana Ruiz is confirmed.", sheet="guests", row="Dana Ruiz",
+            column="Status", value=value, capture_origin="connector",
+            reason="Gmail: Dana Ruiz confirmed", source_id="connector:gmail:m1")
+
+    def test_governed_a_heartbeat_value_waits(self):
+        self.assertEqual(self.connector_value().data["status"], "pending")
+
+    def test_in_auto_a_heartbeat_value_goes_in_with_an_undo_point_and_its_reason(self):
+        governance.migrate(self.brain, fresh=True)
+        made = self.connector_value()
+        self.assertEqual(made.data["status"], "applied", made.text)
+        self.assertTrue(made.data["checkpoint"])
+        self.assertEqual(state.find_row(self.brain, "guests", "Dana Ruiz").value("Status"),
+                         "Confirmed for Nov 12")
+        record = [r for r in self.brain.vault.decisions()
+                  if r.get("action") == "auto-applied"][-1]
+        self.assertEqual((record["applied_by"], record["reason"]),
+                         ("governor", "Gmail: Dana Ruiz confirmed"))
+        progress = destinations.propose(
+            self.brain, "progress", "Session 2 guest confirmed.", project="Q4 webinars",
+            capture_origin="connector", reason="Slack: confirmed in #webinars")
+        self.assertEqual(progress.data["status"], "applied", progress.text)
+
+    def test_in_auto_a_sheet_the_owner_governs_and_a_customer_facing_task_wait(self):
+        governance.migrate(self.brain, fresh=True)
+        governance.set_policies(self.brain, {"self_governed": ["sheet:guests"]})
+        held = self.connector_value()
+        self.assertEqual(held.data["status"], "pending")
+        self.assertEqual(held.data["waits"], ["governed by you"])
+        task = destinations.propose(
+            self.brain, "task", "Email the attendees the new time.", project="Q4 webinars",
+            capture_origin="connector", reason="Calendar: moved", flags={"customer_facing": True})
+        self.assertEqual(task.data["waits"], ["customer-facing"])
+
     def test_progress_goes_to_the_projects_journal(self):
         made = destinations.propose(self.brain, "progress", "Session 2 guest confirmed.",
                                     project="Q4 webinars", next_up="Promote session 2")

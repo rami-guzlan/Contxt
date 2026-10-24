@@ -281,8 +281,8 @@ def captures_apply(brain, who, kind, origin, area="") -> bool:
 
 # What waits for the owner even in Auto (design contracts, amendment 2026-10-23; the auto
 # default prompt, section 2): a must-hold, a private item, a sealed project, anything
-# customer-facing or that spends money, and an area the owner governs themselves. A conflict
-# with no clear precedence waits by the checks before this one (never newest-wins).
+# customer-facing or that spends money, a lesson, and an area the owner governs themselves.
+# A conflict with no clear precedence waits by the checks before this one (never newest-wins).
 SELF_GOVERNED = "self_governed"  # brain.json governance: ["area:<id>", "project:<id>", ...]
 
 
@@ -297,6 +297,8 @@ def auto_waits(st, config, *, area, partition, target, base, text) -> list[str]:
     spec = (config.data.get("partitions") or {}).get(partition or "") or {}
     if partition and spec.get("sealed"):
         waits.append("sealed project")
+    if target.get("kind") == "lesson":
+        waits.append("lesson")  # a lesson shapes every AI: proposed ones wait in Catch up
     if target.get("customer_facing"):
         waits.append("customer-facing")
     if target.get("spends"):

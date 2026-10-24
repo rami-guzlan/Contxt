@@ -37,11 +37,16 @@ def _project(brain, name):
 
 def propose(brain, destination, text, *, principal=None, session_id=None, reason="",
             op_id=None, source_id=None, source_version=None, source_locator=None,
-            source_speaker=None, source_excerpt=None, as_of=None, **fields):
+            source_speaker=None, source_excerpt=None, as_of=None, capture_origin=None,
+            flags=None, **fields):
     """Propose one piece for one home. `fields` are the home's own: `area`, `topic`, `title`
     and `kind` for a note; `project` and `group` (rules, preferences, facts) for a kept item;
     `sheet`, `row`, `column` and `value` for a sheet; `project` and `next_up` for progress;
-    `project`, `due` and `owner` for a task."""
+    `project`, `due` and `owner` for a task.
+
+    `capture_origin` (chat, folder, connector) says the owner's AI, a swept folder or a
+    heartbeat read brought it: in Auto it then goes in with an undo point unless it must wait
+    (governance.auto_waits; `flags` names customer_facing or spends)."""
     destination = str(destination or "").strip().lower()
     text = str(text or "").strip()
     cited = dict(source_id=source_id, source_version=source_version,
@@ -59,12 +64,15 @@ def propose(brain, destination, text, *, principal=None, session_id=None, reason
             strength=fields.get("strength") or "usually", not_that=fields.get("not_that") or "",
             principal=principal, session_id=session_id, reason=reason, op_id=op_id,
             force_pending=True, **cited)
+    origin = capture_origin if capture_origin in governance.CAPTURE_ORIGINS else None
+    flags = {k: True for k in ("customer_facing", "spends") if (flags or {}).get(k)}
     if destination == "note":
         return governance.propose_note(
             brain, area=fields.get("area"), topic=fields.get("topic"), text=text,
             title=fields.get("title"), note_kind=fields.get("kind"), principal=principal,
             session_id=session_id, reason=reason, op_id=op_id, as_of=as_of,
-            force_pending=True, **cited)
+            force_pending=origin is None, capture_origin=origin, extra=flags or None,
+            **cited)
     if destination == "kept":
         project, refusal = _project(brain, fields.get("project"))
         if refusal:
@@ -77,8 +85,8 @@ def propose(brain, destination, text, *, principal=None, session_id=None, reason
             brain, area=project.note.area, topic=project.note.topic, text=text,
             title=fields.get("title"), note_kind=GROUPS[group], principal=principal,
             session_id=session_id, reason=reason, op_id=op_id, as_of=as_of,
-            force_pending=True, extra={"project_id": project.id, "kept_group": group},
-            **cited)
+            force_pending=origin is None, capture_origin=origin,
+            extra={"project_id": project.id, "kept_group": group, **flags}, **cited)
     problems: list[str] = []
     source = governance.source_fields(*cited.values(), problems)
     if problems:
@@ -109,10 +117,46 @@ def propose(brain, destination, text, *, principal=None, session_id=None, reason
     proposal_id = f"{kind.replace('.', '-')}-{util.short_hash(text + util.now_iso(), 6)}"
     header = {"kind": kind, "status": "pending", "created": util.now_iso(), "proposer": who,
               "reason": reason or "", "session": session_id or ""}
+    header.update(flags)
+    config = st.config
+    auto = (origin not in (None, "app") and governance.mode_of(config) == "auto"
+            and not config.governance.get("auto_paused"))
+    waits: list[str] = []
+    if auto:
+        header["capture"] = f"{destination}:{origin}"
+        mine = set(config.governance.get(governance.SELF_GOVERNED) or [])
+        waits = [w for w, hit in (
+            ("customer-facing", flags.get("customer_facing")), ("spends", flags.get("spends")),
+            ("governed by you", f"sheet:{target.get('sheet')}" in mine
+             or f"project:{target.get('project')}" in mine)) if hit]
+        cap, done = governance.auto_cap(config), governance.auto_applied_since(brain, hours=24)
+        if waits:
+            header["waits"] = ", ".join(waits)
+        elif done >= cap:
+            header["paused"] = (f"Auto is paused: {done} changes went in on their own in the "
+                                f"last 24 hours, and the cap is {cap}.")
     relpath = brain.vault.write_proposal(proposal_id, header, target, text)
     brain.after_write([brain.vault.path(relpath)], f"Propose {kind} {target['title']}")
-    return _result(f"Proposed: {label(kind, target)}. It waits for review.",
-                   {"status": "pending", "proposal_id": proposal_id, "path": relpath})
+    if auto and not waits and not header.get("paused"):
+        from . import checkpoints
+        proposal = brain.state().snapshot.proposals[proposal_id]
+        with checkpoints.batch(brain, actor=who, label=f"Went in on its own: "
+                               f"{label(kind, target)}") as batch:
+            kept = apply(brain, proposal, actor=who, auto=True)
+            if not kept.is_error:
+                batch.decisions.append({"action": "approved", "proposal": proposal_id,
+                                        "kind": kind, "title": target["title"],
+                                        "capture": header["capture"]})
+        if not kept.is_error:
+            return _result(f"Applied: {label(kind, target)}. Your AI kept it, with undo.",
+                           {"status": "applied", "proposal_id": proposal_id,
+                            "checkpoint": batch.checkpoint})
+        return kept
+    return _result(f"Proposed: {label(kind, target)}. It waits for review."
+                   + (f" It waits for you even in Auto: {header['waits']}." if waits else "")
+                   + (f" {header['paused']}" if header.get("paused") else ""),
+                   {"status": "pending", "proposal_id": proposal_id, "path": relpath,
+                    "waits": waits, "paused": bool(header.get("paused"))})
 
 
 def _target(brain, destination, fields):
@@ -164,7 +208,7 @@ def label(kind, target) -> str:
     return f"{target.get('area') or target.get('layer')}/{target.get('topic')}"
 
 
-def apply(brain, proposal, *, actor, edits=None, body=None):
+def apply(brain, proposal, *, actor, edits=None, body=None, auto=False):
     """Keep a typed proposal at its home, or at the one the owner moved it to."""
     edits = dict(edits or {})
     text = proposal.body.strip() if body is None else str(body).strip()
@@ -196,7 +240,7 @@ def apply(brain, proposal, *, actor, edits=None, body=None):
     done = _write(brain, proposal.kind, target, text, actor=actor, said_by=said,
                   source=f"{source} ({proposal.id})")
     if not done.is_error:
-        _close(brain, proposal, actor, done.text)
+        _close(brain, proposal, actor, done.text, auto=auto)
     return done
 
 
@@ -219,12 +263,16 @@ def _write(brain, kind, target, text, *, actor, said_by, source):
     return handoff.hand_off(brain, new_task=spec, acting_for=actor, reason=source)
 
 
-def _close(brain, proposal, actor, outcome):
-    record = {"at": util.now_iso(), "action": "approved", "by": actor, "proposal": proposal.id,
+def _close(brain, proposal, actor, outcome, *, auto=False):
+    record = {"at": util.now_iso(), "action": "auto-applied" if auto else "approved",
+              "by": actor, "proposal": proposal.id,
               "kind": proposal.kind, "outcome": outcome, "target": proposal.target,
               "body": proposal.body, "proposer": proposal.proposer,
               "session": str(proposal.meta.get("session") or ""),
               "created": str(proposal.created or "")}
+    if auto:  # the governing AI kept it in Auto, and why
+        record.update(applied_by="governor", reason=str(proposal.meta.get("reason") or ""),
+                      capture=str(proposal.meta.get("capture") or ""))
     decisions = brain.vault.append_decision(record)
     brain.vault.remove_file(proposal.path)
     brain.after_write([brain.vault.path(decisions), brain.vault.path(proposal.path)],
