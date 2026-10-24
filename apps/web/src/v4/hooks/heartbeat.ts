@@ -224,3 +224,28 @@ export function costLine(status: HbStatus | undefined): string {
   if (!said) return `The CLI did not say what the last ${cost.beats} beats used`;
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}${plan}`;
 }
+
+export interface N8nHostStatus {
+  installed: boolean;
+  installing?: boolean;
+  running: boolean;
+  url?: string;
+  version?: string;
+  line: string;
+}
+
+/** Gnomon's own n8n on this computer (re-read every few seconds while it installs). */
+export const useN8nHost = () =>
+  useQuery({
+    queryKey: ["heartbeat", "n8n"],
+    queryFn: () => get<N8nHostStatus>("/api/heartbeat/n8n/host"),
+    refetchInterval: (q) => (q.state.data?.installing ? 3000 : false),
+  });
+
+export function useN8nHostAction() {
+  const refresh = useHeartbeatRefresh();
+  return useMutation({
+    mutationFn: (action: "install" | "start" | "stop") => post<N8nHostStatus>("/api/heartbeat/n8n/host", { action }),
+    onSuccess: () => refresh(),
+  });
+}

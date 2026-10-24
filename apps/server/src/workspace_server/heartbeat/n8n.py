@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import re
 import secrets
 from typing import Any
@@ -142,3 +143,26 @@ def items_of(body: Any) -> list[dict[str, Any]]:
         if str(item.get("id") or "").strip():
             out.append(item)
     return out
+
+
+def prepare(
+    workflow: dict[str, Any], connector_id: str, inbox_url: str, secret: str
+) -> dict[str, Any]:
+    """The copy of a workflow that goes into n8n: a stable id, its post aimed at this
+    connector's inbox on this computer, with the secret it sends in a header. The secret lives
+    only in n8n's copy; Gnomon keeps its hash."""
+    copy = json.loads(json.dumps(workflow))
+    copy["id"] = "gnomon" + hashlib.sha256(connector_id.encode("utf-8")).hexdigest()[:10]
+    copy.setdefault("name", f"Gnomon: {connector_id}")
+    copy.setdefault("connections", {})
+    copy.setdefault("settings", {})
+    for node in copy.get("nodes") or []:
+        if isinstance(node, dict) and node.get("type") == HTTP:
+            params = node.setdefault("parameters", {})
+            params.update(
+                method="POST",
+                url=inbox_url.rstrip("/") + f"/api/heartbeat/inbox/{connector_id}",
+                sendHeaders=True,
+                headerParameters={"parameters": [{"name": SECRET_HEADER, "value": secret}]},
+            )
+    return copy

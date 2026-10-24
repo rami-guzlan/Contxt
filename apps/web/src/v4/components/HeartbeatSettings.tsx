@@ -5,6 +5,7 @@
 import { css } from "../css";
 import { costLine, type HbConnector, useHeartbeat, useHeartbeatSettings, useRegions, useRescan, useSetConnector } from "../hooks/heartbeat";
 import { Failure, Loading } from "../ui";
+import { N8nHost } from "./N8nHost";
 
 const chip = (on: boolean) =>
   `padding:5px 11px;border-radius:99px;font:${on ? 500 : 400} 12px Geist;cursor:pointer;${
@@ -83,6 +84,7 @@ export function HeartbeatSettings() {
             {rescan.isPending ? "Looking…" : "Find connectors in my CLIs"}
           </button>
         </div>
+        <N8nHost />
         {rescan.data ? <span style={css("font:400 13px Geist;color:var(--ink2);padding-bottom:8px")}>{rescan.data.line}</span> : null}
         {rescan.error ? <Failure error={rescan.error} /> : null}
         {toggle.error ? <Failure error={toggle.error} /> : null}

@@ -150,3 +150,19 @@ async def inbox(connector_id: str, request: Request) -> dict[str, Any]:
         raise ValidationFailed("Post the items as JSON.") from exc
     secret = request.headers.get(SECRET_HEADER, "")
     return _heartbeat(request).receive(connector_id, secret, body)
+
+
+class N8nHostIn(Body):
+    action: str = Field(pattern="^(install|start|stop)$")
+
+
+@router.get("/n8n/host")
+def n8n_host(request: Request, who: Who) -> dict[str, Any]:
+    """Gnomon's own n8n: installed, installing, running, where."""
+    return _heartbeat(request).n8n_status(who)
+
+
+@router.post("/n8n/host")
+def n8n_host_act(body: N8nHostIn, request: Request, who: Who) -> dict[str, Any]:
+    """Host n8n here: install it (once, in the background), start it or stop it."""
+    return _heartbeat(request).n8n_act(who, body.action)

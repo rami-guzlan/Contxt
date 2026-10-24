@@ -1031,3 +1031,34 @@ def test_a_beat_takes_what_n8n_posted_once_and_spends_no_tokens_reading_it(
     assert done["tokens"] == 120 and done["tokens_unknown"] == 0  # the judge alone
     again = beat(owner)
     assert again["items"] == 0 and again["nothing_new"]
+
+
+def test_turning_an_n8n_read_on_puts_it_into_gnomons_n8n_active_with_a_fresh_secret(owner, hb):
+    class Hosted:
+        def __init__(self):
+            self.put = []
+
+        def installed(self):
+            return True
+
+        def put_workflow(self, workflow, *, active):
+            self.put.append((workflow, active))
+            return workflow["id"]
+
+        def close(self):
+            pass
+
+    hosted = Hosted()
+    hb.n8n_host = hosted
+    made = owner.ok(
+        owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
+    )
+    on = owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": True}))
+    ((workflow, active),) = hosted.put
+    assert active is True and on["workflow_id"] == workflow["id"]
+    post = next(n for n in workflow["nodes"] if n["type"] == "n8n-nodes-base.httpRequest")
+    secret = post["parameters"]["headerParameters"]["parameters"][0]["value"]
+    assert secret != made["secret"]  # a fresh one, only in n8n's copy
+    assert hb.receive(N8N_ID, secret, {"items": [ITEM]}) == {"kept": 1}
+    owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": False}))
+    assert hosted.put[-1][1] is False

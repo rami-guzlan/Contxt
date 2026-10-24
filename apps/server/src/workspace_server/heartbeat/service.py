@@ -153,6 +153,10 @@ class Heartbeat:
         self.discover = conn.discover
         self.find = conn.find
         self._accounts: tuple[float, list[conn.Found]] | None = None
+        # Gnomon's own n8n, when it hosts one (open_runtime sets it), and where n8n on this
+        # computer reaches Gnomon's inbox.
+        self.n8n_host: Any = None
+        self.inbox_url = "http://127.0.0.1:8787"
 
     def _account(self, who: Principal, *, fresh: bool = False) -> list[conn.Found] | None:
         """The Claude account's connectors (claude.ai), as Claude Code lists them when it
@@ -547,6 +551,8 @@ class Heartbeat:
                         field="cadence_minutes",
                     )
                 values["cadence_minutes"] = own or None
+            if row["how"] == "n8n" and enabled is not None:
+                values.update(self._to_n8n(row, bool(enabled)))
             if values:
                 row = tx.update(schema.heartbeat_connectors, row, values)
                 tx.emit(
@@ -631,6 +637,49 @@ class Heartbeat:
                 data={"name": name, "nodes": len(workflow.get("nodes") or [])},
             )
         return {"connector": self._connector_view(row), "secret": secret}
+
+    def _to_n8n(self, row: dict[str, Any], active: bool) -> dict[str, Any]:
+        """Into Gnomon's own n8n, when it hosts one: the workflow, aimed at this connector's
+        inbox with a fresh secret (n8n keeps it; Gnomon its hash), active or not. Without a
+        hosted n8n, nothing changes there (the owner runs the workflow in their own)."""
+        host = self.n8n_host
+        if host is None or not host.installed() or not row.get("workflow"):
+            return {}
+        secret, kept = n8n.new_secret()
+        copy = n8n.prepare(row["workflow"], row["id"], self.inbox_url, secret)
+        try:
+            workflow_id = host.put_workflow(copy, active=active)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise Conflict(f"n8n could not take the workflow: {exc}") from exc
+        return {"workflow_id": workflow_id, "secret_hash": kept}
+
+    def n8n_status(self, who: Principal) -> dict[str, Any]:
+        who.require("brain.read")
+        if self.n8n_host is None:
+            return {"installed": False, "running": False, "line": "n8n is not available here."}
+        status: dict[str, Any] = self.n8n_host.status()
+        return status
+
+    def n8n_act(self, who: Principal, action: str) -> dict[str, Any]:
+        """Host n8n here: install it, start it or stop it."""
+        who.require("workspace.admin")
+        host = self.n8n_host
+        if host is None:
+            raise Conflict("n8n is not available here.")
+        try:
+            if action == "install":
+                result: dict[str, Any] = host.install()
+            elif action == "start":
+                result = host.start()
+                host.remember(True)
+            elif action == "stop":
+                result = host.stop()
+                host.remember(False)
+            else:
+                raise ValidationFailed("Install, start or stop.", field="action")
+        except RuntimeError as exc:
+            raise Conflict(str(exc)) from exc
+        return result
 
     def receive(self, connector_id: str, secret: str, body: Any) -> dict[str, Any]:
         """What an n8n workflow posted, kept for the next beat. Only an approved n8n read,
