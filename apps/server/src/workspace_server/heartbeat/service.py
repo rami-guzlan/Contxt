@@ -2430,6 +2430,11 @@ class Heartbeat:
                     "tokens": row["tokens"],
                 },
             )
+        # The sheets' database and snapshots are committed once per beat (sheetstore.py).
+        try:
+            self.ws.rt.brain.commit_sheets(f"Sheets after beat {beat_id}")
+        except (OSError, RuntimeError, ValueError):
+            log.warning("Could not commit the sheets after beat %s", beat_id, exc_info=True)
 
     # ---------------------------------------------------------------- writing
 

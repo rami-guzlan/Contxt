@@ -566,6 +566,10 @@ class BrainPort(Protocol):
         """The Test Bench's tests and suites as YAML text, by path (bench/<suite>/...)."""
         ...
 
+    def commit_sheets(self, message: str) -> dict[str, Any]:
+        """Commit the context sheets' database and snapshots (once per beat or day)."""
+        ...
+
     def bench_write(self, rel: str, text: str | None, *, message: str) -> dict[str, Any]:
         """Write one bench file (or remove it, with `text` None) and commit it."""
         ...
@@ -1202,6 +1206,9 @@ class NoBrain:
 
     def bench_files(self) -> dict[str, str]:
         return {}
+
+    def commit_sheets(self, message: str) -> dict[str, Any]:
+        return {"committed": False, "reason": "no Brain"}
 
     def bench_write(self, rel: str, text: str | None, *, message: str) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain.")

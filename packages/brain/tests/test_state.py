@@ -9,7 +9,7 @@ import shutil
 import unittest
 from unittest import mock
 
-from brainkit import formulas, governance, state, util
+from brainkit import formulas, governance, sheetstore, state, util
 from brainkit import safeguards_eval as se
 from brainkit.api import Brain
 
@@ -179,9 +179,9 @@ class StateTest(unittest.TestCase):
     def test_settled_values_are_offered_as_notes(self):
         self.brain.state_act("write", {"sheet": "accounts", "row": "Fabrikam",
                                        "values": {"Owner": "Sam"}})
-        path = os.path.join(self.vault, "state", "accounts", "fabrikam.jsonl")
-        text = open(path, encoding="utf-8").read().replace(TODAY.isoformat(), days(-200))
-        open(path, "w", encoding="utf-8").write(text)
+        with sheetstore._db(self.brain) as conn:  # the Owner value, written 200 days ago
+            conn.execute("UPDATE events SET body = REPLACE(body, ?, ?) WHERE row = 'fabrikam'",
+                         (TODAY.isoformat(), days(-200)))
         offers = [o for o in state.promotions(self.brain) if o["kind"] == "to_note"]
         self.assertTrue(any(o["row"] == "Fabrikam" and o["column"] == "Owner"
                             for o in offers))

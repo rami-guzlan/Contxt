@@ -8,8 +8,11 @@ who, when and why, so the history is the log itself.
 Files, the same pattern as project journals (decision 3):
 
     state/<sheet>/schema.json      the sheet: key column, typed columns, partition rule, scope
-    state/<sheet>/<row>.jsonl      append-only events: a row made, a cell written, an alias
+    state/sheets.sqlite            append-only events of every sheet: a row made, a cell
+                                   written, an alias (sheetstore.py; once per-row .jsonl)
     state/<sheet>/SNAPSHOT.md      generated, for people and for git diffs
+
+The database and the snapshots are committed once per beat or once a day, not per write.
 
 A column says who may change it (its friction): `free` (AIs may change it; their values are
 marked AI-filled until a person touches them), `confirm` (an AI's value waits for one tap) or
@@ -31,7 +34,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from . import formulas, util
+from . import formulas, sheetstore, util
 
 TYPES = ("text", "number", "money", "date", "date_range", "status", "person", "link",
          "reference")
@@ -220,7 +223,7 @@ def sheet(brain, sheet_id: str) -> Sheet | None:
 
 
 def _events(brain, sheet_id: str, row_id: str) -> list[dict]:
-    return util.read_jsonl(os.path.join(_folder(brain, sheet_id), f"{row_id}.jsonl"))
+    return sheetstore.events(brain, sheet_id, row_id)
 
 
 def _age(stamp: str, today: dt.date) -> int | None:
@@ -284,12 +287,9 @@ def rows(brain, sheet_id: str, *, partitions=None, today: dt.date | None = None,
     if found is None:
         return []
     today = today or util.today_date()
-    folder = _folder(brain, sheet_id)
     out = []
-    for name in sorted(os.listdir(folder)):
-        if not name.endswith(".jsonl"):
-            continue
-        row = _build(found, name[:-6], _events(brain, sheet_id, name[:-6]), today)
+    for row_id in sheetstore.row_ids(brain, sheet_id):
+        row = _build(found, row_id, _events(brain, sheet_id, row_id), today)
         if row is None:
             continue
         if partitions is not None and found.partition_by and row.partition \
@@ -373,7 +373,7 @@ def summary(found: Sheet, out: list[Row]) -> dict:
 def history(brain, sheet_id: str, row_id: str, column: str | None = None) -> list[dict]:
     """A row's events, newest first (a column's only, with `column`). The row by its id, key
     or an alias."""
-    if not os.path.isfile(os.path.join(_folder(brain, sheet_id), f"{row_id}.jsonl")):
+    if not sheetstore.has_row(brain, sheet_id, row_id):
         found = find_row(brain, sheet_id, row_id)
         row_id = found.id if found is not None else row_id
     events = _events(brain, sheet_id, row_id)
@@ -435,12 +435,11 @@ def _event_id() -> str:
 
 
 def _write(brain, sheet_id: str, row_id: str, events: list[dict], message: str) -> None:
-    path = os.path.join(_folder(brain, sheet_id), f"{row_id}.jsonl")
-    brain.vault.touch(path)
-    for event in events:
-        util.append_jsonl(path, event)
-    snapshot = write_snapshot(brain, sheet_id)
-    brain.after_write([path, snapshot], message)
+    sheetstore.append(brain, sheet_id, row_id, events)
+    write_snapshot(brain, sheet_id)
+    brain.after_write([], message)
+    if sheetstore.due(brain):  # the first write of a new day commits the day's sheets
+        sheetstore.commit(brain, f"Sheets: {message}")
 
 
 def _save_schema(brain, found: Sheet) -> str:
@@ -620,7 +619,7 @@ def add_row(brain, sheet_id: str, key: str, values: dict | None = None, *, alias
     if find_row(brain, sheet_id, key) is not None:
         return _result(f"{found.title} already has {key!r}.", {"status": "exists"}, True)
     row_id = row_id or util.slugify(key, 60) or _event_id()
-    if os.path.exists(os.path.join(_folder(brain, sheet_id), f"{row_id}.jsonl")):
+    if sheetstore.has_row(brain, sheet_id, row_id):
         row_id = f"{row_id}-{_event_id()[:4]}"
     at = util.now_iso()
     events = [{"kind": "row", "at": at, "key": key, "by": who, "said_by": said_by,
