@@ -4,8 +4,9 @@
 
 import { useEffect, useState } from "react";
 
+import { useLive } from "../../api/hooks";
 import { css } from "../css";
-import { useLearning, useSetLearning } from "../hooks/heartbeat";
+import { type LearningSettings as Learning, useHeartbeat, useLearning, useSetLearning } from "../hooks/heartbeat";
 import { Btn, Failure, Loaded } from "../ui";
 
 const FIELD = "font:400 13.5px Geist;padding:7px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--ink)";
@@ -13,6 +14,8 @@ const FIELD = "font:400 13.5px Geist;padding:7px 10px;border-radius:10px;border:
 export function LearningSettings() {
   const learning = useLearning();
   const save = useSetLearning();
+  const status = useHeartbeat();
+  const sheets = useLive();
   const [goal, setGoal] = useState("");
   const [pattern, setPattern] = useState("");
   useEffect(() => setGoal(learning.data?.goal ?? ""), [learning.data?.goal]);
@@ -69,6 +72,15 @@ export function LearningSettings() {
                   <input id="learn-at" type="time" value={s.distill_at} disabled={save.isPending} onChange={(e) => e.target.value && save.mutate({ distill_at: e.target.value })} style={css(FIELD)} />
                 </label>
               ) : null}
+              {s.learn === "nightly" ? (
+                <LiveChoices
+                  learning={s}
+                  connectors={(status.data?.connectors ?? []).filter((c) => c.how !== "computer").map((c) => [c.id, c.name])}
+                  sheets={(sheets.data?.sheets ?? []).map((sh) => [sh.id, sh.title])}
+                  onChange={(live) => save.mutate({ live })}
+                  pending={save.isPending}
+                />
+              ) : null}
               <label htmlFor="learn-days" style={css("display:flex;gap:6px;align-items:center;font:400 13px Geist")}>
                 Keep the buffer
                 <select id="learn-days" value={s.buffer_days} disabled={save.isPending} onChange={(e) => save.mutate({ buffer_days: Number(e.target.value) })} style={css(FIELD)}>
@@ -85,5 +97,45 @@ export function LearningSettings() {
       </Loaded>
       {save.error ? <Failure error={save.error} /> : null}
     </div>
+  );
+}
+
+/** Apply during the day: a live connector's changes, or what lands in a live sheet, go in at
+ * the beat that captured them instead of waiting for tonight (a small call on beats with them). */
+function LiveChoices({
+  learning,
+  connectors,
+  sheets,
+  onChange,
+  pending,
+}: {
+  learning: Learning;
+  connectors: [string, string][];
+  sheets: [string, string][];
+  onChange: (live: Learning["live"]) => void;
+  pending: boolean;
+}) {
+  const live = learning.live ?? { connectors: [], sheets: [] };
+  const flip = (kind: "connectors" | "sheets", id: string) => {
+    const now = new Set(live[kind]);
+    if (now.has(id)) now.delete(id);
+    else now.add(id);
+    onChange({ ...live, [kind]: [...now] });
+  };
+  const box = (kind: "connectors" | "sheets", [id, name]: [string, string]) => (
+    <label key={`${kind}-${id}`} style={css("display:inline-flex;gap:6px;align-items:center;font:400 13px Geist")}>
+      <input type="checkbox" checked={live[kind].includes(id)} disabled={pending} onChange={() => flip(kind, id)} />
+      {name}
+    </label>
+  );
+  if (!connectors.length && !sheets.length) return null;
+  return (
+    <fieldset style={css("flex-basis:100%;border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px")}>
+      <legend style={css("font:400 12.5px Geist;color:var(--muted);padding:0 0 4px")}>Apply during the day: these go in when they change, not tonight</legend>
+      <div style={css("display:flex;gap:12px;flex-wrap:wrap")}>
+        {connectors.map((c) => box("connectors", c))}
+        {sheets.map((sh) => box("sheets", sh))}
+      </div>
+    </fieldset>
   );
 }

@@ -322,6 +322,8 @@ export interface LearningSettings {
   buffer_days: number;
   learn: "nightly" | "per_beat";
   distill_at: string;
+  /** Apply during the day: connectors and sheets whose changes go in at the beat. */
+  live: { connectors: string[]; sheets: string[] };
 }
 
 export const useLearning = () => useQuery({ queryKey: ["heartbeat", "learning"], queryFn: () => get<LearningSettings>("/api/heartbeat/learning") });
