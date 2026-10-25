@@ -23,6 +23,7 @@ import {
   useTell,
 } from "../hooks/home";
 import { HeartbeatBar, RecentBeats, WorldRightNow } from "../components/Heartbeat";
+import { HeartbeatToday } from "../components/HeartbeatToday";
 import { useHeartbeat } from "../hooks/heartbeat";
 import { Btn, Empty, Failure, Later, Loaded, Loading, plural, S, when } from "../ui";
 
@@ -718,6 +719,7 @@ function AutoHome({ policy }: { policy: Policy }) {
         </button>
       ) : null}
       <WorldRightNow />
+      <HeartbeatToday />
       <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:20px;align-items:start")}>
         <RecentBeats />
         <section id="what-it-did" aria-label="What it did, and why" style={css("background:var(--surface);border-radius:22px;box-shadow:var(--shadow);padding:6px 22px")}>

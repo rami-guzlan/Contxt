@@ -280,3 +280,9 @@ def forget_staged(staged_id: str, request: Request, who: Who) -> dict[str, Any]:
 @router.post("/staged/{staged_id}/bring-back")
 def bring_back(staged_id: str, request: Request, who: Who) -> dict[str, Any]:
     return _heartbeat(request).bring_back(who, staged_id)
+
+
+@router.get("/still-waiting")
+def still_waiting(request: Request, who: Who) -> dict[str, Any]:
+    """What the distill sent to Catch up over 14 days ago and still waits for you."""
+    return _heartbeat(request).still_waiting(who)

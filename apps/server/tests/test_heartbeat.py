@@ -1688,3 +1688,32 @@ def test_the_distill_runs_nightly_and_after_a_night_the_computer_slept(owner, hb
     ran = hb_service.HeartbeatWorker(hb).run_once()
     assert ran["trigger"] == "distill" and ran["status"] == "done"
     assert not hb.distill_due()  # done for this night
+
+
+def test_a_later_change_replaces_what_still_waits_from_an_earlier_distill(owner, runtime, fake_cli):
+    found(owner, per_beat=False)
+    fake_cli.route = lambda item: ("short", 0.5)  # unsure: Catch up
+    beat(owner)
+    distill(owner)
+    (first,) = staged(owner)
+    assert first["outcome"]["route"] == "catch_up"
+    waiting = {p["id"] for p in runtime.ws.brain.proposals(runtime.ws.owner())}
+    earlier = next(iter(waiting))
+    fake_cli.items = [dict(ITEM, text="Morgan replied: hero option C instead.")]
+    beat(owner)
+    done = distill(owner)
+    assert any("Replaced 1 waiting" in d for d in done["details"])
+    now = {p["id"] for p in runtime.ws.brain.proposals(runtime.ws.owner())}
+    assert earlier not in now and len(now) == 1  # only the newest waits
+
+
+def test_what_waits_over_14_days_is_gathered_into_one_card(owner, runtime, fake_cli):
+    found(owner, per_beat=False)
+    fake_cli.route = lambda item: ("short", 0.5)
+    beat(owner)
+    distill(owner)
+    assert owner.ok(owner.get("/api/heartbeat/still-waiting"))["count"] == 0
+    with runtime.ws.rt.write() as tx:
+        tx.conn.execute(schema.staged_changes.update().values(seen_at="2026-09-10T09:00:00Z"))
+    stale = owner.ok(owner.get("/api/heartbeat/still-waiting"))
+    assert stale["count"] == 1 and stale["days"] == 14

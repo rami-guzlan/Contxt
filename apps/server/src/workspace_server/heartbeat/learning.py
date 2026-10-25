@@ -240,6 +240,7 @@ def age_days(ws: Any, row: dict[str, Any]) -> float:
 # ---------------------------------------------------------------------- the distill
 
 CONFIDENT = 0.7  # under this, a route goes to Catch up
+STALE_DAYS = 14  # a Catch up item waiting this long joins the "still waiting" card
 BATCH = 60  # netted items per model call
 DISTILL_AT = "19:00"  # nightly, at the start of quiet hours, unless the owner chooses
 ROUTES = ("short", "long", "catch_up", "discard")

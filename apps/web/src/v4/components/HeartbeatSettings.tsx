@@ -7,6 +7,7 @@ import { costLine, type HbConnector, useHeartbeat, useHeartbeatSettings, useN8nF
 import { Failure, Loading } from "../ui";
 import { N8nHost } from "./N8nHost";
 import { IngestModel } from "./IngestModel";
+import { LearningSettings } from "./LearningSettings";
 import { Onboarding } from "./Onboarding";
 
 function every(v: number): string {
@@ -96,6 +97,7 @@ export function HeartbeatSettings() {
         </div>
         <N8nHost />
         <IngestModel />
+        <LearningSettings />
         {rescan.data ? <span style={css("font:400 13px Geist;color:var(--ink2);padding-bottom:8px")}>{rescan.data.line}</span> : null}
         {rescan.error ? <Failure error={rescan.error} /> : null}
         {toggle.error ? <Failure error={toggle.error} /> : null}
