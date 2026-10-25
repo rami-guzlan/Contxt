@@ -1760,3 +1760,62 @@ def test_without_live_sheets_or_connectors_a_beat_makes_no_model_call(owner, fak
     found(owner, per_beat=False)
     beat(owner)
     assert fake_cli.distilled == [] and fake_cli.judges() == []
+
+
+# ---------------------------------------------------------------------- the recorded day
+
+
+def test_the_recorded_day_runs_through_capture_and_the_distill_and_is_scored(hb, fake_cli):
+    from workspace_server.heartbeat import day_eval
+
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "scripts", "heartbeat_day.json"
+    )
+    day = day_eval.load(path)
+    expect = {f"connector:day:{e['source']}:{e['id']}": e["expect"] for e in day["items"]}
+    # A model that knows the labels: what remains wrong is code's (capture, netting, rules).
+    fake_cli.route = lambda item: (expect[item["item"]].split("|")[0], 0.9)
+    report = day_eval.run(hb, day)
+    assert report["items"] == 50 and report["changes"] >= 70
+    assert report["net_zero_caught"] == "10 of 10"  # by code, before any model call
+    assert report["filter_precision"] == 1.0  # every capture-time drop was meant to be
+    assert report["gates"]["nothing_must_wait_written"]
+    assert report["route_accuracy"] >= 0.85, report["misses"]
+
+
+def test_a_task_that_reaches_customers_or_spends_waits_whatever_the_model_said(owner, fake_cli):
+    """The recorded day's finding: the model routed "email all attendees" and "raise the ad
+    budget" as ordinary tasks without flags. Code flags them, so they wait even in Auto."""
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner, per_beat=False)
+    fake_cli.items = [
+        dict(ITEM, id="m-41", title="Send attendees new time"),
+        dict(ITEM, id="m-42", title="Raise ad budget"),
+    ]
+    tasks = {
+        "Send attendees new time": "Email all attendees that session 2 moved to Nov 20.",
+        "Raise ad budget": "Raise the webinar ad budget to 900 a month.",
+    }
+    fake_cli.writes = lambda item: [
+        {
+            "kind": "task",
+            "project": PROJECT,
+            "text": tasks.get(item.get("title"), item["text"]),
+            "reason": "the item asks for it",
+        }
+    ]
+    original = fake_cli.judge
+
+    def judge(prompt):
+        answer = original(prompt)
+        for verdict in answer.get("items") or []:
+            title = (
+                "Send attendees new time" if verdict["item"].endswith("m-41") else "Raise ad budget"
+            )
+            verdict["writes"] = fake_cli.writes({"title": title, "text": ""})
+        return answer
+
+    fake_cli.judge = judge
+    beat(owner)
+    done = distill(owner)
+    assert done["changes"] == 0 and done["waits"] == 2

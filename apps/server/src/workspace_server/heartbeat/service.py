@@ -43,6 +43,7 @@ from workspace_core.errors import (
     WorkspaceError,
 )
 from workspace_core.ids import new_id
+from workspace_core.services.orchestrators import gate_kind
 from workspace_core.workspace import Workspace
 
 from ..runners import RUNNERS, Runners, mask, usage_of
@@ -1134,17 +1135,19 @@ class Heartbeat:
         if not isinstance(pattern, dict) or not _flat(pattern.get("title"), 120):
             return
         try:
-            self.ws.brain.propose(
-                owner,
+            self.ws.rt.brain.propose_lesson(
                 title=_flat(pattern.get("title"), 120),
-                statement=_flat(
-                    f"{pattern.get('story') or ''} The pattern: {pattern.get('pattern') or ''}",
-                    1200,
-                ),
-                kind="lesson",
+                story=_flat(pattern.get("story") or pattern.get("pattern"), 1200),
+                pattern=_flat(pattern.get("pattern"), 600),
+                # The words that bring it up: the model's, else the title's own.
+                words=[
+                    _flat(w, 40)
+                    for w in pattern.get("words")
+                    or sorted(learning.content_words(str(pattern.get("title") or "")))[:4]
+                    if _flat(w, 40)
+                ][:8],
                 evidence="Seen across a day of changes by the heartbeat's distill.",
-                sources=["heartbeat:distill"],
-                reason="A pattern across the day's changes",
+                capture_origin="connector",
             )
             details.append(f"Proposed a lesson: {_flat(pattern.get('title'), 120)}")
         except WorkspaceError as exc:
@@ -2429,6 +2432,17 @@ class Heartbeat:
         """Make one write through the Brain's one proposal path, with the item as its source."""
         kind = write["kind"]
         at = str(item.get("at") or "")[:10]
+        # What must wait is enforced by code, not left to the model: a task or a sheet value
+        # whose words send, post, reach a customer or spend money is flagged, so it waits for
+        # the owner even in Auto (the recorded day's finding, Oct 25).
+        flags = [f for f in ("customer_facing", "spends") if write.get(f) is True]
+        if kind in ("task", "sheet"):
+            said = f"{write.get('text') or ''} {write.get('value') or ''} {item.get('title') or ''}"
+            gate = gate_kind("", said, [])
+            if gate == "spend" and "spends" not in flags:
+                flags.append("spends")
+            elif gate in ("post", "customer_facing") and "customer_facing" not in flags:
+                flags.append("customer_facing")
         cited: dict[str, Any] = {
             "title": _flat(line or item["title"] or item["text"], 120),
             "evidence": _flat(
@@ -2457,6 +2471,7 @@ class Heartbeat:
                 statement=f"{write.get('column')}: {value}",
                 destination="sheet",
                 place={k: write.get(k) for k in ("sheet", "row", "column")} | {"value": value},
+                flags=flags or None,
                 **cited,
             )
         if kind == "progress":
@@ -2479,6 +2494,7 @@ class Heartbeat:
                     "owner": write.get("owner") or "",
                     "due": due if re.fullmatch(r"\d{4}-\d{2}-\d{2}", due) else "",
                 },
+                flags=flags or None,
                 **cited,
             )
         name = re.sub(r"[^a-z0-9]+", "-", str(write.get("topic") or "").lower()).strip("-")
@@ -2489,7 +2505,7 @@ class Heartbeat:
             kind="fact",
             topic=None if write.get("revises") else topic,
             revises=write.get("revises") or None,
-            flags=[f for f in ("customer_facing", "spends") if write.get(f) is True] or None,
+            flags=flags or None,
             **cited,
         )
 

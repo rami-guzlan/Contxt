@@ -108,11 +108,13 @@ def content_words(text: str) -> set[str]:
 
 
 def words_score(goal: str, text: str) -> float | None:
-    """The share of the goal's words the item says (None without a goal)."""
+    """How much of the goal the item names, by words (None without a goal): each goal word it
+    says halves the distance to 1, so one shared word is 0.5 and two are 0.75. A fallback for
+    when the local meaning model isn't here."""
     wanted = content_words(goal)
     if not wanted:
         return None
-    return len(wanted & content_words(text)) / len(wanted)
+    return round(1 - 0.5 ** len(wanted & content_words(text)), 4)
 
 
 @dataclass
@@ -326,7 +328,9 @@ def distill_prompt(
         'how something runs, a decision: a note), "catch_up" (unsure, or it conflicts with '
         'what the Brain holds or a must-hold) or "discard" (not relevant, already known, or a '
         "filter applies). An item marked filter_unclear was matched by a filter yet looks "
-        "relevant: settle it, or choose catch_up. Give each a confidence from 0 to 1 and a "
+        "relevant: settle it, or choose catch_up. A short value with no sheet to hold it goes "
+        "to its project's progress (or a task when it asks for an action): never catch_up just "
+        "because no sheet exists. Give each a confidence from 0 to 1 and a "
         "plain reason, its region and project, a one-line summary, and its writes in the "
         'heartbeat\'s write shapes: {"kind": "sheet", "sheet": id, "row": key, "column": name, '
         '"value": text}, {"kind": "progress", "project": id, "text": what moved, "next_up": '
@@ -336,7 +340,8 @@ def distill_prompt(
         'patterns across items worth a lesson. Reply with one JSON object only: {"items": '
         '[{"item": key, "route": ..., "confidence": 0.0, "reason": text, "region": id, '
         '"project": id or null, "line": text, "protected_by": id or null, "writes": [...]}], '
-        '"patterns": [{"title": text, "pattern": text, "story": text}], "headlines": {region '
+        '"patterns": [{"title": text, "pattern": text, "story": text, "words": [the words '
+        'that should bring it up]}], "headlines": {region '
         'id: text}, "projects": {project id: text}}.\n\n' + json.dumps(shown, ensure_ascii=False)
     )
 
