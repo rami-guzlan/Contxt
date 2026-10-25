@@ -861,13 +861,48 @@ class Runners:
         person's MCP servers and no saved session. `model` is one the CLI offers (blank: its
         own default). What it used is counted under `job` (a check, a comparison, the
         knowledge agent) in the Brain's cost report."""
+        return str(
+            self.ask_measured(who, prompt, timeout=timeout, job=job, runner=runner, model=model)[
+                "answer"
+            ]
+        )
+
+    def ask_measured(
+        self,
+        who: Principal,
+        prompt: str,
+        *,
+        timeout: float = 180.0,
+        job: str = "ask",
+        runner: str = "claude",
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        """`ask`, with what the call used: {"answer", "model", "tokens_in", "tokens_out",
+        "cost", "ms", "measured"}. Claude Code reports its usage; Codex and Gemini CLI do not
+        in this mode, so their tokens are estimated from the text and priced from the table
+        (`measured` false)."""
         if runner != "claude":
-            return self._ask_other(who, self._spec(runner), prompt, timeout, job, model)
+            answer, spent = self._ask_other(who, self._spec(runner), prompt, timeout, job, model)
+            return {"answer": answer, **spent}
+        started = time.monotonic()
         found = self.ask_json(who, prompt, timeout=timeout, model=model)
-        spent = usage_of(found)
-        if spent is not None:
-            self.count_usage(job, spent)
-        return str(found.get("result") or "").strip()
+        reported = usage_of(found)
+        if reported is not None:
+            self.count_usage(job, reported)
+        answer = str(found.get("result") or "").strip()
+        used = dict(
+            reported
+            or {
+                "model": "claude",
+                "tokens_in": len(prompt) // 4,
+                "tokens_out": len(answer) // 4,
+                "cost": None,
+            }
+        )
+        if not used.get("ms"):
+            used["ms"] = int((time.monotonic() - started) * 1000) or None
+        used["measured"] = reported is not None
+        return {"answer": answer, **used}
 
     def _ready(self, spec: RunnerSpec) -> list[str]:
         """The CLI's command, once it is here and not signed out."""
@@ -887,7 +922,7 @@ class Runners:
         timeout: float,
         job: str,
         model: str | None,
-    ) -> str:
+    ) -> tuple[str, dict[str, Any]]:
         """`ask` of Codex (`codex exec`: read-only sandbox, no MCP servers, the last message
         kept in a file) or Gemini CLI (no MCP servers, no extensions, the prompt on stdin,
         which version 0.1 reads only when no `-p` is given)."""
@@ -961,17 +996,15 @@ class Runners:
             shutil.rmtree(folder, ignore_errors=True)
         # Neither says what it used in this mode: the call is counted, its tokens estimated
         # from the text (characters / 4) and priced from the table, if it knows the model.
-        self.count_usage(
-            job,
-            {
-                "model": f"{spec.id}:{model}" if model else spec.id,
-                "tokens_in": len(prompt) // 4,
-                "tokens_out": len(answer) // 4,
-                "ms": int((time.monotonic() - started) * 1000) or None,
-                "measured": False,
-            },
-        )
-        return answer.strip()
+        spent = {
+            "model": f"{spec.id}:{model}" if model else spec.id,
+            "tokens_in": len(prompt) // 4,
+            "tokens_out": len(answer) // 4,
+            "ms": int((time.monotonic() - started) * 1000) or None,
+            "measured": False,
+        }
+        self.count_usage(job, spent)
+        return answer.strip(), {**spent, "cost": None}
 
     def ask_json(
         self, who: Principal, prompt: str, *, timeout: float = 180.0, model: str | None = None

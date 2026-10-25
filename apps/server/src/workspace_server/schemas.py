@@ -116,6 +116,19 @@ class RestoreIn(Body):
     ids: list[str] = []
 
 
+class BenchRunIn(Body):
+    """A Test Bench run: the request, which panels (none, full, custom), what custom keeps
+    or leaves out, and the runner and model every panel uses."""
+
+    request: str = Field(max_length=4000)
+    project: str = ""
+    modes: list[str] = []
+    include: dict[str, list[str]] = {}
+    exclude: dict[str, list[str]] = {}
+    runner: str = "claude"
+    model: str = ""
+
+
 class PreviewIn(Body):
     """A Test Bench preview: the request, an optional project, and what to keep or drop
     ({"sections": [...], "ids": [...]})."""
