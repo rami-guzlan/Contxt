@@ -547,6 +547,23 @@ class BrainPort(Protocol):
         {"outcome": "challenge" | "recorded", "proposal_id"?}."""
         ...
 
+    def brain_versions(self) -> list[dict[str, Any]]:
+        """The Brain's versions, oldest first (git tags gnomon/v<N>)."""
+        ...
+
+    def save_version(self, *, cause: str = "manual", note: str = "") -> dict[str, Any]:
+        """Make a version of the Brain as it is: {"status", "version"}."""
+        ...
+
+    def version_diff(self, a: str, b: str) -> dict[str, Any]:
+        """Entries added, changed and removed between two versions, and sheet cells."""
+        ...
+
+    def restore_version(self, version: str, *, ids: list[str] | None = None) -> dict[str, Any]:
+        """Chosen entries as they were at a version, as a new version; refused when an entry
+        changed since the last version."""
+        ...
+
     def dismiss_gap(self, key: str) -> None: ...
 
     def flow(self, *, days: int = 7) -> dict[str, Any]:
@@ -1150,6 +1167,18 @@ class NoBrain:
     def correct(
         self, packet_id: str, kind: str, *, item: str = "", note: str = ""
     ) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain.")
+
+    def brain_versions(self) -> list[dict[str, Any]]:
+        return []
+
+    def save_version(self, *, cause: str = "manual", note: str = "") -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain.")
+
+    def version_diff(self, a: str, b: str) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain.")
+
+    def restore_version(self, version: str, *, ids: list[str] | None = None) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain.")
 
     def dismiss_gap(self, key: str) -> None:

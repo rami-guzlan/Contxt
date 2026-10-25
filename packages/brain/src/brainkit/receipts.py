@@ -93,6 +93,7 @@ def build(brain, packet_id: str) -> dict | None:
     return {"id": row["id"], "session_id": row["session_id"], "at": row["at"],
             "request": row.get("request") or "", "scope": data.get("scope_chain") or [],
             "partition": data.get("partition"), "sent": sent + lessons + extra,
+            "brain_version": data.get("brain_version") or "unknown",
             "opened": opened, "refused": refused,
             "pull_budget": {**(data.get("pull_budget") or {}), "used_items": len(opened),
                             "used_tokens": sum(o["tokens"] for o in opened)},

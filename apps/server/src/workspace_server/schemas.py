@@ -104,6 +104,18 @@ class DecisionItem(Body):
     destination: dict[str, Any] | None = None
 
 
+class VersionIn(Body):
+    """Save version, with an optional note."""
+
+    note: str = ""
+
+
+class RestoreIn(Body):
+    """Which entries to restore from a version; none means every changed one."""
+
+    ids: list[str] = []
+
+
 class ReceiptCorrectionIn(Body):
     """What went wrong with a request, from its receipt (brainkit/corrections.py)."""
 

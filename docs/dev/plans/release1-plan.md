@@ -358,3 +358,138 @@ Each step comes with its tests, local CI, and a PR merged only after a full loca
 - **Name and license**, before anything public.
 - **GitHub billing,** for hosted CI and macOS.
 - **The IKN enrichment yes or no.**
+
+## 15. Addendum, Oct 25: the Test Bench
+
+The owner's spec, recorded as decisions against today's code. Most pieces already exist:
+- a packet preview (`GET /brain/preview`, `brain.preview`, which records nothing);
+- runners for claude, codex and gemini, which report usage;
+- git commits in the Brain (`gitops.commit`) and undo points (`checkpoints.py`);
+- brainkit's `answer_eval` and `agent_eval`.
+
+The Test Bench assembles them.
+
+### 15.1 Brain versions (built first)
+
+- **A version is a git tag** in the Brain's own repository (`gnomon/v<N>`), plus a row in a `brain_versions` table:
+  - its number and commit;
+  - its cause: distill, a manual "Save version", or a restore;
+  - when it was made;
+  - counts of entries added, changed and removed;
+  - the context-sheet event sequence at that moment.
+
+  Snapshots aren't stored separately: git already keeps every state. Sheets in SQLite (item 3) are covered by the event sequence plus the SNAPSHOT.md committed with the tag.
+- **When versions are made:**
+  - every distill commits and tags a version on success (section 14);
+  - "Save version" is a button;
+  - a heartbeat in apply-during-the-day mode tags once per day, not per write.
+- **Diff:** `brain.versions.diff(a, b)` returns the entries added, changed and removed (`id#heading`, old and new text), from `git diff` between tags, plus the sheet cells changed between the two event sequences.
+- **Restore:**
+  - a whole version, or chosen entries from it;
+  - made as a new commit and a new version (cause: restore), never by rewriting history;
+  - it refuses, and names the entries, when a later change touched the same entries, the way undo points do.
+- **Every packet, receipt and Test Bench run records `brain_version`:** the latest tag, plus `+N` if there are writes since.
+
+### 15.2 Packet preview
+
+- **Location:** Brain › Test bench. It replaces and extends "Try a prompt"; one entry point, no new top-level tab.
+- **What's shown:** the request (plus an optional project) runs through `brain.preview`, which is extended to return the packet's own sections in order:
+  - must-holds, project packet, live sheet values, notes, taste, files (pointers), lore, the map, gaps.
+
+  Each section shows its items, each with why it was chosen (its match score and route reason) and its tokens. The section total and the packet total sit at the top, along with the brain version.
+- **Section names come from the packet builder,** not from a fixed list, so they match whatever a Brain holds.
+
+### 15.3 Toggles and side by side
+
+- **Choosing what goes in:** checkboxes per section and per item feed `brain.preview(..., include=..., exclude=...)`. It rebuilds the packet without the excluded parts and without filling the gap with something else, so "custom" means exactly what was checked.
+- **Three panels:**
+  1. No brain;
+  2. Full brain;
+  3. Custom.
+
+  All three use the same runner, model and settings.
+- **How runs are made:**
+  - each runs headless through the runners, with the packet given as context in the prompt and no tools (Brain MCP and connectors off), so the only variable is the context;
+  - the prompt is sent on stdin.
+- **Each panel shows:** the output, the packet used, input and output tokens, cost (from the existing cost tables), time taken, and Re-run.
+- **Model:** the owner's default runner and model, which can be changed per session of the bench.
+- **Where data goes:** a line says which provider receives the request and packet.
+
+### 15.4 Tests and suites
+
+- **Tests travel with the Brain:** they're the owner's quality bar.
+  - A test is stored as `bench/<suite>/<test>.yaml` in the Brain folder, committed: the request, an optional project, a rubric (bullets), an optional gold example, an optional default include and exclude, and an optional runner and model.
+  - Suites are folders with a `suite.yaml`: name, description, and "run after each distill" (yes or no).
+- **Actions:** save any bench request as a test; edit, duplicate and delete tests and suites; run a suite in any mode and see results test by test.
+
+### 15.5 Scoring
+
+- **Human:**
+  - thumbs up or down;
+  - edits needed (none, light, heavy);
+  - a note.
+- **Model:** a grader scores each rubric criterion as met, part or missed, then an overall 1 to 5 score with a short reason. It compares to the gold example when there is one.
+  - Default grader: Haiku (`claude -p --model claude-haiku-5-5`), which can be changed.
+  - The output being graded is quoted as data.
+- **A human score overrides the model score.**
+- **Storage:** runs and scores are kept in app database tables (`bench_runs`, `bench_scores`), each with:
+  - the test or request, the mode, the included sections and items (ids);
+  - the runner, model, tokens, cost and time;
+  - the brain version and packet hash.
+- **Summary:**
+  - win rate by mode;
+  - average score per suite over brain versions;
+  - for each section, the average score of runs that included it against runs that didn't. This is labelled "a signal, not proof".
+
+### 15.6 Regression runs
+
+- **When they run:** after each successful distill (section 14) tags a version, suites marked "run after each distill" run with the full brain.
+- **Cost controls:**
+  - a test whose packet hash is unchanged from the previous version reuses its last score and isn't rerun;
+  - there's a nightly cap (20 test runs by default), with the estimate shown in the suite settings;
+  - the default grader is Haiku.
+- **What counts as a drop** (a setting): the overall score falls 1 or more, or a criterion goes from met to missed. A human-scored test that was thumbs-up and is now graded 2 or under also counts.
+- **Each drop gets a Catch up card ("Quality dropped") with:**
+  - the before and after outputs side by side;
+  - the brain entries that changed in that distill and appear in the after packet, listed first as likely causes;
+  - the actions Roll back these entries (15.1 restore), Edit, and Accept. Accept sets a new baseline for that test.
+- **History:** kept per suite, by version.
+
+### 15.7 Answers to the open questions
+
+| Question | Decision |
+|---|---|
+| Where it lives | Brain › Test bench, replacing Try a prompt |
+| Model | The owner's default runner and model, which can be changed; the same model across the three panels; Haiku grades |
+| Threshold and nightly cost | A drop of 1 or more overall, or a criterion going from met to missed; opt-in suites; reuse when the packet is unchanged; a cap of 20 runs a night |
+| How versions are stored | Git tags plus a versions table; diffs from git; restore as a new commit |
+
+### 15.8 Order of PRs
+
+| PR | What | Depends on |
+|---|---|---|
+| A | Brain versions: tag, table, diff, restore; `brain_version` on packets and receipts | none |
+| B | Preview by section with reasons and tokens, include and exclude, and the Test bench page | none |
+| C | Three-panel runs through the runners, without tools, with cost | B |
+| D | Tests and suites in the Brain folder, scoring, the grader and the summary | C |
+| E | Regression after distill, with the Catch up card and roll back | A, D, and the section 14 distill |
+
+A to D can ship today. E ships when the section 14 distill merges; until then it can be started by hand with "Run regression against version N".
+
+### 15.9 Tests and risks
+
+- **Tests first:**
+  - version tag and diff;
+  - restore refuses after a later change;
+  - excluded sections are not replaced;
+  - the no-brain panel gets no Brain text;
+  - the three panels use the same model;
+  - a grader's injected text is treated as data;
+  - human overrides model;
+  - an unchanged packet reuses its score;
+  - the nightly cap holds;
+  - the drop card lists changed entries in the packet.
+- **Risks:**
+  - Cost of three panels on every try: Run is always a button, with the estimate shown first.
+  - A grader that is too lenient or too harsh: humans override, and the summary shows how often humans and the grader agree.
+  - A restore that undoes wanted learning: it restores only chosen entries, shows the diff first, and is itself versioned.

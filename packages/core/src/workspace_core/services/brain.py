@@ -675,6 +675,44 @@ class Brain:
             raise NotFound(f"No receipt {packet_id}.", id=packet_id)
         return found
 
+    # ---------------------------------------------------------------- versions (15.1)
+
+    def brain_versions(self, who: Principal) -> list[dict[str, Any]]:
+        """The Brain's versions, oldest first."""
+        who.require("brain.read")
+        return self.rt.brain.brain_versions()
+
+    def save_version(self, who: Principal, *, note: str = "") -> dict[str, Any]:
+        """Save version: the Brain as it is, as a new version."""
+        who.require("brain.govern")
+        found = self.rt.brain.save_version(cause="manual", note=" ".join(str(note).split())[:200])
+        self._versioned(who, "brain.versioned", found)
+        return found
+
+    def version_diff(self, who: Principal, a: str, b: str) -> dict[str, Any]:
+        who.require("brain.read")
+        return self.rt.brain.version_diff(str(a or "").strip(), str(b or "").strip())
+
+    def restore_version(
+        self, who: Principal, version: str, *, ids: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Chosen entries as they were at a version, made a new version."""
+        who.require("brain.govern")
+        found = self.rt.brain.restore_version(str(version or "").strip(), ids=ids or None)
+        self._versioned(who, "brain.version_restored", found, restored_from=version)
+        return found
+
+    def _versioned(self, who: Principal, event: str, found: dict[str, Any], **extra: Any) -> None:
+        version = found.get("version") or {}
+        with self.rt.write() as tx:
+            tx.emit(
+                event,
+                actor_id=who.actor_id,
+                subject_type="brain_version",
+                subject_id=str(version.get("name") or ""),
+                data={"cause": version.get("cause"), "status": found.get("status"), **extra},
+            )
+
     def correct(
         self, who: Principal, packet_id: str, kind: str, *, item: str = "", note: str = ""
     ) -> dict[str, Any]:
