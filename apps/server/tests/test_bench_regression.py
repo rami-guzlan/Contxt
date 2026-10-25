@@ -194,3 +194,47 @@ def test_at_most_twenty_test_runs_a_day(owner, runtime, world, monkeypatch):
     assert (done["ran"], done["skipped"]) == (2, 1) and world.runs() == 2
     world.packet = "Something new."
     assert regress(runtime, "v2")["ran"] == 0  # the day's runs are spent
+
+
+def test_what_counts_as_a_drop_is_a_setting(owner, runtime, world):
+    assert owner.ok(owner.get("/api/bench/settings")) == {
+        "fall": 1,
+        "met_to_missed": True,
+        "liked_floor": 2,
+        "daily_cap": 20,
+    }
+    owner.ok(
+        owner.put(
+            "/api/bench/settings",
+            json={"fall": 3, "met_to_missed": False, "liked_floor": 2, "daily_cap": 20},
+        )
+    )
+    suite(owner)
+    regress(runtime, "v1")
+    world.packet, world.grade = "Something new.", WORSE  # falls 2 points, a criterion missed
+    assert regress(runtime, "v2")["drops"] == 0
+    assert cards(owner) == []
+
+
+def test_a_drop_setting_out_of_range_is_refused(owner):
+    for body in ({"fall": 0}, {"fall": 5}, {"liked_floor": 6}, {"daily_cap": 0}):
+        refused = owner.put("/api/bench/settings", json=body)
+        assert refused.status_code == 422, body
+
+
+def test_the_daily_cap_is_a_setting(owner, runtime, world):
+    owner.ok(owner.put("/api/bench/settings", json={"daily_cap": 2}))
+    suite(owner, tests=3)
+    done = regress(runtime, "v1")
+    assert (done["ran"], done["skipped"]) == (2, 1)
+
+
+def test_a_suite_estimate_says_what_each_distill_would_cost_and_runs_nothing(owner, runtime, world):
+    suite(owner, tests=2)
+    found = owner.ok(owner.get("/api/bench/suites/quality/estimate"))
+    assert found["tests"] == 2 and len(found["per_test"]) == 2
+    assert all(t["tokens_in"] > 0 and t["grade_tokens"] > 0 for t in found["per_test"])
+    assert found["tokens"] == sum(t["tokens_in"] + t["grade_tokens"] for t in found["per_test"])
+    assert found["grader"] == "claude-haiku-5-5" and found["daily_cap"] == 20
+    assert found["provider"] == "Anthropic" and found["estimated"] is True
+    assert world.asked == []
