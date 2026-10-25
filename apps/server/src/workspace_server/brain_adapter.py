@@ -1290,6 +1290,31 @@ class BrainKitAdapter:
         found = self.brain.receipt(packet_id)
         return None if found.is_error else dict(found.data)
 
+    def brain_versions(self) -> list[dict[str, Any]]:
+        return self.brain.brain_versions.list()
+
+    def save_version(self, *, cause: str = "manual", note: str = "") -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.brain_versions.tag(cause=cause, note=note)
+        if result.is_error:
+            raise Conflict(result.text)
+        return dict(result.data, message=result.text)
+
+    def version_diff(self, a: str, b: str) -> dict[str, Any]:
+        try:
+            return self.brain.brain_versions.diff(a, b)
+        except ValueError as exc:
+            raise ValidationFailed(str(exc)) from exc
+
+    def restore_version(self, version: str, *, ids: list[str] | None = None) -> dict[str, Any]:
+        with self._lock:
+            result = self.brain.brain_versions.restore(version, ids=ids)
+        if result.is_error:
+            if result.data.get("status") == "missing":
+                raise NotFound(result.text)
+            raise Conflict(result.text, changed_since=result.data.get("changed_since") or [])
+        return dict(result.data, message=result.text)
+
     def correct(
         self, packet_id: str, kind: str, *, item: str = "", note: str = ""
     ) -> dict[str, Any]:

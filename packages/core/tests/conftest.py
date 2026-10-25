@@ -245,6 +245,21 @@ class FakeBrain:
     def checkpoints(self, limit=50):
         return self.points[:limit]
 
+    def brain_versions(self):
+        return list(getattr(self, "made_versions", []))
+
+    def save_version(self, *, cause="manual", note=""):
+        made = getattr(self, "made_versions", [])
+        version = {"name": f"v{len(made) + 1}", "cause": cause, "note": note}
+        self.made_versions = made + [version]
+        return {"status": "made", "version": version}
+
+    def version_diff(self, a, b):
+        return {"from": a, "to": b, "added": [], "changed": [], "removed": [], "cells": []}
+
+    def restore_version(self, version, *, ids=None):
+        return self.save_version(cause="restore", note=f"from {version}")
+
     def correct(self, packet_id, kind, *, item="", note=""):
         self.corrected = getattr(self, "corrected", []) + [(packet_id, kind, item, note)]
         return {"outcome": "recorded", "kind": kind}

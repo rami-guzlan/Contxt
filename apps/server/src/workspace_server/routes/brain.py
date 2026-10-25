@@ -39,7 +39,9 @@ from ..schemas import (
     ReconcileIn,
     ReplayIn,
     RequestLabelsIn,
+    RestoreIn,
     VerifyIn,
+    VersionIn,
 )
 
 log = logging.getLogger(__name__)
@@ -448,6 +450,31 @@ def receipt(packet_id: str, who: Who, ws: WS) -> dict[str, Any]:
         for title, status in ws.sources.unsearchable(who)
     ]
     return {**found, "unknown": list(found.get("unknown") or []) + pending}
+
+
+@router.get("/versions")
+def brain_versions(who: Who, ws: WS) -> dict[str, Any]:
+    """The Brain's versions, oldest first (git tags gnomon/v<N>)."""
+    return {"versions": ws.brain.brain_versions(who)}
+
+
+@router.post("/versions", status_code=201)
+def save_version(body: VersionIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Save version: the Brain as it is now."""
+    return ws.brain.save_version(who, note=body.note)
+
+
+@router.get("/versions/{a}/diff/{b}")
+def version_diff(a: str, b: str, who: Who, ws: WS) -> dict[str, Any]:
+    """Entries added, changed and removed from version a to b (or HEAD), and sheet cells."""
+    return ws.brain.version_diff(who, a, b)
+
+
+@router.post("/versions/{version}/restore")
+def restore_version(version: str, body: RestoreIn, who: Who, ws: WS) -> dict[str, Any]:
+    """Chosen entries (or every changed one) as they were at a version, as a new version.
+    Refused when an entry changed since the last version."""
+    return ws.brain.restore_version(who, version, ids=body.ids or None)
 
 
 @router.post("/receipts/{packet_id}/corrections")

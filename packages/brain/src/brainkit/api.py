@@ -117,6 +117,28 @@ def pull_budget(config) -> tuple[int, int]:
     return max(0, int(found["items"])), max(0, int(found["tokens"]))
 
 
+class _Versions:
+    """`brain.brain_versions.tag(cause="distill")` and the rest, bound to one Brain."""
+
+    def __init__(self, brain, module):
+        self._brain, self._module = brain, module
+
+    def tag(self, **kwargs):
+        return self._brain._write(lambda: self._module.tag(self._brain, **kwargs))
+
+    def restore(self, version, **kwargs):
+        return self._brain._write(lambda: self._module.restore(self._brain, version, **kwargs))
+
+    def list(self):
+        return self._module.list_versions(self._brain)
+
+    def diff(self, a, b):
+        return self._module.diff(self._brain, a, b)
+
+    def label(self):
+        return self._brain.version_label()
+
+
 class Brain:
     """One vault, read fresh on every call. Thread-safe for concurrent readers."""
 
@@ -467,6 +489,7 @@ class Brain:
                      "person_fingerprint": kernel.person_fingerprint or None,
                      "person_included": person_sent, "delivery": delivery,
                      "session_status": status, "vault_fingerprint": st.fingerprint[:12],
+                     "brain_version": self.version_label(),
                      "request_type": request_type_mod.classify(route),
                      "engine": audit.summary(), "map_included": map_state,
                      "map_fingerprint": map_fp,
@@ -2114,6 +2137,23 @@ class Brain:
         return movein.analyze(self, sources, name=name, principal=principal)
 
     # ------------------------------------------------------------------ after writes
+    def version_label(self) -> str:
+        """The Brain version a packet is built from ("v3", "v3+2"), or "unversioned"; never
+        fails a request (versions.py)."""
+        from . import versions
+        try:
+            return versions.label(self)
+        except Exception:  # a broken git never breaks a brief
+            return "unknown"
+
+    @property
+    def brain_versions(self):
+        """Versions of this Brain (Release 1 plan, 15.1): tag, list, diff, restore. The
+        distill calls `brain.brain_versions.tag(cause="distill")` when it succeeds.
+        (`versions(entry_id)` is one entry's history.)"""
+        from . import versions
+        return _Versions(self, versions)
+
     def after_write(self, paths, message) -> dict:
         """Refresh derived files and record the change in git, per brain.json policy. Inside
         `deferring`, the change is only noted, for one refresh when the batch ends."""
