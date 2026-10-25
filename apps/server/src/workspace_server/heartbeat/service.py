@@ -942,6 +942,7 @@ class Heartbeat:
                 item["review"] = route == "catch_up"
                 kept.append(verdict)
             if kept:
+                self._replace_waiting(owner, [by_key[str(v["item"])] for v in kept], details)
                 written = self._write_all(
                     owner, beat_id, batch, {**judged, "items": kept}, brain, details
                 )
@@ -989,6 +990,64 @@ class Heartbeat:
             details=details,
             **counts,
         )
+
+    def _replace_waiting(
+        self, owner: Principal, items: list[dict[str, Any]], details: list[str]
+    ) -> None:
+        """A later net change on an item replaces what still waits from an earlier distill:
+        that proposal is turned down, so Catch up holds only the newest."""
+        table = schema.staged_changes
+        replaced = 0
+        for item in items:
+            with self.ws.rt.read() as tx:
+                earlier = tx.rows(
+                    sa.select(table.c.proposal_id, table.c.outcome).where(
+                        table.c.workspace_id == tx.workspace_id,
+                        table.c.connector_id == item["connector_id"],
+                        table.c.item_id == item["id"],
+                        table.c.status == "distilled",
+                        table.c.proposal_id.is_not(None),
+                    )
+                )
+            for row in earlier:
+                if (row["outcome"] or {}).get("route") != "catch_up":
+                    continue
+                try:
+                    self.ws.brain.decide(
+                        owner,
+                        str(row["proposal_id"]),
+                        approve=False,
+                        reason="A later change replaced it (the heartbeat's distill).",
+                    )
+                    replaced += 1
+                except WorkspaceError:
+                    continue  # already decided: nothing waits
+        if replaced:
+            details.append(f"Replaced {replaced} waiting in Catch up with a later change.")
+
+    def still_waiting(self, who: Principal) -> dict[str, Any]:
+        """What the distill sent to Catch up over 14 days ago and still waits: one card, so
+        nothing expires silently."""
+        who.require("brain.read")
+        since = iso(self.ws.rt.clock.now() - timedelta(days=learning.STALE_DAYS))
+        table = schema.staged_changes
+        with self.ws.rt.read() as tx:
+            rows = tx.rows(
+                sa.select(table).where(
+                    table.c.workspace_id == tx.workspace_id,
+                    table.c.status == "distilled",
+                    table.c.proposal_id.is_not(None),
+                    table.c.seen_at < since,
+                )
+            )
+        waiting = {p.get("id") for p in self.ws.brain.proposals(who)}
+        names = {r["id"]: r["name"] for r in self._connectors()}
+        stale = [
+            learning.view(r, names)
+            for r in rows
+            if (r["outcome"] or {}).get("route") == "catch_up" and r["proposal_id"] in waiting
+        ]
+        return {"count": len(stale), "days": learning.STALE_DAYS, "items": stale}
 
     def _lesson(self, owner: Principal, pattern: Any, details: list[str]) -> None:
         """A pattern across the day's changes becomes a lesson proposal (it waits in Catch
