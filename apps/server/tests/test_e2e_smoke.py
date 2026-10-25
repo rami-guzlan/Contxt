@@ -151,7 +151,7 @@ def test_two_brain_processes_share_one_conversation(home, apps):
     assert info["serverInfo"]["name"] == "brain" and "gnomon_get_context" in info["instructions"]
     second.init()
     names = {t["name"] for t in first.request("tools/list")["result"]["tools"]}
-    assert {"gnomon_get_context", "notes_propose", "projects_create", "outputs_save"} <= names
+    assert {"gnomon_get_context", "notes", "projects", "outputs"} <= names  # one per area
 
     opened, error = first.call(
         "gnomon_get_context", request="Write a LinkedIn post announcing the Q4 webinar series"

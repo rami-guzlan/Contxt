@@ -56,14 +56,10 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(init["result"]["protocolVersion"], "2025-06-18")
         self.assertIn("gnomon_get_context", init["result"]["instructions"])
         names = {t["name"] for t in self.rpc("tools/list")["result"]["tools"]}
-        self.assertEqual(names, {"gnomon_get_context", "skills_get", "files_open", "notes_get",
-                                 "notes_search", "notes_propose", "skills_propose_change", "files_upload",
-                                 "projects_propose_progress", "projects_create", "outputs_save",
-                                 "gnomon_health", "notes_challenge", "agents_list",
-                                 "agents_get", "sheets_get", "sheets_propose_update", "todos_update",
-                                 "gnomon_map", "receipts_get", "taste_get", "taste_propose",
-                                 "gaps_flag", "gnomon_open", "lore_list", "lore_get",
-                                 "lore_propose", "activity_sessions_search"})
+        # One tool per area, and gnomon_get_context on its own (grouped tools, item 5).
+        self.assertEqual(names, {"gnomon_get_context", "gnomon", "skills", "files", "notes",
+                                 "projects", "outputs", "agents", "sheets", "todos",
+                                 "receipts", "taste", "gaps", "lore", "activity"})
         first = self.call("gnomon_get_context", {"request": "How long do web design projects run?"})
         self.assertFalse(first["isError"], first)
         text = first["content"][0]["text"]
@@ -106,7 +102,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertFalse(found["isError"], found)
         text = found["content"][0]["text"]
         self.assertIn("facts-services-002", text)
-        self.assertIn("notes_get", text)
+        self.assertIn('notes(action: "get"', text)
         opened = self.call("notes_get", {"id": "facts-services-002", "session_id": session})
         self.assertFalse(opened["isError"], opened)
         again = self.call("notes_search", {"query": "how long web design projects take",

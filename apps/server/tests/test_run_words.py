@@ -72,7 +72,10 @@ def test_model_facing_text_says_run_for_runs():
     # And where it says task, it means a task from the Tasks sheet.
     for where in NEW_KIND:
         if WORD.search(texts[where]):
-            assert any(w in texts[where] for w in ("todos_update", "T-41", "State")), where
+            assert any(
+                w in texts[where]
+                for w in ("todos_update", 'todos(action: "update"', "T-41", "State")
+            ), where
 
 
 def test_distillation_still_names_its_kinds_from_the_one_vocabulary():
