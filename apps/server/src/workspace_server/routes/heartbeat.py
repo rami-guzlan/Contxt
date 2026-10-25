@@ -239,6 +239,8 @@ class LearningIn(Body):
     buffer_days: int | None = None
     learn: str | None = None  # nightly (default) or per_beat
     distill_at: str | None = None  # HH:MM, local time
+    # Apply during the day: {"connectors": [...], "sheets": [...]} distilled in the beat.
+    live: dict[str, list[str]] | None = None
 
 
 @router.get("/learning")
@@ -257,6 +259,7 @@ def configure_learning(body: LearningIn, request: Request, who: Who) -> dict[str
         buffer_days=body.buffer_days,
         learn=body.learn,
         distill_at=body.distill_at,
+        live=body.live,
     )
 
 

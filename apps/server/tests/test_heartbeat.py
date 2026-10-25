@@ -1599,6 +1599,7 @@ def test_learning_settings_are_checked(owner):
         "buffer_days": 30,
         "learn": "nightly",
         "distill_at": "19:00",
+        "live": {"connectors": [], "sheets": []},
     }
 
 
@@ -1717,3 +1718,45 @@ def test_what_waits_over_14_days_is_gathered_into_one_card(owner, runtime, fake_
         tx.conn.execute(schema.staged_changes.update().values(seen_at="2026-09-10T09:00:00Z"))
     stale = owner.ok(owner.get("/api/heartbeat/still-waiting"))
     assert stale["count"] == 1 and stale["days"] == 14
+
+
+# ---------------------------------------------------------------------- apply during the day
+
+
+def test_a_live_connectors_change_goes_in_during_the_day(owner, fake_cli):
+    found(owner, per_beat=False)
+    owner.ok(owner.put("/api/heartbeat/learning", json={"live": {"connectors": ["claude:mail"]}}))
+    done = beat(owner)
+    assert done["changes"] + done["waits"] == 1  # Governed here: it waits, but now, not tonight
+    assert len(fake_cli.distilled) == 1  # distilled in the beat
+    (entry,) = staged(owner)
+    assert entry["status"] == "distilled" and entry["outcome"]["route"] == "short"
+
+
+def test_for_a_live_sheet_only_what_lands_in_it_goes_in_and_the_rest_waits(owner, fake_cli):
+    found(owner, per_beat=False)
+    owner.ok(owner.put("/api/heartbeat/learning", json={"live": {"sheets": ["guests"]}}))
+    beat(owner)  # the distill would write project progress, not the guests sheet
+    (entry,) = staged(owner)
+    assert entry["status"] == "staged"  # it waits for tonight
+    fake_cli.items = [dict(ITEM, id="msg-2", title="Dana confirmed")]
+    fake_cli.writes = lambda item: [
+        {
+            "kind": "sheet",
+            "sheet": "guests",
+            "row": "Dana Ruiz",
+            "column": "Status",
+            "value": "Confirmed",
+            "reason": "she said so",
+        }
+    ]
+    beat(owner)
+    newest = staged(owner)[0]
+    assert newest["status"] == "distilled"
+    assert newest["outcome"]["reason"].startswith("applied during the day")
+
+
+def test_without_live_sheets_or_connectors_a_beat_makes_no_model_call(owner, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    assert fake_cli.distilled == [] and fake_cli.judges() == []

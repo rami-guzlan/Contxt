@@ -9,7 +9,7 @@ import { mockApi, renderAt } from "../../test/render";
 import { HeartbeatToday } from "./HeartbeatToday";
 import { LearningSettings } from "./LearningSettings";
 
-const learning = (over: Record<string, unknown> = {}) => ({ goal: "", filters: [], buffer_days: 30, learn: "nightly", distill_at: "19:00", ...over });
+const learning = (over: Record<string, unknown> = {}) => ({ goal: "", filters: [], buffer_days: 30, learn: "nightly", distill_at: "19:00", live: { connectors: [], sheets: [] }, ...over });
 const entry = (over: Record<string, unknown> = {}) => ({
   id: "stg_1",
   connector_id: "claude:mail",
@@ -74,5 +74,22 @@ describe("Settings, how it learns", () => {
     await userEvent.selectOptions(screen.getByLabelText(/Learn/), "per_beat");
     const bodies = calls.filter((c) => c.method === "PUT").map((c) => c.body);
     expect(bodies).toEqual([{ goal: "Run the Q4 webinars" }, { filters: [{ pattern: "newsletter" }] }, { learn: "per_beat" }]);
+  });
+});
+
+describe("Settings, apply during the day", () => {
+  it("marks a connector and a sheet live", async () => {
+    const calls = mockApi({
+      "GET /api/heartbeat/learning": learning(),
+      "PUT /api/heartbeat/learning": learning(),
+      "GET /api/heartbeat/status": { connectors: [{ id: "claude:mail", name: "Gmail", how: "mcp" }] },
+      "GET /api/work/live": { sheets: [{ id: "guests", title: "Guests and partners" }], templates: [], waiting: [] },
+    });
+    renderAt(<LearningSettings />);
+    await userEvent.click(await screen.findByLabelText("Gmail"));
+    await userEvent.click(screen.getByLabelText("Guests and partners"));
+    const bodies = calls.filter((c) => c.method === "PUT").map((c) => c.body);
+    expect(bodies[0]).toEqual({ live: { connectors: ["claude:mail"], sheets: [] } });
+    expect(bodies[1]).toEqual({ live: { connectors: [], sheets: ["guests"] } });
   });
 });

@@ -789,6 +789,7 @@ class Heartbeat:
         buffer_days: int | None = None,
         learn: str | None = None,
         distill_at: str | None = None,
+        live: dict[str, list[str]] | None = None,
     ) -> dict[str, Any]:
         """The goal relevance is scored against, the negative filters (each a pattern, words
         or a /regex/, with an optional source and field) and how long the buffer is kept."""
@@ -815,6 +816,11 @@ class Heartbeat:
             if learn not in ("nightly", "per_beat"):
                 raise ValidationFailed("Learn nightly or per beat.", field="learn")
             changes["learn"] = learn
+        if live is not None:
+            changes["live"] = {
+                "connectors": [_flat(c, 240) for c in live.get("connectors") or []][:50],
+                "sheets": [_flat(s, 200) for s in live.get("sheets") or []][:50],
+            }
         if distill_at is not None:
             if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", distill_at):
                 raise ValidationFailed("A distill time is HH:MM.", field="distill_at")
@@ -836,6 +842,7 @@ class Heartbeat:
             "buffer_days": int(found.get("buffer_days") or learning.BUFFER_DAYS),
             "learn": found.get("learn") or "nightly",
             "distill_at": found.get("distill_at") or learning.DISTILL_AT,
+            "live": found.get("live") or {"connectors": [], "sheets": []},
         }
 
     def distill_due(self, settings: dict[str, Any] | None = None) -> bool:
@@ -862,13 +869,7 @@ class Heartbeat:
         return bool(waiting)
 
     def _distill(self, beat_id: str, started: float) -> None:
-        """The distill: net the buffer's changes by code, route them with one model call per
-        batch (the ingest model) against the goal, the filters and the Brain's alignment,
-        apply code's rules, write through the one proposal path, and mark each entry with what
-        it became. Nothing in the buffer changes until its outcome is written."""
-        owner = self.ws.owner()
-        settings = self.settings()
-        cli = self.cli(settings)
+        """The distill: learn from everything the buffer holds, then record the run."""
         table = schema.staged_changes
         with self.ws.rt.read() as tx:
             rows = tx.rows(
@@ -876,12 +877,49 @@ class Heartbeat:
                     table.c.workspace_id == tx.workspace_id, table.c.status == "staged"
                 )
             )
+        learned = self._learn(self.ws.owner(), beat_id, rows)
+        routed = [o["route"] for o in learned["outcomes"].values()]
+        details = [
+            f"Distilled {len(rows)} changes into {learned['items']} items: "
+            + ", ".join(f"{routed.count(r)} {r.replace('_', ' ')}" for r in learning.ROUTES)
+            + ".",
+            *learned["details"],
+        ]
+        self._finish(
+            beat_id,
+            started,
+            status="done",
+            connectors=[],
+            items=learned["items"],
+            tokens=learned["tokens"],
+            unknown=learned["unknown"],
+            errors=[],
+            details=details,
+            **learned["counts"],
+        )
+
+    def _learn(
+        self,
+        owner: Principal,
+        beat_id: str,
+        rows: list[dict[str, Any]],
+        *,
+        only_sheets: set[str] | None = None,
+    ) -> dict[str, Any]:
+        """Net the buffer rows by code, route them with one model call per batch (the ingest
+        model) against the goal, the filters and the Brain's alignment, apply code's rules,
+        write through the one proposal path, and mark each entry with what it became. With
+        `only_sheets` (apply during the day), only writes to those sheets go in now; the rest
+        of an item stays in the buffer for tonight. Nothing in the buffer changes until its
+        outcome is written."""
+        settings = self.settings()
+        cli = self.cli(settings)
+        table = schema.staged_changes
         names = {r["id"]: r for r in self._connectors()}
-        nets = learning.net(rows)
         details: list[str] = []
         outcomes: dict[str, dict[str, Any]] = {}  # staged id: outcome
         items: list[dict[str, Any]] = []
-        for change in nets:
+        for change in learning.net(rows):
             if change.net_zero:
                 for r in change.rows:
                     outcomes[r["id"]] = {"route": "discard", "reason": "undone the same day"}
@@ -935,6 +973,20 @@ class Heartbeat:
                 if item is None:
                     continue
                 route, reason = learning.route_of(verdict, item)
+                if only_sheets is not None:
+                    # During the day only what lands in a live sheet goes in; the rest of the
+                    # item waits for tonight's distill, still in the buffer.
+                    live = [
+                        w
+                        for w in verdict.get("writes") or []
+                        if isinstance(w, dict)
+                        and w.get("kind") == "sheet"
+                        and str(w.get("sheet") or "") in only_sheets
+                    ]
+                    if route != "short" or not live:
+                        continue
+                    verdict = {**verdict, "writes": live}
+                    reason = f"applied during the day: {reason}".strip()
                 for staged_id in item["rows"]:
                     outcomes[staged_id] = {"route": route, "reason": reason}
                 if route == "discard":
@@ -948,11 +1000,9 @@ class Heartbeat:
                 )
                 for key in counts:
                     counts[key] += written.get(key, 0)
-            for pattern in judged.get("patterns") or []:
-                self._lesson(owner, pattern, details)
-        unrouted = [r for r in rows if r["id"] not in outcomes]
-        for r in unrouted:  # the model said nothing about it: it waits for the next distill
-            outcomes.pop(r["id"], None)
+            if only_sheets is None:
+                for pattern in judged.get("patterns") or []:
+                    self._lesson(owner, pattern, details)
         with self.ws.rt.write() as tx:
             proposals = {
                 line["item_id"]: line["proposal_id"]
@@ -971,25 +1021,54 @@ class Heartbeat:
                     .where(table.c.id == staged_id)
                     .values(status="distilled", outcome=outcome, proposal_id=proposals.get(key))
                 )
-        routed = [o["route"] for o in outcomes.values()]
-        details.insert(
-            0,
-            f"Distilled {len(rows)} changes into {len(items)} items: "
-            + ", ".join(f"{routed.count(r)} {r.replace('_', ' ')}" for r in learning.ROUTES)
-            + ".",
-        )
-        self._finish(
-            beat_id,
-            started,
-            status="done",
-            connectors=[],
-            items=len(items),
-            tokens=tokens,
-            unknown=unknown,
-            errors=[],
-            details=details,
-            **counts,
-        )
+        return {
+            "items": len(items),
+            "counts": counts,
+            "tokens": tokens,
+            "unknown": unknown,
+            "details": details,
+            "outcomes": outcomes,
+        }
+
+    def _apply_live(
+        self, owner: Principal, beat_id: str, settings: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Apply during the day: what this beat captured from a live connector is distilled
+        now, whole; for a live sheet, only what lands in it goes in now. A small call on the
+        ingest model, only on beats with such changes; nothing else changes before tonight."""
+        live = settings.get("live") or {}
+        connectors = set(live.get("connectors") or [])
+        sheets = set(live.get("sheets") or [])
+        if not connectors and not sheets:
+            return None
+        table = schema.staged_changes
+        with self.ws.rt.read() as tx:
+            rows = tx.rows(
+                sa.select(table).where(
+                    table.c.workspace_id == tx.workspace_id,
+                    table.c.beat_id == beat_id,
+                    table.c.status == "staged",
+                )
+            )
+        whole = [r for r in rows if r["connector_id"] in connectors]
+        rest = [r for r in rows if r["connector_id"] not in connectors]
+        total: dict[str, Any] = {
+            "counts": {"changes": 0, "waits": 0, "held": 0},
+            "tokens": None,
+            "unknown": 0,
+            "details": [],
+        }
+        for part, only in ((whole, None), (rest, sheets or None)):
+            if not part or (only is None and part is rest):
+                continue
+            learned = self._learn(owner, beat_id, part, only_sheets=only)
+            for key in total["counts"]:
+                total["counts"][key] += learned["counts"][key]
+            if learned["tokens"] is not None:
+                total["tokens"] = (total["tokens"] or 0) + learned["tokens"]
+            total["unknown"] += learned["unknown"]
+            total["details"] += learned["details"]
+        return total
 
     def _replace_waiting(
         self, owner: Principal, items: list[dict[str, Any]], details: list[str]
@@ -2169,6 +2248,15 @@ class Heartbeat:
         self._advance(beat_id, reads)
         # The buffer keeps every change, with what the beat made of it; old entries go.
         learning.stage(self.ws, beat_id, decisions, outcome="" if nightly else "beat")
+        if nightly:
+            applied = self._apply_live(owner, beat_id, settings)
+            if applied is not None:
+                for kind in counts:
+                    counts[kind] += applied["counts"][kind]
+                if applied["tokens"] is not None:
+                    tokens = (tokens or 0) + applied["tokens"]
+                unknown += applied["unknown"]
+                details += applied["details"]
         learning.purge(self.ws, int(settings.get("buffer_days") or learning.BUFFER_DAYS))
         self._finish(
             beat_id,
