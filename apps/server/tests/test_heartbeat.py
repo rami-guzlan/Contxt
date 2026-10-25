@@ -1016,6 +1016,37 @@ def test_only_an_approved_n8n_read_with_its_secret_posts_from_this_computer(
     assert post(secret).json() == {"kept": 1}
 
 
+@pytest.mark.parametrize(
+    "forwarded",
+    [
+        {"X-Forwarded-For": "127.0.0.1"},
+        {"X-Forwarded-For": "203.0.113.9"},
+        {"Forwarded": "for=127.0.0.1"},
+        {"X-Real-IP": "127.0.0.1"},
+    ],
+)
+def test_a_post_that_came_through_a_proxy_is_not_from_this_computer(
+    owner, client, monkeypatch, forwarded
+):
+    """A reverse proxy on this computer (Caddy, Tailscale Serve) connects from 127.0.0.1 for
+    everyone on the internet; it says so with a forwarding header, so the inbox and the error
+    route refuse such a post even with the right secret."""
+    monkeypatch.setattr(hb_routes, "LOCAL", hb_routes.LOCAL | {"testclient"})
+    made = owner.ok(
+        owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
+    )
+    owner.ok(owner.put(f"/api/heartbeat/connectors/{N8N_ID}", json={"enabled": True}))
+    headers = {n8n_reads.SECRET_HEADER: made["secret"], **forwarded}
+    posted = client.post(f"/api/heartbeat/inbox/{N8N_ID}", json={"items": [ITEM]}, headers=headers)
+    assert posted.status_code == 403
+    reported = client.post("/api/heartbeat/n8n/errors", json={}, headers=headers)
+    assert reported.status_code == 403
+    plain = {n8n_reads.SECRET_HEADER: made["secret"]}  # n8n itself posts with no such header
+    assert client.post(
+        f"/api/heartbeat/inbox/{N8N_ID}", json={"items": [ITEM]}, headers=plain
+    ).json() == {"kept": 1}
+
+
 def test_a_beat_takes_what_n8n_posted_once_and_spends_no_tokens_reading_it(
     owner, client, fake_cli, monkeypatch
 ):

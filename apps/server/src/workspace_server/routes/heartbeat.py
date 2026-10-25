@@ -115,6 +115,15 @@ def set_connector(
 
 # Addresses an n8n on this computer posts from; anything else is refused.
 LOCAL = frozenset({"127.0.0.1", "::1", "localhost"})
+# What a reverse proxy adds to a request it passes on. A proxy on this computer (Caddy, Tailscale
+# Serve) connects from 127.0.0.1 for whoever sent the request, so a post with one is not local.
+FORWARDED = ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-real-ip")
+
+
+def _from_this_computer(request: Request) -> bool:
+    """Posted straight from this computer (as n8n here does), not passed on by a proxy."""
+    host = request.client.host if request.client else ""
+    return host in LOCAL and not any(name in request.headers for name in FORWARDED)
 
 
 class N8nReadIn(Body):
@@ -141,8 +150,7 @@ def add_n8n(body: N8nReadIn, request: Request, who: Who) -> dict[str, Any]:
 async def inbox(connector_id: str, request: Request) -> dict[str, Any]:
     """Where an n8n workflow on this computer posts what it read, with its connector's secret
     (not the owner's sign-in: n8n posts here, and only from this computer)."""
-    host = request.client.host if request.client else ""
-    if host not in LOCAL:
+    if not _from_this_computer(request):
         raise PermissionDenied("Only an n8n on this computer may post here.")
     try:
         body = await request.json()
@@ -179,8 +187,7 @@ def suggest_n8n(request: Request, who: Who) -> dict[str, Any]:
 async def n8n_errors(request: Request) -> dict[str, Any]:
     """Where Gnomon's error-report workflow in its n8n says one of its workflows failed (with
     that workflow's own secret, from this computer only)."""
-    host = request.client.host if request.client else ""
-    if host not in LOCAL:
+    if not _from_this_computer(request):
         raise PermissionDenied("Only an n8n on this computer may post here.")
     try:
         body = await request.json()
