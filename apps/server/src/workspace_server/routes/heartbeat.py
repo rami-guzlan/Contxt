@@ -228,3 +228,42 @@ def suggest_fix(connector_id: str, request: Request, who: Who) -> dict[str, Any]
 def decide_fix(connector_id: str, body: FixIn, request: Request, who: Who) -> dict[str, Any]:
     """Keep the suggested fix, or skip it."""
     return _heartbeat(request).decide_fix(who, connector_id, body.keep)
+
+
+# ------------------------------------------------------------------ learning: the buffer
+
+
+class LearningIn(Body):
+    goal: str | None = Field(default=None, max_length=600)
+    filters: list[dict[str, Any]] | None = None
+    buffer_days: int | None = None
+
+
+@router.get("/learning")
+def learning_settings(request: Request, who: Who) -> dict[str, Any]:
+    """The goal, the negative filters and how long the buffer is kept."""
+    return _heartbeat(request).learning_settings(who)
+
+
+@router.put("/learning")
+def configure_learning(body: LearningIn, request: Request, who: Who) -> dict[str, Any]:
+    """The goal, the negative filters and how long the buffer is kept."""
+    return _heartbeat(request).configure_learning(
+        who, goal=body.goal, filters=body.filters, buffer_days=body.buffer_days
+    )
+
+
+@router.get("/staged")
+def staged(request: Request, who: Who, status: str | None = None) -> list[Any]:
+    """Heartbeat › Today: what the buffer holds for the distill."""
+    return _heartbeat(request).staged(who, status=status)
+
+
+@router.post("/staged/{staged_id}/forget")
+def forget_staged(staged_id: str, request: Request, who: Who) -> dict[str, Any]:
+    return _heartbeat(request).forget_staged(who, staged_id)
+
+
+@router.post("/staged/{staged_id}/bring-back")
+def bring_back(staged_id: str, request: Request, who: Who) -> dict[str, Any]:
+    return _heartbeat(request).bring_back(who, staged_id)

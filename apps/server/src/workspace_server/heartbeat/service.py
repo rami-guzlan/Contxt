@@ -48,7 +48,7 @@ from workspace_core.workspace import Workspace
 from ..runners import RUNNERS, Runners, mask, usage_of
 from ..scout import Scout
 from . import connectors as conn
-from . import memory, n8n
+from . import learning, memory, n8n
 from . import n8n_templates as templates
 
 log = logging.getLogger(__name__)
@@ -768,6 +768,95 @@ class Heartbeat:
         except (OSError, RuntimeError, ValueError) as exc:
             raise Conflict(f"n8n could not take the workflow: {exc}") from exc
         return {"workflow_id": workflow_id, "secret_hash": kept}
+
+    # ---------------------------------------------------------------- learning: the buffer
+
+    def configure_learning(
+        self,
+        who: Principal,
+        *,
+        goal: str | None = None,
+        filters: list[dict[str, Any]] | None = None,
+        buffer_days: int | None = None,
+    ) -> dict[str, Any]:
+        """The goal relevance is scored against, the negative filters (each a pattern, words
+        or a /regex/, with an optional source and field) and how long the buffer is kept."""
+        who.require("workspace.admin")
+        changes: dict[str, Any] = {}
+        if goal is not None:
+            changes["goal"] = _flat(goal, 600)
+        if filters is not None:
+            clean = []
+            for raw in filters[:50]:
+                pattern = _flat(raw.get("pattern"), 200) if isinstance(raw, dict) else ""
+                if not pattern:
+                    raise ValidationFailed("Each filter needs a pattern.", field="filters")
+                clean.append(
+                    {
+                        "pattern": pattern,
+                        "source": _flat(raw.get("source"), 240),
+                        "field": _flat(raw.get("field"), 120),
+                        "why": _flat(raw.get("why"), 200),
+                    }
+                )
+            changes["filters"] = clean
+        if buffer_days is not None:
+            if not 1 <= int(buffer_days) <= 365:
+                raise ValidationFailed("Keep the buffer 1 to 365 days.", field="buffer_days")
+            changes["buffer_days"] = int(buffer_days)
+        if changes:
+            self._save(who, changes, "heartbeat.learning_configured", {"keys": sorted(changes)})
+        return self.learning_settings(who)
+
+    def learning_settings(self, who: Principal) -> dict[str, Any]:
+        who.require("brain.read")
+        found = self.settings()
+        return {
+            "goal": found.get("goal") or "",
+            "filters": list(found.get("filters") or []),
+            "buffer_days": int(found.get("buffer_days") or learning.BUFFER_DAYS),
+        }
+
+    def staged(self, who: Principal, *, status: str | None = None) -> list[dict[str, Any]]:
+        """Heartbeat › Today: what the buffer holds (newest first), each with its source,
+        old and new value, relevance and what a filter said."""
+        who.require("brain.read")
+        table = schema.staged_changes
+        query = sa.select(table).where(table.c.workspace_id == self.ws.rt.workspace_id)
+        if status:
+            query = query.where(table.c.status == status)
+        with self.ws.rt.read() as tx:
+            rows = tx.rows(query.order_by(table.c.seen_at.desc(), table.c.id.desc()).limit(500))
+        names = {r["id"]: r["name"] for r in self._connectors()}
+        return [learning.view(r, names) for r in rows]
+
+    def _set_staged(self, who: Principal, staged_id: str, status: str, event: str) -> dict:
+        who.require("workspace.admin")
+        table = schema.staged_changes
+        with self.ws.rt.write() as tx:
+            row = tx.get(table, staged_id)
+            if row is None or row["workspace_id"] != tx.workspace_id:
+                raise NotFound(f"No change {staged_id} in the buffer.", id=staged_id)
+            if row["status"] == "distilled":
+                raise Conflict("The distill has already used it: undo what it wrote instead.")
+            tx.conn.execute(table.update().where(table.c.id == staged_id).values(status=status))
+            tx.emit(
+                event,
+                actor_id=who.actor_id,
+                subject_type="staged_change",
+                subject_id=staged_id,
+                data={"connector": row["connector_id"]},
+            )
+            row = dict(row, status=status)
+        return learning.view(row, {r["id"]: r["name"] for r in self._connectors()})
+
+    def forget_staged(self, who: Principal, staged_id: str) -> dict[str, Any]:
+        """Forget this: out of the buffer before the distill sees it (an undo signal)."""
+        return self._set_staged(who, staged_id, "forgotten", "heartbeat.staged_forgotten")
+
+    def bring_back(self, who: Principal, staged_id: str) -> dict[str, Any]:
+        """Bring back what a filter dropped: the distill sees it like any other change."""
+        return self._set_staged(who, staged_id, "staged", "heartbeat.staged_brought_back")
 
     def n8n_status(self, who: Principal) -> dict[str, Any]:
         who.require("brain.read")
@@ -1764,6 +1853,15 @@ class Heartbeat:
                 owner, "provider_limit", f"A provider limit was hit: {_flat(limited, 160)}"
             )
         counts = {"changes": 0, "waits": 0, "held": 0}
+        # Capture (heartbeat learning): relevance and the owner's filters, by code, no model.
+        decisions = learning.decide(fresh, settings, self.ws.rt.brain.relevance)
+        dropped = [d for d in decisions if d.dropped]
+        if dropped:
+            details.append(
+                f"Dropped {len(dropped)} at capture by your filters; they stay in Today for "
+                f"{int(settings.get('buffer_days') or learning.BUFFER_DAYS)} days."
+            )
+        fresh = [d.item for d in decisions if not d.dropped]
         if fresh:
             brain = self._brain()
             regions_before = self._regions_now()
@@ -1800,12 +1898,15 @@ class Heartbeat:
         # Only now are the items seen and the cursors moved: a beat that stopped before this
         # point reads the same items again next time.
         self._advance(beat_id, reads)
+        # The buffer keeps every change, with what the beat made of it; old entries go.
+        learning.stage(self.ws, beat_id, decisions, outcome="beat")
+        learning.purge(self.ws, int(settings.get("buffer_days") or learning.BUFFER_DAYS))
         self._finish(
             beat_id,
             started,
             status="done",
             connectors=read_log,
-            items=len(fresh),
+            items=len(decisions),
             tokens=tokens,
             unknown=unknown,
             errors=errors,

@@ -1476,3 +1476,95 @@ def test_the_judge_runs_on_the_ingest_model(owner, fake_cli, runtime):
     beat(owner)
     (judge,) = fake_cli.judges()
     assert judge["argv"][judge["argv"].index("--model") + 1] == "sonnet"
+
+
+# ---------------------------------------------------------------------- learning: the buffer
+
+
+def staged(owner, status=None):
+    return owner.ok(owner.get("/api/heartbeat/staged" + (f"?status={status}" if status else "")))
+
+
+def test_every_change_a_beat_reads_goes_into_the_buffer_with_its_old_and_new_value(owner, fake_cli):
+    found(owner)
+    beat(owner)
+    (first,) = staged(owner)
+    assert first["old_value"] is None and first["new_value"] == ITEM["text"]
+    assert first["connector_id"] == "claude:mail" and first["status"] == "staged"
+    fake_cli.items = [dict(ITEM, text="Morgan replied: hero option C instead.")]
+    beat(owner)
+    latest = staged(owner)[0]
+    assert latest["old_value"] == ITEM["text"]
+    assert latest["new_value"] == "Morgan replied: hero option C instead."
+
+
+def test_a_filter_drops_at_capture_counts_on_the_beat_and_can_be_brought_back(owner, fake_cli):
+    found(owner)
+    owner.ok(owner.put("/api/heartbeat/learning", json={"filters": [{"pattern": "hero option"}]}))
+    done = beat(owner)
+    assert any("Dropped 1 at capture" in d for d in done["details"])
+    assert fake_cli.judges() == []  # nothing left to judge
+    (dropped,) = staged(owner, "dropped")
+    assert dropped["filter"] == "your filter: hero option"
+    back = owner.ok(owner.post(f"/api/heartbeat/staged/{dropped['id']}/bring-back"))
+    assert back["status"] == "staged"
+
+
+def test_a_filter_match_the_goal_makes_relevant_goes_on_marked_unclear(owner, fake_cli):
+    found(owner)
+    owner.ok(
+        owner.put(
+            "/api/heartbeat/learning",
+            json={"goal": "website hero approval", "filters": [{"pattern": "hero"}]},
+        )
+    )
+    done = beat(owner)
+    assert not any("Dropped" in d for d in done["details"])
+    (kept,) = staged(owner)
+    assert kept["status"] == "staged" and kept["unclear"] and kept["score"] >= 0.35
+    assert len(fake_cli.judges()) == 1
+
+
+def test_forget_takes_a_change_out_of_the_buffer_before_the_distill(owner, fake_cli):
+    found(owner)
+    beat(owner)
+    (entry,) = staged(owner)
+    assert owner.ok(owner.post(f"/api/heartbeat/staged/{entry['id']}/forget"))["status"] == (
+        "forgotten"
+    )
+    assert staged(owner, "staged") == []
+
+
+def test_the_buffer_keeps_its_retention_then_removes_old_entries(owner, runtime, fake_cli):
+    found(owner)
+    owner.ok(owner.put("/api/heartbeat/learning", json={"buffer_days": 30}))
+    with runtime.ws.rt.write() as tx:
+        tx.insert(
+            schema.staged_changes,
+            {
+                "id": "stg_old",
+                "workspace_id": tx.workspace_id,
+                "connector_id": "claude:mail",
+                "item_id": "msg-0",
+                "field": "text",
+                "title": "Old",
+                "url": "",
+                "new_value": "An old change",
+                "seen_at": "2026-08-01T00:00:00Z",
+                "beat_id": "beat_old",
+                "filter": "",
+                "unclear": False,
+                "status": "distilled",
+            },
+        )
+    beat(owner)
+    assert [e["item_id"] for e in staged(owner)] == ["msg-1"]  # the 58-day-old one is gone
+
+
+def test_learning_settings_are_checked(owner):
+    assert (
+        owner.put("/api/heartbeat/learning", json={"filters": [{"source": "x"}]}).status_code == 422
+    )
+    assert owner.put("/api/heartbeat/learning", json={"buffer_days": 0}).status_code == 422
+    saved = owner.ok(owner.put("/api/heartbeat/learning", json={"goal": "Run the Q4 webinars"}))
+    assert saved == {"goal": "Run the Q4 webinars", "filters": [], "buffer_days": 30}
