@@ -294,3 +294,63 @@ export function useN8nFix() {
   });
   return { suggest, decide };
 }
+
+// ------------------------------------------------------------------ learning: buffer and distill
+
+export interface Staged {
+  id: string;
+  connector_id: string;
+  connector: string;
+  item_id: string;
+  field: string;
+  title: string;
+  url: string;
+  old_value: string | null;
+  new_value: string | null;
+  changed_at: string | null;
+  seen_at: string;
+  score: number | null;
+  filter: string;
+  unclear: boolean;
+  status: "staged" | "dropped" | "forgotten" | "distilled";
+  outcome: { route: string; reason?: string } | null;
+}
+
+export interface LearningSettings {
+  goal: string;
+  filters: { pattern: string; source?: string; field?: string; why?: string }[];
+  buffer_days: number;
+  learn: "nightly" | "per_beat";
+  distill_at: string;
+  /** Apply during the day: connectors and sheets whose changes go in at the beat. */
+  live: { connectors: string[]; sheets: string[] };
+}
+
+export const useLearning = () => useQuery({ queryKey: ["heartbeat", "learning"], queryFn: () => get<LearningSettings>("/api/heartbeat/learning") });
+
+export function useSetLearning() {
+  const refresh = useHeartbeatRefresh();
+  return useMutation({
+    mutationFn: (change: Partial<LearningSettings>) => put<LearningSettings>("/api/heartbeat/learning", change),
+    onSuccess: () => refresh(),
+  });
+}
+
+export const useStaged = (status: Staged["status"]) =>
+  useQuery({ queryKey: ["heartbeat", "staged", status], queryFn: () => get<Staged[]>(`/api/heartbeat/staged${query({ status })}`) });
+
+export function useStagedAction() {
+  const refresh = useHeartbeatRefresh();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "forget" | "bring-back" }) => post<Staged>(`/api/heartbeat/staged/${encodeURIComponent(id)}/${action}`),
+    onSuccess: () => refresh(),
+  });
+}
+
+export function useDistillNow() {
+  const refresh = useHeartbeatRefresh();
+  return useMutation({ mutationFn: () => post<{ beat_id?: string; status?: string }>("/api/heartbeat/distill"), onSuccess: () => refresh() });
+}
+
+export const useStillWaiting = () =>
+  useQuery({ queryKey: ["heartbeat", "still-waiting"], queryFn: () => get<{ count: number; days: number; items: Staged[] }>("/api/heartbeat/still-waiting") });

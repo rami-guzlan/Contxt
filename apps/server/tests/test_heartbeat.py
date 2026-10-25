@@ -131,6 +131,8 @@ class FakeCli:
         self.account_list = "No MCP servers configured.\n"  # `claude mcp list`
         self.items = [dict(ITEM)]
         self.items_by = None  # {server: [items]} when a read covers more than one
+        self.distilled = []  # what each distill call was shown
+        self.route = lambda item: ("short", 0.9)  # the distill's route and confidence
         self.read_error = None
         self.memory_reads = []
         self.packets = [dict(PACKET)]
@@ -165,6 +167,27 @@ class FakeCli:
 
     def judge(self, prompt):
         shown = json.loads(prompt.split("\n\n", 1)[1])
+        if prompt.startswith("You distill a day of changes"):
+            self.distilled.append(shown["items"])
+            return {
+                "items": [
+                    {
+                        "item": i["item"],
+                        "route": self.route(i)[0],
+                        "confidence": self.route(i)[1],
+                        "reason": "it matters to the goal",
+                        "region": "state",
+                        "project": PROJECT,
+                        "line": i["title"],
+                        "protected_by": None,
+                        "writes": self.writes({"text": i["now"]}),
+                    }
+                    for i in shown["items"]
+                ],
+                "patterns": [],
+                "headlines": {"state": "The website hero is settled."},
+                "projects": {PROJECT: "Hero option B approved"},
+            }
         return {
             "items": [
                 {
@@ -283,13 +306,15 @@ def hb(runtime, client):
     return runtime.heartbeat
 
 
-def found(owner, *, codex=False):
+def found(owner, *, codex=False, per_beat=True):
     """Find connectors in the CLIs; the Codex tracker stays off unless a test reads it. The
     mail server is read every beat here (a new one is read hourly), so a test can beat twice."""
     result = owner.ok(owner.post("/api/heartbeat/connectors/rescan"))
     if not codex:
         owner.ok(owner.put("/api/heartbeat/connectors/codex:tracker", json={"enabled": False}))
     owner.ok(owner.put("/api/heartbeat/connectors/claude:mail", json={"cadence_minutes": 0}))
+    if per_beat:  # these tests judge in the beat; the nightly distill has its own tests
+        owner.ok(owner.put("/api/heartbeat/learning", json={"learn": "per_beat"}))
     return result
 
 
@@ -1083,6 +1108,7 @@ def test_a_beat_takes_what_n8n_posted_once_and_spends_no_tokens_reading_it(
     owner, client, fake_cli, monkeypatch
 ):
     monkeypatch.setattr(hb_routes, "LOCAL", hb_routes.LOCAL | {"testclient"})
+    owner.ok(owner.put("/api/heartbeat/learning", json={"learn": "per_beat"}))
     made = owner.ok(
         owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
     )
@@ -1463,3 +1489,388 @@ def test_only_a_memory_read_takes_what_to_look_for(owner, cli_home):
     found(owner)
     refused = owner.put("/api/heartbeat/connectors/claude:mail", json={"ask": "anything"})
     assert refused.status_code == 422
+
+
+def test_the_judge_runs_on_the_ingest_model(owner, fake_cli, runtime):
+    found(owner)
+    beat(owner)
+    (judge,) = fake_cli.judges()
+    assert judge["argv"][judge["argv"].index("--model") + 1] == "haiku"
+    runtime.ws.distill.configure(runtime.ws.owner(), model="sonnet")
+    fake_cli.calls.clear()
+    fake_cli.items = [dict(ITEM, id="msg-2", title="Another")]
+    beat(owner)
+    (judge,) = fake_cli.judges()
+    assert judge["argv"][judge["argv"].index("--model") + 1] == "sonnet"
+
+
+# ---------------------------------------------------------------------- learning: the buffer
+
+
+def staged(owner, status=None):
+    return owner.ok(owner.get("/api/heartbeat/staged" + (f"?status={status}" if status else "")))
+
+
+def test_every_change_a_beat_reads_goes_into_the_buffer_with_its_old_and_new_value(owner, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    (first,) = staged(owner)
+    assert first["old_value"] is None and first["new_value"] == ITEM["text"]
+    assert first["connector_id"] == "claude:mail" and first["status"] == "staged"
+    fake_cli.items = [dict(ITEM, text="Morgan replied: hero option C instead.")]
+    beat(owner)
+    latest = staged(owner)[0]
+    assert latest["old_value"] == ITEM["text"]
+    assert latest["new_value"] == "Morgan replied: hero option C instead."
+
+
+def test_a_filter_drops_at_capture_counts_on_the_beat_and_can_be_brought_back(owner, fake_cli):
+    found(owner, per_beat=False)
+    owner.ok(owner.put("/api/heartbeat/learning", json={"filters": [{"pattern": "hero option"}]}))
+    done = beat(owner)
+    assert any("Dropped 1 at capture" in d for d in done["details"])
+    assert fake_cli.judges() == []  # nothing left to judge
+    (dropped,) = staged(owner, "dropped")
+    assert dropped["filter"] == "your filter: hero option"
+    back = owner.ok(owner.post(f"/api/heartbeat/staged/{dropped['id']}/bring-back"))
+    assert back["status"] == "staged"
+
+
+def test_a_filter_match_the_goal_makes_relevant_goes_on_marked_unclear(owner, fake_cli):
+    found(owner, per_beat=False)
+    owner.ok(
+        owner.put(
+            "/api/heartbeat/learning",
+            json={"goal": "website hero approval", "filters": [{"pattern": "hero"}]},
+        )
+    )
+    done = beat(owner)
+    assert not any("Dropped" in d for d in done["details"])
+    (kept,) = staged(owner)
+    assert kept["status"] == "staged" and kept["unclear"] and kept["score"] >= 0.35
+    assert fake_cli.judges() == []  # nightly: the beat only captures
+
+
+def test_forget_takes_a_change_out_of_the_buffer_before_the_distill(owner, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    (entry,) = staged(owner)
+    assert owner.ok(owner.post(f"/api/heartbeat/staged/{entry['id']}/forget"))["status"] == (
+        "forgotten"
+    )
+    assert staged(owner, "staged") == []
+
+
+def test_the_buffer_keeps_its_retention_then_removes_old_entries(owner, runtime, fake_cli):
+    found(owner, per_beat=False)
+    owner.ok(owner.put("/api/heartbeat/learning", json={"buffer_days": 30}))
+    with runtime.ws.rt.write() as tx:
+        tx.insert(
+            schema.staged_changes,
+            {
+                "id": "stg_old",
+                "workspace_id": tx.workspace_id,
+                "connector_id": "claude:mail",
+                "item_id": "msg-0",
+                "field": "text",
+                "title": "Old",
+                "url": "",
+                "new_value": "An old change",
+                "seen_at": "2026-08-01T00:00:00Z",
+                "beat_id": "beat_old",
+                "filter": "",
+                "unclear": False,
+                "status": "distilled",
+            },
+        )
+    beat(owner)
+    assert [e["item_id"] for e in staged(owner)] == ["msg-1"]  # the 58-day-old one is gone
+
+
+def test_learning_settings_are_checked(owner):
+    assert (
+        owner.put("/api/heartbeat/learning", json={"filters": [{"source": "x"}]}).status_code == 422
+    )
+    assert owner.put("/api/heartbeat/learning", json={"buffer_days": 0}).status_code == 422
+    saved = owner.ok(owner.put("/api/heartbeat/learning", json={"goal": "Run the Q4 webinars"}))
+    assert saved == {
+        "goal": "Run the Q4 webinars",
+        "filters": [],
+        "buffer_days": 30,
+        "learn": "nightly",
+        "distill_at": "19:00",
+        "live": {"connectors": [], "sheets": []},
+    }
+
+
+# ---------------------------------------------------------------------- learning: the distill
+
+
+def distill(owner):
+    return owner.ok(owner.post("/api/heartbeat/distill?wait=true"))
+
+
+def test_a_change_undone_the_same_day_is_discarded_without_a_model_call(owner, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    distill(owner)  # yesterday: the Brain learned what it said
+    fake_cli.distilled.clear()
+    fake_cli.items = [dict(ITEM, text="Morgan replied: hero option C instead.")]
+    beat(owner)
+    fake_cli.items = [dict(ITEM)]  # back to what it said before
+    beat(owner)
+    done = distill(owner)
+    assert fake_cli.distilled == [] and done["changes"] == 0
+    today = [e for e in staged(owner) if e["old_value"] is not None]
+    assert {e["outcome"]["reason"] for e in today} == {"undone the same day"}
+    assert {e["status"] for e in staged(owner)} == {"distilled"}  # archived, not deleted
+
+
+def test_repeated_edits_collapse_to_one_item_with_its_count(owner, fake_cli):
+    found(owner, per_beat=False)
+    for text in ("v1", "v2", "v3"):
+        fake_cli.items = [dict(ITEM, text=f"Morgan replied: {text}.")]
+        beat(owner)
+    distill(owner)
+    ((shown,),) = fake_cli.distilled
+    assert shown["changed"] == 3 and shown["now"] == "Morgan replied: v3."
+    assert shown["before"] is None  # first seen today
+
+
+def test_a_delete_wins_over_earlier_edits(owner, runtime, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    with runtime.ws.rt.write() as tx:
+        tx.insert(
+            schema.staged_changes,
+            {
+                "id": "stg_gone",
+                "workspace_id": tx.workspace_id,
+                "connector_id": "claude:mail",
+                "item_id": "msg-1",
+                "field": "text",
+                "title": ITEM["title"],
+                "url": "",
+                "old_value": ITEM["text"],
+                "new_value": None,
+                "seen_at": "2026-09-28T13:30:00Z",
+                "beat_id": "beat_x",
+                "filter": "",
+                "unclear": False,
+                "status": "staged",
+            },
+        )
+    distill(owner)
+    ((shown,),) = fake_cli.distilled
+    assert shown["deleted"] is True
+
+
+def test_a_confident_route_goes_in_and_an_unsure_one_waits_in_catch_up(owner, fake_cli):
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner, per_beat=False)
+    beat(owner)
+    done = distill(owner)
+    assert done["changes"] == 1 and done["waits"] == 0
+    (entry,) = staged(owner)
+    assert entry["outcome"]["route"] == "short" and entry["status"] == "distilled"
+    fake_cli.items = [dict(ITEM, id="msg-2", title="Maybe a new date")]
+    fake_cli.route = lambda item: ("short", 0.5)  # not sure
+    beat(owner)
+    unsure = distill(owner)
+    assert unsure["waits"] == 1 and unsure["changes"] == 0  # waits even in Auto
+    assert staged(owner)[0]["outcome"]["route"] == "catch_up"
+
+
+def test_the_distill_runs_nightly_and_after_a_night_the_computer_slept(owner, hb, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    # 13:00 on Sep 28, nothing distilled since yesterday 19:00: it is due (a missed night).
+    assert hb.distill_due()
+    ran = hb_service.HeartbeatWorker(hb).run_once()
+    assert ran["trigger"] == "distill" and ran["status"] == "done"
+    assert not hb.distill_due()  # done for this night
+
+
+def test_a_later_change_replaces_what_still_waits_from_an_earlier_distill(owner, runtime, fake_cli):
+    found(owner, per_beat=False)
+    fake_cli.route = lambda item: ("short", 0.5)  # unsure: Catch up
+    beat(owner)
+    distill(owner)
+    (first,) = staged(owner)
+    assert first["outcome"]["route"] == "catch_up"
+    waiting = {p["id"] for p in runtime.ws.brain.proposals(runtime.ws.owner())}
+    earlier = next(iter(waiting))
+    fake_cli.items = [dict(ITEM, text="Morgan replied: hero option C instead.")]
+    beat(owner)
+    done = distill(owner)
+    assert any("Replaced 1 waiting" in d for d in done["details"])
+    now = {p["id"] for p in runtime.ws.brain.proposals(runtime.ws.owner())}
+    assert earlier not in now and len(now) == 1  # only the newest waits
+
+
+def test_what_waits_over_14_days_is_gathered_into_one_card(owner, runtime, fake_cli):
+    found(owner, per_beat=False)
+    fake_cli.route = lambda item: ("short", 0.5)
+    beat(owner)
+    distill(owner)
+    assert owner.ok(owner.get("/api/heartbeat/still-waiting"))["count"] == 0
+    with runtime.ws.rt.write() as tx:
+        tx.conn.execute(schema.staged_changes.update().values(seen_at="2026-09-10T09:00:00Z"))
+    stale = owner.ok(owner.get("/api/heartbeat/still-waiting"))
+    assert stale["count"] == 1 and stale["days"] == 14
+
+
+# ---------------------------------------------------------------------- apply during the day
+
+
+def test_a_live_connectors_change_goes_in_during_the_day(owner, fake_cli):
+    found(owner, per_beat=False)
+    owner.ok(owner.put("/api/heartbeat/learning", json={"live": {"connectors": ["claude:mail"]}}))
+    done = beat(owner)
+    assert done["changes"] + done["waits"] == 1  # Governed here: it waits, but now, not tonight
+    assert len(fake_cli.distilled) == 1  # distilled in the beat
+    (entry,) = staged(owner)
+    assert entry["status"] == "distilled" and entry["outcome"]["route"] == "short"
+
+
+def test_for_a_live_sheet_only_what_lands_in_it_goes_in_and_the_rest_waits(owner, fake_cli):
+    found(owner, per_beat=False)
+    owner.ok(owner.put("/api/heartbeat/learning", json={"live": {"sheets": ["guests"]}}))
+    beat(owner)  # the distill would write project progress, not the guests sheet
+    (entry,) = staged(owner)
+    assert entry["status"] == "staged"  # it waits for tonight
+    fake_cli.items = [dict(ITEM, id="msg-2", title="Dana confirmed")]
+    fake_cli.writes = lambda item: [
+        {
+            "kind": "sheet",
+            "sheet": "guests",
+            "row": "Dana Ruiz",
+            "column": "Status",
+            "value": "Confirmed",
+            "reason": "she said so",
+        }
+    ]
+    beat(owner)
+    newest = staged(owner)[0]
+    assert newest["status"] == "distilled"
+    assert newest["outcome"]["reason"].startswith("applied during the day")
+
+
+def test_without_live_sheets_or_connectors_a_beat_makes_no_model_call(owner, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    assert fake_cli.distilled == [] and fake_cli.judges() == []
+
+
+# ---------------------------------------------------------------------- the recorded day
+
+
+def test_the_recorded_day_runs_through_capture_and_the_distill_and_is_scored(hb, fake_cli):
+    from workspace_server.heartbeat import day_eval
+
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "scripts", "heartbeat_day.json"
+    )
+    day = day_eval.load(path)
+    expect = {f"connector:day:{e['source']}:{e['id']}": e["expect"] for e in day["items"]}
+    # A model that knows the labels: what remains wrong is code's (capture, netting, rules).
+    fake_cli.route = lambda item: (expect[item["item"]].split("|")[0], 0.9)
+    report = day_eval.run(hb, day)
+    assert report["items"] == 50 and report["changes"] >= 70
+    assert report["net_zero_caught"] == "10 of 10"  # by code, before any model call
+    assert report["filter_precision"] == 1.0  # every capture-time drop was meant to be
+    assert report["gates"]["nothing_must_wait_written"]
+    assert report["route_accuracy"] >= 0.85, report["misses"]
+
+
+def test_a_task_that_reaches_customers_or_spends_waits_whatever_the_model_said(owner, fake_cli):
+    """The recorded day's finding: the model routed "email all attendees" and "raise the ad
+    budget" as ordinary tasks without flags. Code flags them, so they wait even in Auto."""
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner, per_beat=False)
+    fake_cli.items = [
+        dict(ITEM, id="m-41", title="Send attendees new time"),
+        dict(ITEM, id="m-42", title="Raise ad budget"),
+    ]
+    tasks = {
+        "Send attendees new time": "Email all attendees that session 2 moved to Nov 20.",
+        "Raise ad budget": "Raise the webinar ad budget to 900 a month.",
+    }
+    fake_cli.writes = lambda item: [
+        {
+            "kind": "task",
+            "project": PROJECT,
+            "text": tasks.get(item.get("title"), item["text"]),
+            "reason": "the item asks for it",
+        }
+    ]
+    original = fake_cli.judge
+
+    def judge(prompt):
+        answer = original(prompt)
+        for verdict in answer.get("items") or []:
+            title = (
+                "Send attendees new time" if verdict["item"].endswith("m-41") else "Raise ad budget"
+            )
+            verdict["writes"] = fake_cli.writes({"title": title, "text": ""})
+        return answer
+
+    fake_cli.judge = judge
+    beat(owner)
+    done = distill(owner)
+    assert done["changes"] == 0 and done["waits"] == 2
+
+
+def test_a_distill_that_changed_the_brain_tags_a_brain_version(
+    owner, runtime, fake_cli, brain_vault
+):
+    import subprocess
+
+    top = os.path.dirname(brain_vault)  # versions are git tags: the Brain is a repository
+    for args in (
+        ["init", "-q", "-b", "main"],
+        ["add", "-A", "--", os.path.basename(brain_vault)],
+        ["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", "start"],
+    ):
+        subprocess.run(["git", *args], cwd=top, check=True, capture_output=True)
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner, per_beat=False)
+    before = len(runtime.ws.rt.brain.brain_versions())
+    beat(owner)
+    done = distill(owner)
+    assert any(d.startswith("Saved as Brain version") for d in done["details"]), done["details"]
+    versions = runtime.ws.rt.brain.brain_versions()
+    assert len(versions) == before + 1 and versions[-1]["cause"] == "distill"
+    quiet = distill(owner)  # nothing staged: no change, no new version
+    assert not any("Brain version" in d for d in quiet["details"])
+    assert len(runtime.ws.rt.brain.brain_versions()) == before + 1
+
+
+def test_a_distill_that_saved_a_version_runs_the_after_distill_tests_on_it(
+    owner, runtime, fake_cli, brain_vault, monkeypatch
+):
+    import subprocess
+
+    top = os.path.dirname(brain_vault)
+    for args in (
+        ["init", "-q", "-b", "main"],
+        ["add", "-A", "--", os.path.basename(brain_vault)],
+        ["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", "start"],
+    ):
+        subprocess.run(["git", *args], cwd=top, check=True, capture_output=True)
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner, per_beat=False)
+    ran = []
+
+    def after_distill(who, version):
+        ran.append(version)
+        return {"details": [f"Test Bench on {version}: 1 ran, 0 unchanged."]}
+
+    monkeypatch.setattr(runtime.heartbeat.regression, "after_distill", after_distill)
+    beat(owner)
+    done = distill(owner)
+    version = runtime.ws.rt.brain.brain_versions()[-1]["name"]
+    assert ran == [version]
+    assert f"Test Bench on {version}: 1 ran, 0 unchanged." in done["details"]
+    distill(owner)  # nothing changed: no version, no tests
+    assert ran == [version]

@@ -100,6 +100,41 @@ function api(over: Record<string, unknown> = {}) {
 const bodyOf = (calls: ReturnType<typeof mockApi>, path: string) => calls.filter((c) => c.method !== "GET" && c.path.startsWith(path)).map((c) => c.body);
 
 describe("Catch up", () => {
+  it("a quality drop after a distill shows why, both answers and the likely cause, and rolls back", async () => {
+    const side = (over: Record<string, unknown>) => ({ result_id: "bres_1", brain_version: "v1", overall: 4, criteria: [], by: "model", output: "", ...over });
+    const card = {
+      id: "bdrop_1",
+      key: "quality:quality/case-study:v2",
+      type: "quality",
+      title: "Quality dropped: Case study",
+      suite: "quality",
+      suite_name: "Quality",
+      test: "case-study",
+      test_name: "Case study",
+      request: "Draft the case study",
+      version: "v2",
+      from_version: "v1",
+      reasons: ["The grade fell from 4 to 2.", "Names the client: met before, missed now."],
+      before: side({ output: "A case study for the studio, with results." }),
+      after: side({ result_id: "bres_2", brain_version: "v2", overall: 2, output: "A case study, with results." }),
+      causes: [{ id: "n-pricing", title: "Pricing note", path: "notes/p.md", change: "added" }],
+      status: "open",
+      raised_at: "2026-10-25T19:05:00Z",
+    };
+    const calls = api({ "GET /api/brain/proposals": [], "GET /api/brain/catch-up": plan({ quality: [card] }), "POST /api/bench/drops/bdrop_1/roll-back": { ...card, status: "rolled_back" } });
+    renderAt(<CatchUpPage />, { path: "/brain/catch-up", route: "/brain/catch-up" });
+    expect(await screen.findByText("Quality dropped: Case study")).toBeInTheDocument();
+    expect(screen.getByText("Quality · v1 → v2")).toBeInTheDocument();
+    expect(screen.getByText("The grade fell from 4 to 2.")).toBeInTheDocument();
+    expect(screen.getByText("Before · v1 · 4/5")).toBeInTheDocument();
+    expect(screen.getByText("After · v2 · 2/5")).toBeInTheDocument();
+    expect(screen.getByText(/Pricing note/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/brain/notes/n-pricing");
+    fireEvent.click(screen.getByRole("button", { name: "Roll back" }));
+    await screen.findByText(/Rolled 1 entry back to v1/);
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/bench/drops/bdrop_1/roll-back")).toBe(true);
+  });
+
   it("shows what waits from the API: the clash first, then safe ones, changes in place and rule changes", async () => {
     api();
     renderAt(<CatchUpPage />, { path: "/brain/catch-up", route: "/brain/catch-up" });

@@ -486,9 +486,11 @@ def test_a_reconcile_request_runs_from_this_computer(owner):
     )
     assert (task["template"], task["status"], task["assignee_id"]) == ("reconcile", "draft", None)
     run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": task["id"]}), 201)
-    finish(owner, run["id"])
+    done = finish(owner, run["id"])
     started = owner.ok(owner.get(f"/api/tasks/{task['id']}"))
     assert started["assignee_id"]  # this computer's Claude Code took it
+    argv = report(done)["argv"]
+    assert argv[argv.index("--model") + 1] == "haiku"  # reading what came in: the ingest model
 
 
 def test_any_client_can_run_a_task_from_its_prompt(owner, ready_task):
@@ -606,3 +608,8 @@ def test_work_with_ai_takes_the_brains_project_id(owner, runtime, model):
     finish(owner, started["run"]["id"])
     (line,) = owner.ok(owner.get(f"/api/work/projects/{brain_project.id}/timeline"))
     assert line["task_id"] == started["task"]["id"]
+
+
+def test_work_that_is_not_ingestion_runs_on_the_clis_own_model(owner, ready_task):
+    run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
+    assert "--model" not in report(finish(owner, run["id"]))["argv"]

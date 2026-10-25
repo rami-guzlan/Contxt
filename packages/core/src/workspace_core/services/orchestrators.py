@@ -65,7 +65,8 @@ TRIGGERS = ("gnomon", "ai")
 GATED = ("spend", "post", "customer_facing")
 GATE_WORDS = {
     "spend": re.compile(
-        r"\b(spend|spending|pay|payment|buy|purchase|budget|bid|charge|invoice|refund)\b|\$\d",
+        r"\b(spend|spending|pay|payment|buy|purchase|budget|bid|charge|invoice|refund|"
+        r"discount|discounts|pricing)\b|\$\d",
         re.I,
     ),
     "post": re.compile(

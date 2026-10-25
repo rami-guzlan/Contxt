@@ -43,12 +43,13 @@ from workspace_core.errors import (
     WorkspaceError,
 )
 from workspace_core.ids import new_id
+from workspace_core.services.orchestrators import gate_kind
 from workspace_core.workspace import Workspace
 
 from ..runners import RUNNERS, Runners, mask, usage_of
 from ..scout import Scout
 from . import connectors as conn
-from . import memory, n8n
+from . import learning, memory, n8n
 from . import n8n_templates as templates
 
 log = logging.getLogger(__name__)
@@ -63,7 +64,16 @@ MEMORY_CADENCE = 1440  # minutes between memory reads after onboarding: daily
 MEMORY_ITEMS = 40  # context packets one memory read may bring
 ASK_CHARS = 1000  # characters of what the owner asks a memory read to look for
 QUIET = {"off": "Off", "night": "7pm to 7am", "nights_weekends": "Nights and weekends"}
-DEFAULTS: dict[str, Any] = {"cadence": 15, "quiet": "night", "paused": False, "cli": None}
+DEFAULTS: dict[str, Any] = {
+    "cadence": 15,
+    "quiet": "night",
+    "paused": False,
+    "cli": None,
+    # Heartbeat learning: beats only capture and a distill learns nightly ("per_beat": each
+    # beat judges what it read, as before), at this local time.
+    "learn": "nightly",
+    "distill_at": "19:00",
+}
 CLI_LABELS = {
     "claude": "Claude Code",
     "codex": "Codex CLI",
@@ -168,6 +178,8 @@ class Heartbeat:
         # Gnomon's own n8n, when it hosts one (open_runtime sets it), and where n8n on this
         # computer reaches Gnomon's inbox.
         self.n8n_host: Any = None
+        # The Test Bench after each distill (regression.py), set by the app.
+        self.regression: Any = None
         self.inbox_url = "http://127.0.0.1:8787"
         # Memory pasted from another AI app at onboarding, for the read that carries it.
         self._pasted: dict[str, str] = {}
@@ -769,6 +781,462 @@ class Heartbeat:
             raise Conflict(f"n8n could not take the workflow: {exc}") from exc
         return {"workflow_id": workflow_id, "secret_hash": kept}
 
+    # ---------------------------------------------------------------- learning: the buffer
+
+    def configure_learning(
+        self,
+        who: Principal,
+        *,
+        goal: str | None = None,
+        filters: list[dict[str, Any]] | None = None,
+        buffer_days: int | None = None,
+        learn: str | None = None,
+        distill_at: str | None = None,
+        live: dict[str, list[str]] | None = None,
+    ) -> dict[str, Any]:
+        """The goal relevance is scored against, the negative filters (each a pattern, words
+        or a /regex/, with an optional source and field) and how long the buffer is kept."""
+        who.require("workspace.admin")
+        changes: dict[str, Any] = {}
+        if goal is not None:
+            changes["goal"] = _flat(goal, 600)
+        if filters is not None:
+            clean = []
+            for raw in filters[:50]:
+                pattern = _flat(raw.get("pattern"), 200) if isinstance(raw, dict) else ""
+                if not pattern:
+                    raise ValidationFailed("Each filter needs a pattern.", field="filters")
+                clean.append(
+                    {
+                        "pattern": pattern,
+                        "source": _flat(raw.get("source"), 240),
+                        "field": _flat(raw.get("field"), 120),
+                        "why": _flat(raw.get("why"), 200),
+                    }
+                )
+            changes["filters"] = clean
+        if learn is not None:
+            if learn not in ("nightly", "per_beat"):
+                raise ValidationFailed("Learn nightly or per beat.", field="learn")
+            changes["learn"] = learn
+        if live is not None:
+            changes["live"] = {
+                "connectors": [_flat(c, 240) for c in live.get("connectors") or []][:50],
+                "sheets": [_flat(s, 200) for s in live.get("sheets") or []][:50],
+            }
+        if distill_at is not None:
+            if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", distill_at):
+                raise ValidationFailed("A distill time is HH:MM.", field="distill_at")
+            changes["distill_at"] = distill_at
+        if buffer_days is not None:
+            if not 1 <= int(buffer_days) <= 365:
+                raise ValidationFailed("Keep the buffer 1 to 365 days.", field="buffer_days")
+            changes["buffer_days"] = int(buffer_days)
+        if changes:
+            self._save(who, changes, "heartbeat.learning_configured", {"keys": sorted(changes)})
+        return self.learning_settings(who)
+
+    def learning_settings(self, who: Principal) -> dict[str, Any]:
+        who.require("brain.read")
+        found = self.settings()
+        return {
+            "goal": found.get("goal") or "",
+            "filters": list(found.get("filters") or []),
+            "buffer_days": int(found.get("buffer_days") or learning.BUFFER_DAYS),
+            "learn": found.get("learn") or "nightly",
+            "distill_at": found.get("distill_at") or learning.DISTILL_AT,
+            "live": found.get("live") or {"connectors": [], "sheets": []},
+        }
+
+    def distill_due(self, settings: dict[str, Any] | None = None) -> bool:
+        """Nightly learning: past today's distill time, nothing distilled since, and something
+        staged (a distill missed while the computer slept runs at the next start)."""
+        settings = settings or self.settings()
+        if settings.get("learn") != "nightly" or settings.get("paused"):
+            return False
+        local = self.ws.rt.clock.now().astimezone(zone(settings["timezone"]))
+        hour, _, minute = str(settings.get("distill_at") or learning.DISTILL_AT).partition(":")
+        at = local.replace(hour=int(hour), minute=int(minute or 0), second=0, microsecond=0)
+        if local < at:
+            at -= timedelta(days=1)
+        last = next((b for b in self._beats(limit=50) if b["trigger"] == "distill"), None)
+        if last is not None and parse_iso(last["started_at"]) >= at:
+            return False
+        table = schema.staged_changes
+        with self.ws.rt.read() as tx:
+            waiting = tx.conn.execute(
+                sa.select(sa.func.count())
+                .select_from(table)
+                .where(table.c.workspace_id == tx.workspace_id, table.c.status == "staged")
+            ).scalar()
+        return bool(waiting)
+
+    def _distill(self, beat_id: str, started: float) -> None:
+        """The distill: learn from everything the buffer holds, then record the run."""
+        table = schema.staged_changes
+        with self.ws.rt.read() as tx:
+            rows = tx.rows(
+                sa.select(table).where(
+                    table.c.workspace_id == tx.workspace_id, table.c.status == "staged"
+                )
+            )
+        owner = self.ws.owner()
+        learned = self._learn(owner, beat_id, rows)
+        version, saved = self._tag_version(beat_id, learned)
+        checked = self._after_distill(owner, saved)
+        routed = [o["route"] for o in learned["outcomes"].values()]
+        details = [
+            f"Distilled {len(rows)} changes into {learned['items']} items: "
+            + ", ".join(f"{routed.count(r)} {r.replace('_', ' ')}" for r in learning.ROUTES)
+            + ".",
+            *learned["details"],
+            *([version] if version else []),
+            *checked,
+        ]
+        self._finish(
+            beat_id,
+            started,
+            status="done",
+            connectors=[],
+            items=learned["items"],
+            tokens=learned["tokens"],
+            unknown=learned["unknown"],
+            errors=[],
+            details=details,
+            **learned["counts"],
+        )
+
+    def _tag_version(self, beat_id: str, learned: dict[str, Any]) -> tuple[str, str]:
+        """After a distill that changed the Brain, tag a Brain version (the Test Bench's 15.1),
+        so a regression run can compare it with the one before and roll entries back: what
+        to say, and the version's name ("" when none was saved)."""
+        counts = learned["counts"]
+        if not (counts["changes"] or counts["waits"] or counts["held"]):
+            return "", ""
+        try:
+            found = self.ws.rt.brain.save_version(
+                cause="distill", note=f"Heartbeat distill {beat_id}"
+            )
+        except WorkspaceError as exc:
+            return f"No Brain version was saved: {_flat(str(exc), 160)}", ""
+        made = found.get("version")
+        name = str(made.get("name") if isinstance(made, dict) else made or "")
+        with self.ws.rt.write() as tx:
+            tx.emit(
+                "brain.versioned",
+                actor_id=self.ws.owner().actor_id,
+                subject_type="beat",
+                subject_id=beat_id,
+                data={"cause": "distill", "version": name},
+            )
+        return f"Saved as Brain version {name}".strip() + ".", name
+
+    def _after_distill(self, owner: Principal, version: str) -> list[str]:
+        """The Test Bench's after-distill suites on the new version (15.6); never fails the
+        distill."""
+        if not version or self.regression is None:
+            return []
+        try:
+            return list(self.regression.after_distill(owner, version)["details"])
+        except Exception as exc:  # the bench or its grader: the distill stands
+            log.warning("after-distill tests on %s stopped", version, exc_info=True)
+            return [f"The Test Bench did not run: {_flat(str(exc), 160)}"]
+
+    def _learn(
+        self,
+        owner: Principal,
+        beat_id: str,
+        rows: list[dict[str, Any]],
+        *,
+        only_sheets: set[str] | None = None,
+    ) -> dict[str, Any]:
+        """Net the buffer rows by code, route them with one model call per batch (the ingest
+        model) against the goal, the filters and the Brain's alignment, apply code's rules,
+        write through the one proposal path, and mark each entry with what it became. With
+        `only_sheets` (apply during the day), only writes to those sheets go in now; the rest
+        of an item stays in the buffer for tonight. Nothing in the buffer changes until its
+        outcome is written."""
+        settings = self.settings()
+        cli = self.cli(settings)
+        table = schema.staged_changes
+        names = {r["id"]: r for r in self._connectors()}
+        details: list[str] = []
+        outcomes: dict[str, dict[str, Any]] = {}  # staged id: outcome
+        items: list[dict[str, Any]] = []
+        for change in learning.net(rows):
+            if change.net_zero:
+                for r in change.rows:
+                    outcomes[r["id"]] = {"route": "discard", "reason": "undone the same day"}
+                continue
+            connector = names.get(change.connector_id) or {}
+            last = change.rows[-1]
+            items.append(
+                {
+                    "id": change.item_id,
+                    "key": f"connector:{change.connector_id}:{change.item_id}",
+                    "connector_id": change.connector_id,
+                    "connector_name": connector.get("name") or change.connector_id,
+                    "cli": connector.get("cli") or "",
+                    "feeds": list(connector.get("feeds") or []),
+                    "title": last["title"],
+                    "text": change.new or "",
+                    "before": change.old,
+                    "edits": change.edits,
+                    "deleted": change.deleted,
+                    "unclear": change.unclear,
+                    "at": last["changed_at"] or last["seen_at"],
+                    "url": last["url"],
+                    "speaker": "",
+                    "private": False,
+                    "rows": [r["id"] for r in change.rows],
+                }
+            )
+        counts = {"changes": 0, "waits": 0, "held": 0}
+        tokens: int | None = None
+        unknown = 0
+        brain = self._brain()
+        for start in range(0, len(items), learning.BATCH):
+            batch = items[start : start + learning.BATCH]
+            answer, spent = self._ask(owner, cli, learning.distill_prompt(batch, brain, settings))
+            if spent is None:
+                unknown += 1
+            else:
+                tokens = (tokens or 0) + spent
+            try:
+                judged = json_answer(answer)
+            except ValueError as exc:
+                raise Conflict(
+                    "The distill's answer could not be read; nothing was written."
+                ) from exc
+            by_key = {i["key"]: i for i in batch}
+            kept = []
+            for verdict in judged.get("items") or []:
+                if not isinstance(verdict, dict):
+                    continue
+                item = by_key.get(str(verdict.get("item") or ""))
+                if item is None:
+                    continue
+                route, reason = learning.route_of(verdict, item)
+                if only_sheets is not None:
+                    # During the day only what lands in a live sheet goes in; the rest of the
+                    # item waits for tonight's distill, still in the buffer.
+                    live = [
+                        w
+                        for w in verdict.get("writes") or []
+                        if isinstance(w, dict)
+                        and w.get("kind") == "sheet"
+                        and str(w.get("sheet") or "") in only_sheets
+                    ]
+                    if route != "short" or not live:
+                        continue
+                    verdict = {**verdict, "writes": live}
+                    reason = f"applied during the day: {reason}".strip()
+                for staged_id in item["rows"]:
+                    outcomes[staged_id] = {"route": route, "reason": reason}
+                if route == "discard":
+                    continue
+                item["review"] = route == "catch_up"
+                kept.append(verdict)
+            if kept:
+                self._replace_waiting(owner, [by_key[str(v["item"])] for v in kept], details)
+                written = self._write_all(
+                    owner, beat_id, batch, {**judged, "items": kept}, brain, details
+                )
+                for key in counts:
+                    counts[key] += written.get(key, 0)
+            if only_sheets is None:
+                for pattern in judged.get("patterns") or []:
+                    self._lesson(owner, pattern, details)
+        with self.ws.rt.write() as tx:
+            proposals = {
+                line["item_id"]: line["proposal_id"]
+                for line in tx.rows(
+                    sa.select(schema.heartbeat_lines).where(
+                        schema.heartbeat_lines.c.beat_id == beat_id
+                    )
+                )
+            }
+            by_row = {r["id"]: r for r in rows}
+            for staged_id, outcome in outcomes.items():
+                row = by_row[staged_id]
+                key = f"connector:{row['connector_id']}:{row['item_id']}"
+                tx.conn.execute(
+                    table.update()
+                    .where(table.c.id == staged_id)
+                    .values(status="distilled", outcome=outcome, proposal_id=proposals.get(key))
+                )
+        return {
+            "items": len(items),
+            "counts": counts,
+            "tokens": tokens,
+            "unknown": unknown,
+            "details": details,
+            "outcomes": outcomes,
+        }
+
+    def _apply_live(
+        self, owner: Principal, beat_id: str, settings: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Apply during the day: what this beat captured from a live connector is distilled
+        now, whole; for a live sheet, only what lands in it goes in now. A small call on the
+        ingest model, only on beats with such changes; nothing else changes before tonight."""
+        live = settings.get("live") or {}
+        connectors = set(live.get("connectors") or [])
+        sheets = set(live.get("sheets") or [])
+        if not connectors and not sheets:
+            return None
+        table = schema.staged_changes
+        with self.ws.rt.read() as tx:
+            rows = tx.rows(
+                sa.select(table).where(
+                    table.c.workspace_id == tx.workspace_id,
+                    table.c.beat_id == beat_id,
+                    table.c.status == "staged",
+                )
+            )
+        whole = [r for r in rows if r["connector_id"] in connectors]
+        rest = [r for r in rows if r["connector_id"] not in connectors]
+        total: dict[str, Any] = {
+            "counts": {"changes": 0, "waits": 0, "held": 0},
+            "tokens": None,
+            "unknown": 0,
+            "details": [],
+        }
+        for part, only in ((whole, None), (rest, sheets or None)):
+            if not part or (only is None and part is rest):
+                continue
+            learned = self._learn(owner, beat_id, part, only_sheets=only)
+            for key in total["counts"]:
+                total["counts"][key] += learned["counts"][key]
+            if learned["tokens"] is not None:
+                total["tokens"] = (total["tokens"] or 0) + learned["tokens"]
+            total["unknown"] += learned["unknown"]
+            total["details"] += learned["details"]
+        return total
+
+    def _replace_waiting(
+        self, owner: Principal, items: list[dict[str, Any]], details: list[str]
+    ) -> None:
+        """A later net change on an item replaces what still waits from an earlier distill:
+        that proposal is turned down, so Catch up holds only the newest."""
+        table = schema.staged_changes
+        replaced = 0
+        for item in items:
+            with self.ws.rt.read() as tx:
+                earlier = tx.rows(
+                    sa.select(table.c.proposal_id, table.c.outcome).where(
+                        table.c.workspace_id == tx.workspace_id,
+                        table.c.connector_id == item["connector_id"],
+                        table.c.item_id == item["id"],
+                        table.c.status == "distilled",
+                        table.c.proposal_id.is_not(None),
+                    )
+                )
+            for row in earlier:
+                if (row["outcome"] or {}).get("route") != "catch_up":
+                    continue
+                try:
+                    self.ws.brain.decide(
+                        owner,
+                        str(row["proposal_id"]),
+                        approve=False,
+                        reason="A later change replaced it (the heartbeat's distill).",
+                    )
+                    replaced += 1
+                except WorkspaceError:
+                    continue  # already decided: nothing waits
+        if replaced:
+            details.append(f"Replaced {replaced} waiting in Catch up with a later change.")
+
+    def still_waiting(self, who: Principal) -> dict[str, Any]:
+        """What the distill sent to Catch up over 14 days ago and still waits: one card, so
+        nothing expires silently."""
+        who.require("brain.read")
+        since = iso(self.ws.rt.clock.now() - timedelta(days=learning.STALE_DAYS))
+        table = schema.staged_changes
+        with self.ws.rt.read() as tx:
+            rows = tx.rows(
+                sa.select(table).where(
+                    table.c.workspace_id == tx.workspace_id,
+                    table.c.status == "distilled",
+                    table.c.proposal_id.is_not(None),
+                    table.c.seen_at < since,
+                )
+            )
+        waiting = {p.get("id") for p in self.ws.brain.proposals(who)}
+        names = {r["id"]: r["name"] for r in self._connectors()}
+        stale = [
+            learning.view(r, names)
+            for r in rows
+            if (r["outcome"] or {}).get("route") == "catch_up" and r["proposal_id"] in waiting
+        ]
+        return {"count": len(stale), "days": learning.STALE_DAYS, "items": stale}
+
+    def _lesson(self, owner: Principal, pattern: Any, details: list[str]) -> None:
+        """A pattern across the day's changes becomes a lesson proposal (it waits in Catch
+        up: a lesson shapes every AI)."""
+        if not isinstance(pattern, dict) or not _flat(pattern.get("title"), 120):
+            return
+        try:
+            self.ws.rt.brain.propose_lesson(
+                title=_flat(pattern.get("title"), 120),
+                story=_flat(pattern.get("story") or pattern.get("pattern"), 1200),
+                pattern=_flat(pattern.get("pattern"), 600),
+                # The words that bring it up: the model's, else the title's own.
+                words=[
+                    _flat(w, 40)
+                    for w in pattern.get("words")
+                    or sorted(learning.content_words(str(pattern.get("title") or "")))[:4]
+                    if _flat(w, 40)
+                ][:8],
+                evidence="Seen across a day of changes by the heartbeat's distill.",
+                capture_origin="connector",
+            )
+            details.append(f"Proposed a lesson: {_flat(pattern.get('title'), 120)}")
+        except WorkspaceError as exc:
+            details.append(f"A lesson could not be proposed: {_flat(str(exc), 160)}")
+
+    def staged(self, who: Principal, *, status: str | None = None) -> list[dict[str, Any]]:
+        """Heartbeat › Today: what the buffer holds (newest first), each with its source,
+        old and new value, relevance and what a filter said."""
+        who.require("brain.read")
+        table = schema.staged_changes
+        query = sa.select(table).where(table.c.workspace_id == self.ws.rt.workspace_id)
+        if status:
+            query = query.where(table.c.status == status)
+        with self.ws.rt.read() as tx:
+            rows = tx.rows(query.order_by(table.c.seen_at.desc(), table.c.id.desc()).limit(500))
+        names = {r["id"]: r["name"] for r in self._connectors()}
+        return [learning.view(r, names) for r in rows]
+
+    def _set_staged(self, who: Principal, staged_id: str, status: str, event: str) -> dict:
+        who.require("workspace.admin")
+        table = schema.staged_changes
+        with self.ws.rt.write() as tx:
+            row = tx.get(table, staged_id)
+            if row is None or row["workspace_id"] != tx.workspace_id:
+                raise NotFound(f"No change {staged_id} in the buffer.", id=staged_id)
+            if row["status"] == "distilled":
+                raise Conflict("The distill has already used it: undo what it wrote instead.")
+            tx.conn.execute(table.update().where(table.c.id == staged_id).values(status=status))
+            tx.emit(
+                event,
+                actor_id=who.actor_id,
+                subject_type="staged_change",
+                subject_id=staged_id,
+                data={"connector": row["connector_id"]},
+            )
+            row = dict(row, status=status)
+        return learning.view(row, {r["id"]: r["name"] for r in self._connectors()})
+
+    def forget_staged(self, who: Principal, staged_id: str) -> dict[str, Any]:
+        """Forget this: out of the buffer before the distill sees it (an undo signal)."""
+        return self._set_staged(who, staged_id, "forgotten", "heartbeat.staged_forgotten")
+
+    def bring_back(self, who: Principal, staged_id: str) -> dict[str, Any]:
+        """Bring back what a filter dropped: the distill sees it like any other change."""
+        return self._set_staged(who, staged_id, "staged", "heartbeat.staged_brought_back")
+
     def n8n_status(self, who: Principal) -> dict[str, Any]:
         who.require("brain.read")
         if self.n8n_host is None:
@@ -1240,7 +1708,10 @@ class Heartbeat:
     def _run_safely(self, beat_id: str) -> None:
         started = time.monotonic()
         try:
-            self._run(beat_id, started)
+            if self._trigger(beat_id) == "distill":
+                self._distill(beat_id, started)
+            else:
+                self._run(beat_id, started)
         except Exception as exc:  # the beat's record says what stopped it
             log.warning("beat %s failed", beat_id, exc_info=True)
             self._finish(beat_id, started, status="failed", errors=[_flat(str(exc), 300)])
@@ -1446,12 +1917,19 @@ class Heartbeat:
         table = schema.heartbeat_seen
         with self.ws.rt.read() as tx:
             rows = tx.rows(
-                sa.select(table.c.item_id, table.c.digest).where(
+                sa.select(table.c.item_id, table.c.digest, table.c.seen_at)
+                .where(
                     table.c.connector_id == connector_id,
                     table.c.item_id.in_([k for k, _ in keys]),
                 )
+                .order_by(table.c.seen_at.desc(), table.c.id.desc())
             )
-        return {(r["item_id"], r["digest"]) for r in rows}
+        # Each item's latest version only: an item back to what it said before has changed
+        # again (and a change undone the same day nets to nothing in the distill).
+        latest: dict[str, str] = {}
+        for r in rows:
+            latest.setdefault(r["item_id"], r["digest"])
+        return set(latest.items())
 
     def _brain(self) -> dict[str, Any]:
         """What the judge is shown: the regions (the Brain's areas), its projects, its sheets
@@ -1510,7 +1988,9 @@ class Heartbeat:
     ) -> tuple[str, int | None]:
         """One answer from a CLI and the tokens it said it used (None: unknown)."""
         if cli == "claude":
-            found = self.runners.ask_json(owner, prompt, timeout=timeout)
+            # The judge reads what came in: it runs on the ingest model (Haiku by default).
+            model = self.ws.distill.settings(owner).get("model")
+            found = self.runners.ask_json(owner, prompt, timeout=timeout, model=model)
             usage = usage_of(found)
             if usage is not None:
                 self.runners.count_usage("heartbeat", usage)
@@ -1762,6 +2242,20 @@ class Heartbeat:
                 owner, "provider_limit", f"A provider limit was hit: {_flat(limited, 160)}"
             )
         counts = {"changes": 0, "waits": 0, "held": 0}
+        # Capture (heartbeat learning): relevance and the owner's filters, by code, no model.
+        decisions = learning.decide(fresh, settings, self.ws.rt.brain.relevance)
+        dropped = [d for d in decisions if d.dropped]
+        if dropped:
+            details.append(
+                f"Dropped {len(dropped)} at capture by your filters; they stay in Today for "
+                f"{int(settings.get('buffer_days') or learning.BUFFER_DAYS)} days."
+            )
+        fresh = [d.item for d in decisions if not d.dropped]
+        # Onboarding's first look lands now, not tonight: it judges in the beat, as before.
+        nightly = settings.get("learn") == "nightly" and self._trigger(beat_id) != "onboarding"
+        if nightly and fresh:
+            details.append(f"Captured {len(fresh)} for the distill.")
+            fresh = []  # the distill learns from the buffer; the beat only captures
         if fresh:
             brain = self._brain()
             regions_before = self._regions_now()
@@ -1789,7 +2283,7 @@ class Heartbeat:
                     "The judge's answer could not be read; nothing was written."
                 ) from exc
             counts = self._write_all(owner, beat_id, fresh, judged, brain, details)
-        else:
+        elif not nightly or not decisions:
             details.append(
                 f"Read {len([e for e in read_log if e['read']])} connectors. Nothing new."
                 if read_log
@@ -1798,12 +2292,24 @@ class Heartbeat:
         # Only now are the items seen and the cursors moved: a beat that stopped before this
         # point reads the same items again next time.
         self._advance(beat_id, reads)
+        # The buffer keeps every change, with what the beat made of it; old entries go.
+        learning.stage(self.ws, beat_id, decisions, outcome="" if nightly else "beat")
+        if nightly:
+            applied = self._apply_live(owner, beat_id, settings)
+            if applied is not None:
+                for kind in counts:
+                    counts[kind] += applied["counts"][kind]
+                if applied["tokens"] is not None:
+                    tokens = (tokens or 0) + applied["tokens"]
+                unknown += applied["unknown"]
+                details += applied["details"]
+        learning.purge(self.ws, int(settings.get("buffer_days") or learning.BUFFER_DAYS))
         self._finish(
             beat_id,
             started,
             status="done",
             connectors=read_log,
-            items=len(fresh),
+            items=len(decisions),
             tokens=tokens,
             unknown=unknown,
             errors=errors,
@@ -1846,9 +2352,21 @@ class Heartbeat:
     def _advance(self, beat_id: str, reads: dict[str, dict[str, Any]]) -> None:
         with self.ws.rt.write() as tx:
             for cid, read in reads.items():
+                seen = schema.heartbeat_seen
                 for item in read["new"]:
+                    again = tx.conn.execute(
+                        seen.update()
+                        .where(
+                            seen.c.connector_id == cid,
+                            seen.c.item_id == item["id"],
+                            seen.c.digest == item["digest"],
+                        )
+                        .values(beat_id=beat_id, seen_at=tx.now)
+                    )
+                    if again.rowcount:  # a version seen before is the latest again
+                        continue
                     tx.insert(
-                        schema.heartbeat_seen,
+                        seen,
                         {
                             "id": tx.new_id("hbs"),
                             "workspace_id": tx.workspace_id,
@@ -1957,6 +2475,17 @@ class Heartbeat:
         """Make one write through the Brain's one proposal path, with the item as its source."""
         kind = write["kind"]
         at = str(item.get("at") or "")[:10]
+        # What must wait is enforced by code, not left to the model: a task or a sheet value
+        # whose words send, post, reach a customer or spend money is flagged, so it waits for
+        # the owner even in Auto (the recorded day's finding, Oct 25).
+        flags = [f for f in ("customer_facing", "spends") if write.get(f) is True]
+        if kind in ("task", "sheet"):
+            said = f"{write.get('text') or ''} {write.get('value') or ''} {item.get('title') or ''}"
+            gate = gate_kind("", said, [])
+            if gate == "spend" and "spends" not in flags:
+                flags.append("spends")
+            elif gate in ("post", "customer_facing") and "customer_facing" not in flags:
+                flags.append("customer_facing")
         cited: dict[str, Any] = {
             "title": _flat(line or item["title"] or item["text"], 120),
             "evidence": _flat(
@@ -1969,7 +2498,8 @@ class Heartbeat:
             "source_speaker": item.get("speaker") or None,
             "source_excerpt": item["text"] or item["title"],
             "as_of": at if re.fullmatch(r"\d{4}-\d{2}-\d{2}", at) else None,
-            "capture_origin": "connector",
+            # A Catch up route from the distill waits for the owner, even in Auto.
+            "capture_origin": None if item.get("review") else "connector",
             # A plain reason: an Auto change records it as why the governor kept it.
             "reason": _flat(
                 f"{write.get('reason') or 'It changed'} (from {item['connector_name']}, "
@@ -1984,6 +2514,7 @@ class Heartbeat:
                 statement=f"{write.get('column')}: {value}",
                 destination="sheet",
                 place={k: write.get(k) for k in ("sheet", "row", "column")} | {"value": value},
+                flags=flags or None,
                 **cited,
             )
         if kind == "progress":
@@ -2006,6 +2537,7 @@ class Heartbeat:
                     "owner": write.get("owner") or "",
                     "due": due if re.fullmatch(r"\d{4}-\d{2}-\d{2}", due) else "",
                 },
+                flags=flags or None,
                 **cited,
             )
         name = re.sub(r"[^a-z0-9]+", "-", str(write.get("topic") or "").lower()).strip("-")
@@ -2016,7 +2548,7 @@ class Heartbeat:
             kind="fact",
             topic=None if write.get("revises") else topic,
             revises=write.get("revises") or None,
-            flags=[f for f in ("customer_facing", "spends") if write.get(f) is True] or None,
+            flags=flags or None,
             **cited,
         )
 
@@ -2550,6 +3082,8 @@ class HeartbeatWorker:
             self._looked = True
             self.heartbeat.rescan(owner)
         self._looked = True
+        if self.heartbeat.distill_due():
+            return self.heartbeat.beat(owner, "distill")
         if not self.heartbeat.due():
             return None
         if not any(c["enabled"] for c in self.heartbeat.connectors(owner)):

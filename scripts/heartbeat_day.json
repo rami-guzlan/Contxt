@@ -1,0 +1,703 @@
+{
+ "about": "A recorded day for heartbeat learning's evaluation (14.7). Invented; every route was labelled before tuning.",
+ "goal": "Run the Q4 webinar series well and keep the website refresh launch on time.",
+ "filters": [
+  {
+   "pattern": "newsletter"
+  },
+  {
+   "pattern": "out of office"
+  },
+  {
+   "pattern": "receipt"
+  },
+  {
+   "pattern": "lunch"
+  },
+  {
+   "pattern": "sign-in"
+  }
+ ],
+ "patterns": [
+  "moved three times in a day",
+  "approvals moved to a new owner",
+  "dates slipping on webinar sessions"
+ ],
+ "items": [
+  {
+   "source": "tracker",
+   "id": "tr-01",
+   "title": "Website launch date",
+   "before": "Website launch date: Nov 3",
+   "steps": [
+    "Website launch date: Nov 10",
+    "Website launch date: Nov 3"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "tracker",
+   "id": "tr-02",
+   "title": "Hero section owner",
+   "before": "Hero section owner: Morgan Lee",
+   "steps": [
+    "Hero section owner: Sam Ortiz",
+    "Hero section owner: Morgan Lee"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-03",
+   "title": "Lakeside Foods stage",
+   "before": "Lakeside Foods stage: Proposal",
+   "steps": [
+    "Lakeside Foods stage: Negotiation",
+    "Lakeside Foods stage: Proposal"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-04",
+   "title": "Northgate Co contact",
+   "before": "Northgate Co contact: Ana Pereira",
+   "steps": [
+    "Northgate Co contact: Leo Brandt",
+    "Northgate Co contact: Ana Pereira"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-05",
+   "title": "Webinar session 2 time",
+   "before": "Webinar session 2 time: Thursday 11:00",
+   "steps": [
+    "Webinar session 2 time: Thursday 14:00",
+    "Webinar session 2 time: Thursday 11:00"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-06",
+   "title": "Weekly sync room",
+   "before": "Weekly sync room: Room 4",
+   "steps": [
+    "Weekly sync room: Room 2",
+    "Weekly sync room: Room 4"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-07",
+   "title": "Speaker for session 3",
+   "before": "Speaker for session 3: Dana Ruiz",
+   "steps": [
+    "Speaker for session 3: Ravi Mehta",
+    "Speaker for session 3: Dana Ruiz"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "tracker",
+   "id": "tr-08",
+   "title": "Run of show status",
+   "before": "Run of show status: Draft",
+   "steps": [
+    "Run of show status: In review",
+    "Run of show status: Draft"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-09",
+   "title": "Renewal owner for Harbor Labs",
+   "before": "Renewal owner for Harbor Labs: Priya Shah",
+   "steps": [
+    "Renewal owner for Harbor Labs: Tom Okafor",
+    "Renewal owner for Harbor Labs: Priya Shah"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-10",
+   "title": "Board prep meeting",
+   "before": "Board prep meeting: Friday 09:00",
+   "steps": [
+    "Board prep meeting: Friday 16:00",
+    "Board prep meeting: Friday 09:00"
+   ],
+   "expect": "discard",
+   "why": "undone the same day",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "tracker",
+   "id": "tr-11",
+   "title": "Website refresh status",
+   "before": null,
+   "steps": [
+    "Website refresh status: In progress",
+    "Website refresh status: Blocked",
+    "Website refresh status: In review",
+    "Website refresh status: In progress"
+   ],
+   "expect": "short",
+   "why": "a value that keeps changing",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "tracker",
+   "id": "tr-12",
+   "title": "Landing page copy",
+   "before": null,
+   "steps": [
+    "Landing page copy: Draft",
+    "Landing page copy: In review",
+    "Landing page copy: Changes requested"
+   ],
+   "expect": "short",
+   "why": "a value that keeps changing",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-13",
+   "title": "Lakeside Foods deal health",
+   "before": null,
+   "steps": [
+    "Lakeside Foods deal health: Green",
+    "Lakeside Foods deal health: Amber",
+    "Lakeside Foods deal health: Amber"
+   ],
+   "expect": "short",
+   "why": "a value that keeps changing",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-14",
+   "title": "Q4 pipeline count",
+   "before": null,
+   "steps": [
+    "Q4 pipeline count: 31 deals",
+    "Q4 pipeline count: 33 deals",
+    "Q4 pipeline count: 34 deals"
+   ],
+   "expect": "short",
+   "why": "a value that keeps changing",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-15",
+   "title": "Session 1 rehearsal",
+   "before": null,
+   "steps": [
+    "Session 1 rehearsal: Tuesday 10:00",
+    "Session 1 rehearsal: Tuesday 15:00",
+    "Session 1 rehearsal: Wednesday 10:00"
+   ],
+   "expect": "short",
+   "why": "a value that keeps changing",
+   "must_wait": false,
+   "pattern": "moved three times in a day"
+  },
+  {
+   "source": "tracker",
+   "id": "tr-16",
+   "title": "Replay page",
+   "before": null,
+   "steps": [
+    "Replay page: Not started",
+    "Replay page: In progress",
+    "Replay page: In review"
+   ],
+   "expect": "short",
+   "why": "a value that keeps changing",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-17",
+   "title": "Webinar registrations",
+   "before": null,
+   "steps": [
+    "Registrations: 388 of 450"
+   ],
+   "expect": "short",
+   "why": "a current value",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "tracker",
+   "id": "tr-18",
+   "title": "Reminder emails due",
+   "before": null,
+   "steps": [
+    "Reminder emails due Tuesday",
+    "Reminder emails due Wednesday"
+   ],
+   "expect": "short",
+   "why": "a current value",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-19",
+   "title": "Harbor Labs renewal date",
+   "before": null,
+   "steps": [
+    "Renewal on Dec 1"
+   ],
+   "expect": "short",
+   "why": "a current value",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-20",
+   "title": "Session 2 date",
+   "before": null,
+   "steps": [
+    "Session 2 moved to Nov 19",
+    "Session 2 on Nov 20"
+   ],
+   "expect": "short",
+   "why": "a current value",
+   "must_wait": false,
+   "pattern": "moved three times in a day"
+  },
+  {
+   "source": "tracker",
+   "id": "tr-21",
+   "title": "Open tasks in website project",
+   "before": null,
+   "steps": [
+    "4 of 7 tasks done"
+   ],
+   "expect": "short",
+   "why": "a current value",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-22",
+   "title": "Northgate Co health",
+   "before": null,
+   "steps": [
+    "Health: at risk"
+   ],
+   "expect": "short",
+   "why": "a current value",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-23",
+   "title": "Approvals",
+   "before": null,
+   "steps": [
+    "Morgan Lee now signs off every customer email before it goes out."
+   ],
+   "expect": "long",
+   "why": "a durable fact",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-24",
+   "title": "New head of marketing",
+   "before": null,
+   "steps": [
+    "Priya Shah is the new head of marketing from November."
+   ],
+   "expect": "long",
+   "why": "a durable fact",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-25",
+   "title": "Webinar format decision",
+   "before": null,
+   "steps": [
+    "We decided: every webinar gets a 10-minute live Q&A."
+   ],
+   "expect": "long",
+   "why": "a durable fact",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-26",
+   "title": "Brand rule",
+   "before": null,
+   "steps": [
+    "Dana confirmed we never use exclamation marks in subject lines."
+   ],
+   "expect": "long",
+   "why": "a durable fact",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-27",
+   "title": "Lakeside Foods buyer",
+   "before": null,
+   "steps": [
+    "Lakeside Foods buys through their operations lead, not IT."
+   ],
+   "expect": "long",
+   "why": "a durable fact",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-28",
+   "title": "Office closure",
+   "before": null,
+   "steps": [
+    "The office is closed every year on Dec 24 to Jan 1."
+   ],
+   "expect": "long",
+   "why": "a durable fact",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "tracker",
+   "id": "tr-29",
+   "title": "How releases run",
+   "before": null,
+   "steps": [
+    "Website releases now ship on Tuesdays only, after QA sign-off."
+   ],
+   "expect": "long",
+   "why": "a durable fact",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-30",
+   "title": "Speaker policy",
+   "before": null,
+   "steps": [
+    "Guest speakers get the slide template one week before."
+   ],
+   "expect": "long",
+   "why": "a durable fact",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-31",
+   "title": "Weekly newsletter",
+   "before": null,
+   "steps": [
+    "The weekly newsletter: ten links on productivity."
+   ],
+   "expect": "dropped",
+   "why": "matched a filter",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-32",
+   "title": "Out of office",
+   "before": null,
+   "steps": [
+    "Automatic reply: I am out of office until Monday."
+   ],
+   "expect": "dropped",
+   "why": "matched a filter",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-33",
+   "title": "Receipt",
+   "before": null,
+   "steps": [
+    "Your receipt for the coffee subscription."
+   ],
+   "expect": "dropped",
+   "why": "matched a filter",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-34",
+   "title": "Lunch",
+   "before": null,
+   "steps": [
+    "Lunch with the team, Friday."
+   ],
+   "expect": "dropped",
+   "why": "matched a filter",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-35",
+   "title": "Webinar platform newsletter",
+   "before": null,
+   "steps": [
+    "Newsletter: new features in our streaming tool."
+   ],
+   "expect": "dropped",
+   "why": "matched a filter",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-36",
+   "title": "Login alert",
+   "before": null,
+   "steps": [
+    "New sign-in to your account from a browser."
+   ],
+   "expect": "dropped",
+   "why": "matched a filter",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-37",
+   "title": "Newsletter mention of our webinar",
+   "before": null,
+   "steps": [
+    "A partner newsletter features our Q4 webinar series, session 1 on Oct 24."
+   ],
+   "expect": "short|long|catch_up",
+   "why": "a filter matched, the goal makes it relevant",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-38",
+   "title": "Out of office: Morgan",
+   "before": null,
+   "steps": [
+    "Out of office: Morgan Lee is away Friday; webinar approvals go to Sam Ortiz."
+   ],
+   "expect": "short|long|catch_up",
+   "why": "a filter matched, the goal makes it relevant",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-39",
+   "title": "Lunch with Dana Ruiz",
+   "before": null,
+   "steps": [
+    "Lunch with Dana Ruiz to plan the Q4 webinar guest list."
+   ],
+   "expect": "short|long|catch_up",
+   "why": "a filter matched, the goal makes it relevant",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-40",
+   "title": "Receipt for webinar platform",
+   "before": null,
+   "steps": [
+    "Receipt: the webinar platform plan renewed for Q4."
+   ],
+   "expect": "short|long|catch_up",
+   "why": "a filter matched, the goal makes it relevant",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-41",
+   "title": "Send attendees new time",
+   "before": null,
+   "steps": [
+    "Please email all attendees that session 2 moved to Nov 20."
+   ],
+   "expect": "catch_up",
+   "why": "must wait for the owner",
+   "must_wait": true,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-42",
+   "title": "Raise ad budget",
+   "before": null,
+   "steps": [
+    "Raise the webinar ad budget to 900 a month."
+   ],
+   "expect": "catch_up",
+   "why": "must wait for the owner",
+   "must_wait": true,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-43",
+   "title": "Draft pricing",
+   "before": null,
+   "steps": [
+    "Draft pricing for the bundle: 49 per seat, not final."
+   ],
+   "expect": "catch_up",
+   "why": "must wait for the owner",
+   "must_wait": true,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-44",
+   "title": "Offer discount to Lakeside",
+   "before": null,
+   "steps": [
+    "Offer Lakeside Foods a 15% discount on renewal."
+   ],
+   "expect": "catch_up",
+   "why": "must wait for the owner",
+   "must_wait": true,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-45",
+   "title": "Dentist",
+   "before": null,
+   "steps": [
+    "Dentist appointment, Thursday 08:00."
+   ],
+   "expect": "discard",
+   "why": "not relevant",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-46",
+   "title": "Parking",
+   "before": null,
+   "steps": [
+    "The parking garage is closed on Saturday."
+   ],
+   "expect": "discard",
+   "why": "not relevant",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "tracker",
+   "id": "tr-47",
+   "title": "Typo fix",
+   "before": null,
+   "steps": [
+    "Fixed a typo in an old footer."
+   ],
+   "expect": "discard",
+   "why": "not relevant",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "crm",
+   "id": "cr-48",
+   "title": "Duplicate contact merged",
+   "before": null,
+   "steps": [
+    "Merged two duplicate contact records."
+   ],
+   "expect": "discard",
+   "why": "not relevant",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "mail",
+   "id": "ma-49",
+   "title": "Team photo",
+   "before": null,
+   "steps": [
+    "Team photo day is next month."
+   ],
+   "expect": "discard",
+   "why": "not relevant",
+   "must_wait": false,
+   "pattern": null
+  },
+  {
+   "source": "calendar",
+   "id": "ca-50",
+   "title": "Gym",
+   "before": null,
+   "steps": [
+    "Gym, 18:00."
+   ],
+   "expect": "discard",
+   "why": "not relevant",
+   "must_wait": false,
+   "pattern": null
+  }
+ ]
+}

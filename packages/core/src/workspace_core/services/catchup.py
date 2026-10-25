@@ -336,6 +336,8 @@ class CatchUp:
         # Goals and Projects (set once Goals exists): agent goals that slipped, and the
         # suggested next steps for your goals.
         self.goals: Any = None
+        # The Test Bench after each distill (set by the app): "Quality dropped" cards.
+        self.quality: Any = None
 
     # ---------------------------------------------------------------- the plan
 
@@ -403,8 +405,14 @@ class CatchUp:
         # The updating loop's asks (BL 9): "Still true?", bent rules, approval health,
         # corroboration, the quarterly review, lessons and the agent's hand-ups.
         looped = loop_cards(port, iso(now), hidden)
+        quality = [
+            c
+            for c in (self.quality(who) if self.quality is not None else [])
+            if c["key"] not in hidden
+        ]
         seconds = (
             SECONDS["quick"] * len(looped)
+            + SECONDS["judgment"] * len(quality)
             + SECONDS["goal"] * len(slipped)
             + SECONDS["judgment"] * len(handed)
             + SECONDS["quick"] * (len(unclaimed) + len(state_waiting))
@@ -436,6 +444,7 @@ class CatchUp:
                 or unclaimed
                 or state_waiting
                 or looped
+                or quality
             ),
             "counts": {
                 "judgment": len(judgment),
@@ -453,8 +462,10 @@ class CatchUp:
                 "unclaimed": len(unclaimed),
                 "state_waiting": len(state_waiting),
                 "loop": len(looped),
+                "quality": len(quality),
             },
             "loop": looped,
+            "quality": quality,
             "handed": handed,
             "unclaimed": unclaimed,
             "state_waiting": state_waiting,

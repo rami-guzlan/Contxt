@@ -34,6 +34,7 @@ from .mcp.protocol import McpHandler
 from .models import Models
 from .orchestration import Orchestration
 from .outputs import Outputs
+from .regression import Regression
 from .routes import (
     agent,
     agents,
@@ -86,6 +87,7 @@ class Runtime:
     differences: Differences
     bench: Bench
     suites: Suites
+    regression: Regression
     outputs: Outputs
     models: Models
     agent: AgentWork
@@ -166,6 +168,11 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
 
     ws.distill.triager = triager
     bench = Bench(ws, runners)
+    suites = Suites(ws, bench)
+    regression = Regression(ws, suites)
+    ws.catch_up.quality = regression.cards  # "Quality dropped" after a distill (15.6)
+    heartbeat = _heartbeat(ws, runners, settings)
+    heartbeat.regression = regression
     return Runtime(
         settings=settings,
         ws=ws,
@@ -176,7 +183,8 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         speech=Speech(settings.speech_models),
         differences=differences,
         bench=bench,
-        suites=Suites(ws, bench),
+        suites=suites,
+        regression=regression,
         outputs=Outputs(ws, settings.exports_dir or os.path.join(settings.data_dir, "exports")),
         models=models,
         agent=AgentWork(ws, models),
@@ -186,7 +194,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
             ws,
             builtin=BuiltinChecks(settings.data_dir, ws, adapter, differences),
         ),
-        heartbeat=_heartbeat(ws, runners, settings),
+        heartbeat=heartbeat,
     )
 
 
