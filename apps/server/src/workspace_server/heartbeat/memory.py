@@ -4,7 +4,8 @@ writes; never its sign-in, settings or anything else in its folder. The CLI then
 into context packets for the Brain (the heartbeat's judge places those, through governance).
 
 - Claude Code (`CLAUDE_CONFIG_DIR`, else `~/.claude`): `CLAUDE.md`, each project's
-  `memory/*.md`, and `history.jsonl` (what the person typed, with its project).
+  `memory/*.md`, and the person's turns in each session's `projects/*/*.jsonl` (the desktop
+  app's sessions too) and in `history.jsonl` (what was typed in the terminal).
 - Codex (`CODEX_HOME`, else `~/.codex`): `AGENTS.md`, and the person's messages in
   `sessions/**/rollout-*.jsonl`.
 - Gemini CLI (`GEMINI_CLI_HOME`, else `~/.gemini`): `GEMINI.md`, and the person's messages
@@ -38,7 +39,7 @@ MAX_FILES = 400  # chat files a read opens, newest first
 # What a CLI adds to a person's turn that the person did not write.
 NOT_SAID = re.compile(
     r"^\s*(<environment_context>|<user_instructions>|<system-reminder>|<command-|<local-command"
-    r"|Caveat: |# AGENTS\.md|\[Request interrupted)",
+    r"|Caveat: |# AGENTS\.md|\[Request interrupted|This session is being continued)",
 )
 REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
 
@@ -137,6 +138,34 @@ def _claude_said(root: str) -> list[tuple[str, str, str]]:
                     str(entry["display"]),
                 )
             )
+    for path in _newest_first(glob.glob(os.path.join(root, "projects", "*", "*.jsonl"))):
+        for line in _read(path, 50_000_000).splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(entry, dict) or entry.get("type") != "user":
+                continue
+            # A tool's result, a turn Claude Code added, a subagent's or a summary: not said.
+            if entry.get("isMeta") or entry.get("isSidechain") or entry.get("isCompactSummary"):
+                continue
+            if "toolUseResult" in entry:
+                continue
+            content = (entry.get("message") or {}).get("content")
+            if isinstance(content, list):
+                content = " ".join(
+                    str(p.get("text") or "")
+                    for p in content
+                    if isinstance(p, dict) and p.get("type") == "text"
+                )
+            if content:
+                out.append(
+                    (
+                        _iso(entry.get("timestamp")),
+                        os.path.basename(str(entry.get("cwd") or "").rstrip("\\/")),
+                        str(content),
+                    )
+                )
     return out
 
 
@@ -189,14 +218,16 @@ def gather(cli: str, since: str | None = None) -> Gathered:
     if not os.path.isdir(root):
         return found
     budget = LATER_BUDGET if since else FIRST_BUDGET
+    files = budget // 2  # memory files take at most half: the chats get the rest
     for path in _memory_files(cli, root):
         if not os.path.isfile(path):
             continue
         if since and _iso(os.path.getmtime(path)) <= since:
             continue
-        text = mask(_read(path, MEMORY_CHARS).strip())
-        if text and budget > 0:
+        text = mask(_read(path, MEMORY_CHARS).strip())[: max(files, 0)]
+        if text:
             found.memory.append((os.path.relpath(path, root), text))
+            files -= len(text)
             budget -= len(text)
     said = {"claude": _claude_said, "codex": _codex_said, "gemini": _gemini_said}[cli](root)
     said.sort(key=lambda s: s[0], reverse=True)

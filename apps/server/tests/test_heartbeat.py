@@ -1307,6 +1307,36 @@ def write_memories():
     ]
     with open(os.path.join(claude, "history.jsonl"), "w", encoding="utf-8") as handle:
         handle.write("\n".join(json.dumps(t) for t in typed) + "\n")
+    at = "2026-09-19T09:00:00Z"
+    session = [  # a session's transcript, as the desktop app's sessions keep it
+        {
+            "type": "user",
+            "timestamp": at,
+            "cwd": "C:/dev/site",
+            "message": {"role": "user", "content": "The client signs off every Friday"},
+        },
+        {
+            "type": "user",
+            "timestamp": at,
+            "toolUseResult": {},
+            "message": {"role": "user", "content": [{"type": "tool_result", "content": "ls"}]},
+        },
+        {
+            "type": "user",
+            "timestamp": at,
+            "isMeta": True,
+            "message": {"role": "user", "content": "Claude Code added this turn"},
+        },
+        {
+            "type": "assistant",
+            "timestamp": at,
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "Noted"}]},
+        },
+    ]
+    with open(
+        os.path.join(claude, "projects", "C--dev-site", "session-1.jsonl"), "w", encoding="utf-8"
+    ) as handle:
+        handle.write("\n".join(json.dumps(x) for x in session) + "\n")
     day = os.path.join(codex, "sessions", "2026", "09", "20")
     os.makedirs(day, exist_ok=True)
     lines = [
@@ -1365,6 +1395,7 @@ def test_a_cli_memory_is_gathered_from_its_own_files_with_secrets_masked(cli_hom
     assert "sk-ant-api03" not in said[0] and "[masked]" in said[0]
     assert not any(t in ("yes",) or t.startswith("<command") for t in said)
     assert claude.said[1][1] == "site"
+    assert said[2:] == ["The client signs off every Friday"]  # the person's turn, nothing else
     codex = hb_memory.gather("codex")
     assert [t for _a, _p, t in codex.said] == ["Invoices go out on the 1st"]  # only the person
     assert codex.said[0][1] == "billing"
