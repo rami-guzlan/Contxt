@@ -3,8 +3,8 @@
 Heartbeat learning's staging buffer: every change a beat read, with its old and new value, its
 relevance to the owner's goal and what the filters said, then what the distill made of it.
 
-Revision ID: 0015
-Revises: 0014
+Revision ID: 0016
+Revises: 0015
 Create Date: 2026-10-25 18:00:00.000000
 """
 
@@ -13,8 +13,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0015"
-down_revision = "0014"
+revision = "0016"
+down_revision = "0015"
 branch_labels = None
 depends_on = None
 
