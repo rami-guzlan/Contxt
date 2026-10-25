@@ -13,7 +13,7 @@
     contxt status                   one-screen state
     contxt add-model NAME PROVIDER  give a model its own token for the app's AI work
     contxt worker [--once]          lease expiry and due-task scheduling, in a loop
-    contxt mcp --url URL            stdio bridge to the app's /mcp (token in CONTXT_TOKEN)
+    contxt mcp --url URL            stdio bridge to /mcp or /brain/mcp (token: CONTXT_TOKEN)
     contxt migrate [--preview]      apply (or show) pending database migrations
     contxt backup [OUT]             one archive: database, files, manifest (--with-brain)
     contxt restore ARCHIVE          into an empty data directory

@@ -68,6 +68,18 @@ Settings, AI apps, generates the exact snippet for each, with the token filled i
 Code on the same computer needs none of this to run the app's work at once: see
 [Running the app's AI work](runners.md).
 
+### The Brain by URL
+
+The running app also serves the Brain's own tools (the same ones `brainkit mcp` serves over
+stdio) at `<url>/brain/mcp`, with the same tokens. An AI app then connects by URL instead of
+starting the Brain itself, so one computer left on can hold the Brain for every app on it:
+
+- Claude Code: `claude mcp add --scope user --transport http contxt <url>/brain/mcp --header "Authorization: Bearer <token>"`
+- Claude Desktop, Codex, Gemini CLI: command `contxt`, args `mcp --url <url>/brain/mcp`, env
+  `CONTXT_TOKEN`.
+
+Replies come back as JSON on each POST; there is no server-sent stream (GET answers 405).
+
 ## Protocol notes
 
 - Protocol versions 2025-06-18, 2025-03-26 and 2024-11-05 are accepted; `structuredContent`
