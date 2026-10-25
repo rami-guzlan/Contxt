@@ -328,6 +328,34 @@ describe("Brain: Test bench", () => {
     const scored = calls.find((c) => c.path === "/api/bench/results/bres_1/score");
     expect(scored?.body).toEqual({ thumbs: "up", edits: "none", note: "" });
   });
+
+  it("sets what counts as a drop and shows what each distill costs a suite that runs after it", async () => {
+    const full = {
+      request: "When are quills trimmed?", mode: "standard", tokens: 212, text: "## Notes", project: null, procedure: null,
+      candidates: [], notes: [], sections: [], related: [], must_holds: [], log: [], packet_sections: [], packet_tokens: 212,
+      brain_version: "v3", note_ids: [],
+    };
+    const test = { id: "quills", suite: "quality", name: "Quills", request: "When are quills trimmed?", rubric: ["Says noon"] };
+    const calls = knows({
+      "GET /api/brain/preview": full,
+      "GET /api/bench/suites": { suites: [{ id: "quality", name: "quality", description: "", after_distill: true, tests: [test] }] },
+      "GET /api/bench/summary": { by_mode: [], suites: [], sections: [], sections_note: "A signal, not proof.", scored: 0 },
+      "GET /api/bench/settings": { fall: 1, met_to_missed: true, liked_floor: 2, daily_cap: 20 },
+      "PUT /api/bench/settings": { fall: 2, met_to_missed: true, liked_floor: 2, daily_cap: 20 },
+      "GET /api/bench/suites/quality/estimate": {
+        tests: 1, tokens: 1800, cost: 0.0042, provider: "Anthropic", grader: "claude-haiku-5-5", daily_cap: 20,
+      },
+    });
+    const user = userEvent.setup();
+    renderAt(<BrainPage />, { path: "/brain", route: "/brain?tab=try" });
+    await user.type(await screen.findByLabelText("Your request"), "When are quills trimmed?");
+    await user.click(screen.getByRole("button", { name: "Show what it sends" }));
+    expect(await screen.findByText(/Each distill: 1 tests, about 1,800 tokens to Anthropic \(about \$0.0042\)/)).toBeInTheDocument();
+    await user.selectOptions(await screen.findByLabelText("Grade falls by"), "2");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.path === "/api/bench/settings")).toBe(true));
+    expect(calls.find((c) => c.method === "PUT" && c.path === "/api/bench/settings")?.body).toEqual({ fall: 2 });
+  });
 });
 
 describe("Brain: Files", () => {

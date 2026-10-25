@@ -8,7 +8,14 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from ..deps import Who
-from ..schemas import BenchRunIn, BenchScoreIn, BenchSuiteIn, BenchSuiteRunIn, BenchTestIn
+from ..schemas import (
+    BenchRulesIn,
+    BenchRunIn,
+    BenchScoreIn,
+    BenchSuiteIn,
+    BenchSuiteRunIn,
+    BenchTestIn,
+)
 
 router = APIRouter(prefix="/api/bench")
 
@@ -137,3 +144,22 @@ def roll_back_drop(drop_id: str, request: Request, who: Who) -> dict[str, Any]:
 def accept_drop(drop_id: str, request: Request, who: Who) -> dict[str, Any]:
     """Keep the Brain as it is: the new answer becomes the test's baseline."""
     return request.app.state.runtime.regression.resolve(who, drop_id, "accept")
+
+
+@router.get("/settings")
+def bench_settings(request: Request, who: Who) -> dict[str, Any]:
+    """What counts as a drop after a distill, and the day's cap of test runs."""
+    return request.app.state.runtime.regression.rules(who)
+
+
+@router.put("/settings")
+def save_bench_settings(body: BenchRulesIn, request: Request, who: Who) -> dict[str, Any]:
+    return request.app.state.runtime.regression.set_rules(who, body.model_dump())
+
+
+@router.get("/suites/{suite}/estimate")
+def suite_estimate(suite: str, request: Request, who: Who) -> dict[str, Any]:
+    """What one run of the suite after a distill would send and cost; nothing runs."""
+    runtime = request.app.state.runtime
+    found = runtime.suites.estimate(who, suite)
+    return {**found, "daily_cap": runtime.regression.rules(who)["daily_cap"]}

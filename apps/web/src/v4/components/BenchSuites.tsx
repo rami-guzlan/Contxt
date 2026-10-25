@@ -58,6 +58,21 @@ interface Summary {
   scored: number;
 }
 
+interface Rules {
+  fall: number;
+  met_to_missed: boolean;
+  liked_floor: number;
+  daily_cap: number;
+}
+interface SuiteEstimate {
+  tests: number;
+  tokens: number;
+  cost: number | null;
+  provider: string;
+  grader: string;
+  daily_cap: number;
+}
+
 const LABEL: Record<string, string> = { none: "No brain", full: "Full brain", custom: "Custom" };
 const field = "border:1px solid var(--line2);border-radius:10px;padding:6px 8px;background:var(--bg);color:var(--ink);font:400 13px Geist";
 const card = "background:var(--surface);border-radius:20px;box-shadow:var(--shadow);padding:18px;display:flex;flex-direction:column;gap:12px";
@@ -93,6 +108,84 @@ function YourScore({ result, onScored }: { result: Result; onScored: () => void 
       <Btn onClick={() => send.mutate("down")} disabled={send.isPending}>Not good</Btn>
       {send.error ? <Failure error={send.error} /> : null}
     </div>
+  );
+}
+
+// What one run after a distill would cost, shown on a suite that runs after each distill.
+function SuiteCost({ suite }: { suite: string }) {
+  const est = useQuery({ queryKey: ["bench", "estimate", suite], queryFn: () => get<SuiteEstimate>(`/api/bench/suites/${suite}/estimate`) });
+  const e = est.data;
+  if (!e) return null;
+  return (
+    <span style={css(S.small)}>
+      Each distill: {e.tests} tests, about {e.tokens.toLocaleString()} tokens to {e.provider}
+      {e.cost != null ? ` (about $${e.cost.toFixed(4)})` : ""}, graded by {e.grader}. At most {e.daily_cap} test runs a day. Estimated.
+    </span>
+  );
+}
+
+// What counts as a drop after a distill, and the day's cap (15.6).
+function DropRules() {
+  const qc = useQueryClient();
+  const rules = useQuery({ queryKey: ["bench", "settings"], queryFn: () => get<Rules>("/api/bench/settings") });
+  const [draft, setDraft] = useState<Partial<Rules>>({});
+  const save = useMutation({
+    mutationFn: () => put<Rules>("/api/bench/settings", draft),
+    onSuccess: () => {
+      setDraft({});
+      void qc.invalidateQueries({ queryKey: ["bench"] });
+    },
+  });
+  if (!rules.data) return rules.error ? <Failure error={rules.error} retry={() => void rules.refetch()} /> : null;
+  const r = { ...rules.data, ...draft };
+  return (
+    <section aria-label="What counts as a drop" style={css(card)}>
+      <span style={css("font:500 15px Geist")}>What counts as a drop</span>
+      <span style={css(S.small)}>After each distill, suites marked to run are compared with the last answer. A drop raises a Quality dropped card in Catch up.</span>
+      <div style={css("display:flex;gap:10px;flex-wrap:wrap;align-items:center;font:400 13px Geist")}>
+        <label style={css("display:flex;gap:6px;align-items:center")}>
+          The grade falls by
+          <select aria-label="Grade falls by" value={r.fall} onChange={(e) => setDraft({ ...draft, fall: Number(e.target.value) })} style={css(field)}>
+            {[1, 2, 3, 4].map((n) => (
+              <option key={n} value={n}>
+                {n} or more
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={css("display:flex;gap:6px;align-items:center")}>
+          <input type="checkbox" checked={r.met_to_missed} onChange={(e) => setDraft({ ...draft, met_to_missed: e.target.checked })} />
+          A criterion goes from met to missed
+        </label>
+        <label style={css("display:flex;gap:6px;align-items:center")}>
+          An answer you liked is graded
+          <select aria-label="Liked answer graded" value={r.liked_floor} onChange={(e) => setDraft({ ...draft, liked_floor: Number(e.target.value) })} style={css(field)}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                {n} or under
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={css("display:flex;gap:6px;align-items:center")}>
+          At most
+          <input
+            aria-label="Test runs a day"
+            type="number"
+            min={1}
+            max={200}
+            value={r.daily_cap}
+            onChange={(e) => setDraft({ ...draft, daily_cap: Number(e.target.value) })}
+            style={css(field + ";width:70px")}
+          />
+          test runs a day
+        </label>
+        <Btn kind="primary" onClick={() => save.mutate()} disabled={!Object.keys(draft).length || save.isPending}>
+          Save
+        </Btn>
+      </div>
+      {save.error ? <Failure error={save.error} retry={() => save.mutate()} /> : null}
+    </section>
   );
 }
 
@@ -179,6 +272,7 @@ export function BenchSuites({ request, left }: { request: string; left: BenchExc
               </Btn>
               <Btn onClick={() => act.mutate(() => del(`/api/bench/suites/${su.id}`))}>Delete suite</Btn>
             </div>
+            {su.after_distill && su.tests.length ? <SuiteCost suite={su.id} /> : null}
             {su.tests.map((t) => (
               <div key={t.id} style={css("display:flex;gap:8px;align-items:center;flex-wrap:wrap")}>
                 <span style={css("font:400 13px Geist;flex:1;min-width:0")}>
@@ -211,6 +305,8 @@ export function BenchSuites({ request, left }: { request: string; left: BenchExc
           </div>
         ) : null}
       </section>
+
+      <DropRules />
 
       {s && s.scored > 0 ? (
         <section aria-label="Summary" style={css(card)}>
