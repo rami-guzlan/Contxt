@@ -1513,9 +1513,17 @@ class BrainKitAdapter:
         return found
 
     def preview(
-        self, request: str, *, project: str | None = None, tools: bool = True
+        self,
+        request: str,
+        *,
+        project: str | None = None,
+        tools: bool = True,
+        include: dict[str, Any] | None = None,
+        exclude: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        result = self.brain.preview(request, focus=project or None, tools=tools)
+        result = self.brain.preview(
+            request, focus=project or None, tools=tools, include=include, exclude=exclude
+        )
         if result.is_error:
             raise ValidationFailed(result.text)
         data: dict[str, Any] = dict(result.data)

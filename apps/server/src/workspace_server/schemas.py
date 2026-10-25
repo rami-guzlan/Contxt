@@ -116,6 +116,16 @@ class RestoreIn(Body):
     ids: list[str] = []
 
 
+class PreviewIn(Body):
+    """A Test Bench preview: the request, an optional project, and what to keep or drop
+    ({"sections": [...], "ids": [...]})."""
+
+    request: str = Field(max_length=4000)
+    project: str = ""
+    include: dict[str, list[str]] = {}
+    exclude: dict[str, list[str]] = {}
+
+
 class ReceiptCorrectionIn(Body):
     """What went wrong with a request, from its receipt (brainkit/corrections.py)."""
 

@@ -1491,7 +1491,14 @@ class Brain:
         return made
 
     def preview(
-        self, who: Principal, request: str, *, project: str | None = None, tools: bool = True
+        self,
+        who: Principal,
+        request: str,
+        *,
+        project: str | None = None,
+        tools: bool = True,
+        include: dict[str, Any] | None = None,
+        exclude: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """What an AI would be handed for this request, and why, recording nothing. Without
         `tools`, as a model that cannot call the Brain needs it (see BrainPort.preview)."""
@@ -1503,7 +1510,13 @@ class Brain:
             raise ValidationFailed(
                 f"A request to preview is at most {MAX_REQUEST:,} characters.", field="request"
             )
-        return self.rt.brain.preview(text, project=str(project or "").strip() or None, tools=tools)
+        return self.rt.brain.preview(
+            text,
+            project=str(project or "").strip() or None,
+            tools=tools,
+            include=include or None,
+            exclude=exclude or None,
+        )
 
     def _source_reference(
         self,

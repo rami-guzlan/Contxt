@@ -628,7 +628,7 @@ class FakeBrain:
         self.updates.append(made)
         return {"id": project_id, "seq": len(self.updates)}
 
-    def preview(self, request, *, project=None, tools=True):
+    def preview(self, request, *, project=None, tools=True, include=None, exclude=None):
         self.previewed.append((request, project))
         return {
             "text": f"## Task\n\n{request}",

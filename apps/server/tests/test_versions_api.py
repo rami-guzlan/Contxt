@@ -20,3 +20,20 @@ def test_save_version_diff_and_restore_through_the_api(owner, brain_vault):
     assert diff["changed"] == [] and diff["added"] == []
     missing = owner.post("/api/brain/versions/v9/restore", json={})
     assert missing.status_code == 404
+
+
+def test_the_bench_preview_takes_a_note_out_without_filling_the_gap(owner):
+    full = owner.ok(owner.post("/api/brain/preview", json={"request": "website redesign"}))
+    names = [s["name"] for s in full["packet_sections"]]
+    assert names
+    notes = next((s for s in full["packet_sections"] if s["name"] == "notes"), None)
+    if notes:
+        drop = notes["items"][0]["id"]
+        trimmed = owner.ok(
+            owner.post(
+                "/api/brain/preview",
+                json={"request": "website redesign", "exclude": {"ids": [drop]}},
+            )
+        )
+        assert drop not in trimmed["note_ids"]
+        assert set(trimmed["note_ids"]) <= set(full["note_ids"])
