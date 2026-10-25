@@ -16,3 +16,7 @@ apps/web/coverage
 docs
 docker/exports/*
 !docker/exports/README.md
+# A person's own context never goes into the build.
+brain
+outputs
+demos

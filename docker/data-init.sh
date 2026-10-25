@@ -15,5 +15,8 @@ for id in "$uid" "$gid"; do
             ;;
     esac
 done
+# HOME for a CLI in the container (its login, npm's cache), private to that user.
+mkdir -p /data/home
+chmod 700 /data/home
 find /data \( ! -user "$uid" -o ! -group "$gid" \) -exec chown -h "$uid:$gid" {} +
 echo "/data belongs to $uid:$gid."

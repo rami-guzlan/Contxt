@@ -5,12 +5,18 @@
 | Profile | Command | Database | Exposure |
 |---|---|---|---|
 | Local | `docker compose up -d` | SQLite in the `contxt-data` volume | 127.0.0.1 only |
-| Private server | `docker compose -f compose.yaml -f docker/compose.server.yaml up -d` | PostgreSQL | HTTPS through Caddy, on a name you control (a private network or Tailscale) |
+| Private server | `docker compose -f compose.yaml -f docker/compose.server.yaml up -d` | PostgreSQL | HTTPS through Caddy, on a domain or a private name you control |
 | Development | `uv run contxt serve` and `npm run dev` | SQLite in `./data` | 127.0.0.1 only |
 
-Both containers (`app`: API, MCP and web UI; `worker`: lease expiry and recurring due dates)
-use the same image and data; a one-shot `data-init` prepares the data volume before they
-start.
+One container, `app`, runs the API, the MCP endpoint and the web UI with their background
+work, as `contxt serve` does: the worker's clock (lease expiry, recurring due dates), the
+heartbeat, the knowledge agent's runs and Gnomon's own n8n. A one-shot `data-init` prepares
+the data volume before it starts. The image carries Node.js 22 and npm (for n8n) and Claude
+Code; sign Claude Code in once with `docker compose exec -it app claude auth login`. Its
+login stays in the data volume (`HOME` is `/data/home`), so a new container keeps it.
+
+To host it on a server of your own on the internet, see
+[Host Contxt on Google Cloud](deploy-google-cloud.md).
 
 ## Which user the containers run as
 
@@ -42,8 +48,11 @@ writes a copy of the earlier workspace, commits a Brain change and restores a ba
 ## Upgrades
 
 ```bash
-git pull && docker compose up -d --build
+git pull && docker compose up -d --build --remove-orphans
 ```
+
+`--remove-orphans` stops the separate `worker` container of releases before the app ran its
+background work itself.
 
 On Linux, an `.env` from before `CONTXT_UID` and `CONTXT_GID` existed needs those two
 lines added ([which user the containers run as](#which-user-the-containers-run-as)).
@@ -88,7 +97,7 @@ as files anyone can read without the app: Settings, Workspace, *Your earlier wor
 ## Health and logs
 
 - `GET /api/health` (no token): status, version, database revision, Brain connected.
-- `docker compose logs -f app worker`
+- `docker compose logs -f app` (the sign-in link and tokens never appear in it)
 - `contxt status`: the app's AI work by status, and the proposals waiting for review.
 
 ## Connections and tokens

@@ -16,7 +16,7 @@ x-image: &image
 
 x-app: &app
   <<: *image
-  # Who the containers run as: the host folders mounted below must be writable by this user.
+  # Who the app runs as: the host folders mounted below must be writable by this user.
   user: "${CONTXT_UID:-10001}:${CONTXT_GID:-10001}"
   env_file:
     - path: .env
@@ -28,9 +28,12 @@ x-app: &app
     CONTXT_PUBLIC_URL: ${CONTXT_PUBLIC_URL:-http://127.0.0.1:${CONTXT_PORT:-8787}}
     # Set only when BRAIN_HOST_DIR points at a Brain repository (the folder holding vault/).
     CONTXT_BRAIN_VAULT: ${BRAIN_HOST_DIR:+/brain/vault}
+    # The container's clock in the same time zone as the app's schedules.
+    TZ: ${CONTXT_TIMEZONE:-UTC}
   volumes:
     # nocopy: while the volume is still empty, creating a container would otherwise reset its
     # owner to the image's /data owner, undoing data-init (as `docker compose run` does).
+    # The volume also holds HOME (/data/home): the CLI's login and Gnomon's own n8n.
     - type: volume
       source: contxt-data
       target: /data
@@ -38,11 +41,14 @@ x-app: &app
         nocopy: true
     - ${BRAIN_HOST_DIR:-./docker/no-brain}:/brain
     - ${EXPORTS_HOST_DIR:-./docker/exports}:/data/exports
+    # Folders for Scout to read, read-only (it never changes a file): add /scout/<name> in
+    # the app's Scout settings.
+    - ${SCOUT_HOST_DIR:-./docker/no-scout}:/scout:ro
   restart: unless-stopped
 
 services:
   # Before every start, hands the data volume to the user above (docker/data-init.sh). It runs
-  # as root but mounts only that volume, then exits; the app and the worker run as that user.
+  # as root but mounts only that volume, then exits; the app runs as that user.
   data-init:
     <<: *image
     user: "0:0"
@@ -55,6 +61,9 @@ services:
     healthcheck:
       disable: true
 
+  # The API, the MCP endpoint and the web app, with their background work in the same
+  # process: the worker's clock, the heartbeat, the knowledge agent's runs and Gnomon's own
+  # n8n (bound to 127.0.0.1 inside this container, so nothing outside it can reach n8n).
   app:
     <<: *app
     depends_on:
@@ -62,18 +71,10 @@ services:
         condition: service_completed_successfully
     ports:
       - "127.0.0.1:${CONTXT_PORT:-8787}:8787"
-    command: ["contxt", "--env-file", "", "serve", "--no-worker"]
-
-  worker:
-    <<: *app
-    depends_on:
-      data-init:
-        condition: service_completed_successfully
-      app:
-        condition: service_healthy
-    command: ["contxt", "--env-file", "", "worker"]
-    healthcheck:
-      disable: true
+    command: ["contxt", "--env-file", "", "serve", "--no-open"]
+    # Reaps what the app starts (CLI runs, n8n) and gives n8n time to stop cleanly.
+    init: true
+    stop_grace_period: 30s
 
 volumes:
   contxt-data:

@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
+import re
 import sys
 import threading
 from datetime import UTC, datetime
@@ -291,6 +293,40 @@ def main(argv: list[str] | None = None) -> int:
 OPENED = ".browser-opened"  # in the data folder: the browser opened once, signed in
 
 
+def sign_in_line(base_url: str, token: str, *, terminal: bool) -> str:
+    """The sign-in link for a person at a terminal. Printed anywhere else (a container's or a
+    service's log), the link would keep the owner token in a file, so it says how to get it."""
+    if terminal:
+        return f"Sign in: {base_url}/auth/login?token={token}"
+    return "Sign in: run `contxt token` for your sign-in link (it is kept out of logs)."
+
+
+class HideTokens(logging.Filter):
+    """Hides a token in a logged request's address (the sign-in link is a GET with the owner
+    token in it), keeping the rest of the request line."""
+
+    TOKEN = re.compile(r"((?:^|[?&])token=)[^&#\s]*")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            record.args = (*args[:2], self.TOKEN.sub(r"\1[hidden]", args[2]), *args[3:])
+        return True
+
+
+def serve_log_config() -> dict[str, Any]:
+    """Uvicorn's own logging, with tokens hidden from its access log."""
+    import copy
+
+    from uvicorn.config import LOGGING_CONFIG
+
+    config = copy.deepcopy(LOGGING_CONFIG)
+    config.setdefault("filters", {})["hide_tokens"] = {"()": HideTokens}
+    access = config["handlers"]["access"]
+    access["filters"] = [*access.get("filters", []), "hide_tokens"]
+    return config
+
+
 def should_open(data_dir: str, host: str, *, wanted: bool, refused: bool) -> bool:
     """Open the browser signed in the first time a home is served on this computer (as
     Jupyter does), or whenever --open asks; never with --no-open, in CI, or for a server
@@ -398,7 +434,7 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
 
     print(modelservice.ensure())
     print(f"Contxt on {settings.base_url}")
-    print(f"Sign in: {settings.base_url}/auth/login?token={runtime.owner_token}")
+    print(sign_in_line(settings.base_url, runtime.owner_token, terminal=sys.stdout.isatty()))
     print(f"The app's MCP endpoint, for the AI work it starts: {settings.base_url}/mcp")
     if settings.brain_vault:
         print("Connect an AI app to your Brain: uv run contxt connect")
@@ -415,6 +451,7 @@ def _serve(runtime: object, args: argparse.Namespace) -> int:
             host=host,
             port=port,
             log_level="info",
+            log_config=serve_log_config(),
             proxy_headers=settings.trust_proxy,
             forwarded_allow_ips="*" if settings.trust_proxy else None,
         )

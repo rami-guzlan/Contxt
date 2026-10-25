@@ -1,4 +1,19 @@
+# HTTPS for Contxt (private-server profile). Caddy gets and renews the certificate for
+# CONTXT_DOMAIN by itself; ports 80 and 443 must reach this server for that.
 {$CONTXT_DOMAIN} {
 	encode gzip
+
+	# Only n8n inside the app container may post what it read, or that a read failed. The app
+	# refuses these from anyone else too; refusing them here keeps them off the internet.
+	@n8n_only path /api/heartbeat/inbox/* /api/heartbeat/n8n/errors
+	respond @n8n_only "Only an n8n on the server may post here." 403
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+
 	reverse_proxy app:8787
 }
