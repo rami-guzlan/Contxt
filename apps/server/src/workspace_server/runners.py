@@ -61,6 +61,8 @@ from workspace_core.workspace import Workspace
 from . import anchoring
 from .templates import TemplateLibrary
 
+INGESTION = ("distill", "reconcile", "merge", "digest")  # see workspace_core distill.INGESTION
+
 log = logging.getLogger(__name__)
 
 ACTIVE = ("starting", "running")
@@ -697,6 +699,8 @@ class Runners:
             if any(r.task_id == task_id and r.status in ACTIVE for r in self.runs.values()):
                 raise Conflict("This task is already running here.")
         task = self.ws.tasks.get(who, task_id)
+        if model is None and spec.id == "claude" and task.template in INGESTION:
+            model = self.ws.distill.settings(who).get("model")  # reading what came in: Haiku
         actor, task = self._assignee(who, spec, task)
         if task.status != "ready":
             raise Conflict(

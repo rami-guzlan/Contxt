@@ -875,6 +875,8 @@ export interface DistillSettings {
   assignee_id: string | null;
   /** The model that triages first: claude, local:<model>, ollama:<model>, or off. */
   triage?: string | null;
+  /** The Claude model that reads what comes in (distill and the heartbeat judge); null: Claude Code's default. */
+  model?: string | null;
 }
 
 // A CLI on the machine the workspace runs on (apps/server runners.py).

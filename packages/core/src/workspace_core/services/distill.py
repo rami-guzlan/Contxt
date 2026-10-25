@@ -104,8 +104,12 @@ def _words(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z][a-z'-]{3,}", str(text or "").lower()) if w not in COMMON}
 
 
-# The model that does the work; the model that triages first (none: off until measured).
-DEFAULTS: dict[str, Any] = {"assignee_id": None, "triage": None}
+# The model that does the work; the model that triages first (none: off until measured);
+# and the Claude model that reads what comes in (distill, reconcile, merge, a capture's digest
+# and the heartbeat's judge): Haiku by default, which keeps reading cheap (Oct 25 decision).
+DEFAULTS: dict[str, Any] = {"assignee_id": None, "triage": None, "model": "haiku"}
+MODEL_ID = re.compile(r"^(haiku|sonnet|opus|claude-[a-z0-9][a-z0-9.-]{1,60})$")
+INGESTION = ("distill", "reconcile", "merge", "digest")  # task templates that read what came in
 TRIAGE_ID = re.compile(r"^(claude|local:[\w.:-]{1,80}|ollama:[\w.:/-]{1,100})$")
 
 INSTRUCTIONS = """\
@@ -329,9 +333,11 @@ class Distillation:
         *,
         assignee_id: str | None | _Unset = UNSET,
         triage: str | None | _Unset = UNSET,
+        model: str | None | _Unset = UNSET,
     ) -> dict[str, Any]:
-        """Which model does the AI work the app starts (none: the only one connected), and
-        which model triages what is brought in first (none: off)."""
+        """Which model does the AI work the app starts (none: the only one connected), which
+        model triages what is brought in first (none: off), and which Claude model reads what
+        comes in (haiku by default; none: Claude Code's own default)."""
         who.require("workspace.admin")
         with self.rt.write() as tx:
             row = tx.one(schema.workspaces, self.rt.workspace_id, "workspace")
@@ -351,6 +357,13 @@ class Distillation:
                         field="triage",
                     )
                 current["triage"] = triage or None
+            if not isinstance(model, _Unset):
+                if model and not MODEL_ID.match(str(model)):
+                    raise ValidationFailed(
+                        "Reading what comes in runs on haiku, sonnet, opus or a claude-<model> id.",
+                        field="model",
+                    )
+                current["model"] = model or None
             stored = dict((row["settings"] or {}).get("distill") or {})
             tx.update(
                 schema.workspaces,
