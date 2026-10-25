@@ -1819,3 +1819,28 @@ def test_a_task_that_reaches_customers_or_spends_waits_whatever_the_model_said(o
     beat(owner)
     done = distill(owner)
     assert done["changes"] == 0 and done["waits"] == 2
+
+
+def test_a_distill_that_changed_the_brain_tags_a_brain_version(
+    owner, runtime, fake_cli, brain_vault
+):
+    import subprocess
+
+    top = os.path.dirname(brain_vault)  # versions are git tags: the Brain is a repository
+    for args in (
+        ["init", "-q", "-b", "main"],
+        ["add", "-A", "--", os.path.basename(brain_vault)],
+        ["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", "start"],
+    ):
+        subprocess.run(["git", *args], cwd=top, check=True, capture_output=True)
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner, per_beat=False)
+    before = len(runtime.ws.rt.brain.brain_versions())
+    beat(owner)
+    done = distill(owner)
+    assert any(d.startswith("Saved as Brain version") for d in done["details"]), done["details"]
+    versions = runtime.ws.rt.brain.brain_versions()
+    assert len(versions) == before + 1 and versions[-1]["cause"] == "distill"
+    quiet = distill(owner)  # nothing staged: no change, no new version
+    assert not any("Brain version" in d for d in quiet["details"])
+    assert len(runtime.ws.rt.brain.brain_versions()) == before + 1
