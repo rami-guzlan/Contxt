@@ -56,7 +56,11 @@ def test_with_several_models_you_choose_or_configure_one(ws, owner, notes, conne
     with pytest.raises(ValidationFailed):
         ws.distill.request(owner, item_ids=[notes[0].id])
     ws.distill.configure(owner, assignee_id=codex.actor_id)
-    assert ws.distill.settings(owner) == {"assignee_id": codex.actor_id, "triage": None}
+    assert ws.distill.settings(owner) == {
+        "assignee_id": codex.actor_id,
+        "triage": None,
+        "model": "haiku",
+    }
     assert ws.distill.request(owner, item_ids=[notes[0].id]).assignee_id == codex.actor_id
     with pytest.raises(ValidationFailed):
         ws.distill.configure(owner, assignee_id=owner.actor_id)
@@ -336,3 +340,12 @@ def test_triage_is_off_until_chosen_and_then_only_kept_parts_reach_the_model(ws,
     assert "triage found nothing durable" in str(caught.value)
     with pytest.raises(ValidationFailed):
         ws.distill.configure(owner, triage="gpt-anything")
+
+
+def test_reading_what_comes_in_runs_on_haiku_unless_the_owner_chooses(ws, owner):
+    assert ws.distill.settings(owner)["model"] == "haiku"
+    assert ws.distill.configure(owner, model="sonnet")["model"] == "sonnet"
+    assert ws.distill.configure(owner, model="claude-opus-5-5")["model"] == "claude-opus-5-5"
+    assert ws.distill.configure(owner, model=None)["model"] is None  # the CLI's own default
+    with pytest.raises(ValidationFailed):
+        ws.distill.configure(owner, model="gpt-anything")

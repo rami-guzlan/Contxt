@@ -1510,7 +1510,9 @@ class Heartbeat:
     ) -> tuple[str, int | None]:
         """One answer from a CLI and the tokens it said it used (None: unknown)."""
         if cli == "claude":
-            found = self.runners.ask_json(owner, prompt, timeout=timeout)
+            # The judge reads what came in: it runs on the ingest model (Haiku by default).
+            model = self.ws.distill.settings(owner).get("model")
+            found = self.runners.ask_json(owner, prompt, timeout=timeout, model=model)
             usage = usage_of(found)
             if usage is not None:
                 self.runners.count_usage("heartbeat", usage)

@@ -1463,3 +1463,16 @@ def test_only_a_memory_read_takes_what_to_look_for(owner, cli_home):
     found(owner)
     refused = owner.put("/api/heartbeat/connectors/claude:mail", json={"ask": "anything"})
     assert refused.status_code == 422
+
+
+def test_the_judge_runs_on_the_ingest_model(owner, fake_cli, runtime):
+    found(owner)
+    beat(owner)
+    (judge,) = fake_cli.judges()
+    assert judge["argv"][judge["argv"].index("--model") + 1] == "haiku"
+    runtime.ws.distill.configure(runtime.ws.owner(), model="sonnet")
+    fake_cli.calls.clear()
+    fake_cli.items = [dict(ITEM, id="msg-2", title="Another")]
+    beat(owner)
+    (judge,) = fake_cli.judges()
+    assert judge["argv"][judge["argv"].index("--model") + 1] == "sonnet"

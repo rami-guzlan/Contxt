@@ -369,6 +369,8 @@ class RememberIn(Body):
 class DistillSettingsIn(Body):
     assignee_id: str | None = None  # the model that does the AI work the app starts
     triage: str | None = None  # the model that triages first (claude, local:..., ollama:...)
+    # The Claude model that reads what comes in: haiku (default), sonnet, opus or an id.
+    model: str | None = None
 
 
 class ReconcileIn(Body):
