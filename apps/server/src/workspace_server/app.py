@@ -59,6 +59,7 @@ from .routes import (
     skills,
     system,
     test_the_brain,
+    testbench,
     work,
     workflows,
     workspace,
@@ -67,6 +68,7 @@ from .runners import Runners
 from .settings import Settings
 from .speech import Speech
 from .templates import TemplateLibrary, find_templates_dir
+from .testbench import Bench
 from .triage import Triage, redacts
 from .work_with_ai import WorkWithAI
 
@@ -81,6 +83,7 @@ class Runtime:
     runners: Runners
     speech: Speech
     differences: Differences
+    bench: Bench
     outputs: Outputs
     models: Models
     agent: AgentWork
@@ -169,6 +172,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         runners=runners,
         speech=Speech(settings.speech_models),
         differences=differences,
+        bench=Bench(ws, runners),
         outputs=Outputs(ws, settings.exports_dir or os.path.join(settings.data_dir, "exports")),
         models=models,
         agent=AgentWork(ws, models),
@@ -258,6 +262,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         mcp,
         release1,
         heartbeat,
+        testbench,
     )
     for module in routers:
         app.include_router(module.router)

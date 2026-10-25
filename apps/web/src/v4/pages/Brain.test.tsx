@@ -250,6 +250,42 @@ describe("Brain: Test bench", () => {
     expect(sent?.body).toEqual({ request: "When are quills trimmed?", exclude: { sections: [], ids: ["n_ivo"] } });
     expect(await screen.findByText(/197 tokens/)).toBeInTheDocument();
   });
+
+  it("estimates first, then runs three panels with the same model and shows what each used", async () => {
+    const full = {
+      request: "When are quills trimmed?", mode: "standard", tokens: 212, text: "## Notes", project: null, procedure: null,
+      candidates: [], notes: [], sections: [], related: [], must_holds: [], log: [], packet_sections: [], packet_tokens: 212,
+      brain_version: "v3", note_ids: [],
+    };
+    const panel = (mode: string, output: string) => ({
+      mode, status: "done", output, packet: "", tokens_in: 300, tokens_out: 40, cost: 0.0012, ms: 2100, measured: true, error: null,
+    });
+    const run = {
+      id: "bench_1", status: "done", runner: "claude", model: "claude-haiku-5-5", provider: "Anthropic", brain_version: "v3",
+      panels: [panel("none", "No idea."), panel("full", "Before noon."), panel("custom", "Before noon, by Ivo.")],
+    };
+    const calls = knows({
+      "GET /api/brain/preview": full,
+      "POST /api/bench/estimate": { provider: "Anthropic", panels: [{ mode: "none", tokens_in: 10, cost: null }, { mode: "full", tokens_in: 300, cost: 0.001 }] },
+      "POST /api/bench/runs": { ...run, status: "running" },
+      "GET /api/bench/runs/bench_1": run,
+    });
+    const user = userEvent.setup();
+    renderAt(<BrainPage />, { path: "/brain", route: "/brain?tab=try" });
+    await user.type(await screen.findByLabelText("Your request"), "When are quills trimmed?");
+    await user.click(screen.getByRole("button", { name: "Show what it sends" }));
+    await user.type(await screen.findByLabelText(/Model/), "claude-haiku-5-5");
+    await user.click(screen.getByRole("button", { name: "Estimate" }));
+    expect(await screen.findByText(/Sends this request and its packet to Anthropic/)).toBeInTheDocument();
+    expect(calls.some((c) => c.path === "/api/bench/runs")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Run" }));
+    expect(await screen.findByText("Before noon, by Ivo.")).toBeInTheDocument();
+    expect(screen.getByText("No idea.")).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === "POST" && c.path === "/api/bench/runs");
+    expect(sent?.body).toMatchObject({ request: "When are quills trimmed?", runner: "claude", model: "claude-haiku-5-5" });
+    expect(screen.getAllByText(/300 in · 40 out · \$0.0012 · 2.1 s/)).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Re-run" })).toBeInTheDocument();
+  });
 });
 
 describe("Brain: Files", () => {
