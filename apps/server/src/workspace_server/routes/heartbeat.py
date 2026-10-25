@@ -237,6 +237,8 @@ class LearningIn(Body):
     goal: str | None = Field(default=None, max_length=600)
     filters: list[dict[str, Any]] | None = None
     buffer_days: int | None = None
+    learn: str | None = None  # nightly (default) or per_beat
+    distill_at: str | None = None  # HH:MM, local time
 
 
 @router.get("/learning")
@@ -249,8 +251,19 @@ def learning_settings(request: Request, who: Who) -> dict[str, Any]:
 def configure_learning(body: LearningIn, request: Request, who: Who) -> dict[str, Any]:
     """The goal, the negative filters and how long the buffer is kept."""
     return _heartbeat(request).configure_learning(
-        who, goal=body.goal, filters=body.filters, buffer_days=body.buffer_days
+        who,
+        goal=body.goal,
+        filters=body.filters,
+        buffer_days=body.buffer_days,
+        learn=body.learn,
+        distill_at=body.distill_at,
     )
+
+
+@router.post("/distill")
+def distill_now(request: Request, who: Who, wait: bool = False) -> dict[str, Any]:
+    """Distill now: learn from what the buffer holds, without waiting for tonight."""
+    return _heartbeat(request).beat(who, "distill", wait=wait)
 
 
 @router.get("/staged")
