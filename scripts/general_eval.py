@@ -91,8 +91,6 @@ def main(argv=None) -> int:
                         help="ask the scale requests this many times over")
     parser.add_argument("--learning", action="store_true",
                         help="measure learning from use (stage 4) instead")
-    parser.add_argument("--minimums", help="write each Brain's zero-config rates to this "
-                        "file, as the quick set's floor (tests/evals/general/minimums.json)")
     args = parser.parse_args(argv)
     if args.scale:
         text = scale(args)
@@ -149,16 +147,6 @@ def main(argv=None) -> int:
     if args.json:
         with open(args.json, "w", encoding="utf-8") as handle:
             json.dump(saved, handle, indent=1, default=str)
-    if args.minimums:
-        floors = {r["name"]: {m: round(evalkit.rate(pair), 3)
-                              for m, pair in r["counts"].items() if pair[1]}
-                  for r in saved["zero-config"] if not r.get("private")}
-        with open(args.minimums, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump({"about": "The quick set's last measured zero-config rates, by meaning "
-                       "(test_general_eval.py). Written by scripts/general_eval.py --quick "
-                       "--null --models <dir> --minimums <this file>.",
-                       "brains": floors}, handle, indent=1)
-            handle.write("\n")
     return 0
 
 

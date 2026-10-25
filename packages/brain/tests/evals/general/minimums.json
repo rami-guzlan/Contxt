@@ -1,71 +1,29 @@
 {
- "about": "The quick set's last measured zero-config rates, by meaning (test_general_eval.py). Written by scripts/general_eval.py --quick --null --models <dir> --minimums <this file>.",
- "brains": {
-  "bistro": {
-   "recall": 0.595,
-   "whole_recall": 0.571,
-   "reachable": 0.905,
-   "precision": 0.69,
-   "correct_nothing": 0.556,
-   "off_topic_nothing": 0.93,
-   "null_nothing": 0.96,
-   "false_nothing": 0.0,
-   "must_hold_recall": 1.0,
-   "must_hold_decoys": 0.225,
-   "off_topic_must_holds": 0.233
-  },
-  "dental": {
-   "recall": 0.488,
-   "whole_recall": 0.488,
-   "reachable": 0.884,
-   "precision": 0.694,
-   "correct_nothing": 0.7,
-   "off_topic_nothing": 0.95,
-   "null_nothing": 0.953,
-   "false_nothing": 0.038,
-   "must_hold_recall": 1.0,
-   "must_hold_decoys": 0.818,
-   "off_topic_must_holds": 0.387
-  },
-  "entrepreneur": {
-   "recall": 0.667,
-   "whole_recall": 0.667,
-   "reachable": 1.0,
-   "precision": 0.714,
-   "correct_nothing": 1.0,
-   "off_topic_nothing": 0.97,
-   "null_nothing": 0.978,
-   "false_nothing": 0.0
-  },
-  "knowledge-company": {
-   "recall": 0.833,
-   "whole_recall": 0.833,
-   "reachable": 1.0,
-   "precision": 0.882,
-   "correct_nothing": 0.667,
-   "off_topic_nothing": 0.99,
-   "null_nothing": 0.964,
-   "false_nothing": 0.143
-  },
-  "personal": {
-   "recall": 1.0,
-   "whole_recall": 1.0,
-   "reachable": 1.0,
-   "precision": 0.938,
-   "correct_nothing": 1.0,
-   "off_topic_nothing": 0.98,
-   "null_nothing": 0.964,
-   "false_nothing": 0.0
-  },
-  "programmer": {
-   "recall": 0.8,
-   "whole_recall": 0.8,
-   "reachable": 1.0,
-   "precision": 0.923,
-   "correct_nothing": 1.0,
-   "off_topic_nothing": 0.92,
-   "null_nothing": 0.964,
-   "false_nothing": 0.0
-  }
+ "about": "General floors over every Brain of the tuning split, by meaning: the aggregate and the worst Brain, the same for each (owner, October 25, 2026). Written by scripts/quick_floors.py; checked by packages/brain/tests/test_general_eval.py.",
+ "aggregate": {
+  "correct_nothing": 0.694,
+  "false_nothing": 0.009,
+  "must_hold_decoys": 0.384,
+  "must_hold_recall": 0.97,
+  "null_nothing": 0.949,
+  "off_topic_must_holds": 0.104,
+  "off_topic_nothing": 0.948,
+  "precision": 0.769,
+  "reachable": 0.918,
+  "recall": 0.497,
+  "whole_recall": 0.497
+ },
+ "worst": {
+  "correct_nothing": 0.556,
+  "false_nothing": 0.038,
+  "must_hold_decoys": 0.697,
+  "must_hold_recall": 0.875,
+  "null_nothing": 0.949,
+  "off_topic_must_holds": 0.127,
+  "off_topic_nothing": 0.93,
+  "precision": 0.714,
+  "reachable": 0.895,
+  "recall": 0.395,
+  "whole_recall": 0.395
  }
 }
