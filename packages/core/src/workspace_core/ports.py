@@ -419,7 +419,13 @@ class BrainPort(Protocol):
         ...
 
     def preview(
-        self, request: str, *, project: str | None = None, tools: bool = True
+        self,
+        request: str,
+        *,
+        project: str | None = None,
+        tools: bool = True,
+        include: dict[str, Any] | None = None,
+        exclude: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """What an AI would be handed for this request, and why each piece is there,
         recording nothing: {"text", "mode", "tokens", "project", "procedure", "notes",
@@ -1058,7 +1064,13 @@ class NoBrain:
         raise Conflict("This workspace has no Brain to follow projects in.")
 
     def preview(
-        self, request: str, *, project: str | None = None, tools: bool = True
+        self,
+        request: str,
+        *,
+        project: str | None = None,
+        tools: bool = True,
+        include: dict[str, Any] | None = None,
+        exclude: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return {
             "text": "",

@@ -32,6 +32,7 @@ from ..schemas import (
     MergeIn,
     MoveInIn,
     PoliciesIn,
+    PreviewIn,
     ProjectObjectiveIn,
     ProjectUpdateIn,
     ProposalIn,
@@ -300,6 +301,19 @@ def preview(
     """What an AI would be handed for this request, and why each piece is there. Nothing is
     recorded: a preview is not a conversation."""
     return ws.brain.preview(who, request, project=project or None)
+
+
+@router.post("/preview")
+def preview_custom(body: PreviewIn, who: Who, ws: WS) -> dict[str, Any]:
+    """The Test Bench preview: the packet by its sections, with `include` or `exclude`
+    ({sections, ids}) taking parts out without filling the gap. Nothing is recorded."""
+    return ws.brain.preview(
+        who,
+        body.request,
+        project=body.project or None,
+        include=body.include or None,
+        exclude=body.exclude or None,
+    )
 
 
 @router.get("/skills/{name}")

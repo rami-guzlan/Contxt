@@ -222,6 +222,36 @@ describe("Brain: Try a prompt", () => {
   });
 });
 
+describe("Brain: Test bench", () => {
+  it("leaves out an unchecked note without putting anything in its place", async () => {
+    const sections = [
+      { name: "notes", label: "Notes", tokens: 40, items: [
+        { id: "n_quill", title: "Quills are trimmed before noon", why: "relevant to the request", tokens: 25, score: 0.81 },
+        { id: "n_ivo", title: "Ivo trims on Fridays", why: "relevant to the request", tokens: 15, score: 0.62 },
+      ] },
+    ];
+    const full = {
+      request: "When are quills trimmed?", mode: "standard", tokens: 212, text: "## Notes\n- Quills are trimmed before noon",
+      project: null, procedure: null, candidates: ["n_quill", "n_ivo"], notes: [], sections: [], related: [],
+      must_holds: [], log: [], packet_sections: sections, packet_tokens: 212, brain_version: "v3", note_ids: ["n_quill", "n_ivo"],
+    };
+    const calls = knows({
+      "GET /api/brain/preview": full,
+      "POST /api/brain/preview": { ...full, text: "## Notes\n- Quills are trimmed before noon (custom)", packet_tokens: 197, note_ids: ["n_quill"] },
+    });
+    const user = userEvent.setup();
+    renderAt(<BrainPage />, { path: "/brain", route: "/brain?tab=try" });
+    await user.type(await screen.findByLabelText("Your request"), "When are quills trimmed?");
+    await user.click(screen.getByRole("button", { name: "Show what it sends" }));
+    expect(await screen.findByText(/Brain v3/)).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /Ivo trims on Fridays/ }));
+    expect(await screen.findByText("Custom packet")).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === "POST" && c.path === "/api/brain/preview");
+    expect(sent?.body).toEqual({ request: "When are quills trimmed?", exclude: { sections: [], ids: ["n_ivo"] } });
+    expect(await screen.findByText(/197 tokens/)).toBeInTheDocument();
+  });
+});
+
 describe("Brain: Files", () => {
   it("lists documents and assets, each downloadable", async () => {
     knows({

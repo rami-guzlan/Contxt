@@ -380,8 +380,12 @@ class Brain:
     def context(self, request, *, principal=None, via=None, partition=None,
                 session_id=None, fresh=False, focus=None, task_type=None,
                 startup_fingerprint=None, explain=False, record=True,
-                include_kernel=None, tools=True, delivery="pull", context=None) -> Result:
+                include_kernel=None, tools=True, delivery="pull", context=None,
+                include=None, exclude=None) -> Result:
         """Route one request and return one bounded context packet.
+
+        `include` and `exclude` (the Test Bench, testbench.py) take sections and items out
+        after the router has chosen, so nothing fills the gap.
 
         Without `tools`, the packet for a model that cannot call the brain at all: it holds
         nothing from before and cannot continue a session, so nothing in the text asks for a
@@ -408,6 +412,8 @@ class Brain:
         route = st.router.route(str(request), chain, partitions, focus_override=focus,
                                 task_type_override=task_type, previous=previous)
         route, audit = self._engine(st, route)
+        from . import testbench
+        left_out = testbench.trim(route, include, exclude)
         packet = packets_mod.build(route, config=st.config, index=st.index,
                                    delivered=delivered, fresh=bool(fresh), session_id=session,
                                    partition=partition, explain=explain, tools=tools)
@@ -436,7 +442,7 @@ class Brain:
         # conversation, then only what changed.
         map_text, map_state, map_fp, map_found = "", None, None, None
         map_cut: dict = {}
-        if tools and include_kernel is None:
+        if tools and include_kernel is None and "map" not in left_out:
             map_found = self._brain_map(st, chain, partitions)
             map_fp = brainmap.fingerprint(map_found)
             # An AI that opened something the map named and found it gone gets a fresh map
@@ -454,9 +460,9 @@ class Brain:
                     map_text, map_state, map_cut = shown["text"], "full", shown["cut"]
             if map_text:
                 parts.append(map_text)
-        extra = self._state_sections(st, str(request), working, partitions,
-                                     since=(previous or {}).get("at") or "",
-                                     first=not continuing, delivered=delivered)
+        extra = "" if "sheets" in left_out else self._state_sections(
+            st, str(request), working, partitions, since=(previous or {}).get("at") or "",
+            first=not continuing, delivered=delivered)
         if extra:
             packet.text = packet.text.rstrip() + "\n\n" + extra
             packet.items.extend(working.get("state_items", []))
@@ -870,7 +876,7 @@ class Brain:
                 route, f"the model service failed on this request ({exc})", lock=service.lock)
 
     def preview(self, request, *, principal=None, focus=None, partition=None,
-                tools=True) -> Result:
+                tools=True, include=None, exclude=None) -> Result:
         """What an AI would be handed for this request, and why each piece is there, without
         recording a delivery: the packet as a conversation would get it (its kernel aside) and
         a plain account of the project, procedure, notes and file sections it chose. Without
@@ -878,7 +884,8 @@ class Brain:
         comparison): nothing in it asks for a tool, and the procedure it would open comes in
         full (`skill_included` names it)."""
         result = self.context(request, principal=principal, focus=focus, partition=partition,
-                              explain=True, record=False, include_kernel=False, tools=tools)
+                              explain=True, record=False, include_kernel=False, tools=tools,
+                              include=include, exclude=exclude)
         if result.is_error:
             return result
         st = self.state()
@@ -911,13 +918,26 @@ class Brain:
                 must.append({"id": note.id, "title": note.title, "line": note.must_text,
                              "triggers": list(note.triggers), "why": row.get("why") or ""})
         text = result.text.split("## Continuity", 1)[0].rstrip() + "\n"
-        if tools:
+        from . import testbench
+        view = testbench.view(data, st)
+        if tools and "map" not in testbench.dropped(include, exclude):
             # A conversation's first packet opens with the Brain map: the preview shows it too
             # (the kernel aside, which the startup file holds).
             shown = self.map_view(request, principal=principal, partition=partition)
             if not shown.is_error and shown.text:
                 text = shown.text.rstrip() + "\n\n" + text
+                tokens = util.tokens(shown.text)
+                view.append({"name": "map", "label": "Brain map", "tokens": tokens, "items": [
+                    {"id": "map", "title": "Brain map", "tokens": tokens, "score": None,
+                     "why": "what the Brain holds, once a conversation"}]})
         return Result(text, {
+            # The Test Bench (Release 1 plan, 15.2): the packet by its own sections, each item
+            # with why it was chosen and its tokens, and the version it was built from.
+            "packet_sections": view,
+            "packet_tokens": sum(s["tokens"] for s in view if s["name"] == "map")
+            + int(data.get("token_count") or 0),
+            "token_count": data.get("token_count"), "brain_version": data.get("brain_version"),
+            "note_ids": data.get("note_ids") or [], "related_ids": data.get("related_ids") or [],
             "request": str(request), "mode": data.get("mode"),
             "tokens": data.get("token_count"),
             "project": ({"id": found.id, "title": found.title} if found is not None else None),

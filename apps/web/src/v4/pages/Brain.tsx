@@ -1,6 +1,6 @@
 // The Brain (Gnomon Prototype v4, slices 10-isBrain, 19-isNote, 32-isLive): what your AI knows,
 // in the exact words it receives. Tabs by ?tab=: What it knows (the brain map, long-term
-// memory, context sheets, taste), Catch up (its own panel), Try a prompt, Notes, Sheets,
+// memory, context sheets, taste), Catch up (its own panel), the Test bench, Notes, Sheets,
 // Files and Questions. A note's page shows the current version against earlier versions kept
 // as they were; a sheet's page shows its grid and every cell's history. Every value comes
 // from the server; what the server cannot give yet says so.
@@ -21,9 +21,11 @@ import { type TasteEntry, useBrainMap, useForgetLearned, useLearned, useProposal
 import { AutoBanner } from "../components/AutoBanner";
 import { css } from "../css";
 import {
+  type BenchExclude,
   DERIVED,
   fileUrl,
   type Gap,
+  type Preview,
   useAddFile,
   useBrainCatalog,
   useBrainEntry,
@@ -43,6 +45,7 @@ import {
   useGoals,
   useLive,
   usePreview,
+  useBenchPreview,
   useSheet,
   useSheetAct,
   useTeach,
@@ -125,7 +128,7 @@ export function BrainPage() {
   const tabs: [TabId, string][] = [
     ["knows", "What it knows"],
     ["catchup", waiting ? `Catch up · ${waiting}` : "Catch up"],
-    ["try", "Try a prompt"],
+    ["try", "Test bench"],
     ["notes", "Notes"],
     ["sheets", "Sheets"],
     ["files", "Files"],
@@ -476,7 +479,7 @@ const SEQ: [string | null, string][] = [
   ["ins", "4 · Your taste works underneath, shaping how it's written and designed."],
   ["lt", "5 · Long-term memory fills the gaps, matched by meaning."],
   ["oc", "6 · Files go as pointers, opened only if needed."],
-  [null, "Done. See every step for a real request in Try a prompt."],
+  [null, "Done. See every step for a real request in the Test bench."],
 ];
 const seqAt = (k: number): [string | null, string] => SEQ[Math.min(k, SEQ.length - 1)] ?? [null, ""];
 
@@ -1212,6 +1215,8 @@ function TryTab() {
   const [asked, setAsked] = useState("");
   const preview = usePreview(asked);
   const [copied, setCopied] = useState(false);
+  const [left, setLeft] = useState<BenchExclude>({ sections: [], ids: [] });
+  const custom = useBenchPreview(asked, left);
   const p = preview.data;
   const steps: Step[] = p
     ? [
@@ -1278,6 +1283,7 @@ function TryTab() {
           e.preventDefault();
           if (!text.trim()) return;
           setCopied(false);
+          setLeft({ sections: [], ids: [] });
           setAsked(text.trim());
         }}
         style={css("background:var(--surface);border-radius:20px;box-shadow:var(--shadow);padding:18px;display:flex;flex-direction:column;gap:12px")}
@@ -1313,6 +1319,8 @@ function TryTab() {
       ) : preview.error ? (
         <Failure error={preview.error} retry={() => void preview.refetch()} />
       ) : p ? (
+        <>
+        <BenchSections full={p} custom={left.sections.length + left.ids.length ? custom.data : undefined} left={left} setLeft={setLeft} />
         <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:20px;align-items:start")}>
           <ol aria-label="Steps" style={css("display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none")}>
             {steps.map((s, i) => (
@@ -1382,8 +1390,81 @@ function TryTab() {
             </div>
           </div>
         </div>
+        </>
       ) : null}
     </div>
+  );
+}
+
+function BenchSections({
+  full,
+  custom,
+  left,
+  setLeft,
+}: {
+  full: Preview;
+  custom: Preview | undefined;
+  left: BenchExclude;
+  setLeft: (next: BenchExclude) => void;
+}) {
+  const sections = full.packet_sections ?? [];
+  if (!sections.length) return null;
+  const shown = custom ?? full;
+  const toggle = (key: "sections" | "ids", id: string) => {
+    const has = left[key].includes(id);
+    setLeft({ ...left, [key]: has ? left[key].filter((x) => x !== id) : [...left[key], id] });
+  };
+  const changed = left.sections.length + left.ids.length > 0;
+  return (
+    <section
+      aria-label="What goes in"
+      style={css("background:var(--surface);border-radius:20px;box-shadow:var(--shadow);padding:18px;display:flex;flex-direction:column;gap:12px")}
+    >
+      <div style={css("display:flex;flex-wrap:wrap;gap:10px;align-items:baseline")}>
+        <span style={css("font:500 15px Geist;flex:1")}>{changed ? "Custom packet" : "What goes in"}</span>
+        <span style={css("font:400 12.5px Geist;color:var(--muted)")}>
+          {(shown.packet_tokens ?? shown.tokens ?? 0).toLocaleString()} tokens · Brain {shown.brain_version ?? "unversioned"}
+        </span>
+        {changed ? (
+          <Btn kind="ghost" onClick={() => setLeft({ sections: [], ids: [] })}>
+            Put everything back
+          </Btn>
+        ) : null}
+      </div>
+      <span style={css(S.small)}>Uncheck a section or an item to see the packet without it. Nothing takes its place, and nothing is sent.</span>
+      {sections.map((s) => {
+        const off = left.sections.includes(s.name);
+        return (
+          <div key={s.name} style={css("display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--line);padding-top:8px")}>
+            <label style={css("display:flex;gap:8px;align-items:center;font:500 14px Geist")}>
+              <input type="checkbox" checked={!off} onChange={() => toggle("sections", s.name)} />
+              {s.label}
+              <span style={css("margin-left:auto;font:400 12px Geist;color:var(--muted)")}>{s.tokens.toLocaleString()} tokens</span>
+            </label>
+            {off
+              ? null
+              : s.items.map((it) => (
+                  <label key={it.id} style={css("display:flex;gap:8px;align-items:flex-start;padding-left:24px;font:400 13.5px/1.45 Geist")}>
+                    <input type="checkbox" checked={!left.ids.includes(it.id)} onChange={() => toggle("ids", it.id)} />
+                    <span style={css("flex:1;min-width:0")}>
+                      {it.title}
+                      <span style={css("display:block;font:400 12px Geist;color:var(--muted)")}>
+                        {it.why}
+                        {it.score != null ? ` · match ${Number(it.score).toFixed(2)}` : ""}
+                      </span>
+                    </span>
+                    <span style={css("font:400 11.5px 'Geist Mono';color:var(--muted);white-space:nowrap")}>{it.tokens}</span>
+                  </label>
+                ))}
+          </div>
+        );
+      })}
+      {changed && custom ? (
+        <pre style={css("margin:0;padding:14px;border-radius:14px;background:var(--code);font:400 12px/1.6 'Geist Mono';color:#d8d5cd;white-space:pre-wrap;max-height:360px;overflow:auto")}>
+          {custom.text || "Nothing would be sent."}
+        </pre>
+      ) : null}
+    </section>
   );
 }
 

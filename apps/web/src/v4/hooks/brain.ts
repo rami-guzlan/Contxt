@@ -54,7 +54,42 @@ export type Preview = BrainPreview & {
   log?: string[];
   reason?: string;
   budget?: number | null;
+  /** The Test Bench: the packet by its own sections, in order (Release 1 plan, 15.2). */
+  packet_sections?: BenchSection[];
+  packet_tokens?: number;
+  brain_version?: string | null;
+  note_ids?: string[];
 };
+
+export interface BenchItem {
+  id: string;
+  title: string;
+  why: string;
+  tokens: number;
+  score: number | null;
+}
+
+export interface BenchSection {
+  name: string;
+  label: string;
+  tokens: number;
+  items: BenchItem[];
+}
+
+/** What to leave out of a Test Bench packet: whole sections, or single items. */
+export interface BenchExclude {
+  sections: string[];
+  ids: string[];
+}
+
+/** The packet without what was unchecked, and nothing put in its place. Nothing is sent. */
+export const useBenchPreview = (request: string, exclude: BenchExclude) =>
+  useQuery({
+    queryKey: ["brain", "bench", request, exclude],
+    queryFn: () => post<Preview>("/api/brain/preview", { request, exclude }),
+    enabled: request.trim().length > 0 && exclude.sections.length + exclude.ids.length > 0,
+    staleTime: 30_000,
+  });
 
 /** What an AI would be handed for a request. Nothing is recorded or sent. */
 export const usePreview = (request: string) =>
