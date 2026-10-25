@@ -11,8 +11,8 @@ Fair by construction, as "See the difference" is: every panel runs headless thro
 runners with no tools and no MCP server (the Brain's and the person's connectors are off), the
 prompt on stdin, so the only variable is the context. Each panel keeps its output, the packet
 it used and its hash, the tokens in and out, the cost, and the time. A run happens only when
-the person presses Run, after an estimate. Runs are kept in memory; tests and suites (PR D)
-store theirs.
+the person presses Run, after an estimate. A run's progress is kept in memory; each answer
+is kept in `bench_runs` with what it used, so it can be scored (benchsuites.py).
 """
 
 from __future__ import annotations
@@ -20,10 +20,12 @@ from __future__ import annotations
 import hashlib
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from workspace_core.clock import iso
+from workspace_core.db import schema
 from workspace_core.domain.policy import Principal
 from workspace_core.errors import Conflict, NotFound, ValidationFailed
 from workspace_core.ids import new_id
@@ -54,6 +56,8 @@ class Panel:
     ms: int | None = None
     measured: bool = False
     error: str | None = None
+    sections: list[str] = field(default_factory=list)  # the packet sections it was sent
+    result_id: str | None = None  # its row in bench_runs, to score it
 
 
 @dataclass
@@ -69,6 +73,8 @@ class BenchRun:
     panels: list[Panel]
     status: str = "running"
     finished_at: str | None = None
+    suite: str | None = None
+    test: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -106,19 +112,24 @@ class Bench:
         modes: list[str],
         include: dict[str, Any] | None,
         exclude: dict[str, Any] | None,
-    ) -> tuple[dict[str, str], dict[str, Any]]:
-        """The context each panel gets, and the full packet's preview."""
+    ) -> tuple[dict[str, str], dict[str, list[str]], dict[str, Any]]:
+        """The context each panel gets, the packet sections in it, and the full preview."""
         startup = str(self.ws.rt.brain.kernel(tools=False).get("text") or "")
         full = self.ws.brain.preview(who, request, project=project, tools=False)
-        out = {"none": ""}
-        if "full" in modes:
-            out["full"] = "\n\n".join(p for p in (startup, str(full.get("text") or "")) if p)
+        out: dict[str, str] = {"none": ""}
+        sections: dict[str, list[str]] = {"none": []}
+        previews = {"full": full}
         if "custom" in modes:
-            custom = self.ws.brain.preview(
+            previews["custom"] = self.ws.brain.preview(
                 who, request, project=project, tools=False, include=include, exclude=exclude
             )
-            out["custom"] = "\n\n".join(p for p in (startup, str(custom.get("text") or "")) if p)
-        return out, full
+        for mode, found in previews.items():
+            if mode in modes:
+                out[mode] = "\n\n".join(p for p in (startup, str(found.get("text") or "")) if p)
+                sections[mode] = [
+                    str(s.get("name")) for s in found.get("packet_sections") or [] if s.get("items")
+                ]
+        return out, sections, full
 
     def estimate(
         self,
@@ -135,7 +146,7 @@ class Bench:
         """What a run would send, before it is pressed: tokens in per panel, and the price."""
         who.require("workspace.admin")
         text, chosen = self._check(request, modes, runner)
-        contexts, _full = self._contexts(who, text, project, chosen, include, exclude)
+        contexts, _sections, _full = self._contexts(who, text, project, chosen, include, exclude)
         panels = []
         for mode in chosen:
             prompt = self._prompt(text, contexts.get(mode, ""))
@@ -182,14 +193,45 @@ class Bench:
     ) -> BenchRun:
         """Run the panels in the background, one after another, with the same runner and
         model. Only the owner runs one: it starts a CLI on this computer."""
+        run = self.prepare(
+            who,
+            request,
+            project=project,
+            modes=modes,
+            include=include,
+            exclude=exclude,
+            runner=runner,
+            model=model,
+        )
+        threading.Thread(target=self.run, args=(who, run), daemon=True, name="bench").start()
+        return run
+
+    def prepare(
+        self,
+        who: Principal,
+        request: str,
+        *,
+        project: str | None = None,
+        modes: list[str] | None = None,
+        include: dict[str, Any] | None = None,
+        exclude: dict[str, Any] | None = None,
+        runner: str = "claude",
+        model: str | None = None,
+        batch: str | None = None,
+        suite: str | None = None,
+        test: str | None = None,
+    ) -> BenchRun:
+        """A run with each panel's context built, not yet started. With `batch` it is part
+        of a suite run, which tracks it instead."""
         who.require("workspace.admin")
         text, chosen = self._check(request, modes, runner)
-        contexts, full = self._contexts(who, text, project, chosen, include, exclude)
+        contexts, sections, full = self._contexts(who, text, project, chosen, include, exclude)
         panels = [
             Panel(
                 mode=m,
                 packet=contexts.get(m, ""),
                 packet_hash=_hash(contexts.get(m, "")),
+                sections=sections.get(m, []),
                 included=(
                     {"include": include or {}, "exclude": exclude or {}} if m == "custom" else {}
                 ),
@@ -197,7 +239,7 @@ class Bench:
             for m in chosen
         ]
         run = BenchRun(
-            id=new_id("bench", self.ws.rt.clock.now()),
+            id=batch or new_id("bench", self.ws.rt.clock.now()),
             request=text,
             project=project or None,
             runner=runner,
@@ -206,15 +248,23 @@ class Bench:
             brain_version=str(full.get("brain_version") or "unknown"),
             started_at=iso(self.ws.rt.clock.now()),
             panels=panels,
+            suite=suite,
+            test=test,
         )
-        with self._lock:
-            self.runs[run.id] = run
-            for old in sorted(self.runs.values(), key=lambda r: r.started_at)[:-KEEP]:
-                self.runs.pop(old.id, None)
-        threading.Thread(target=self._run, args=(who, run), daemon=True, name="bench").start()
+        if batch is None:
+            with self._lock:
+                self.runs[run.id] = run
+                for old in sorted(self.runs.values(), key=lambda r: r.started_at)[:-KEEP]:
+                    self.runs.pop(old.id, None)
         return run
 
-    def _run(self, who: Principal, run: BenchRun) -> None:
+    def run(
+        self,
+        who: Principal,
+        run: BenchRun,
+        after: Callable[[BenchRun, Panel], None] | None = None,
+    ) -> None:
+        """Answer each panel in turn and keep it; `after` sees each one once it is kept."""
         for panel in run.panels:
             panel.status = "running"
             try:
@@ -241,8 +291,43 @@ class Bench:
             except Exception as exc:  # the CLI, the disk: say what went wrong, never crash
                 log.warning("bench run %s stopped", run.id, exc_info=True)
                 panel.status, panel.error = "failed", f"It stopped: {exc}"
+            self._keep(run, panel)
+            if after is not None:
+                after(run, panel)
         run.status = "failed" if all(p.status == "failed" for p in run.panels) else "done"
         run.finished_at = iso(self.ws.rt.clock.now())
+
+    def _keep(self, run: BenchRun, panel: Panel) -> None:
+        """The panel's answer in bench_runs, with what it used and what it was built from."""
+        with self.ws.rt.write() as tx:
+            panel.result_id = tx.new_id("bres")
+            tx.insert(
+                schema.bench_runs,
+                {
+                    "id": panel.result_id,
+                    "workspace_id": tx.workspace_id,
+                    "batch": run.id,
+                    "suite": run.suite,
+                    "test": run.test,
+                    "request": run.request,
+                    "project": run.project,
+                    "mode": panel.mode,
+                    "included": panel.included,
+                    "sections": panel.sections,
+                    "runner": run.runner,
+                    "model": run.model,
+                    "tokens_in": panel.tokens_in,
+                    "tokens_out": panel.tokens_out,
+                    "cost": panel.cost,
+                    "ms": panel.ms,
+                    "measured": panel.measured,
+                    "brain_version": run.brain_version,
+                    "packet_hash": panel.packet_hash,
+                    "output": panel.output,
+                    "error": panel.error,
+                    "created_at": tx.now,
+                },
+            )
 
     def get(self, who: Principal, run_id: str) -> BenchRun:
         who.require("workspace.admin")

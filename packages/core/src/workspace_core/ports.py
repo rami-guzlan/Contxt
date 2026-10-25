@@ -557,6 +557,14 @@ class BrainPort(Protocol):
         """The Brain's versions, oldest first (git tags gnomon/v<N>)."""
         ...
 
+    def bench_files(self) -> dict[str, str]:
+        """The Test Bench's tests and suites as YAML text, by path (bench/<suite>/...)."""
+        ...
+
+    def bench_write(self, rel: str, text: str | None, *, message: str) -> dict[str, Any]:
+        """Write one bench file (or remove it, with `text` None) and commit it."""
+        ...
+
     def save_version(self, *, cause: str = "manual", note: str = "") -> dict[str, Any]:
         """Make a version of the Brain as it is: {"status", "version"}."""
         ...
@@ -1183,6 +1191,12 @@ class NoBrain:
 
     def brain_versions(self) -> list[dict[str, Any]]:
         return []
+
+    def bench_files(self) -> dict[str, str]:
+        return {}
+
+    def bench_write(self, rel: str, text: str | None, *, message: str) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain.")
 
     def save_version(self, *, cause: str = "manual", note: str = "") -> dict[str, Any]:
         raise Conflict("This workspace has no Brain.")

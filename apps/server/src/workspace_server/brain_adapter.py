@@ -1293,6 +1293,16 @@ class BrainKitAdapter:
     def brain_versions(self) -> list[dict[str, Any]]:
         return self.brain.brain_versions.list()
 
+    def bench_files(self) -> dict[str, str]:
+        return dict(self.brain.bench_files())
+
+    def bench_write(self, rel: str, text: str | None, *, message: str) -> dict[str, Any]:
+        try:
+            with self._lock:
+                return dict(self.brain.bench_write(rel, text, message=message))
+        except ValueError as exc:
+            raise ValidationFailed(str(exc)) from exc
+
     def save_version(self, *, cause: str = "manual", note: str = "") -> dict[str, Any]:
         with self._lock:
             result = self.brain.brain_versions.tag(cause=cause, note=note)

@@ -19,6 +19,8 @@ dependencies = [
     "uvicorn>=0.30",
     "pydantic>=2.8",
     "python-multipart>=0.0.9",
+    # the Test Bench's tests and suites are YAML files in the Brain's folder
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

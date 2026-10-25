@@ -54,6 +54,7 @@ import { Btn, Empty, Failure, Later, Loaded, Loading, Modal, plural, S, Status, 
 import { LevelChip, LoreShelf, MapCard, SectionAddresses } from "../components/BrainV4";
 import { CatchUpPanel } from "./CatchUp";
 import { BenchPanels } from "../components/BenchPanels";
+import { BenchSuites } from "../components/BenchSuites";
 import { AutoArea } from "../components/AutoArea";
 
 // ------------------------------------------------------------------ shared bits
@@ -1323,6 +1324,7 @@ function TryTab() {
         <>
         <BenchSections full={p} custom={left.sections.length + left.ids.length ? custom.data : undefined} left={left} setLeft={setLeft} />
         <BenchPanels request={asked} left={left} />
+        <BenchSuites request={asked} left={left} />
         <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:20px;align-items:start")}>
           <ol aria-label="Steps" style={css("display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none")}>
             {steps.map((s, i) => (

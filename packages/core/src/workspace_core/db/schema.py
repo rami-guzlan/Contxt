@@ -675,3 +675,52 @@ heartbeat_locks = sa.Table(
     sa.Column("beat_id", ID, nullable=False),
     sa.Column("expires_at", TS, nullable=False),
 )
+
+# The Test Bench (Release 1 plan, 15.5): each answer a bench run got, one row per panel, with
+# what it used and what it was built from; and its scores, by the grader and by the person.
+bench_runs = sa.Table(
+    "bench_runs",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("batch", ID, nullable=False),  # the bench run or suite run it was part of
+    sa.Column("suite", sa.String(64)),  # with `test`, the saved test it answered
+    sa.Column("test", sa.String(64)),
+    sa.Column("request", sa.Text, nullable=False),
+    sa.Column("project", sa.String(200)),
+    sa.Column("mode", sa.String(16), nullable=False),  # none | full | custom
+    sa.Column("included", sa.JSON, nullable=False),  # custom's include and exclude (ids)
+    sa.Column("sections", sa.JSON, nullable=False),  # the packet sections it was sent
+    sa.Column("runner", sa.String(40), nullable=False),
+    sa.Column("model", sa.String(120)),
+    sa.Column("tokens_in", sa.Integer),
+    sa.Column("tokens_out", sa.Integer),
+    sa.Column("cost", sa.Float),
+    sa.Column("ms", sa.Integer),
+    sa.Column("measured", sa.Boolean, nullable=False, server_default=sa.false()),
+    sa.Column("brain_version", sa.String(40), nullable=False, server_default=""),
+    sa.Column("packet_hash", sa.String(64), nullable=False, server_default=""),
+    sa.Column("output", sa.Text, nullable=False, server_default=""),
+    sa.Column("error", sa.Text),
+    sa.Column("grade_error", sa.Text),  # why the grader gave no score
+    sa.Column("created_at", TS, nullable=False),
+    sa.Index("ix_bench_runs_batch", "batch"),
+)
+
+bench_scores = sa.Table(
+    "bench_scores",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("run_id", ID, sa.ForeignKey("bench_runs.id"), nullable=False),
+    sa.Column("by", sa.String(16), nullable=False),  # model | human
+    sa.Column("overall", sa.Integer, nullable=False),  # 1 to 5
+    sa.Column("criteria", sa.JSON, nullable=False),  # [{criterion, result: met|part|missed}]
+    sa.Column("reason", sa.Text, nullable=False, server_default=""),
+    sa.Column("thumbs", sa.String(8)),  # up | down, from a person
+    sa.Column("edits", sa.String(8)),  # none | light | heavy, from a person
+    sa.Column("note", sa.Text, nullable=False, server_default=""),
+    sa.Column("grader", sa.String(120)),  # the model that graded
+    sa.Column("created_at", TS, nullable=False),
+    sa.Index("ix_bench_scores_run", "run_id"),
+)

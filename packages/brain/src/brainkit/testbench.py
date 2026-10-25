@@ -12,7 +12,10 @@ Brain holds).
 """
 from __future__ import annotations
 
-from . import util
+import os
+import re
+
+from . import gitops, util
 
 # (name, label), in the order a packet sends them.
 SECTIONS = (("must_holds", "Must-holds"), ("project", "Project"), ("sheets", "Live sheets"),
@@ -139,3 +142,56 @@ def view(data: dict, st) -> list[dict]:
                                "why": "what the Brain holds, once a conversation",
                                "score": None}])
     return out
+
+
+# Tests and suites (15.4): `bench/<suite>/<test>.yaml` and `bench/<suite>/suite.yaml` in the
+# Brain's own folder, committed, so the owner's quality bar travels with the Brain. The Brain
+# keeps them as text; the app reads and writes the YAML.
+FOLDER = "bench"
+_PART = re.compile(r"^[a-z0-9][a-z0-9-]{0,60}$")
+
+
+def bench_path(root, rel: str) -> str:
+    """The file `rel` names, refused unless it is `bench/<suite>/<name>.yaml`."""
+    parts = str(rel or "").replace("\\", "/").split("/")
+    if (len(parts) != 3 or parts[0] != FOLDER or not _PART.match(parts[1])
+            or not parts[2].endswith(".yaml") or not _PART.match(parts[2][:-5])):
+        raise ValueError(f"A bench file is {FOLDER}/<suite>/<name>.yaml, not {rel!r}.")
+    return os.path.join(root, *parts)
+
+
+def bench_files(root) -> dict[str, str]:
+    """Every bench file, by its path from the Brain's folder."""
+    out: dict[str, str] = {}
+    top = os.path.join(root, FOLDER)
+    if not os.path.isdir(top):
+        return out
+    for suite in sorted(os.listdir(top)):
+        folder = os.path.join(top, suite)
+        if not (_PART.match(suite) and os.path.isdir(folder)):
+            continue
+        for name in sorted(os.listdir(folder)):
+            rel = f"{FOLDER}/{suite}/{name}"
+            try:
+                path = bench_path(root, rel)
+                with open(path, encoding="utf-8") as handle:
+                    out[rel] = handle.read()
+            except (ValueError, OSError):
+                continue
+    return out
+
+
+def bench_write(root, rel: str, text: str | None, *, message: str) -> dict:
+    """Write a bench file (or remove it, with `text` None) and commit it."""
+    path = bench_path(root, rel)
+    if text is None:
+        if os.path.exists(path):
+            os.remove(path)
+        folder = os.path.dirname(path)
+        if os.path.isdir(folder) and not os.listdir(folder):
+            os.rmdir(folder)
+    else:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+    return gitops.commit(root, [path], message)
