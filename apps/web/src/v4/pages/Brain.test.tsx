@@ -286,6 +286,48 @@ describe("Brain: Test bench", () => {
     expect(screen.getAllByText(/300 in · 40 out · \$0.0012 · 2.1 s/)).toHaveLength(3);
     expect(screen.getByRole("button", { name: "Re-run" })).toBeInTheDocument();
   });
+
+  it("saves the request as a test, runs its suite, and a person's score is sent", async () => {
+    const full = {
+      request: "When are quills trimmed?", mode: "standard", tokens: 212, text: "## Notes", project: null, procedure: null,
+      candidates: [], notes: [], sections: [], related: [], must_holds: [], log: [], packet_sections: [], packet_tokens: 212,
+      brain_version: "v3", note_ids: [],
+    };
+    const test = { id: "quills", suite: "quality", name: "Quills", request: "When are quills trimmed?", rubric: ["Says noon"] };
+    const graded = {
+      by: "model", overall: 4, reason: "Close.", criteria: [{ criterion: "Says noon", result: "met" }], thumbs: null, edits: null,
+    };
+    const result = {
+      id: "bres_1", test: "quills", mode: "full", output: "Before noon.", error: null, grade_error: null, brain_version: "v3",
+      score: graded, model_score: graded,
+    };
+    const calls = knows({
+      "GET /api/brain/preview": full,
+      "GET /api/bench/suites": { suites: [{ id: "quality", name: "quality", description: "", after_distill: false, tests: [test] }] },
+      "GET /api/bench/summary": { by_mode: [], suites: [], sections: [], sections_note: "A signal, not proof.", scored: 0 },
+      "POST /api/bench/suites/quality/tests": test,
+      "POST /api/bench/suites/quality/run": { id: "bsuite_1", suite: "quality", status: "running", tests: 1 },
+      "GET /api/bench/suite-runs/bsuite_1": { id: "bsuite_1", suite: "quality", status: "done", tests: 1, error: null, results: [result] },
+      "POST /api/bench/results/bres_1/score": { ...result, score: { ...graded, by: "human", overall: 5 } },
+    });
+    const user = userEvent.setup();
+    renderAt(<BrainPage />, { path: "/brain", route: "/brain?tab=try" });
+    await user.type(await screen.findByLabelText("Your request"), "When are quills trimmed?");
+    await user.click(screen.getByRole("button", { name: "Show what it sends" }));
+    await user.type(await screen.findByLabelText("Test name"), "Quills");
+    await user.type(screen.getByLabelText("Rubric"), "Says noon");
+    await user.click(screen.getByRole("button", { name: "Save test" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/bench/suites/quality/tests")).toBe(true));
+    const saved = calls.find((c) => c.method === "POST" && c.path === "/api/bench/suites/quality/tests");
+    expect(saved?.body).toMatchObject({ name: "Quills", request: "When are quills trimmed?", rubric: ["Says noon"] });
+    await user.click(await screen.findByRole("button", { name: "Run suite" }));
+    expect(await screen.findByText(/Grader 4\/5, Close\./)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Edits needed"), "none");
+    await user.click(screen.getByRole("button", { name: "Good" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/bench/results/bres_1/score")).toBe(true));
+    const scored = calls.find((c) => c.path === "/api/bench/results/bres_1/score");
+    expect(scored?.body).toEqual({ thumbs: "up", edits: "none", note: "" });
+  });
 });
 
 describe("Brain: Files", () => {

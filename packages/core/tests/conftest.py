@@ -248,6 +248,15 @@ class FakeBrain:
     def brain_versions(self):
         return list(getattr(self, "made_versions", []))
 
+    def bench_files(self):
+        return dict(getattr(self, "bench", {}))
+
+    def bench_write(self, rel, text, *, message):
+        self.bench = {k: v for k, v in getattr(self, "bench", {}).items() if k != rel}
+        if text is not None:
+            self.bench[rel] = text
+        return {"committed": True}
+
     def save_version(self, *, cause="manual", note=""):
         made = getattr(self, "made_versions", [])
         version = {"name": f"v{len(made) + 1}", "cause": cause, "note": note}

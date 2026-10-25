@@ -2156,6 +2156,17 @@ class Brain:
         from . import movein
         return movein.analyze(self, sources, name=name, principal=principal)
 
+    # ------------------------------------------------------------------ the Test Bench
+    def bench_files(self) -> dict:
+        """The Test Bench's tests and suites as text, by path (testbench.py)."""
+        from . import testbench
+        return testbench.bench_files(self.repo_root)
+
+    def bench_write(self, rel, text, *, message) -> dict:
+        """Write or remove one bench file and commit it (testbench.py)."""
+        from . import testbench
+        return testbench.bench_write(self.repo_root, rel, text, message=message)
+
     # ------------------------------------------------------------------ after writes
     def version_label(self) -> str:
         """The Brain version a packet is built from ("v3", "v3+2"), or "unversioned"; never

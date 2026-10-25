@@ -129,6 +129,46 @@ class BenchRunIn(Body):
     model: str = ""
 
 
+class BenchSuiteIn(Body):
+    """A Test Bench suite: its name, what it is for, and whether it runs after each distill."""
+
+    name: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=2000)
+    after_distill: bool = False
+
+
+class BenchTestIn(Body):
+    """A Test Bench test: the request, an optional project, the rubric, a gold example, and
+    an optional include, exclude, runner and model."""
+
+    name: str = Field(default="", max_length=200)
+    request: str = Field(max_length=4000)
+    project: str = ""
+    rubric: list[str] = []
+    gold: str = Field(default="", max_length=20000)
+    include: dict[str, list[str]] = {}
+    exclude: dict[str, list[str]] = {}
+    runner: str = ""
+    model: str = ""
+
+
+class BenchSuiteRunIn(Body):
+    """Run a suite: which panels, and the runner, model and grader (blank: the defaults)."""
+
+    modes: list[str] = []
+    runner: str = ""
+    model: str = ""
+    grader: str = ""
+
+
+class BenchScoreIn(Body):
+    """A person's score of one answer: thumbs up or down, edits needed, and a note."""
+
+    thumbs: str
+    edits: str = ""
+    note: str = Field(default="", max_length=1000)
+
+
 class PreviewIn(Body):
     """A Test Bench preview: the request, an optional project, and what to keep or drop
     ({"sections": [...], "ids": [...]})."""

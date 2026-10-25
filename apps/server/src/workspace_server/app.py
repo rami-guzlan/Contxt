@@ -19,6 +19,7 @@ from workspace_core.ports import NoBrain
 from workspace_core.workspace import Workspace
 
 from . import web, webapp
+from .benchsuites import Suites
 from .brain_adapter import BrainKitAdapter
 from .brain_testing import TestTheBrain
 from .builtin_checks import BuiltinChecks
@@ -84,6 +85,7 @@ class Runtime:
     speech: Speech
     differences: Differences
     bench: Bench
+    suites: Suites
     outputs: Outputs
     models: Models
     agent: AgentWork
@@ -163,6 +165,7 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         return triage.keep(model_id, text, redacting=redacts(model_id, policies))
 
     ws.distill.triager = triager
+    bench = Bench(ws, runners)
     return Runtime(
         settings=settings,
         ws=ws,
@@ -172,7 +175,8 @@ def open_runtime(settings: Settings, *, clock: Clock | None = None) -> Runtime:
         runners=runners,
         speech=Speech(settings.speech_models),
         differences=differences,
-        bench=Bench(ws, runners),
+        bench=bench,
+        suites=Suites(ws, bench),
         outputs=Outputs(ws, settings.exports_dir or os.path.join(settings.data_dir, "exports")),
         models=models,
         agent=AgentWork(ws, models),
