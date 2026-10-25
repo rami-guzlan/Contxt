@@ -48,22 +48,33 @@ def _best(scores: dict[str, Any]) -> dict[str, Any] | None:
     return scores.get("human") or scores.get("model")
 
 
-def reasons(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """Why `after` (its scores by who gave them) is worse than `before`; [] when it is not."""
+def defaults() -> dict[str, Any]:
+    """What counts as a drop, and the day's cap, unless the owner set otherwise."""
+    return {"fall": 1, "met_to_missed": True, "liked_floor": 2, "daily_cap": CAP}
+
+
+def reasons(
+    before: dict[str, Any], after: dict[str, Any], rules: dict[str, Any] | None = None
+) -> list[str]:
+    """Why `after` (its scores by who gave them) is worse than `before`; [] when it is not.
+    `rules` says what counts: the grade falling `fall` points or more, a criterion going from
+    met to missed, an answer you liked now graded `liked_floor` or under."""
+    rule = {**defaults(), **(rules or {})}
     new = after.get("model")
     if new is None:
         return []  # the grader gave no score: nothing to compare
     out = []
     old = before.get("model") or before.get("human")
-    if old is not None and int(old["overall"]) - int(new["overall"]) >= 1:
+    if old is not None and int(old["overall"]) - int(new["overall"]) >= int(rule["fall"]):
         out.append(f"The grade fell from {old['overall']} to {new['overall']}.")
     now = {str(c.get("criterion", "")).lower(): c.get("result") for c in new["criteria"] or []}
-    for c in (before.get("model") or {}).get("criteria") or []:
+    for c in (before.get("model") or {}).get("criteria") or [] if rule["met_to_missed"] else []:
         name = str(c.get("criterion") or "")
         if c.get("result") == "met" and now.get(name.lower()) == "missed":
             out.append(f"{name}: met before, missed now.")
     liked = before.get("human")
-    if liked is not None and liked.get("thumbs") == "up" and int(new["overall"]) <= 2:
+    floor = int(rule["liked_floor"])
+    if liked is not None and liked.get("thumbs") == "up" and int(new["overall"]) <= floor:
         out.append(f"You gave the last answer a thumbs up; this one is graded {new['overall']}.")
     return out
 
@@ -74,6 +85,32 @@ class Regression:
         self.suites = suites
 
     # ---------------------------------------------------------------- the drop cards
+
+    def rules(self, who: Principal | None = None) -> dict[str, Any]:
+        """What counts as a drop and the day's cap, as the owner set them."""
+        if who is not None:
+            who.require("workspace.admin")
+        with self.ws.rt.read() as tx:
+            row = tx.one(schema.workspaces, self.ws.rt.workspace_id, "workspace")
+        stored = ((row["settings"] or {}).get("bench") or {}).get("rules") or {}
+        return {**defaults(), **{k: v for k, v in stored.items() if k in defaults()}}
+
+    def set_rules(self, who: Principal, changes: dict[str, Any]) -> dict[str, Any]:
+        who.require("workspace.admin")
+        rules = {**self.rules(), **{k: v for k, v in changes.items() if v is not None}}
+        with self.ws.rt.write() as tx:
+            row = tx.one(schema.workspaces, self.ws.rt.workspace_id, "workspace")
+            settings = dict(row["settings"] or {})
+            settings["bench"] = {**dict(settings.get("bench") or {}), "rules": rules}
+            tx.update(schema.workspaces, row, {"settings": settings})
+            tx.emit(
+                "bench.rules_changed",
+                actor_id=who.actor_id,
+                subject_type="workspace",
+                subject_id=tx.workspace_id,
+                data=rules,
+            )
+        return rules
 
     def _drops(self) -> list[dict[str, Any]]:
         with self.ws.rt.read() as tx:
@@ -131,7 +168,9 @@ class Regression:
         details}. Never raises: a broken test or the grader is logged and skipped."""
         drops = self._drops()
         held = {d["after"]["result_id"] for d in drops if d["status"] != "accepted"}
-        budget = CAP - self._ran_today()
+        rules = self.rules()
+        cap = int(rules["daily_cap"])
+        budget = cap - self._ran_today()
         batch = new_id(BATCH, self.ws.rt.clock.now())
         ran = reused = skipped = 0
         raised: list[dict[str, Any]] = []
@@ -174,7 +213,7 @@ class Regression:
                 if base is None or not panel.result_id or panel.status != "done":
                     continue
                 after = self._result(panel.result_id)
-                why = reasons(base["scores"], after["scores"])
+                why = reasons(base["scores"], after["scores"], rules)
                 if why:
                     raised.append(self._drop(suite, test, base, after, panel, version, why))
         if raised:
@@ -186,7 +225,7 @@ class Regression:
             details.append(
                 f"Test Bench on {version}: {ran} ran, {reused} unchanged"
                 + (
-                    f", {skipped} left for the next distill (the day's {CAP} are spent)"
+                    f", {skipped} left for the next distill (the day's {cap} are spent)"
                     if skipped
                     else ""
                 )

@@ -161,6 +161,15 @@ class BenchSuiteRunIn(Body):
     grader: str = ""
 
 
+class BenchRulesIn(Body):
+    """What counts as a drop after a distill, and how many test runs a day at most."""
+
+    fall: int | None = Field(default=None, ge=1, le=4)
+    met_to_missed: bool | None = None
+    liked_floor: int | None = Field(default=None, ge=1, le=5)
+    daily_cap: int | None = Field(default=None, ge=1, le=200)
+
+
 class BenchScoreIn(Body):
     """A person's score of one answer: thumbs up or down, edits needed, and a note."""
 
