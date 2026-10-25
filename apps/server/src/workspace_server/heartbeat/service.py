@@ -178,6 +178,8 @@ class Heartbeat:
         # Gnomon's own n8n, when it hosts one (open_runtime sets it), and where n8n on this
         # computer reaches Gnomon's inbox.
         self.n8n_host: Any = None
+        # The Test Bench after each distill (regression.py), set by the app.
+        self.regression: Any = None
         self.inbox_url = "http://127.0.0.1:8787"
         # Memory pasted from another AI app at onboarding, for the read that carries it.
         self._pasted: dict[str, str] = {}
@@ -878,8 +880,10 @@ class Heartbeat:
                     table.c.workspace_id == tx.workspace_id, table.c.status == "staged"
                 )
             )
-        learned = self._learn(self.ws.owner(), beat_id, rows)
-        version = self._tag_version(beat_id, learned)
+        owner = self.ws.owner()
+        learned = self._learn(owner, beat_id, rows)
+        version, saved = self._tag_version(beat_id, learned)
+        checked = self._after_distill(owner, saved)
         routed = [o["route"] for o in learned["outcomes"].values()]
         details = [
             f"Distilled {len(rows)} changes into {learned['items']} items: "
@@ -887,6 +891,7 @@ class Heartbeat:
             + ".",
             *learned["details"],
             *([version] if version else []),
+            *checked,
         ]
         self._finish(
             beat_id,
@@ -901,18 +906,19 @@ class Heartbeat:
             **learned["counts"],
         )
 
-    def _tag_version(self, beat_id: str, learned: dict[str, Any]) -> str:
+    def _tag_version(self, beat_id: str, learned: dict[str, Any]) -> tuple[str, str]:
         """After a distill that changed the Brain, tag a Brain version (the Test Bench's 15.1),
-        so a regression run can compare it with the one before and roll entries back."""
+        so a regression run can compare it with the one before and roll entries back: what
+        to say, and the version's name ("" when none was saved)."""
         counts = learned["counts"]
         if not (counts["changes"] or counts["waits"] or counts["held"]):
-            return ""
+            return "", ""
         try:
             found = self.ws.rt.brain.save_version(
                 cause="distill", note=f"Heartbeat distill {beat_id}"
             )
         except WorkspaceError as exc:
-            return f"No Brain version was saved: {_flat(str(exc), 160)}"
+            return f"No Brain version was saved: {_flat(str(exc), 160)}", ""
         made = found.get("version")
         name = str(made.get("name") if isinstance(made, dict) else made or "")
         with self.ws.rt.write() as tx:
@@ -923,7 +929,18 @@ class Heartbeat:
                 subject_id=beat_id,
                 data={"cause": "distill", "version": name},
             )
-        return f"Saved as Brain version {name}".strip() + "."
+        return f"Saved as Brain version {name}".strip() + ".", name
+
+    def _after_distill(self, owner: Principal, version: str) -> list[str]:
+        """The Test Bench's after-distill suites on the new version (15.6); never fails the
+        distill."""
+        if not version or self.regression is None:
+            return []
+        try:
+            return list(self.regression.after_distill(owner, version)["details"])
+        except Exception as exc:  # the bench or its grader: the distill stands
+            log.warning("after-distill tests on %s stopped", version, exc_info=True)
+            return [f"The Test Bench did not run: {_flat(str(exc), 160)}"]
 
     def _learn(
         self,

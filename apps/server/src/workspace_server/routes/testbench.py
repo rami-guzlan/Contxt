@@ -116,3 +116,24 @@ def score(result_id: str, body: BenchScoreIn, request: Request, who: Who) -> dic
 def summary(request: Request, who: Who) -> dict[str, Any]:
     """Win rate by mode, each suite's average by Brain version, and the section signal."""
     return request.app.state.runtime.suites.summary(who)
+
+
+# ---------------------------------------------------------------- after each distill (15.6)
+
+
+@router.get("/suites/{suite}/history")
+def suite_history(suite: str, request: Request, who: Who) -> dict[str, Any]:
+    """A suite's after-distill answers and its average grade by Brain version."""
+    return request.app.state.runtime.regression.history(who, suite)
+
+
+@router.post("/drops/{drop_id}/roll-back")
+def roll_back_drop(drop_id: str, request: Request, who: Who) -> dict[str, Any]:
+    """The likely causes of a quality drop as they were at the answer before's version."""
+    return request.app.state.runtime.regression.resolve(who, drop_id, "roll-back")
+
+
+@router.post("/drops/{drop_id}/accept")
+def accept_drop(drop_id: str, request: Request, who: Who) -> dict[str, Any]:
+    """Keep the Brain as it is: the new answer becomes the test's baseline."""
+    return request.app.state.runtime.regression.resolve(who, drop_id, "accept")

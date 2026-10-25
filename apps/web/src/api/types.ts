@@ -1451,6 +1451,39 @@ export interface CatchUpPlan {
   goal_steps?: { goal: string; title: string; steps: GoalSuggestion[] }[];
   /** What the updating loop asks of you (BL 9). */
   loop?: LoopCard[];
+  /** The Test Bench after a distill: answers that got worse on the new Brain version. */
+  quality?: QualityCard[];
+}
+
+/** One answer side of a quality drop: its grade and what it said. */
+export interface QualitySide {
+  result_id: string;
+  brain_version: string;
+  overall: number | null;
+  criteria: { criterion: string; result: "met" | "part" | "missed" }[];
+  by: "model" | "human" | null;
+  output: string;
+}
+
+/** "Quality dropped": a Test Bench answer got worse after a distill. */
+export interface QualityCard {
+  id: string;
+  key: string;
+  type: "quality";
+  title: string;
+  suite: string;
+  suite_name: string;
+  test: string;
+  test_name: string;
+  request: string;
+  version: string;
+  from_version: string;
+  reasons: string[];
+  before: QualitySide;
+  after: QualitySide;
+  causes: { id: string; title: string; path: string; change: "added" | "changed" }[];
+  status: "open" | "accepted" | "rolled_back";
+  raised_at: string;
 }
 
 /** One ask of the updating loop in Catch up. */

@@ -6,10 +6,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { get, post } from "../../api/client";
-import type { CatchUpPlan, Offer, Recap, UpkeepCard, WentIn } from "../../api/types";
+import type { CatchUpPlan, Offer, QualityCard, Recap, UpkeepCard, WentIn } from "../../api/types";
 import { useRefresh } from "../api";
 
-export type { CatchUpPlan, Offer, Recap, UpkeepCard, WentIn };
+export type { CatchUpPlan, Offer, QualityCard, Recap, UpkeepCard, WentIn };
 export type Recheck = Extract<UpkeepCard, { type: "recheck" }>;
 
 export const useCatchUpPlan = () => useQuery({ queryKey: ["brain", "catch-up"], queryFn: () => get<CatchUpPlan>("/api/brain/catch-up") });
@@ -27,6 +27,16 @@ export function useSetAside() {
     mutationFn: ({ key, later, days }: { key: string; later?: boolean; days?: number }) =>
       post<Record<string, unknown>>(`/api/brain/catch-up/${later ? "snooze" : "dismiss"}`, days ? { key, days } : { key }),
     onSuccess: () => refresh("brain"),
+  });
+}
+
+/** A quality drop decided: its likely causes rolled back to the version before, or the new
+ * answer accepted as the test's baseline. */
+export function useQualityDrop() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "roll-back" | "accept" }) => post<QualityCard>(`/api/bench/drops/${encodeURIComponent(id)}/${action}`),
+    onSuccess: () => refresh("brain", "bench"),
   });
 }
 

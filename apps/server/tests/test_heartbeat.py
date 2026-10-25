@@ -1844,3 +1844,33 @@ def test_a_distill_that_changed_the_brain_tags_a_brain_version(
     quiet = distill(owner)  # nothing staged: no change, no new version
     assert not any("Brain version" in d for d in quiet["details"])
     assert len(runtime.ws.rt.brain.brain_versions()) == before + 1
+
+
+def test_a_distill_that_saved_a_version_runs_the_after_distill_tests_on_it(
+    owner, runtime, fake_cli, brain_vault, monkeypatch
+):
+    import subprocess
+
+    top = os.path.dirname(brain_vault)
+    for args in (
+        ["init", "-q", "-b", "main"],
+        ["add", "-A", "--", os.path.basename(brain_vault)],
+        ["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", "start"],
+    ):
+        subprocess.run(["git", *args], cwd=top, check=True, capture_output=True)
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner, per_beat=False)
+    ran = []
+
+    def after_distill(who, version):
+        ran.append(version)
+        return {"details": [f"Test Bench on {version}: 1 ran, 0 unchanged."]}
+
+    monkeypatch.setattr(runtime.heartbeat.regression, "after_distill", after_distill)
+    beat(owner)
+    done = distill(owner)
+    version = runtime.ws.rt.brain.brain_versions()[-1]["name"]
+    assert ran == [version]
+    assert f"Test Bench on {version}: 1 ran, 0 unchanged." in done["details"]
+    distill(owner)  # nothing changed: no version, no tests
+    assert ran == [version]

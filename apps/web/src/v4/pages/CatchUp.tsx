@@ -17,12 +17,14 @@ import { css } from "../css";
 import {
   type GovernDecision,
   type Offer,
+  type QualityCard,
   type Recap,
   type Recheck,
   type WentIn,
   useCatchUpPlan,
   useCatchUpSeen,
   useGovern,
+  useQualityDrop,
   useSetAside,
 } from "../hooks/catchup";
 import { Btn, Failure, Loading, Page, S, Status, Tabs, plural, when } from "../ui";
@@ -413,6 +415,69 @@ function RecheckCard({ card, pos, onDone }: { card: Recheck; pos: string; onDone
       error={refused || msg(govern.error) || msg(aside.error)}
     >
       {card.summary ? <span style={css("font:400 14px/1.5 Geist;color:var(--ink2)")}>{card.summary}</span> : null}
+    </StackFrame>
+  );
+}
+
+// A Test Bench answer got worse after a distill (Release 1 plan, 15.6): why, the answers before
+// and after, and the entries most likely behind it. Roll back puts those entries back as they
+// were; Edit opens one; Keep as is makes the new answer the test's baseline.
+function QualityDropCard({ card, pos, onDone }: { card: QualityCard; pos: string; onDone: (d: Done) => void }) {
+  const drop = useQualityDrop();
+  const aside = useSetAside();
+  const what = card.causes.length ? plural(card.causes.length, "entry", "entries") : "the whole Brain";
+  function run(action: "roll-back" | "accept", text: string) {
+    drop.mutate({ id: card.id, action }, { onSuccess: () => onDone({ text }) });
+  }
+  return (
+    <StackFrame
+      tag="Quality dropped"
+      hue={28}
+      src={`${card.suite_name} · ${card.from_version} → ${card.version}`}
+      pos={pos}
+      title={card.title}
+      busy={drop.isPending || aside.isPending}
+      b={{ label: "Keep as is", run: () => run("accept", `Kept ${card.version}. The new answer is the baseline for "${card.test_name}".`) }}
+      a={{
+        label: "Roll back",
+        hint: card.from_version.startsWith("v") ? `${what} as at ${card.from_version}` : "No version to roll back to",
+        disabled: !card.from_version.startsWith("v"),
+        run: () => run("roll-back", `Rolled ${what} back to ${card.from_version}.`),
+      }}
+      later={{ label: "Later", run: () => aside.mutate({ key: card.key, later: true }) }}
+      error={msg(drop.error) || msg(aside.error)}
+    >
+      <ul style={css("margin:0;padding-left:18px;font:400 14px/1.5 Geist;color:var(--ink2)")}>
+        {card.reasons.map((r) => (
+          <li key={r}>{r}</li>
+        ))}
+      </ul>
+      <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px")}>
+        {(
+          [
+            [`Before · ${card.before.brain_version} · ${card.before.overall ?? "?"}/5`, card.before.output],
+            [`After · ${card.after.brain_version} · ${card.after.overall ?? "?"}/5`, card.after.output],
+          ] as [string, string][]
+        ).map(([label, text]) => (
+          <details key={label} style={css("padding:12px 14px;border-radius:16px;background:var(--soft)")}>
+            <summary style={css("font:500 13px Geist;cursor:pointer")}>{label}</summary>
+            <p style={css("margin:8px 0 0;font:400 13px/1.5 Geist;color:var(--ink2);white-space:pre-wrap")}>{text || "(no answer)"}</p>
+          </details>
+        ))}
+      </div>
+      {card.causes.length ? (
+        <div style={css("display:flex;flex-direction:column;gap:4px")}>
+          <span style={css("font:500 11px 'Geist Mono';letter-spacing:.06em;color:var(--muted)")}>LIKELY CAUSES</span>
+          {card.causes.map((c) => (
+            <span key={c.id} style={css("font:400 13.5px Geist")}>
+              {c.title || c.id} <span style={css("color:var(--muted)")}>· {c.change} in this distill · </span>
+              <Link to={`/brain/notes/${encodeURIComponent(c.id)}`}>Edit</Link>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <span style={css("font:400 12.5px Geist;color:var(--muted)")}>No entry in the new packet changed in this distill: roll back returns the whole Brain to {card.from_version}.</span>
+      )}
     </StackFrame>
   );
 }
@@ -891,6 +956,7 @@ function WhatChanged() {
 
 type StackItem =
   | { key: string; kind: "conflict"; p: Proposal }
+  | { key: string; kind: "quality"; card: QualityCard }
   | { key: string; kind: "recheck"; card: Recheck }
   | { key: string; kind: "recap"; recap: Recap }
   | { key: string; kind: "offer"; offer: Offer };
@@ -939,6 +1005,7 @@ function NeedsYou() {
 
   const stack: StackItem[] = [
     ...conflicts.map((p): StackItem => ({ key: `proposal:${p.id}`, kind: "conflict", p })),
+    ...(plan.data?.quality ?? []).map((card): StackItem => ({ key: card.key, kind: "quality", card })),
     ...((plan.data?.upkeep ?? []).filter((u) => u.type === "recheck") as Recheck[]).map((card): StackItem => ({ key: card.key, kind: "recheck", card })),
     ...(recap && recap.went_in_total > 0 && recap.went_in.length ? [{ key: "recap", kind: "recap", recap } as StackItem] : []),
     ...(plan.data?.offers ?? []).map((offer): StackItem => ({ key: offer.key, kind: "offer", offer })),
@@ -985,6 +1052,8 @@ function NeedsYou() {
           <div style={css("position:relative;z-index:1;background:var(--surface);border-radius:24px;box-shadow:var(--shadow2);padding:24px;display:flex;flex-direction:column;gap:14px")}>
             {cur.kind === "conflict" ? (
               <ConflictCard key={cur.key} p={cur.p} pos={pos} onDone={setDone} onLater={today.length > 1 ? deferNext : undefined} />
+            ) : cur.kind === "quality" ? (
+              <QualityDropCard key={cur.key} card={cur.card} pos={pos} onDone={setDone} />
             ) : cur.kind === "recheck" ? (
               <RecheckCard key={cur.key} card={cur.card} pos={pos} onDone={setDone} />
             ) : cur.kind === "recap" ? (
