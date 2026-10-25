@@ -10,6 +10,7 @@ archived with their outcome, never deleted until the retention runs out (30 days
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import timedelta
@@ -171,7 +172,8 @@ def stage(ws: Any, beat_id: str, decisions: list[Decision], outcome: str = "") -
                 .order_by(table.c.seen_at.desc(), table.c.id.desc())
                 .limit(1)
             ).scalar()
-            status = "dropped" if d.dropped else "staged"
+            # A beat that judged it already (learning per beat) archives it as distilled.
+            status = "dropped" if d.dropped else ("distilled" if outcome else "staged")
             tx.insert(
                 table,
                 {
@@ -191,7 +193,7 @@ def stage(ws: Any, beat_id: str, decisions: list[Decision], outcome: str = "") -
                     "filter": d.dropped or d.unclear,
                     "unclear": bool(d.unclear),
                     "status": status,
-                    "outcome": {"route": outcome} if outcome and status == "staged" else None,
+                    "outcome": {"route": outcome} if status == "distilled" else None,
                     "proposal_id": None,
                 },
             )
@@ -233,3 +235,124 @@ def view(row: dict[str, Any], names: dict[str, str]) -> dict[str, Any]:
 def age_days(ws: Any, row: dict[str, Any]) -> float:
     seen = parse_iso(row["seen_at"])
     return (ws.rt.clock.now() - seen).total_seconds() / 86400
+
+
+# ---------------------------------------------------------------------- the distill
+
+CONFIDENT = 0.7  # under this, a route goes to Catch up
+BATCH = 60  # netted items per model call
+DISTILL_AT = "19:00"  # nightly, at the start of quiet hours, unless the owner chooses
+ROUTES = ("short", "long", "catch_up", "discard")
+
+
+@dataclass
+class Net:
+    """One item's day, netted by code: the first old value against the last new one."""
+
+    connector_id: str
+    item_id: str
+    field: str
+    rows: list[dict[str, Any]]
+    old: str | None
+    new: str | None
+    edits: int
+    deleted: bool
+    unclear: str
+    score: float | None
+
+    @property
+    def net_zero(self) -> bool:
+        return not self.deleted and self.old is not None and (self.old or "") == (self.new or "")
+
+
+def net(rows: list[dict[str, Any]]) -> list[Net]:
+    """Each (source, item, field): repeated edits collapse to one with its count; equal first
+    and last values are net-zero (undone the same day); a delete wins over earlier edits."""
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for row in sorted(rows, key=lambda r: (r["seen_at"], r["id"])):
+        groups.setdefault((row["connector_id"], row["item_id"], row["field"]), []).append(row)
+    out = []
+    for (cid, item_id, fld), group in groups.items():
+        scores = [r["score"] for r in group if r["score"] is not None]
+        out.append(
+            Net(
+                connector_id=cid,
+                item_id=item_id,
+                field=fld,
+                rows=group,
+                old=group[0]["old_value"],
+                new=group[-1]["new_value"],
+                edits=len(group),
+                deleted=any(r["new_value"] is None for r in group),
+                unclear=next((r["filter"] for r in group if r["unclear"]), ""),
+                score=max(scores) if scores else None,
+            )
+        )
+    return out
+
+
+def distill_prompt(
+    items: list[dict[str, Any]], brain: dict[str, Any], settings: dict[str, Any]
+) -> str:
+    """One distill call: the day's netted changes, with the goal, the filters and the Brain's
+    alignment (its rules, must-holds, regions, projects and sheets), routed one by one."""
+    shown = {
+        "goal": settings.get("goal") or "",
+        "filters": [f.get("pattern") for f in settings.get("filters") or []],
+        "brain": brain,
+        "items": [
+            {
+                "item": i["key"],
+                "connector": i["connector_name"],
+                "title": i["title"],
+                "now": i["text"],
+                "before": i.get("before"),
+                "changed": i.get("edits", 1),
+                "deleted": bool(i.get("deleted")),
+                "filter_unclear": i.get("unclear") or None,
+                "at": i["at"],
+            }
+            for i in items
+        ],
+    }
+    return (
+        "You distill a day of changes into a person's Brain. Below, as JSON: their goal, their "
+        "negative filters, the Brain (its rules and must-holds first, then regions, projects "
+        "and context sheets) and each item's net change today (before, now, how many times it "
+        "changed). The Brain's rules and must-holds win over the goal. For each item choose one "
+        'route: "short" (a value that will change again: a context sheet cell, project '
+        'progress or a task), "long" (a durable fact about their world: a person, an approval, '
+        'how something runs, a decision: a note), "catch_up" (unsure, or it conflicts with '
+        'what the Brain holds or a must-hold) or "discard" (not relevant, already known, or a '
+        "filter applies). An item marked filter_unclear was matched by a filter yet looks "
+        "relevant: settle it, or choose catch_up. Give each a confidence from 0 to 1 and a "
+        "plain reason, its region and project, a one-line summary, and its writes in the "
+        'heartbeat\'s write shapes: {"kind": "sheet", "sheet": id, "row": key, "column": name, '
+        '"value": text}, {"kind": "progress", "project": id, "text": what moved, "next_up": '
+        'text}, {"kind": "task", "project": id, "text": the task, "due": "YYYY-MM-DD" or ""}, '
+        '{"kind": "note", "area": region id, "topic": a short lowercase-hyphenated name, "text": '
+        "the fact}. Write only what the items say; never invent. Also name up to three "
+        'patterns across items worth a lesson. Reply with one JSON object only: {"items": '
+        '[{"item": key, "route": ..., "confidence": 0.0, "reason": text, "region": id, '
+        '"project": id or null, "line": text, "protected_by": id or null, "writes": [...]}], '
+        '"patterns": [{"title": text, "pattern": text, "story": text}], "headlines": {region '
+        'id: text}, "projects": {project id: text}}.\n\n' + json.dumps(shown, ensure_ascii=False)
+    )
+
+
+def route_of(verdict: dict[str, Any], item: dict[str, Any]) -> tuple[str, str]:
+    """(route, reason) after code's rules: low confidence and unsettled filter matches go to
+    Catch up; an unknown route is Catch up too."""
+    route = str(verdict.get("route") or "")
+    reason = str(verdict.get("reason") or "")[:300]
+    try:
+        confidence = float(verdict.get("confidence") or 0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    if route not in ROUTES:
+        return "catch_up", reason or "the distill gave no route"
+    if route != "discard" and confidence < CONFIDENT:
+        return "catch_up", f"not sure ({confidence:.2f}): {reason}".strip()
+    if item.get("unclear") and route == "discard" and confidence < CONFIDENT:
+        return "catch_up", f"a filter matched, unclear: {reason}".strip()
+    return route, reason

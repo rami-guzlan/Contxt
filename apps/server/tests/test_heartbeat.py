@@ -131,6 +131,8 @@ class FakeCli:
         self.account_list = "No MCP servers configured.\n"  # `claude mcp list`
         self.items = [dict(ITEM)]
         self.items_by = None  # {server: [items]} when a read covers more than one
+        self.distilled = []  # what each distill call was shown
+        self.route = lambda item: ("short", 0.9)  # the distill's route and confidence
         self.read_error = None
         self.memory_reads = []
         self.packets = [dict(PACKET)]
@@ -165,6 +167,27 @@ class FakeCli:
 
     def judge(self, prompt):
         shown = json.loads(prompt.split("\n\n", 1)[1])
+        if prompt.startswith("You distill a day of changes"):
+            self.distilled.append(shown["items"])
+            return {
+                "items": [
+                    {
+                        "item": i["item"],
+                        "route": self.route(i)[0],
+                        "confidence": self.route(i)[1],
+                        "reason": "it matters to the goal",
+                        "region": "state",
+                        "project": PROJECT,
+                        "line": i["title"],
+                        "protected_by": None,
+                        "writes": self.writes({"text": i["now"]}),
+                    }
+                    for i in shown["items"]
+                ],
+                "patterns": [],
+                "headlines": {"state": "The website hero is settled."},
+                "projects": {PROJECT: "Hero option B approved"},
+            }
         return {
             "items": [
                 {
@@ -283,13 +306,15 @@ def hb(runtime, client):
     return runtime.heartbeat
 
 
-def found(owner, *, codex=False):
+def found(owner, *, codex=False, per_beat=True):
     """Find connectors in the CLIs; the Codex tracker stays off unless a test reads it. The
     mail server is read every beat here (a new one is read hourly), so a test can beat twice."""
     result = owner.ok(owner.post("/api/heartbeat/connectors/rescan"))
     if not codex:
         owner.ok(owner.put("/api/heartbeat/connectors/codex:tracker", json={"enabled": False}))
     owner.ok(owner.put("/api/heartbeat/connectors/claude:mail", json={"cadence_minutes": 0}))
+    if per_beat:  # these tests judge in the beat; the nightly distill has its own tests
+        owner.ok(owner.put("/api/heartbeat/learning", json={"learn": "per_beat"}))
     return result
 
 
@@ -1083,6 +1108,7 @@ def test_a_beat_takes_what_n8n_posted_once_and_spends_no_tokens_reading_it(
     owner, client, fake_cli, monkeypatch
 ):
     monkeypatch.setattr(hb_routes, "LOCAL", hb_routes.LOCAL | {"testclient"})
+    owner.ok(owner.put("/api/heartbeat/learning", json={"learn": "per_beat"}))
     made = owner.ok(
         owner.post("/api/heartbeat/n8n", json={"name": "Gmail", "workflow": n8n_workflow()}), 201
     )
@@ -1486,7 +1512,7 @@ def staged(owner, status=None):
 
 
 def test_every_change_a_beat_reads_goes_into_the_buffer_with_its_old_and_new_value(owner, fake_cli):
-    found(owner)
+    found(owner, per_beat=False)
     beat(owner)
     (first,) = staged(owner)
     assert first["old_value"] is None and first["new_value"] == ITEM["text"]
@@ -1499,7 +1525,7 @@ def test_every_change_a_beat_reads_goes_into_the_buffer_with_its_old_and_new_val
 
 
 def test_a_filter_drops_at_capture_counts_on_the_beat_and_can_be_brought_back(owner, fake_cli):
-    found(owner)
+    found(owner, per_beat=False)
     owner.ok(owner.put("/api/heartbeat/learning", json={"filters": [{"pattern": "hero option"}]}))
     done = beat(owner)
     assert any("Dropped 1 at capture" in d for d in done["details"])
@@ -1511,7 +1537,7 @@ def test_a_filter_drops_at_capture_counts_on_the_beat_and_can_be_brought_back(ow
 
 
 def test_a_filter_match_the_goal_makes_relevant_goes_on_marked_unclear(owner, fake_cli):
-    found(owner)
+    found(owner, per_beat=False)
     owner.ok(
         owner.put(
             "/api/heartbeat/learning",
@@ -1522,11 +1548,11 @@ def test_a_filter_match_the_goal_makes_relevant_goes_on_marked_unclear(owner, fa
     assert not any("Dropped" in d for d in done["details"])
     (kept,) = staged(owner)
     assert kept["status"] == "staged" and kept["unclear"] and kept["score"] >= 0.35
-    assert len(fake_cli.judges()) == 1
+    assert fake_cli.judges() == []  # nightly: the beat only captures
 
 
 def test_forget_takes_a_change_out_of_the_buffer_before_the_distill(owner, fake_cli):
-    found(owner)
+    found(owner, per_beat=False)
     beat(owner)
     (entry,) = staged(owner)
     assert owner.ok(owner.post(f"/api/heartbeat/staged/{entry['id']}/forget"))["status"] == (
@@ -1536,7 +1562,7 @@ def test_forget_takes_a_change_out_of_the_buffer_before_the_distill(owner, fake_
 
 
 def test_the_buffer_keeps_its_retention_then_removes_old_entries(owner, runtime, fake_cli):
-    found(owner)
+    found(owner, per_beat=False)
     owner.ok(owner.put("/api/heartbeat/learning", json={"buffer_days": 30}))
     with runtime.ws.rt.write() as tx:
         tx.insert(
@@ -1567,4 +1593,98 @@ def test_learning_settings_are_checked(owner):
     )
     assert owner.put("/api/heartbeat/learning", json={"buffer_days": 0}).status_code == 422
     saved = owner.ok(owner.put("/api/heartbeat/learning", json={"goal": "Run the Q4 webinars"}))
-    assert saved == {"goal": "Run the Q4 webinars", "filters": [], "buffer_days": 30}
+    assert saved == {
+        "goal": "Run the Q4 webinars",
+        "filters": [],
+        "buffer_days": 30,
+        "learn": "nightly",
+        "distill_at": "19:00",
+    }
+
+
+# ---------------------------------------------------------------------- learning: the distill
+
+
+def distill(owner):
+    return owner.ok(owner.post("/api/heartbeat/distill?wait=true"))
+
+
+def test_a_change_undone_the_same_day_is_discarded_without_a_model_call(owner, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    distill(owner)  # yesterday: the Brain learned what it said
+    fake_cli.distilled.clear()
+    fake_cli.items = [dict(ITEM, text="Morgan replied: hero option C instead.")]
+    beat(owner)
+    fake_cli.items = [dict(ITEM)]  # back to what it said before
+    beat(owner)
+    done = distill(owner)
+    assert fake_cli.distilled == [] and done["changes"] == 0
+    today = [e for e in staged(owner) if e["old_value"] is not None]
+    assert {e["outcome"]["reason"] for e in today} == {"undone the same day"}
+    assert {e["status"] for e in staged(owner)} == {"distilled"}  # archived, not deleted
+
+
+def test_repeated_edits_collapse_to_one_item_with_its_count(owner, fake_cli):
+    found(owner, per_beat=False)
+    for text in ("v1", "v2", "v3"):
+        fake_cli.items = [dict(ITEM, text=f"Morgan replied: {text}.")]
+        beat(owner)
+    distill(owner)
+    ((shown,),) = fake_cli.distilled
+    assert shown["changed"] == 3 and shown["now"] == "Morgan replied: v3."
+    assert shown["before"] is None  # first seen today
+
+
+def test_a_delete_wins_over_earlier_edits(owner, runtime, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    with runtime.ws.rt.write() as tx:
+        tx.insert(
+            schema.staged_changes,
+            {
+                "id": "stg_gone",
+                "workspace_id": tx.workspace_id,
+                "connector_id": "claude:mail",
+                "item_id": "msg-1",
+                "field": "text",
+                "title": ITEM["title"],
+                "url": "",
+                "old_value": ITEM["text"],
+                "new_value": None,
+                "seen_at": "2026-09-28T13:30:00Z",
+                "beat_id": "beat_x",
+                "filter": "",
+                "unclear": False,
+                "status": "staged",
+            },
+        )
+    distill(owner)
+    ((shown,),) = fake_cli.distilled
+    assert shown["deleted"] is True
+
+
+def test_a_confident_route_goes_in_and_an_unsure_one_waits_in_catch_up(owner, fake_cli):
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner, per_beat=False)
+    beat(owner)
+    done = distill(owner)
+    assert done["changes"] == 1 and done["waits"] == 0
+    (entry,) = staged(owner)
+    assert entry["outcome"]["route"] == "short" and entry["status"] == "distilled"
+    fake_cli.items = [dict(ITEM, id="msg-2", title="Maybe a new date")]
+    fake_cli.route = lambda item: ("short", 0.5)  # not sure
+    beat(owner)
+    unsure = distill(owner)
+    assert unsure["waits"] == 1 and unsure["changes"] == 0  # waits even in Auto
+    assert staged(owner)[0]["outcome"]["route"] == "catch_up"
+
+
+def test_the_distill_runs_nightly_and_after_a_night_the_computer_slept(owner, hb, fake_cli):
+    found(owner, per_beat=False)
+    beat(owner)
+    # 13:00 on Sep 28, nothing distilled since yesterday 19:00: it is due (a missed night).
+    assert hb.distill_due()
+    ran = hb_service.HeartbeatWorker(hb).run_once()
+    assert ran["trigger"] == "distill" and ran["status"] == "done"
+    assert not hb.distill_due()  # done for this night
