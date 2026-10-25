@@ -45,10 +45,10 @@ from workspace_core.errors import (
 from workspace_core.ids import new_id
 from workspace_core.workspace import Workspace
 
-from ..runners import RUNNERS, Runners, usage_of
+from ..runners import RUNNERS, Runners, mask, usage_of
 from ..scout import Scout
 from . import connectors as conn
-from . import n8n
+from . import memory, n8n
 from . import n8n_templates as templates
 
 log = logging.getLogger(__name__)
@@ -58,6 +58,10 @@ ACCOUNT_TTL = 1800.0  # seconds a listing of the Claude account's connectors is 
 ACCOUNT_PLACE = "Your Claude account"
 
 CADENCES = (5, 15, 30, 60)
+OWN_CADENCES = (*CADENCES, 240, 1440)  # a connector may read less often: every 4 hours, daily
+MEMORY_CADENCE = 1440  # minutes between memory reads after onboarding: daily
+MEMORY_ITEMS = 40  # context packets one memory read may bring
+ASK_CHARS = 1000  # characters of what the owner asks a memory read to look for
 QUIET = {"off": "Off", "night": "7pm to 7am", "nights_weekends": "Nights and weekends"}
 DEFAULTS: dict[str, Any] = {"cadence": 15, "quiet": "night", "paused": False, "cli": None}
 CLI_LABELS = {
@@ -67,7 +71,13 @@ CLI_LABELS = {
     "gnomon": "Gnomon",
     "n8n": "n8n",
 }
-HOW_LABELS = {"mcp": "MCP", "computer": "Computer use", "folder": "Folder", "n8n": "n8n"}
+HOW_LABELS = {
+    "mcp": "MCP",
+    "computer": "Computer use",
+    "folder": "Folder",
+    "n8n": "n8n",
+    "memory": "Memory and chats",
+}
 TOKENLESS = ("folder", "n8n")  # reads that cost no tokens: Scout, and n8n workflows
 INBOX_MAX = 200  # items one post may bring
 LOCK_MINUTES = 20  # a beat that holds the lock longer than this has stopped: its lock expires
@@ -159,6 +169,8 @@ class Heartbeat:
         # computer reaches Gnomon's inbox.
         self.n8n_host: Any = None
         self.inbox_url = "http://127.0.0.1:8787"
+        # Memory pasted from another AI app at onboarding, for the read that carries it.
+        self._pasted: dict[str, str] = {}
 
     def _account(self, who: Principal, *, fresh: bool = False) -> list[conn.Found] | None:
         """The Claude account's connectors (claude.ai), as Claude Code lists them when it
@@ -268,6 +280,7 @@ class Heartbeat:
                 enabled=item.get("enabled"),
                 feeds=item.get("feeds"),
                 cadence_minutes=item.get("cadence_minutes"),
+                ask=item.get("ask"),
             )
         return self.status(who)
 
@@ -304,6 +317,7 @@ class Heartbeat:
             "workflow_id": row.get("workflow_id"),
             "has_workflow": bool(row.get("workflow")),
             "fix": (row.get("workflow_fix") or {}).get("why") if row.get("workflow_fix") else None,
+            "ask": row.get("ask") or "",
         }
 
     def connectors(self, who: Principal) -> list[dict[str, Any]]:
@@ -461,8 +475,8 @@ class Heartbeat:
             for cid, row in rows.items():
                 if account is None and row["found_in"] == ACCOUNT_PLACE:
                     continue  # Claude Code could not say: leave the account's connectors be
-                if row["how"] == "n8n":
-                    continue  # read through an n8n workflow, not found in a CLI's settings
+                if row["how"] in ("n8n", "memory"):
+                    continue  # an n8n workflow or a CLI's memory: not found in its settings
                 if cid != "scout" and cid not in checked and row["present"]:
                     tx.update(
                         schema.heartbeat_connectors,
@@ -515,6 +529,8 @@ class Heartbeat:
                         ),
                     },
                 )
+            for cli in memory.CLIS:
+                self._memory_row(tx, who, rows.get(f"memory:{cli}"), cli, now, added)
             tx.emit(
                 "heartbeat.connectors_found",
                 actor_id=who.actor_id,
@@ -524,17 +540,69 @@ class Heartbeat:
             )
         listed = self.connectors(who)
         by_cli: dict[str, int] = {}
-        for c in listed:
-            if c["present"]:
-                by_cli[c["cli_label"]] = by_cli.get(c["cli_label"], 0) + 1
+        apps = [c for c in listed if c["present"] and c["how"] != "memory"]
+        for c in apps:
+            by_cli[c["cli_label"]] = by_cli.get(c["cli_label"], 0) + 1
         said = ", ".join(f"{n} in {label}" for label, n in by_cli.items()) or "none"
+        new = [a for a in added if not a.startswith("memory:")]
         return {
-            "found": len([c for c in listed if c["present"]]),
+            "found": len(apps),
             "added": added,
-            "line": f"Found {len([c for c in listed if c['present']])} connectors: {said}."
-            + (f" {len(added)} new." if added else " Nothing new to add."),
+            "line": f"Found {len(apps)} connectors: {said}."
+            + (f" {len(new)} new." if new else " Nothing new to add."),
             "connectors": listed,
         }
+
+    def _memory_row(
+        self,
+        tx: Any,
+        who: Principal,
+        row: dict[str, Any] | None,
+        cli: str,
+        now: str,
+        added: list[str],
+    ) -> None:
+        """A CLI's memory read: there while the CLI keeps its files on this computer. A new
+        one starts off; onboarding (or the owner) turns it on."""
+        here = memory.present(cli)
+        label = CLI_LABELS[cli]
+        if row is None:
+            if not here:
+                return
+            tx.insert(
+                schema.heartbeat_connectors,
+                {
+                    "id": f"memory:{cli}",
+                    "workspace_id": tx.workspace_id,
+                    "name": f"{label} memory and chats",
+                    "cli": cli,
+                    "how": "memory",
+                    "tools": [],
+                    "found_in": memory.home(cli),
+                    "present": True,
+                    "cadence_minutes": MEMORY_CADENCE,
+                    "feeds": [],
+                    "enabled": False,
+                    "status": "off",
+                    "status_line": (
+                        f"What {label} keeps on you: its memory, what you said in its chats, "
+                        "and what it remembers from its other apps. Off until you start "
+                        "onboarding."
+                    ),
+                    "last_items": 0,
+                    "created_by": who.actor_id,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+            added.append(f"memory:{cli}")
+        elif bool(row["present"]) != here:
+            tx.update(
+                schema.heartbeat_connectors,
+                row,
+                {"present": here, "found_in": memory.home(cli)}
+                | ({} if here else {"status": "off", "status_line": f"{label} is not here."}),
+            )
 
     def set_connector(
         self,
@@ -544,6 +612,7 @@ class Heartbeat:
         enabled: bool | None = None,
         feeds: list[str] | None = None,
         cadence_minutes: int | None = None,
+        ask: str | None = None,
     ) -> dict[str, Any]:
         who.require("workspace.admin")
         with self.ws.rt.write() as tx:
@@ -551,7 +620,7 @@ class Heartbeat:
             if row is None or row["workspace_id"] != tx.workspace_id:
                 raise NotFound(f"No connector {connector_id}.", id=connector_id)
             values: dict[str, Any] = {}
-            if enabled and row["cli"] == "gemini":
+            if enabled and row["cli"] == "gemini" and row["how"] != "memory":
                 raise Conflict(
                     "Gnomon does not read through Gemini yet. Suggest an n8n workflow for it."
                 )
@@ -578,12 +647,19 @@ class Heartbeat:
                 values["feeds"] = [str(f) for f in feeds][:20]
             if cadence_minutes is not None:
                 own = int(cadence_minutes)
-                if own and own not in CADENCES:
+                if own and own not in OWN_CADENCES:
                     raise ValidationFailed(
-                        f"A connector's own cadence is one of {', '.join(map(str, CADENCES))}.",
+                        "A connector's own cadence is one of "
+                        f"{', '.join(map(str, OWN_CADENCES))} minutes.",
                         field="cadence_minutes",
                     )
                 values["cadence_minutes"] = own or None
+            if ask is not None:
+                if row["how"] != "memory":
+                    raise ValidationFailed(
+                        "Only a memory read takes what to look for.", field="ask"
+                    )
+                values["ask"] = str(ask).strip()[:ASK_CHARS] or None
             if row["how"] == "n8n" and enabled is not None:
                 values.update(self._to_n8n(row, bool(enabled)))
             if values:
@@ -1024,6 +1100,7 @@ class Heartbeat:
             "line": line,
             "cadence": int(settings["cadence"]),
             "cadences": list(CADENCES),
+            "own_cadences": list(OWN_CADENCES),
             "quiet_hours": settings["quiet"],
             "quiet_options": [{"id": k, "label": v} for k, v in QUIET.items()],
             "in_quiet_hours": quiet,
@@ -1183,6 +1260,10 @@ class Heartbeat:
         for row in self._connectors():
             if not row["enabled"] or not row["present"] or row["how"] == "computer":
                 continue
+            if trigger == "onboarding":
+                if row["how"] == "memory":
+                    out.append(row)
+                continue
             if row["status"] == "cannot_confirm_read_only":
                 continue
             own = int(row["cadence_minutes"] or 0)
@@ -1213,18 +1294,20 @@ class Heartbeat:
             "empty list.\n" + listed
         )
 
-    def _items(self, part: Any, row: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    def _items(
+        self, part: Any, row: dict[str, Any], *, most: int = MAX_ITEMS, chars: int = 600
+    ) -> tuple[list[dict[str, Any]], str]:
         """(items, cursor) from one connector's part of a read's answer."""
         part = part if isinstance(part, dict) else {}
         items = []
-        for raw in (part.get("items") or [])[:MAX_ITEMS]:
+        for raw in (part.get("items") or [])[:most]:
             if not isinstance(raw, dict) or not str(raw.get("id") or "").strip():
                 continue
             items.append(
                 {
                     "id": _flat(raw.get("id"), 300),
                     "title": _flat(raw.get("title"), 200),
-                    "text": _flat(raw.get("text"), 600),
+                    "text": _flat(raw.get("text"), chars),
                     "at": _flat(raw.get("at"), 32),
                     "url": _flat(raw.get("url"), 300),
                     "speaker": _flat(raw.get("speaker"), 80),
@@ -1323,6 +1406,8 @@ class Heartbeat:
             return self._read_scout(owner, row)
         if row["how"] == "n8n":
             return self._read_n8n(row)
+        if row["how"] == "memory":
+            return self._read_memory(owner, row)
         got = self._read_cli(owner, [row])[row["id"]]
         if isinstance(got, BaseException):
             raise got
@@ -1420,16 +1505,135 @@ class Heartbeat:
             )
         return {r["id"]: r for r in rows}
 
-    def _ask(self, owner: Principal, cli: str, prompt: str) -> tuple[str, int | None]:
-        """One answer from the governing CLI and the tokens it said it used (None: unknown)."""
+    def _ask(
+        self, owner: Principal, cli: str, prompt: str, timeout: float = 300
+    ) -> tuple[str, int | None]:
+        """One answer from a CLI and the tokens it said it used (None: unknown)."""
         if cli == "claude":
-            found = self.runners.ask_json(owner, prompt, timeout=300)
+            found = self.runners.ask_json(owner, prompt, timeout=timeout)
             usage = usage_of(found)
             if usage is not None:
                 self.runners.count_usage("heartbeat", usage)
             return str(found.get("result") or ""), tokens_of(usage)
         # Codex and Gemini CLI do not say what one answer used in this mode.
-        return self.runners.ask(owner, prompt, runner=cli, job="heartbeat", timeout=300), None
+        answer = self.runners.ask(owner, prompt, runner=cli, job="heartbeat", timeout=timeout)
+        return answer, None
+
+    # ---------------------------------------------------------------- memory and onboarding
+
+    def memory_prompt(self, row: dict[str, Any], found: memory.Gathered, pasted: str = "") -> str:
+        """What a memory read asks the CLI: turn what it keeps on the person, what it remembers
+        from its own other apps (Claude Code from Claude, Codex from ChatGPT, Gemini CLI from
+        Gemini), and anything pasted from another AI app, into context packets."""
+        cli = row["cli"]
+        label = CLI_LABELS.get(cli, cli)
+        lines = [
+            f"You are {label}, helping the person you work with set up their Brain: the "
+            "long-term context every AI app they use reads first. Below is what you keep on "
+            "them on this computer: your memory files and what they said in your recent chats. "
+            f"Also add what you remember about them from {memory.SURFACES[cli]} on the same "
+            "account: saved memories, their instructions for you, what they told you there. "
+            "Only what you can actually see; never guess, and say where each came from. If you "
+            "can see none of it, add nothing for it.",
+            "Turn all of it into context packets: durable things worth knowing in every future "
+            "conversation. Who they are and their role; their projects and where each stands; "
+            "decisions; preferences and rules for how to work with them; the people they work "
+            "with; the tools and accounts they use; recurring work. One packet a topic; merge "
+            "what repeats; when two disagree, the newer wins and the packet says when it "
+            "changed. Keep who said it: an assistant's suggestion is not their decision. Leave "
+            "out passwords, keys and tokens; mark private true for anything private or "
+            "confidential.",
+            "This is the first read: build the whole picture."
+            if not row["cursor"]
+            else "This read covers only what is new since the last one: leave out what is not "
+            "new or changed.",
+        ]
+        if row.get("ask"):
+            lines.append(f"The person asked you to look for: {row['ask']}")
+        lines.append(
+            'Reply with one JSON object only: {"packets": [{"id": "<a short stable slug for '
+            'the topic>", "title": "...", "text": "<what is known, with dates, at most 1000 '
+            'characters>", "at": "<ISO 8601 time of the newest thing it rests on>", "speaker": '
+            '"<the person, or memory, or the app it came from>", "private": false}]}. At most '
+            f"{MEMORY_ITEMS} packets, the most useful first; nothing worth keeping: an empty list."
+        )
+        if found.memory:
+            lines.append("Your memory files:")
+            lines += [f"--- {where}\n{text}" for where, text in found.memory]
+        if found.said:
+            lines.append("What they said in your chats, newest first:")
+            lines += [
+                f"- [{at}]" + (f" ({project})" if project else "") + f" {text}"
+                for at, project, text in found.said
+            ]
+        if pasted:
+            lines += ["What they pasted from another AI app's memory:", pasted]
+        return "\n\n".join(lines)
+
+    def _read_memory(self, owner: Principal, row: dict[str, Any]) -> dict[str, Any]:
+        """A read of what one CLI keeps on the person: Gnomon gathers its files, the CLI makes
+        the context packets. A later read with nothing new makes no CLI call and costs no
+        tokens; the first always asks, for what the CLI remembers from its other apps."""
+        pasted = self._pasted.pop(row["id"], "")
+        found = memory.gather(row["cli"], since=row["cursor"])
+        if row["cursor"] and found.empty() and not pasted:
+            return {"items": [], "cursor": row["cursor"], "tokens": None}
+        label = CLI_LABELS.get(row["cli"], row["cli"])
+        try:
+            status = self.runners.status(RUNNERS[row["cli"]])
+        except UNREADABLE:  # the CLI cannot say now: the read finds out
+            status = None
+        if status is not None and (not status.installed or status.signed_in is False):
+            raise ConnectorProblem(
+                "unhealthy_sign_in",
+                f"{label} is not signed in, so its memory is not read. Sign in: {status.sign_in}"
+                if status.installed
+                else f"{label} is not installed on this computer.",
+            )
+        text, spent = self._ask(
+            owner, row["cli"], self.memory_prompt(row, found, pasted), timeout=900
+        )
+        try:
+            answer = json_answer(text)
+        except ValueError as exc:
+            raise ConnectorProblem("error", "Its answer could not be read.") from exc
+        packets = answer.get("packets") if isinstance(answer, dict) else None
+        items, _cursor = self._items({"items": packets or []}, row, most=MEMORY_ITEMS, chars=1000)
+        cursor = found.read_at or row["cursor"]
+        return {"items": items, "cursor": cursor, "tokens": spent}
+
+    def onboard(
+        self,
+        who: Principal,
+        *,
+        clis: list[str] | None = None,
+        ask: str | None = None,
+        pasted: str | None = None,
+        wait: bool = False,
+    ) -> dict[str, Any]:
+        """The first, onboarding beat: each chosen CLI (every one found, by default) reads what
+        it keeps on the person and makes context packets; later beats read what is new, daily.
+        `pasted` is memory the person copied from another AI app; the governing CLI reads it."""
+        who.require("workspace.admin")
+        if not any(r["how"] == "memory" for r in self._connectors()):
+            self.rescan(who)
+        rows = [r for r in self._connectors() if r["how"] == "memory" and r["present"]]
+        if clis:
+            rows = [r for r in rows if r["cli"] in clis]
+        if not rows:
+            raise Conflict(
+                "No AI app keeps its memory on this computer yet. Use Claude Code, Codex or "
+                "Gemini CLI here first: one of them also turns what you paste from another AI "
+                "app into context packets."
+            )
+        governing = self.cli()
+        carrier = next((r for r in rows if r["cli"] == governing), rows[0])
+        if pasted and pasted.strip():
+            self._pasted[carrier["id"]] = mask(pasted.strip()[: memory.FIRST_BUDGET])
+        for row in rows:
+            self.set_connector(who, row["id"], enabled=True, ask=ask)
+        started = self.beat(who, "onboarding", wait=wait)
+        return {**started, "reading": [r["name"] for r in rows]}
 
     def judge_prompt(
         self, items: list[dict[str, Any]], brain: dict[str, Any], regions: dict[str, Any]
@@ -1491,7 +1695,7 @@ class Heartbeat:
         fresh: list[dict[str, Any]] = []
         reads: dict[str, dict[str, Any]] = {}
         limited: str | None = None
-        through_cli = [r for r in due if r["how"] not in TOKENLESS]
+        through_cli = [r for r in due if r["how"] not in (*TOKENLESS, "memory")]
         if through_cli and self._running is not None:
             self._running["reading"] = through_cli[0]["id"]
         batch = self._read_cli(owner, through_cli) if through_cli else {}
@@ -1521,7 +1725,7 @@ class Heartbeat:
                 continue
             if self._running is not None:
                 self._running["read"].append(row["id"])
-            spent = tokens_of(got.get("usage"))
+            spent = got["tokens"] if "tokens" in got else tokens_of(got.get("usage"))
             if row["how"] not in TOKENLESS and not got.get("shared"):
                 if spent is None:
                     unknown += 1

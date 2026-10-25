@@ -110,12 +110,20 @@ then judges the new items: which region and project each belongs to, and what it
 Code checks every write before it is made. Each write is an undo point, and a line you undo is
 never written again.
 
+The first beat can onboard you. Each CLI on this computer (Claude Code, Codex, Gemini CLI)
+reads what it keeps on you: its memory files, what you said in its chats, and what it remembers
+from its own other apps (Claude Code from Claude, Codex from ChatGPT, Gemini CLI from Gemini).
+It turns that into context packets, which the judge files like any other read. After that, each
+reads only what is new, once a day by default, and you can tell each what to look for. Gnomon
+gathers those files itself, read-only, and never opens a CLI's sign-in.
+
 ```mermaid
 flowchart LR
     subgraph Reads["Connectors, read-only"]
         SC["Scout folders: no tokens"]
         N8["n8n workflows: no tokens"]
         CLI["Connectors in your CLIs, through Claude Code: hourly by default"]
+        MEM["What each CLI keeps on you: its memory and your chats, daily"]
     end
     Reads -->|"each read once per beat, from where it last stopped"| J["Judge: one model call for the new items"]
     J --> K["Code checks: in scope, not sealed, not private, not over a must-hold"]
@@ -260,10 +268,13 @@ Auto, most days take a minute.
 1. In **Capture, Scout your folders**, choose a folder and the project it feeds.
 2. In **Settings, Approval and auto-governance, Heartbeat**, choose how often it beats and your
    quiet hours.
-3. Press **Find connectors in my CLIs**. It lists the MCP servers your CLIs already use and
+3. In **Start with what your AI apps already know**, choose the AI apps to read and press
+   **Build my Brain from them**. For an app none of them can read, copy the question it shows,
+   ask that app, and paste its answer under **Add memory from another AI app**.
+4. Press **Find connectors in my CLIs**. It lists the MCP servers your CLIs already use and
    keeps only their read-only tools. Connectors that read your own accounts start off: turn on
    the ones you want.
-4. Press **Beat now** on Home to see the first beat.
+5. Press **Beat now** on Home to see the next beat.
 
 ### 9. Host n8n (optional)
 

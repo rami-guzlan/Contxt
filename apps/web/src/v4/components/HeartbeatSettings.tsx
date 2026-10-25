@@ -6,6 +6,13 @@ import { css } from "../css";
 import { costLine, type HbConnector, useHeartbeat, useHeartbeatSettings, useN8nFix, useRegions, useRescan, useSetConnector } from "../hooks/heartbeat";
 import { Failure, Loading } from "../ui";
 import { N8nHost } from "./N8nHost";
+import { Onboarding } from "./Onboarding";
+
+function every(v: number): string {
+  if (v === 1440) return "daily";
+  if (v === 60) return "every hour";
+  return v % 60 === 0 ? `every ${v / 60} hours` : `every ${v} min`;
+}
 
 const chip = (on: boolean) =>
   `padding:5px 11px;border-radius:99px;font:${on ? 500 : 400} 12px Geist;cursor:pointer;${
@@ -49,6 +56,7 @@ export function HeartbeatSettings() {
       <span style={css("font:400 13.5px/1.5 Geist;color:var(--ink2);max-width:640px")}>
         On each beat, {s.cli_label} reads through the connectors already set up in your CLIs, then updates the live status of each region and the projects inside it. Read-only: it never sends, posts or spends.
       </span>
+      <Onboarding connectors={s.connectors} />
       <div role="group" aria-label="Beat every" style={css("display:flex;gap:6px;flex-wrap:wrap;align-items:center")}>
         <span style={css("font:400 12.5px Geist;color:var(--muted);width:96px")}>Beat every</span>
         {s.cadences.map((v) => (
@@ -95,7 +103,7 @@ export function HeartbeatSettings() {
           s.connectors.map((c) => {
             const feeds = c.feeds.length ? `Feeds ${c.feeds.map((f) => names.get(f) ?? f).join(", ")}` : "Feeds any region it fits";
             const items = c.last_read_at ? ` · ${c.last_items} ${c.last_items === 1 ? "item" : "items"} last beat` : "";
-            const readOnly = c.how === "folder" || c.tools.length ? " · read-only" : "";
+            const readOnly = c.how === "folder" || c.how === "memory" || c.tools.length ? " · read-only" : "";
             return (
               <div key={c.id} style={css("display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap")}>
                 <div style={css("flex:1;min-width:200px;display:flex;flex-direction:column;gap:2px")}>
@@ -121,6 +129,18 @@ export function HeartbeatSettings() {
                       {fixes.suggest.isPending ? "Asking…" : "Suggest a fix"}
                     </button>
                   ) : null}
+                  {c.how === "memory" ? (
+                    <input
+                      key={`${c.id}:${c.ask ?? ""}`}
+                      aria-label={`What ${c.name} looks for`}
+                      placeholder="What to look for, in your words (optional)"
+                      defaultValue={c.ask ?? ""}
+                      onBlur={(e) => {
+                        if (e.target.value.trim() !== (c.ask ?? "")) toggle.mutate({ id: c.id, ask: e.target.value.trim() });
+                      }}
+                      style={css("font:400 12.5px Geist;padding:5px 8px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);max-width:420px")}
+                    />
+                  ) : null}
                 </div>
                 <span style={css("font:400 12.5px Geist;color:var(--ink2);min-width:160px")}>{feeds}</span>
                 {c.how === "folder" ? (
@@ -136,11 +156,11 @@ export function HeartbeatSettings() {
                       style={css("font:400 12.5px Geist;padding:4px 6px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink)")}
                     >
                       <option value={0}>every beat</option>
-                      {s.cadences
+                      {(s.own_cadences ?? s.cadences)
                         .filter((v) => v > s.cadence)
                         .map((v) => (
                           <option key={v} value={v}>
-                            every {v === 60 ? "hour" : `${v} min`}
+                            {every(v)}
                           </option>
                         ))}
                     </select>

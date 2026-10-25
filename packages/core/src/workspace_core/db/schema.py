@@ -542,7 +542,7 @@ heartbeat_connectors = sa.Table(
     sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
     sa.Column("name", sa.String(200), nullable=False),
     sa.Column("cli", sa.String(40), nullable=False),  # claude | codex | gnomon
-    sa.Column("how", sa.String(16), nullable=False),  # mcp | computer | folder | n8n
+    sa.Column("how", sa.String(16), nullable=False),  # mcp | computer | folder | n8n | memory
     sa.Column("cadence_minutes", sa.Integer),  # its own, when slower than the heartbeat's
     sa.Column("feeds", sa.JSON, nullable=False),  # region ids
     sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.false()),
@@ -563,6 +563,8 @@ heartbeat_connectors = sa.Table(
     # A fix the knowledge agent suggested after its workflow failed: {workflow, why}, waiting
     # for the owner to keep or skip it.
     sa.Column("workflow_fix", sa.JSON),
+    # A memory read (how "memory"): what the owner asked it to look for, in their words.
+    sa.Column("ask", sa.Text),
     *_record(archivable=False),
 )
 
