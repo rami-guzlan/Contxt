@@ -61,6 +61,7 @@ export function useTellProject(project: { id: string; title: string }) {
       const task = await post<Task>("/api/brain/distill/requests", {
         item_ids: [note.id],
         guidance: `This capture is about the project ${project.title} (${project.id}). File what lasts with that project.`,
+        start: true, // starts now with your AI
       });
       return { note, task };
     },

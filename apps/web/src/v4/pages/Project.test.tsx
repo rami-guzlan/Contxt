@@ -156,6 +156,7 @@ describe("Project · Context", () => {
     expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ projects: ["foc_spring"] });
     const distill = calls.find((c) => c.method === "POST" && c.path === "/api/brain/distill/requests");
     expect((distill?.body as { item_ids: string[] }).item_ids).toEqual(["n_new"]);
+    expect((distill?.body as { start: boolean }).start).toBe(true);
   });
 
   it("shows a failure when the project can't be read", async () => {

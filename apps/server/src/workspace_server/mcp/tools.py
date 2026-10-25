@@ -293,6 +293,9 @@ def propose_brain_entry(
         source_excerpt=_str(args, "source_excerpt"),
         destination=_str(args, "destination"),
         place=args.get("place") if isinstance(args.get("place"), dict) else None,
+        # The owner's AI at work in the app (a distill, the knowledge agent, an agent): the
+        # capture policy decides, and in Auto it goes in with undo unless it must wait.
+        capture_origin="chat",
     )
     # Refused is a failure the model must notice; a duplicate (the same proposal retried) is
     # not.

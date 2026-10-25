@@ -165,7 +165,7 @@ describe("Capture", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Weekly sync/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Distill" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/distill/requests" && c.method === "POST")).toBe(true));
-    expect(calls.find((c) => c.path === "/api/brain/distill/requests" && c.method === "POST")?.body).toEqual({ item_ids: ["n2"] });
+    expect(calls.find((c) => c.path === "/api/brain/distill/requests" && c.method === "POST")?.body).toEqual({ item_ids: ["n2"], start: true });
   });
 
   it("retries a failed reading with the same model, and includes an excluded source", async () => {

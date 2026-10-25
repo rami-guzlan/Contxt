@@ -888,6 +888,12 @@ class Brain:
                 must.append({"id": note.id, "title": note.title, "line": note.must_text,
                              "triggers": list(note.triggers), "why": row.get("why") or ""})
         text = result.text.split("## Continuity", 1)[0].rstrip() + "\n"
+        if tools:
+            # A conversation's first packet opens with the Brain map: the preview shows it too
+            # (the kernel aside, which the startup file holds).
+            shown = self.map_view(request, principal=principal, partition=partition)
+            if not shown.is_error and shown.text:
+                text = shown.text.rstrip() + "\n\n" + text
         return Result(text, {
             "request": str(request), "mode": data.get("mode"),
             "tokens": data.get("token_count"),

@@ -50,7 +50,7 @@ export function useUpload() {
 export function useDistill() {
   const refresh = useRefresh();
   return useMutation({
-    mutationFn: (itemId: string) => post<Task>("/api/brain/distill/requests", { item_ids: [itemId] }),
+    mutationFn: (itemId: string) => post<Task>("/api/brain/distill/requests", { item_ids: [itemId], start: true }),
     onSuccess: () => refresh("brain", "captures", "notes", "tasks"),
   });
 }
