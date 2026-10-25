@@ -153,11 +153,15 @@ def scout(request: Request, who: Who) -> dict[str, Any]:
 
 @router.put("/scout")
 def configure_scout(body: ScoutIn, request: Request, who: Who) -> dict[str, Any]:
-    return _scout(request).configure(
+    done = _scout(request).configure(
         who,
         folders=[f.model_dump() for f in body.folders] if body.folders is not None else None,
         formats=body.formats,
     )
+    beat = request.app.state.runtime.heartbeat
+    if beat is not None:
+        beat.scout_changed(who)  # the heartbeat's Scout row says so at once
+    return done
 
 
 @router.post("/scout/scan")

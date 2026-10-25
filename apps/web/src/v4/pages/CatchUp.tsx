@@ -42,7 +42,14 @@ const isSafe = (p: Proposal) => !isConflict(p) && !isRule(p) && !isInPlace(p);
 
 const textOf = (p: Proposal) => p.body?.trim() || p.summary || p.title || p.id;
 const speakerOf = (p: Proposal) => (p.source?.speaker && p.source.speaker !== "unknown" ? p.source.speaker : "Unknown");
-const fromOf = (p: Proposal) => p.proposer || "An AI";
+/** Who proposed it, in words: an actor id from the app's own AI work reads as "Your AI". */
+export const fromOf = (p: Proposal) => {
+  const who = String(p.proposer || "").trim();
+  if (!who) return "An AI";
+  if (/(^|:)act_[a-z0-9]+|^workspace(:|$)|^model(:|$)/i.test(who)) return "Your AI, in the app";
+  if (who.startsWith("person:")) return who.slice("person:".length).replace(/[-_]+/g, " ");
+  return who;
+};
 const areaOf = (p: Proposal) => str(p.target?.area) || str(p.target?.layer) || (p.route_key || "").split("/")[0] || "";
 const destOf = (p: Proposal) => p.destination || p.route_key || "Not stated";
 const sourceLine = (p: Proposal) => [p.source ? p.source.id : fromOf(p), when(p.created)].filter(Boolean).join(" · ");

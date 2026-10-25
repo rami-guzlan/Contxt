@@ -1199,3 +1199,12 @@ def test_in_auto_a_connector_note_goes_in_with_undo(owner, runtime, fake_cli):
     assert done["changes"] == 1 and done["waits"] == 0, done["details"]
     (line,) = rows(runtime, schema.heartbeat_lines)
     assert line["status"] == "applied" and line["checkpoint_id"]
+
+
+def test_choosing_a_scout_folder_updates_its_row_at_once(owner, tmp_path):
+    owner.ok(owner.post("/api/heartbeat/connectors/rescan"))
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert rows["scout"]["status_line"] == "Choose a folder for Scout first."
+    owner.ok(owner.put("/api/scout", json={"folders": [{"path": str(tmp_path)}]}))
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert rows["scout"]["status_line"] == "Reads the 1 Scout folder(s) by content."

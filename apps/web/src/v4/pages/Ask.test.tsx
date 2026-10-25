@@ -93,6 +93,19 @@ describe("Ask", () => {
     expect(screen.queryByText("Evidence receipt")).not.toBeInTheDocument();
   });
 
+  it("shows the answer's Markdown as formatting, not as asterisks", async () => {
+    mockApi({
+      "GET /api/brain/catch-up": { status: 404, body: { error: { code: "not_found", message: "none" } } },
+      "POST /api/brain/agent/ask": { ...answer, answer: "Invoices are **due in 14 days**.\n\n- one\n- two", receipts: [], cited: [] },
+    });
+    renderAt(<AskPage />, { path: "/ask", route: "/ask" });
+    await userEvent.type(screen.getByLabelText("Your question"), "When?{Enter}");
+    const bold = await screen.findByText("due in 14 days");
+    expect(bold.tagName).toBe("STRONG");
+    expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
   it("shows the server's refusal and how to fix it in Agents", async () => {
     mockApi({
       "GET /api/brain/catch-up": { status: 404, body: { error: { code: "not_found", message: "none" } } },

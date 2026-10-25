@@ -4,7 +4,7 @@
 // answered and where the data went. The conversation lives in this page (and sessionStorage,
 // for this viewer only); nothing here is kept in the Brain.
 
-import { Fragment, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import { ApiError } from "../../api/client";
@@ -13,6 +13,7 @@ import { type AskAnswer, type ProviderCard, useAsk } from "../api";
 import { ReceiptView } from "../components/Receipt";
 import { css } from "../css";
 import { Btn, plural } from "../ui";
+import { Markdown } from "../components/Markdown";
 
 type TurnState = "asking" | "answered" | "failed" | "interrupted";
 
@@ -26,8 +27,6 @@ interface Turn {
 }
 
 const KEY = "contxt.v4.ask.thread";
-const CITED = /(\[[a-z0-9][a-z0-9-]{1,80}\])/g;
-const ONE_CITE = /^\[([a-z0-9][a-z0-9-]{1,80})\]$/;
 
 function loadThread(): Turn[] {
   try {
@@ -308,23 +307,13 @@ function Working({ since }: { since: string }) {
   );
 }
 
-function AnswerText({ text, cited }: { text: string; cited: string[] }) {
-  const held = new Set(cited);
-  const parts = text.split(CITED);
+function AnswerText({ text }: { text: string }) {
+  // The AI writes Markdown: shown as such (safely: elements, never HTML). The notes it cites
+  // are listed with links below the answer.
   return (
-    <span style={css("font:400 20px/1.5 Newsreader;text-wrap:pretty;white-space:pre-wrap")}>
-      {parts.map((part, i) => {
-        const id = ONE_CITE.exec(part)?.[1];
-        if (id && held.has(id)) {
-          return (
-            <Link key={i} to={`/brain/notes/${encodeURIComponent(id)}`} style={css("font:400 13px 'Geist Mono';color:var(--ink2);text-decoration:underline")}>
-              [{id}]
-            </Link>
-          );
-        }
-        return <Fragment key={i}>{part}</Fragment>;
-      })}
-    </span>
+    <div style={css("font:400 18px/1.55 Newsreader;text-wrap:pretty")}>
+      <Markdown text={text} className="gn-md" />
+    </div>
   );
 }
 
@@ -333,7 +322,7 @@ function Answer({ answer }: { answer: AskAnswer }) {
   return (
     <>
       {text ? (
-        <AnswerText text={text} cited={answer.cited} />
+        <AnswerText text={text} />
       ) : (
         <span style={css("font:400 15px Geist;color:var(--ink2)")}>The AI finished without writing an answer.</span>
       )}
