@@ -38,6 +38,15 @@ def test_status_and_token(env, capsys, owner_token):
     assert out.strip().startswith("wst_") and len(out.strip()) > 30
 
 
+def test_serve_shows_the_sign_in_link_in_a_terminal_and_keeps_it_out_of_logs():
+    """A person at a terminal sees the link; a server's log (Docker, a service) never holds
+    the owner token, and says how to print the link instead."""
+    shown = cli.sign_in_line("https://contxt.example", "wst_secret", terminal=True)
+    assert shown == "Sign in: https://contxt.example/auth/login?token=wst_secret"
+    logged = cli.sign_in_line("https://contxt.example", "wst_secret", terminal=False)
+    assert "wst_secret" not in logged and "contxt token" in logged
+
+
 def test_add_model_prints_the_token_once_with_its_setup(env, capsys):
     code, out = run(capsys, "add-model", "Codex", "codex")
     assert code == 0 and "Token (shown once): wst_" in out
