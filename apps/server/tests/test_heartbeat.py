@@ -5,6 +5,7 @@ import io
 import json
 import os
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -14,6 +15,7 @@ from workspace_core.db import schema
 from workspace_core.ports import BrainProposal
 from workspace_server.app import create_app
 from workspace_server.heartbeat import connectors as conn
+from workspace_server.heartbeat import memory as hb_memory
 from workspace_server.heartbeat import service as hb_service
 from workspace_server.runners import Runners, RunnerStatus
 
@@ -35,6 +37,16 @@ ITEM = {
     "at": "2026-09-28T12:40:00Z",
     "url": "",
     "speaker": "Morgan",
+    "private": False,
+}
+
+
+PACKET = {
+    "id": "role",
+    "title": "Runs the website redesign",
+    "text": "Leads the website redesign; hero option B is the one they chose.",
+    "at": "2026-09-28T12:40:00Z",
+    "speaker": "the person",
     "private": False,
 }
 
@@ -85,6 +97,14 @@ class FakeProc:
             with open(argv[argv.index("--mcp-config") + 1], encoding="utf-8") as handle:
                 config = json.load(handle)
         self.cli.calls.append({"argv": argv, "prompt": prompt, "config": config})
+        if "context packets" in str(prompt or ""):  # a memory read
+            self.cli.memory_reads.append({"argv": argv, "prompt": prompt})
+            answer = json.dumps({"packets": self.cli.packets})
+            if "exec" in argv:
+                with open(argv[argv.index("--output-last-message") + 1], "w") as handle:
+                    handle.write(answer)
+                return "", ""
+            return json.dumps({"result": answer, "usage": USAGE}), ""
         if "exec" in argv:  # Codex
             last = argv[argv.index("--output-last-message") + 1]
             with open(last, "w", encoding="utf-8") as handle:
@@ -112,6 +132,8 @@ class FakeCli:
         self.items = [dict(ITEM)]
         self.items_by = None  # {server: [items]} when a read covers more than one
         self.read_error = None
+        self.memory_reads = []
+        self.packets = [dict(PACKET)]
         self.writes = lambda item: [
             {
                 "kind": "progress",
@@ -166,7 +188,8 @@ class FakeCli:
         return [
             c
             for c in self.calls
-            if (c["config"] or {}).get("mcpServers")
+            if "context packets" in str(c["prompt"] or "")
+            or (c["config"] or {}).get("mcpServers")
             or "exec" in c["argv"]
             or str(c["prompt"] or "").startswith("Read, read-only")
         ]
@@ -200,6 +223,7 @@ def cli_home(tmp_path, monkeypatch):
     calls = tmp_path / "tool-calls.txt"
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude))
     monkeypatch.setenv("CODEX_HOME", str(codex))
+    monkeypatch.setenv("GEMINI_CLI_HOME", str(tmp_path / "gemini"))  # no Gemini CLI here
     monkeypatch.setenv("FAKE_MCP_CALLS", str(calls))
     server = {
         "type": "stdio",
@@ -284,7 +308,15 @@ def rows(runtime, table):
 def test_connectors_are_found_in_each_cli_and_no_secret_is_kept(owner, runtime, cli_home):
     result = found(owner, codex=True)
     by_id = {c["id"]: c for c in result["connectors"]}
-    assert set(by_id) == {"claude:mail", "claude:computer-use", "codex:tracker", "scout"}
+    assert set(by_id) == {
+        "claude:mail",
+        "claude:computer-use",
+        "codex:tracker",
+        "scout",
+        "memory:claude",  # what each CLI keeps on the person: off until onboarding
+        "memory:codex",
+    }
+    assert not by_id["memory:claude"]["enabled"] and by_id["memory:codex"]["how"] == "memory"
     mail = by_id["claude:mail"]
     assert mail["status"] == "ok" and mail["enabled"]
     assert mail["tools"] == ["list_messages", "get_thread"]
@@ -1239,3 +1271,164 @@ def test_choosing_a_scout_folder_updates_its_row_at_once(owner, tmp_path):
     owner.ok(owner.put("/api/scout", json={"folders": [{"path": str(tmp_path)}]}))
     rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
     assert rows["scout"]["status_line"] == "Reads the 1 Scout folder(s) by content."
+
+
+# ---------------------------------------------------------------------- memory and onboarding
+
+
+def write_memories():
+    """What Claude Code and Codex keep on the person, as they write it: Claude Code's own
+    CLAUDE.md, a project's memory file and what was typed (history.jsonl); a Codex session's
+    rollout. Both also hold a sign-in file that is never read."""
+    claude = os.environ["CLAUDE_CONFIG_DIR"]
+    codex = os.environ["CODEX_HOME"]
+    os.makedirs(os.path.join(claude, "projects", "C--dev-site", "memory"), exist_ok=True)
+    with open(os.path.join(claude, "CLAUDE.md"), "w", encoding="utf-8") as handle:
+        handle.write("Write plainly. No em dashes.")
+    with open(
+        os.path.join(claude, "projects", "C--dev-site", "memory", "role.md"), "w", encoding="utf-8"
+    ) as handle:
+        handle.write("Leads the website redesign at State Focus.")
+    with open(os.path.join(claude, ".credentials.json"), "w", encoding="utf-8") as handle:
+        handle.write('{"token": "sign-in-secret-999"}')
+    typed = [
+        {
+            "display": "We picked hero option B for the website",
+            "timestamp": 1790000000000,
+            "project": "C:/dev/site",
+        },
+        {"display": "yes", "timestamp": 1790000001000, "project": "C:/dev/site"},
+        {"display": "<command-name>/clear</command-name>", "timestamp": 1790000002000},
+        {
+            "display": "Use the key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123 for staging",
+            "timestamp": 1790000003000,
+            "project": "C:/dev/site",
+        },
+    ]
+    with open(os.path.join(claude, "history.jsonl"), "w", encoding="utf-8") as handle:
+        handle.write("\n".join(json.dumps(t) for t in typed) + "\n")
+    day = os.path.join(codex, "sessions", "2026", "09", "20")
+    os.makedirs(day, exist_ok=True)
+    lines = [
+        {
+            "type": "session_meta",
+            "timestamp": "2026-09-20T10:00:00Z",
+            "payload": {"cwd": "C:/dev/billing"},
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-09-20T10:00:01Z",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "<environment_context>x"}],
+            },
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-09-20T10:01:00Z",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Invoices go out on the 1st"}],
+            },
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-09-20T10:02:00Z",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "I suggest the 15th"}],
+            },
+        },
+    ]
+    with open(os.path.join(day, "rollout-a.jsonl"), "w", encoding="utf-8") as handle:
+        handle.write("\n".join(json.dumps(x) for x in lines) + "\n")
+    with open(os.path.join(codex, "auth.json"), "w", encoding="utf-8") as handle:
+        handle.write('{"token": "sign-in-secret-999"}')
+
+
+def onboard(owner, **body):
+    return owner.ok(owner.post("/api/heartbeat/onboard?wait=true", json=body))
+
+
+def test_a_cli_memory_is_gathered_from_its_own_files_with_secrets_masked(cli_home):
+    write_memories()
+    claude = hb_memory.gather("claude")
+    assert [where for where, _ in claude.memory] == [
+        "CLAUDE.md",
+        os.path.join("projects", "C--dev-site", "memory", "role.md"),
+    ]
+    said = [text for _at, _project, text in claude.said]
+    assert said[1] == "We picked hero option B for the website"
+    assert "sk-ant-api03" not in said[0] and "[masked]" in said[0]
+    assert not any(t in ("yes",) or t.startswith("<command") for t in said)
+    assert claude.said[1][1] == "site"
+    codex = hb_memory.gather("codex")
+    assert [t for _a, _p, t in codex.said] == ["Invoices go out on the 1st"]  # only the person
+    assert codex.said[0][1] == "billing"
+    everything = json.dumps([claude.memory, claude.said, codex.memory, codex.said])
+    assert "sign-in-secret-999" not in everything
+    later = hb_memory.gather("claude", since=claude.read_at)
+    assert not later.said
+    assert hb_memory.gather("gemini").empty()  # not on this computer
+
+
+def test_onboarding_has_each_cli_build_context_packets_from_its_memory(
+    owner, runtime, fake_cli, cli_home
+):
+    found(owner)
+    write_memories()
+    done = onboard(owner, pasted="ChatGPT remembers: prefers short answers.")
+    assert done["trigger"] == "onboarding" and done["status"] == "done"
+    assert {c["id"] for c in done["connectors"]} == {"memory:claude", "memory:codex"}
+    assert done["items"] == 2 and done["changes"] + done["waits"] == 2  # a packet from each
+    by_cli = {("exec" in r["argv"]): r["prompt"] for r in fake_cli.memory_reads}
+    claude, codex = by_cli[False], by_cli[True]
+    assert "Leads the website redesign" in claude and "hero option B" in claude
+    assert "Claude (claude.ai" in claude and "ChatGPT (chatgpt.com" in codex
+    assert "first read" in claude
+    assert "prefers short answers" in claude and "prefers short answers" not in codex
+    assert "Invoices go out on the 1st" in codex
+    assert not [r for r in fake_cli.reads() if (r["config"] or {}).get("mcpServers")]
+    by_id = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert by_id["memory:claude"]["enabled"] and by_id["memory:claude"]["cadence_minutes"] == 1440
+    lines = rows(runtime, schema.heartbeat_lines)
+    assert {line["item_id"] for line in lines} == {
+        "connector:memory:claude:role",
+        "connector:memory:codex:role",
+    }
+
+
+def test_a_later_memory_read_reads_only_what_is_new_and_nothing_new_costs_nothing(
+    owner, fake_cli, cli_home
+):
+    found(owner)
+    write_memories()
+    onboard(owner, clis=["claude"])
+    owner.ok(owner.put("/api/heartbeat/connectors/memory:claude", json={"cadence_minutes": 0}))
+    owner.ok(owner.put("/api/heartbeat/connectors/claude:mail", json={"enabled": False}))
+    first = len(fake_cli.memory_reads)
+    beat(owner)
+    assert len(fake_cli.memory_reads) == first  # nothing new: no CLI call
+    history = os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "history.jsonl")
+    later = {"display": "The launch moved to November", "timestamp": time.time() * 1000 + 60000}
+    with open(history, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(later) + "\n")
+    owner.ok(
+        owner.put(
+            "/api/heartbeat/connectors/memory:claude", json={"ask": "Deadlines and launch dates"}
+        )
+    )
+    beat(owner)
+    prompt = fake_cli.memory_reads[-1]["prompt"]
+    assert "The launch moved to November" in prompt and "hero option B" not in prompt
+    assert "only what is new" in prompt
+    assert "The person asked you to look for: Deadlines and launch dates" in prompt
+
+
+def test_only_a_memory_read_takes_what_to_look_for(owner, cli_home):
+    found(owner)
+    refused = owner.put("/api/heartbeat/connectors/claude:mail", json={"ask": "anything"})
+    assert refused.status_code == 422

@@ -22,6 +22,7 @@ class ConnectorChoiceIn(Body):
     enabled: bool | None = None
     feeds: list[str] | None = None
     cadence_minutes: int | None = None
+    ask: str | None = Field(default=None, max_length=1000)
 
 
 class SettingsIn(Body):
@@ -36,6 +37,13 @@ class ConnectorIn(Body):
     enabled: bool | None = None
     feeds: list[str] | None = None
     cadence_minutes: int | None = None
+    ask: str | None = Field(default=None, max_length=1000)
+
+
+class OnboardIn(Body):
+    clis: list[str] | None = None
+    ask: str | None = Field(default=None, max_length=1000)
+    pasted: str | None = Field(default=None, max_length=60000)
 
 
 def _heartbeat(request: Request) -> Heartbeat:
@@ -108,6 +116,16 @@ def set_connector(
         enabled=body.enabled,
         feeds=body.feeds,
         cadence_minutes=body.cadence_minutes,
+        ask=body.ask,
+    )
+
+
+@router.post("/onboard")
+def onboard(body: OnboardIn, request: Request, who: Who, wait: bool = False) -> dict[str, Any]:
+    """The onboarding beat: each CLI reads what it keeps on me (its memory, my chats, what it
+    remembers from its other apps) into context packets, in the background."""
+    return _heartbeat(request).onboard(
+        who, clis=body.clis, ask=body.ask, pasted=body.pasted, wait=wait
     )
 
 

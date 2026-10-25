@@ -14,7 +14,8 @@ export interface HbConnector {
   name: string;
   cli: string;
   cli_label: string;
-  how: "mcp" | "computer" | "folder" | "n8n";
+  /** memory: what a CLI keeps on the person (its memory, their chats, its other apps). */
+  how: "mcp" | "computer" | "folder" | "n8n" | "memory";
   how_label: string;
   cadence_minutes: number | null;
   feeds: string[];
@@ -28,6 +29,8 @@ export interface HbConnector {
   present: boolean;
   /** An n8n read: the fix the knowledge agent suggested after its workflow failed, waiting. */
   fix?: string | null;
+  /** A memory read: what the person asked it to look for, in their words. */
+  ask?: string;
 }
 
 export interface HbBeat {
@@ -58,6 +61,8 @@ export interface HbStatus {
   line: string;
   cadence: number;
   cadences: number[];
+  /** What one connector may read at: the beat's cadences, then every 4 hours and daily. */
+  own_cadences?: number[];
   quiet_hours: "off" | "night" | "nights_weekends";
   quiet_options: { id: string; label: string }[];
   in_quiet_hours: boolean;
@@ -174,8 +179,23 @@ export function useRescan() {
 export function useSetConnector() {
   const refresh = useHeartbeatRefresh();
   return useMutation({
-    mutationFn: ({ id, ...change }: { id: string; enabled?: boolean; cadence_minutes?: number }) =>
+    mutationFn: ({ id, ...change }: { id: string; enabled?: boolean; cadence_minutes?: number; ask?: string }) =>
       put<HbConnector>(`/api/heartbeat/connectors/${encodeURIComponent(id)}`, change),
+    onSuccess: () => refresh(),
+  });
+}
+
+export interface OnboardIn {
+  clis?: string[];
+  ask?: string;
+  pasted?: string;
+}
+
+/** The onboarding beat: each chosen CLI reads what it keeps on the person into context packets. */
+export function useOnboard() {
+  const refresh = useHeartbeatRefresh();
+  return useMutation({
+    mutationFn: (body: OnboardIn) => post<{ id?: string; beat_id?: string; status?: string; skipped?: string; line?: string; reading?: string[] }>("/api/heartbeat/onboard", body),
     onSuccess: () => refresh(),
   });
 }

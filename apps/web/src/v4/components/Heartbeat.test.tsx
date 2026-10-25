@@ -2,7 +2,7 @@
 // Goals), Settings' Heartbeat block, the Brain's auto banner and the auto strip, all from
 // /api/heartbeat.
 
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -347,5 +347,41 @@ describe("The auto banner and the auto strip", () => {
     expect(await screen.findByRole("button", { name: /State: 1 line from the/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Govern this myself" }));
     expect(govern).toHaveBeenCalled();
+  });
+});
+
+describe("Onboarding from the AI apps", () => {
+  const memory = (cli: string, label: string) =>
+    connector({ id: `memory:${cli}`, name: `${label} memory and chats`, cli, cli_label: label, how: "memory", how_label: "Memory and chats, every 1440 min", cadence_minutes: 1440, feeds: [], enabled: false, last_read_at: null, status: "off", status_line: "", tools: [] });
+
+  it("has each AI app chosen read what it keeps on me, with memory pasted from another app", async () => {
+    const calls = api({
+      "GET /api/heartbeat/status": status({ connectors: [connector(), memory("claude", "Claude Code"), memory("codex", "Codex CLI")] }),
+      "POST /api/heartbeat/onboard": { id: "beat_9", status: "running", reading: ["Claude Code memory and chats"] },
+    });
+    renderAt(<HeartbeatSettings />);
+    const card = await screen.findByRole("region", { name: "Start with what your AI apps know" });
+    expect(within(card).getByText(/what it remembers from Claude on the web, desktop and phone/)).toBeInTheDocument();
+    expect(within(card).getByText(/what it remembers from ChatGPT/)).toBeInTheDocument();
+    await userEvent.click(within(card).getAllByRole("checkbox")[1]!);
+    await userEvent.click(within(card).getByText("Add memory from another AI app"));
+    await userEvent.type(within(card).getByLabelText("What another AI app remembers about you"), "Prefers short answers");
+    await userEvent.click(within(card).getByRole("button", { name: "Build my Brain from them" }));
+    expect(calls.find((c) => c.path === "/api/heartbeat/onboard")?.body).toEqual({ clis: ["claude"], pasted: "Prefers short answers" });
+    expect(await within(card).findByText(/Reading Claude Code memory and chats/)).toBeInTheDocument();
+  });
+
+  it("a memory read can be read daily and told what to look for", async () => {
+    const calls = api({
+      "GET /api/heartbeat/status": status({ own_cadences: [5, 15, 30, 60, 240, 1440], connectors: [memory("claude", "Claude Code")] }),
+      "PUT /api/heartbeat/connectors/memory%3Aclaude": memory("claude", "Claude Code"),
+    });
+    renderAt(<HeartbeatSettings />);
+    const often = await screen.findByLabelText("How often Claude Code memory and chats is read");
+    expect(within(often).getByRole("option", { name: "daily" })).toBeInTheDocument();
+    const look = screen.getByLabelText("What Claude Code memory and chats looks for");
+    await userEvent.type(look, "Deadlines");
+    await userEvent.tab();
+    await waitFor(() => expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ ask: "Deadlines" }));
   });
 });
