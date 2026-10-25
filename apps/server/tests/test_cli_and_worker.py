@@ -3,6 +3,7 @@ workspace."""
 
 import io
 import json
+import logging
 import threading
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -45,6 +46,25 @@ def test_serve_shows_the_sign_in_link_in_a_terminal_and_keeps_it_out_of_logs():
     assert shown == "Sign in: https://contxt.example/auth/login?token=wst_secret"
     logged = cli.sign_in_line("https://contxt.example", "wst_secret", terminal=False)
     assert "wst_secret" not in logged and "contxt token" in logged
+
+
+def test_the_access_log_never_holds_a_sign_in_token():
+    """Opening the sign-in link is a GET with the token in its address: the request line in
+    the server's access log keeps the path and hides the token."""
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("203.0.113.9:5000", "GET", "/auth/login?token=wst_secret&next=%2F", "1.1", 303),
+        None,
+    )
+    assert cli.HideTokens().filter(record)
+    line = record.getMessage()
+    assert "wst_secret" not in line and "/auth/login?token=" in line and "next=%2F" in line
+    handlers = cli.serve_log_config()["handlers"]
+    assert "hide_tokens" in handlers["access"]["filters"]
 
 
 def test_add_model_prints_the_token_once_with_its_setup(env, capsys):
