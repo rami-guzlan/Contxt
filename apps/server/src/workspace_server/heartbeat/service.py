@@ -368,6 +368,27 @@ class Heartbeat:
             refused,
         )
 
+    def scout_changed(self, who: Principal) -> None:
+        """Scout's folders changed: its heartbeat row says what it reads now (the rest of the
+        connectors wait for the next Find connectors)."""
+        folders = Scout(self.ws).overview(who).get("folders") or []
+        with self.ws.rt.write() as tx:
+            row = tx.get(schema.heartbeat_connectors, "scout")
+            if row is None or row["workspace_id"] != tx.workspace_id:
+                return
+            tx.update(
+                schema.heartbeat_connectors,
+                row,
+                {
+                    "status_line": (
+                        f"Reads the {len(folders)} Scout folder(s) by content."
+                        if folders
+                        else "Choose a folder for Scout first."
+                    ),
+                    "status": "ok" if folders and row["enabled"] else "off",
+                },
+            )
+
     def rescan(self, who: Principal) -> dict[str, Any]:
         """Find connectors in my CLIs: read each CLI's settings again and list each server's
         tools. New connectors that only read start on; the owner's on/off choices stay."""

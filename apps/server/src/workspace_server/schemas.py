@@ -279,6 +279,8 @@ class DistillRequestIn(Body):
     assignee_id: str | None = None
     guidance: str = Field(default="", max_length=2000)
     wait: bool = True  # with no model to take it yet, keep it for the first one that connects
+    # Start it now, on this computer, with the AI the heartbeat and knowledge agent use.
+    start: bool = False
 
 
 class RememberIn(Body):

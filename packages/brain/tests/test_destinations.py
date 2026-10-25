@@ -80,6 +80,13 @@ class DestinationTest(unittest.TestCase):
             capture_origin="connector", reason="Slack: confirmed in #webinars")
         self.assertEqual(progress.data["status"], "applied", progress.text)
 
+    def test_a_value_that_went_in_on_its_own_shows_in_what_changed_with_its_title(self):
+        from brainkit import recap
+        governance.migrate(self.brain, fresh=True)
+        self.connector_value()
+        rows = recap.since(self.brain, "").data["went_in"]
+        self.assertTrue(any(r["title"] == "Dana Ruiz is confirmed" for r in rows), rows)
+
     def test_in_auto_a_sheet_the_owner_governs_and_a_customer_facing_task_wait(self):
         governance.migrate(self.brain, fresh=True)
         governance.set_policies(self.brain, {"self_governed": ["sheet:guests"]})

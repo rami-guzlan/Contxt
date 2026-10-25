@@ -159,3 +159,16 @@ select {
     padding-right: 16px !important;
   }
 }
+
+/* Markdown an AI wrote (an Ask answer): plain spacing, the page's own type. */
+.gn-md > * { margin: 0 0 10px; }
+.gn-md > *:last-child { margin-bottom: 0; }
+.gn-md ul, .gn-md ol { padding-left: 1.3em; }
+.gn-md li { margin: 2px 0; }
+.gn-md h1, .gn-md h2, .gn-md h3, .gn-md h4 { font: 500 17px/1.35 Geist; margin-top: 14px; }
+.gn-md code { font: 400 0.85em "Geist Mono"; background: var(--soft); padding: 1px 5px; border-radius: 6px; }
+.gn-md pre { background: var(--soft); padding: 10px 12px; border-radius: 12px; overflow: auto; }
+.gn-md blockquote { border-left: 3px solid var(--line2); padding-left: 12px; color: var(--ink2); }
+.gn-md table { border-collapse: collapse; font: 400 14px Geist; }
+.gn-md th, .gn-md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+.gn-md a { color: var(--ink); }

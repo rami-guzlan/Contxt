@@ -1181,3 +1181,30 @@ def test_a_suggested_fix_is_checked_then_kept_only_with_the_owners_yes(owner, hb
     assert kept["fix"] is None and len(hosted.put) == before + 1  # back into n8n, active
     assert any(n["name"] == "Newest first" for n in hosted.put[-1][0]["nodes"])
     assert owner.put(f"/api/heartbeat/n8n/{N8N_ID}/fix", json={"keep": True}).status_code == 409
+
+
+def test_in_auto_a_connector_note_goes_in_with_undo(owner, runtime, fake_cli):
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    found(owner)
+    fake_cli.writes = lambda item: [
+        {
+            "kind": "note",
+            "area": "facts",
+            "topic": "website",
+            "text": item["text"],
+            "reason": "Morgan approved it by email.",
+        }
+    ]
+    done = beat(owner)
+    assert done["changes"] == 1 and done["waits"] == 0, done["details"]
+    (line,) = rows(runtime, schema.heartbeat_lines)
+    assert line["status"] == "applied" and line["checkpoint_id"]
+
+
+def test_choosing_a_scout_folder_updates_its_row_at_once(owner, tmp_path):
+    owner.ok(owner.post("/api/heartbeat/connectors/rescan"))
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert rows["scout"]["status_line"] == "Choose a folder for Scout first."
+    owner.ok(owner.put("/api/scout", json={"folders": [{"path": str(tmp_path)}]}))
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert rows["scout"]["status_line"] == "Reads the 1 Scout folder(s) by content."

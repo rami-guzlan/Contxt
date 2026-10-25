@@ -1,8 +1,10 @@
 """BrainPort, implemented with the `brainkit` engine (packages/brain).
 
-The workspace reads the Brain as its owner and proposes into it with `force_pending`, so every
-proposal made from the workspace, by a model or by a person, waits for an explicit approval:
-no proposal changes long-term context on its own (V1 acceptance).
+The workspace reads the Brain as its owner and proposes into it with `force_pending`, so a
+proposal made from the workspace waits for an explicit approval, unless it says who brought it
+(`capture_origin`: the owner's AI at work in the app, a swept folder, a heartbeat read): the
+Brain's governance then decides, and in Auto it goes in with an undo point unless it must wait
+(Release 1 ships auto-governed).
 """
 
 from __future__ import annotations
@@ -1585,7 +1587,7 @@ class BrainKitAdapter:
                 reason=reason
                 or f"{kind} proposed from the workspace"
                 + (f", a change to {revises}" if revises else ""),
-                force_pending=True,
+                force_pending=not capture_origin,
                 supersedes=", ".join(replaces or []) or None,
                 conflicts=", ".join(contradicts or []) or None,
                 area=area or None,

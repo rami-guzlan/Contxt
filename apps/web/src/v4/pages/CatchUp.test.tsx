@@ -302,3 +302,14 @@ describe("Catch up, auto-governed", () => {
     await waitFor(() => expect(calls.some((c) => c.path === "/api/brain/checkpoints/cp_1/undo")).toBe(true));
   });
 });
+
+describe("Who proposed it", () => {
+  it("reads in words, never as a raw id", async () => {
+    const { fromOf } = await import("./CatchUp");
+    const p = (proposer: string) => ({ proposer }) as unknown as Parameters<typeof fromOf>[0];
+    expect(fromOf(p("workspace:act_01m5r7vd7a4x"))).toBe("Your AI, in the app");
+    expect(fromOf(p("act_01m5r7vd7a4x"))).toBe("Your AI, in the app");
+    expect(fromOf(p("person:morgan-lee"))).toBe("morgan lee");
+    expect(fromOf(p(""))).toBe("An AI");
+  });
+});

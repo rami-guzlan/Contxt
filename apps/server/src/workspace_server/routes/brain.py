@@ -3,14 +3,15 @@ waits, and ask a model to find what to remember."""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from typing import Annotated, Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile
 
 from workspace_core.domain.records import Task
-from workspace_core.errors import NotFound, ValidationFailed
+from workspace_core.errors import NotFound, ValidationFailed, WorkspaceError
 from workspace_core.services.brain import MAX_FILE
 
 from ..deps import WS, Who
@@ -41,6 +42,7 @@ from ..schemas import (
     VerifyIn,
 )
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/brain")
 MAX_MOVE_IN_FILES = 8  # at a time, as many as Moving in reads
 MAX_MOVE_IN_UPLOAD = 100 * 1024 * 1024  # one file or zip
@@ -573,9 +575,19 @@ def distill_requests(
 
 
 @router.post("/distill/requests", status_code=201)
-def request_distillation(body: DistillRequestIn, who: Who, ws: WS) -> Task:
-    """Ask a model to find what will last in these notes, as proposals for the Brain."""
-    return ws.distill.request(who, **body.model_dump())
+def request_distillation(body: DistillRequestIn, request: Request, who: Who, ws: WS) -> Task:
+    """Ask a model to find what will last in these notes, as proposals for the Brain. With
+    `start`, it starts now with the owner's governing AI on this computer; if that AI can't
+    start (not installed or signed out), the request waits for one, as without `start`."""
+    task = ws.distill.request(who, **body.model_dump(exclude={"start"}))
+    if body.start:
+        runtime = request.app.state.runtime
+        runner = runtime.heartbeat.cli() if runtime.heartbeat is not None else "claude"
+        try:
+            runtime.runners.start(who, runner, task.id)
+        except WorkspaceError as exc:
+            log.info("the distill waits for an AI: %s", exc)
+    return task
 
 
 @router.get("/distill/settings")

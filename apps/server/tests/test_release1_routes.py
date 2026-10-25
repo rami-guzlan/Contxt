@@ -224,3 +224,40 @@ def test_the_owner_sets_the_pull_budget_through_the_policy(owner):
         owner.put("/api/brain/policies", json={"pull_items": 3, "pull_tokens": 3000})
     )
     assert (changed["policy"]["pull_items"], changed["policy"]["pull_tokens"]) == (3, 3000)
+
+
+def test_in_auto_what_your_ai_finds_through_the_app_goes_in_and_governed_it_waits(owner, model):
+    def propose(statement):
+        reply = model.tool(
+            "propose_brain_entry",
+            title="Invoices",
+            statement=statement,
+            kind="fact",
+            evidence="said in the weekly sync",
+            topic="facts/billing",
+        )
+        assert not reply["isError"], reply
+        return reply["structuredContent"]["proposal"]["status"]
+
+    assert propose("Invoices go out on the first working day of the month.") == "pending"
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "auto"}))
+    assert propose("Late invoices get a reminder after ten days.") == "applied"
+
+
+def test_find_what_to_remember_starts_the_distill_with_your_ai(owner, runtime, monkeypatch):
+    started = []
+    monkeypatch.setattr(
+        runtime.runners, "start", lambda who, runner, task_id: started.append((runner, task_id))
+    )
+    note = owner.ok(
+        owner.post("/api/notes", json={"title": "Sync", "body": "We moved launch."}), 201
+    )
+    waits = owner.ok(
+        owner.post("/api/brain/distill/requests", json={"item_ids": [note["id"]]}), 201
+    )
+    assert started == []
+    now = owner.ok(
+        owner.post("/api/brain/distill/requests", json={"item_ids": [note["id"]], "start": True}),
+        201,
+    )
+    assert started == [("claude", now["id"])] and waits["id"] != now["id"]

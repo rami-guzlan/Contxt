@@ -89,9 +89,11 @@ def since(brain, moment: str):
         if action == "auto-applied":
             source = record_source(record, note)
             came[source] += 1
+            target = record.get("target") if isinstance(record.get("target"), dict) else {}
             title = (index.file_title(str(record.get("path"))) if kind == "file.add"
                      and record.get("path") in index.cards else None) or (
-                note.title if note is not None else note_id)
+                note.title if note is not None else note_id) or str(
+                target.get("title") or record.get("outcome") or kind)  # a value, progress, task
             went_in.append({"at": record.get("at"), "kind": kind, "id": note_id,
                             "title": title, "source": source,
                             "capture": str(record.get("capture") or ""),

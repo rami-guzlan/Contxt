@@ -53,6 +53,11 @@ class BrainMapTest(unittest.TestCase):
         self.assertIn("Brain map changed: + project Office move to Pine Avenue", again.text)
         self.assertNotIn("## Brain map · partial", again.text)
 
+    def test_a_preview_shows_the_map_as_the_first_packet_carries_it(self):
+        shown = self.brain.preview("When do invoices go out?")
+        self.assertTrue(shown.text.startswith("## Brain map · partial"), shown.text[:80])
+        self.assertIn("Harbor Street bakery website", shown.text)
+
     def test_a_brief_without_the_startup_context_has_no_map(self):
         found = self.ask("When do invoices go out?", include_kernel=False, record=False)
         self.assertNotIn("Brain map", found.text)
