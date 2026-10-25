@@ -233,6 +233,8 @@ def test_two_brain_processes_share_one_conversation(home, apps):
 
 
 def test_an_approval_in_the_app_reaches_a_running_brain_process(home, apps, owner, model):
+    # Governed, so the AI's proposal waits for the owner's yes (in Auto it would go in at once).
+    owner.ok(owner.put("/api/brain/policies", json={"mode": "governed"}))
     brain = apps[0]
     brain.init()
     note = owner.ok(
