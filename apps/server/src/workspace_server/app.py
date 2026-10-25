@@ -38,6 +38,7 @@ from .routes import (
     agents,
     backups,
     brain,
+    brain_mcp,
     bus,
     captures,
     compose,
@@ -229,6 +230,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         return error_response(exc)
 
     routers = (
+        brain_mcp,
         system,
         notes,
         captures,
