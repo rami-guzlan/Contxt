@@ -514,6 +514,11 @@ class BrainPort(Protocol):
         """The whole Brain map, paged, or one tier whole (brainkit brainmap.py)."""
         ...
 
+    def relevance(self, goal: str, texts: list[str]) -> list[float | None] | None:
+        """Each text's meaning score against a goal, by the Brain's local meaning model (no
+        call out); None when no meaning model is here."""
+        ...
+
     def map_view(self) -> dict[str, Any]:
         """The map card: every tier, the short map as sent, what it cut, sealed projects."""
         ...
@@ -1111,6 +1116,9 @@ class NoBrain:
         self, *, area: str | None = None, page: int = 1, tier: str | None = None
     ) -> dict[str, Any]:
         return {"lines": [], "page": 1, "pages": 1, "levels": {}}
+
+    def relevance(self, goal: str, texts: list[str]) -> list[float | None] | None:
+        return None
 
     def map_view(self) -> dict[str, Any]:
         return {

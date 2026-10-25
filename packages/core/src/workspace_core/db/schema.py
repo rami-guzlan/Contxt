@@ -570,6 +570,33 @@ heartbeat_connectors = sa.Table(
 
 # What n8n workflows posted, waiting for the next beat: it reads them like any read (a beat
 # that takes them marks them with its id; a beat that stopped leaves them for the next).
+# Heartbeat learning's staging buffer: every change a beat read, with its old and new value,
+# its relevance to the owner's goal and what the filters said; append-only during the day,
+# then marked with what the distill made of it; removed after the retention (30 days).
+staged_changes = sa.Table(
+    "staged_changes",
+    metadata,
+    _id(),
+    sa.Column("workspace_id", ID, sa.ForeignKey("workspaces.id"), nullable=False),
+    sa.Column("connector_id", sa.String(240), nullable=False, index=True),
+    sa.Column("item_id", sa.String(400), nullable=False),
+    sa.Column("field", sa.String(120), nullable=False, server_default="text"),
+    sa.Column("title", sa.Text, nullable=False, server_default=""),
+    sa.Column("url", sa.Text, nullable=False, server_default=""),
+    sa.Column("old_value", sa.Text),
+    sa.Column("new_value", sa.Text),
+    sa.Column("changed_at", TS),
+    sa.Column("seen_at", TS, nullable=False, index=True),
+    sa.Column("beat_id", ID, nullable=False),
+    sa.Column("score", sa.Float),  # relevance to the goal; none without a goal
+    sa.Column("filter", sa.Text, nullable=False, server_default=""),  # the filter's reason
+    sa.Column("unclear", sa.Boolean, nullable=False, server_default=sa.false()),
+    # staged | dropped | forgotten | distilled
+    sa.Column("status", sa.String(16), nullable=False, index=True),
+    sa.Column("outcome", sa.JSON),  # what the distill made of it: route, reason, proposal
+    sa.Column("proposal_id", sa.String(200)),
+)
+
 heartbeat_inbox = sa.Table(
     "heartbeat_inbox",
     metadata,

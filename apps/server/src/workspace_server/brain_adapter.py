@@ -1232,6 +1232,22 @@ class BrainKitAdapter:
             raise NotFound(found.text, id=rule_id)
         return dict(found.data)
 
+    def relevance(self, goal: str, texts: list[str]) -> list[float | None] | None:
+        """Meaning scores against a goal by the local meaning model, when it is here."""
+        embedder = self.brain.embedder
+        if embedder is None or not embedder.present() or not goal or not texts:
+            return None
+        from brainkit.index import cosine
+
+        try:
+            wanted = embedder.embed_query(goal)
+            vectors = embedder.embed(texts)
+        except Exception:  # noqa: BLE001 - scoring is a hint; capture goes on without it
+            return None
+        if wanted is None or vectors is None:
+            return None
+        return [round(float(cosine(wanted, v)), 4) for v in vectors]
+
     def brain_map(
         self, *, area: str | None = None, page: int = 1, tier: str | None = None
     ) -> dict[str, Any]:
