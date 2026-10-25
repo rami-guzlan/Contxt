@@ -134,6 +134,9 @@ class Policy:
     # a must-hold's domain passage puts it in play. 0.57 is raw cosine 0.58 on bge-small:
     # half the tuning requests clear it, no decoy and 3% of other must-holds' requests do.
     must_hold_semantic_bar: float = 0.57
+    # ...and within this share of the request's best note match: a domain passage clearly
+    # less like the request than its best note is another part of the same Brain's work.
+    must_hold_relative: float = 0.90
     # CALIBRATED BARS (calibration.py): the share of the Brain's unrelated requests a match
     # must beat. They stand in for lean_floor, note_abs_floor and topic_note_floor, each
     # unless routing.json `policy` sets it by hand. Set on the
@@ -148,7 +151,10 @@ class Policy:
     # related_count. On the generated tuning Brains (October 16, 2026): needed notes sit at
     # rank 1 for 45% of needs, in the top 3 for 74% and the top 8 for 89%, so whole notes
     # within 0.90 of the best (69% precision) and pointers to rank 8 reach what is needed.
-    whole_relative: float = 0.90
+    # Since October 25, 2026 only the best goes whole and the close runners-up are pointers:
+    # on the validation Brains precision rose from 72.8% to 77.3% with reach unchanged
+    # (docs/evals/retrieval-quality-2026-10-25.md).
+    whole_relative: float = 1.0
     # Without an embedding model the evidence is words only, which cannot tell a short real
     # request that hits one rare word from an unrelated one that does the same: on a small
     # Brain most unrelated requests match no word at all, so any one shared word clears a
@@ -1475,6 +1481,12 @@ class Router:
         close: dict | None = None      # the request's best topic matches, when needed
         sims: dict | None = None       # its similarity to every domain passage, when needed
 
+        def best_note() -> float:
+            """The request's best match among its notes, by meaning."""
+            found = [self._semantic(sims or {}, f"note:{n.id}") for n in
+                     self.admitted_notes(route.chain, route.partitions) if not n.must_hold]
+            return max((v for v in found if v is not None), default=0.0)
+
         def why_for(note) -> str | None:
             nonlocal close, sims
             targets = note.applies_to
@@ -1495,7 +1507,8 @@ class Router:
             # work beats 99% of them too (must-hold decoys rose from 13% to 39% on a tuning
             # Brain). Stage 3's applies_when and generated triggers take this on.
             meaning = self._semantic(sims, f"domain:{note.id}")
-            if meaning is not None and meaning >= p.must_hold_semantic_bar:
+            if meaning is not None and meaning >= p.must_hold_semantic_bar and (
+                    not p.must_hold_relative or meaning >= p.must_hold_relative * best_note()):
                 return f"this request is about its domain (meaning {meaning:.2f})"
             if close is None:
                 close = self._close_topics(sig.request)
