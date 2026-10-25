@@ -24,7 +24,8 @@ steps, with its state.
 1. Install it: `npm install -g @anthropic-ai/claude-code` (or Anthropic's native installer).
 2. Sign in: click **Sign in to Claude Code**. The app opens a terminal running
    `claude auth login`; finish in the browser, then click **Check again**. Without a desktop
-   (a server, a container), run `claude auth login` yourself. The app never sees or keeps the
+   (a server, a container), run `claude auth login` yourself; in Docker,
+   `docker compose exec -it app claude auth login`. The app never sees or keeps the
    login: it only asks the CLI `claude auth status`.
 3. Run: requests now show **Run now with Claude Code**.
 
