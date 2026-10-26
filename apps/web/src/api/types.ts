@@ -2384,6 +2384,18 @@ export interface WorkflowStep {
   goal?: string | null;
   done_when?: string;
   next_step?: string;
+  /** An AI step's CLI and model (section 11): Claude Code with tools; Codex and Gemini answer once. */
+  runner?: "claude" | "codex" | "gemini";
+  model?: string | null;
+  /** Wait for the owner's yes before this step; always on for a connector step that writes. */
+  gate?: boolean;
+  budget?: WorkflowBudget;
+}
+
+/** At most this many tokens (in and out together) and this much cost, in US dollars. */
+export interface WorkflowBudget {
+  tokens?: number;
+  cost?: number;
 }
 
 /** When a workflow runs by itself, in the workspace's time zone. */
@@ -2434,6 +2446,8 @@ export interface Workflow {
   archived_at: string | null;
   last_run: WorkflowRunSummary | null;
   running: boolean;
+  /** For a whole run. */
+  budget?: WorkflowBudget;
 }
 
 export interface WorkflowStepResult {
@@ -2460,6 +2474,13 @@ export interface WorkflowRunStep {
   ask?: string;
   /** For a step under way: where its task is (draft and ready: waiting for a model). */
   task_status?: string;
+  runner?: string;
+  model?: string | null;
+  /** What its run used, from its CLI's report. */
+  used?: { tokens: number; cost: number | null; model?: string | null };
+  tries?: number;
+  gate?: boolean;
+  approved?: boolean;
 }
 
 export interface WorkflowRun {
@@ -2478,7 +2499,7 @@ export interface WorkflowRun {
   note: string;
   version: number;
   /** A check waiting for the owner: what to look at, and what the step before made. */
-  waiting: { step: number; ask: string; result: WorkflowStepResult | null } | null;
+  waiting: { step: number; ask: string; result: WorkflowStepResult | null; gate?: boolean } | null;
 }
 
 export interface WorkflowTemplate {
