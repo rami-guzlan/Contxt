@@ -74,6 +74,15 @@ def error(message, **data) -> Result:
     return Result(message, dict(data, status="error"), is_error=True)
 
 
+
+def _after_operating(startup: str, map_text: str) -> str:
+    """The startup context with the Brain map placed after its operating section."""
+    at = startup.find(kernel_mod.OPERATING)
+    if at < 0:
+        return startup.rstrip() + "\n\n" + map_text
+    end = at + len(kernel_mod.OPERATING)
+    return startup[:end].rstrip() + "\n\n" + map_text.strip() + "\n\n" + startup[end:]
+
 @dataclass
 class State:
     fingerprint: str
@@ -430,7 +439,9 @@ class Brain:
         if include_kernel is not None:
             kernel_held = person_held = not include_kernel
         parts = []
+        startup_at = None  # where the startup context sits in `parts`, for the map
         if not kernel_held and tools:
+            startup_at = len(parts)
             parts.append("# Startup context (kernel " + kernel_fp + ")\n\n" + kernel.text)
         elif not kernel_held:
             parts.append("# Startup context\n\n" + kernel_mod.compile(
@@ -458,7 +469,10 @@ class Brain:
                 else:
                     shown = brainmap.render(map_found, str(request))
                     map_text, map_state, map_cut = shown["text"], "full", shown["cut"]
-            if map_text:
+            if map_text and startup_at is not None:
+                # Inside the startup context, right after how to work with the Brain.
+                parts[startup_at] = _after_operating(parts[startup_at], map_text)
+            elif map_text:
                 parts.append(map_text)
         extra = "" if "sheets" in left_out else self._state_sections(
             st, str(request), working, partitions, since=(previous or {}).get("at") or "",

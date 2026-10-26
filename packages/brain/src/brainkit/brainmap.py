@@ -33,6 +33,7 @@ from . import util
 from .scopes import Scopes
 
 MAP_TOKENS = 250
+HEADING = "## Brain map"  # how the map's own section starts
 NAME_MAX = 60
 TIERS = {"areas": 8, "projects": 6, "sheets": 6, "must_holds": 5, "lore": 3}
 LABELS = {"areas": "Top areas", "projects": "Active projects", "sheets": "Sheets",
