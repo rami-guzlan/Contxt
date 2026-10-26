@@ -385,6 +385,13 @@ AGENT_TOOLS = [
                                                        "undos, quoting the user."},
          "idempotency_key": _STR, "session_id": _STR},
          "required": ["title", "story", "pattern", "words"]}},
+    {"name": "activity_timeline",
+     "description": "What was kept, changed, superseded or disputed in a window, newest "
+                    "first, each with when it was recorded and from when it was true. For "
+                    "\"what changed since...\" and \"what was it on Oct 1\".",
+     "inputSchema": {"type": "object", "properties": {
+         "since": _STR, "until": _STR, "project": _STR, "area": _STR,
+         "limit": {"type": "integer"}, "page": {"type": "integer"}}}},
     {"name": "activity_sessions_search",
      "description": "Find past conversations by what they asked and were given: each with "
                     "its session id, date, app and what it was given. Use it when the user "
@@ -563,6 +570,10 @@ HANDLERS = {
         title=a.get("title"), story=a.get("story"), pattern=a.get("pattern"),
         words=a.get("words") or [], evidence=a.get("evidence") or "",
         session_id=a.get("session_id"), op_id=a.get("idempotency_key")),
+    "activity_timeline": lambda b, a: b.timeline(
+        since=a.get("since") or None, until=a.get("until") or None,
+        project=a.get("project") or None, area=a.get("area") or None,
+        limit=a.get("limit") or 50, page=a.get("page") or 1),
     "activity_sessions_search": lambda b, a: b.sessions_search(a.get("query"),
                                                                limit=a.get("limit") or 10),
     "sheets_get": lambda b, a: b.get_state(sheet=a.get("sheet") or "", row=a.get("row") or "",
