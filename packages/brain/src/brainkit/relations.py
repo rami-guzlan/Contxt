@@ -25,7 +25,7 @@ from . import sheetstore
 from .scopes import Scopes
 
 EXPLICIT = ("explains", "depends on", "example of", "instead of")
-DERIVED = ("supersedes", "belongs to", "pinned in", "cites", "mentions")
+DERIVED = ("supersedes", "belongs to", "pinned in", "cites", "mentions", "conflicts with")
 TYPES = DERIVED + EXPLICIT
 MAX_DEPTH = 2
 SCHEMA = """
@@ -64,9 +64,15 @@ def _project(index, name: str):
                  if wanted in {str(x).lower() for x in [f.title, f.slug, *f.aliases]}), None)
 
 
-def derive(index) -> list[tuple[str, str, str, str]]:
-    """Every edge the index implies: (from, type, to, what it came from)."""
+def derive(index, proposals=()) -> list[tuple[str, str, str, str]]:
+    """Every edge the index implies, and the disputes waiting in Catch up (`proposals` that
+    revise an entry and name what they contradict): (from, type, to, what it came from)."""
     edges: list[tuple[str, str, str, str]] = []
+    for proposal in proposals:
+        target = str((proposal.target or {}).get("id") or "")
+        for other in re.split(r"[,\s]+", str(proposal.meta.get("conflicts") or "")):
+            if target in index.notes and other in index.notes and other != target:
+                edges.append((target, "conflicts with", other, "a dispute waiting in Catch up"))
     notes = dict(index.notes)
     known = set(notes) | set(index.archived)
     projects = list(index.focuses.values())
@@ -105,7 +111,7 @@ def ensure(brain, st) -> None:
     """The relations table, rebuilt when the vault changed since it was built."""
     if sheetstore.meta(brain, "relations_fingerprint") == st.fingerprint:
         return
-    edges = derive(st.index)
+    edges = derive(st.index, st.snapshot.proposals.values())
     with sheetstore._db(brain) as conn:
         conn.executescript(SCHEMA)
         conn.execute("DELETE FROM relations")
@@ -191,10 +197,10 @@ def for_packet(index, note_id: str, shown: set[str]) -> list[str]:
     return out[:PACKET_EDGES]
 
 
-def counts(index, visible) -> dict[str, int]:
+def counts(index, visible, proposals=()) -> dict[str, int]:
     """How many edges of each type join entries the caller may see."""
     tally: dict[str, int] = {}
-    for src, kind, dst, _source in derive(index):
+    for src, kind, dst, _source in derive(index, proposals):
         if visible(src) and visible(dst):
             tally[kind] = tally.get(kind, 0) + 1
     return tally
