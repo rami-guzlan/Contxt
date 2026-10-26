@@ -1312,6 +1312,10 @@ class BrainKitAdapter:
     def bench_files(self) -> dict[str, str]:
         return dict(self.brain.bench_files())
 
+    def commit_sheets(self, message: str) -> dict[str, Any]:
+        with self._lock:
+            return dict(self.brain.commit_sheets(message))
+
     def bench_write(self, rel: str, text: str | None, *, message: str) -> dict[str, Any]:
         try:
             with self._lock:

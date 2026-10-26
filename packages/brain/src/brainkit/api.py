@@ -2156,6 +2156,20 @@ class Brain:
         from . import movein
         return movein.analyze(self, sources, name=name, principal=principal)
 
+    # ------------------------------------------------------------------ sheets
+    def _sheets_wait(self, rel) -> bool:
+        from . import sheetstore
+        vault = os.path.relpath(self.vault.root, self.repo_root).replace("\\", "/")
+        prefix = "" if vault in (".", "") else vault + "/"
+        return rel.startswith(prefix) and sheetstore.deferred(rel[len(prefix):])
+
+    def commit_sheets(self, message="Sheets") -> dict:
+        """Commit the sheets' database and snapshots: after a heartbeat beat, before a
+        version, and by itself with the first write of a day (sheetstore.py)."""
+        from . import sheetstore
+        with self.writing():
+            return sheetstore.commit(self, str(message))
+
     # ------------------------------------------------------------------ the Test Bench
     def bench_files(self) -> dict:
         """The Test Bench's tests and suites as text, by path (testbench.py)."""
@@ -2197,7 +2211,9 @@ class Brain:
         commit = None
         if (self.state().config.data.get("git") or {}).get("auto_commit", True):
             # What an earlier failed commit left unsaved goes with this one: a retry.
-            earlier = gitops.uncommitted(self.repo_root, self.governed_folders())
+            # The sheets wait for their own commit, once per beat or day (sheetstore.py).
+            earlier = [p for p in gitops.uncommitted(self.repo_root, self.governed_folders())
+                       if not self._sheets_wait(p)]
             commit = gitops.commit(self.repo_root, list(paths) + [
                 os.path.join(self.repo_root, name) for name in kernel_outcome.get("written", [])]
                 + [os.path.join(self.repo_root, p) for p in earlier], message)

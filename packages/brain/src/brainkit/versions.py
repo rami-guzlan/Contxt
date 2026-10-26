@@ -111,15 +111,8 @@ def label(brain) -> str:
 
 
 def _sheet_events(brain) -> int:
-    from . import state
-    folder = brain.vault.path(state.FOLDER)
-    total = 0
-    for root, _dirs, files in os.walk(folder):
-        for name in files:
-            if name.endswith(".jsonl"):
-                with open(os.path.join(root, name), encoding="utf-8") as handle:
-                    total += sum(1 for line in handle if line.strip())
-    return total
+    from . import sheetstore
+    return sheetstore.last_seq(brain)
 
 
 def tag(brain, *, cause="manual", note="", by=None):
@@ -132,6 +125,8 @@ def tag(brain, *, cause="manual", note="", by=None):
     if cause not in CAUSES:
         return _result(f"A version's cause is one of {', '.join(CAUSES)}.",
                        {"status": "invalid"}, True)
+    from . import sheetstore
+    sheetstore.commit(brain, f"Sheets before a version ({cause})")
     pending = gitops.uncommitted(brain.repo_root, brain.governed_folders())
     if pending:
         gitops.commit(brain.repo_root, [os.path.join(brain.repo_root, p) for p in pending],
@@ -146,7 +141,8 @@ def tag(brain, *, cause="manual", note="", by=None):
     number = (last["number"] + 1) if last else 1
     meta = {"cause": cause, "at": util.now_iso(), "by": brain.principal(by),
             "added": len(changes["added"]), "changed": len(changes["changed"]),
-            "removed": len(changes["removed"]), "sheet_events": _sheet_events(brain)}
+            "removed": len(changes["removed"]), "sheet_events": _sheet_events(brain),
+            "sheet_seq": _sheet_events(brain)}
     if note:
         meta["note"] = " ".join(str(note).split())[:200]
     proc = _git(brain, *gitops._identity(brain.repo_root), "tag", "-a", f"{PREFIX}{number}",
@@ -199,11 +195,13 @@ def diff(brain, a, b) -> dict:
     found: dict = {"from": a, "to": b, "added": [], "changed": [], "removed": [], "cells": []}
     from . import state
     sheets = f"{rel}{state.FOLDER}/"
+    seq_a, seq_b = _seq(brain, a), _seq(brain, b)
     for line in (out or "").splitlines():
         status, _, path = line.partition("\t")
         inner = path[len(rel):] if path.startswith(rel) else path
         if path.startswith(sheets) and path.endswith(".jsonl"):
-            found["cells"] += _cells(brain, ref_a, ref_b, path, sheets)
+            if seq_a is None:  # cells from before the sheets moved to SQLite
+                found["cells"] += _cells(brain, ref_a, ref_b, path, sheets)
             continue
         if not path.endswith(".md") or inner.startswith(SKIP):
             continue
@@ -215,7 +213,24 @@ def diff(brain, a, b) -> dict:
                "old": old.get("body", ""), "new": new.get("body", "")}
         key = {"A": "added", "D": "removed"}.get(status[:1], "changed")
         found[key].append(row)
+    if seq_b is not None:
+        from . import sheetstore
+        start = seq_a if seq_a is not None else int(sheetstore.meta(brain, "imported_seq") or 0)
+        found["cells"] += sheetstore.cells_between(brain, start, seq_b)
     return found
+
+
+def _seq(brain, name) -> int | None:
+    """How far the sheets' events had come at version `name` (HEAD: now); None for a
+    version made before the sheets moved to SQLite."""
+    from . import sheetstore
+    if str(name).upper() == "HEAD":
+        return sheetstore.last_seq(brain)
+    for version in list_versions(brain):
+        if version["name"] == name:
+            seq = version.get("sheet_seq")
+            return int(seq) if seq is not None else None
+    return None
 
 
 def _cells(brain, ref_a, ref_b, path, sheets) -> list[dict]:
