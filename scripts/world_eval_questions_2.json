@@ -1,0 +1,25 @@
+{
+  "about": "World view evaluation, second set (v4 backend plan, 13.7), for the startup's timeline line. Labelled on Oct 26, 2026, before any run, and never tuned on; the first set (world_eval_questions.json) was spent on the first run. Asked of the test fixture Brain seeded by scripts/world_eval.py with --set 2 (the first set's seed plus a superseded proposal rule, a launch checklist, guest booking, and five more dated decisions). `expect` is any-of; `expect_all` needs every term.",
+  "questions": [
+    {"id": "s1", "kind": "relation", "q": "What does our proposal-length rule replace?", "expect": ["five pages", "5 pages", "rules-proposal-old"]},
+    {"id": "s2", "kind": "relation", "q": "Which entry is an example of the rule that nothing goes to a client before Alex approves it?", "expect": ["lighthouse", "facts-launch-checklist"]},
+    {"id": "s3", "kind": "relation", "q": "What belongs to the Studio Podcast project about guests?", "expect": ["calendly"]},
+    {"id": "s4", "kind": "relation", "q": "Which notes are part of the Website Redesign project? List them.", "expect": ["lighthouse", "launch-checklist", "launch checklist"]},
+    {"id": "s5", "kind": "relation", "q": "What does the kickoff deposit note depend on?", "expect": ["facts-services-002", "at kickoff and at launch", "six to eight"]},
+    {"id": "s6", "kind": "relation", "q": "The case study rule is an example of which rule? Say the rule in words.", "expect": ["plain language", "short sentences"]},
+    {"id": "s7", "kind": "relation", "q": "How long can a proposal be now?", "expect": ["two pages", "2 pages"]},
+    {"id": "s8", "kind": "relation", "q": "What is related to the rule about proposal length?", "expect": ["rules-proposal-old", "five pages", "5 pages"]},
+    {"id": "s9", "kind": "time", "q": "What changed in the Brain between October 19 and October 23, 2026?", "expect": ["proposal", "lighthouse", "calendly"]},
+    {"id": "s10", "kind": "time", "q": "How long could a proposal be before October 20, 2026?", "expect": ["five pages", "5 pages"]},
+    {"id": "s11", "kind": "time", "q": "When was the launch checklist note kept?", "expect": ["oct 23", "october 23", "2026-10-23", "10-23", "23 oct"]},
+    {"id": "s12", "kind": "time", "q": "Which entry was disputed after October 20?", "expect": ["calendly", "booking"]},
+    {"id": "s13", "kind": "time", "q": "When did the note on how long web design projects take last change?", "expect": ["oct 21", "october 21", "2026-10-21", "10-21", "21 oct"]},
+    {"id": "s14", "kind": "time", "q": "What was verified in early October 2026?", "expect": ["plain language", "rules-style-001"]},
+    {"id": "s15", "kind": "time", "q": "What was superseded on October 20, 2026?", "expect": ["five pages", "5 pages", "rules-proposal-old"]},
+    {"id": "s16", "kind": "time", "q": "What happened in the Brain on October 12, 2026?", "expect": ["day rate", "1,200", "1200"]},
+    {"id": "s17", "kind": "orientation", "q": "Which of my projects touch launch audits?", "expect": ["website redesign"]},
+    {"id": "s18", "kind": "orientation", "q": "How do podcast guests get booked in my work?", "expect": ["calendly"]},
+    {"id": "s19", "kind": "orientation", "q": "Which project is paused?", "expect": ["studio podcast"]},
+    {"id": "s20", "kind": "orientation", "q": "Summarise what kinds of knowledge this Brain holds.", "expect_all": ["rules", "facts"]}
+  ]
+}

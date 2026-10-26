@@ -83,11 +83,37 @@ JOURNAL = [
 ]
 
 
-def _brain(base: str, code: str) -> tuple[str, str, int]:
+# The second set's seed (--set 2), on top of the first: questions it has not answered yet.
+SEED_2 = [
+    ("rules/style", _note("rules-proposal-old", "rules", "style",
+                          "Proposals run to five pages.", status="archived")),
+    ("rules/style", _note("rules-proposal-length", "rules", "style",
+                          "Proposals fit on two pages.", supersedes="rules-proposal-old",
+                          relates=["instead of: rules-proposal-old"])),
+    ("facts/services", _note("facts-launch-checklist", "facts", "services",
+                             "Before launch we run a Lighthouse audit on every page.",
+                             project="Website Redesign",
+                             relates=["example of: rules-delivery-001"])),
+    ("facts/services", _note("facts-guest-booking", "facts", "services",
+                             "Podcast guests book their slot through Calendly.",
+                             project="Studio Podcast")),
+]
+JOURNAL_2 = [
+    {"at": "2026-10-03T10:00:00Z", "action": "verified", "note": "rules-style-001"},
+    {"at": "2026-10-20T10:00:00Z", "action": "approved", "note": "rules-proposal-length",
+     "superseded": ["rules-proposal-old"]},
+    {"at": "2026-10-21T10:00:00Z", "action": "edited", "note": "facts-services-002"},
+    {"at": "2026-10-22T10:00:00Z", "action": "marked", "note": "facts-guest-booking",
+     "state": "disputed"},
+    {"at": "2026-10-23T10:00:00Z", "action": "approved", "note": "facts-launch-checklist"},
+]
+
+
+def _brain(base: str, code: str, second: bool = False) -> tuple[str, str, int]:
     if os.path.isdir(base):
         shutil.rmtree(base)
     vault = fixture.build(base)
-    for folder, text in SEED:
+    for folder, text in SEED + (SEED_2 if second else []):
         path = os.path.join(vault, "knowledge", *folder.split("/"))
         os.makedirs(path, exist_ok=True)
         name = text.split("id: ", 1)[1].split("\n", 1)[0]
@@ -96,7 +122,7 @@ def _brain(base: str, code: str) -> tuple[str, str, int]:
     journal = os.path.join(vault, "journal", "decisions.jsonl")
     os.makedirs(os.path.dirname(journal), exist_ok=True)
     with open(journal, "a", encoding="utf-8") as handle:
-        for record in JOURNAL:
+        for record in sorted(JOURNAL + (JOURNAL_2 if second else []), key=lambda r: r["at"]):
             handle.write(json.dumps({**record, "by": "person:alex"}) + "\n")
     env = {**os.environ, "PYTHONPATH": code, "BRAIN_EMBEDDINGS": "0",
            "BRAIN_MODEL_SERVICE": "off"}
@@ -129,8 +155,11 @@ def main() -> int:
     parser.add_argument("--model", default="claude-haiku-5-5")
     parser.add_argument("--cap", type=float, default=1.0, help="stop past this many dollars")
     parser.add_argument("--spent", type=float, default=0.0, help="already spent elsewhere")
+    parser.add_argument("--set", type=int, default=1, help="1 or 2 (questions and seed)")
     args = parser.parse_args()
-    with open(QUESTIONS, encoding="utf-8") as handle:
+    questions_path = QUESTIONS if args.set == 1 else QUESTIONS.replace(
+        "world_eval_questions.json", "world_eval_questions_2.json")
+    with open(questions_path, encoding="utf-8") as handle:
         questions = json.load(handle)["questions"]
     env = {k: v for k, v in os.environ.items() if not k.startswith(STRIP)}
     spent, rows = args.spent, []
@@ -139,7 +168,7 @@ def main() -> int:
             print(f"Stopped: ${spent:.3f} spent, past the ${args.cap:.2f} cap.", flush=True)
             break
         folder, config, startup = _brain(os.path.join(args.out, args.label, q["id"]),
-                                         args.code)
+                                         args.code, second=args.set == 2)
         case = oe.Case(q["id"], q["q"], q["kind"], lambda t: "")
         found = oe.run_claude(case, cwd=folder, mcp_config=config, model=args.model, env=env)
         spent += float(found.cost or 0)

@@ -39,3 +39,35 @@ The run cost $0.20 in all, under the $1 cap. As in the operating eval, about 68,
   - t3, t5, t6: decision dates, which live only in the journal.
 
 **What would change it:** one line in the startup context's operating section, pointing at the timeline for "what changed" and "when". For example: `What changed or when: activity(action: "timeline", since)`. That has to be measured on new questions labelled before it is tried, not on these twenty, which are now spent for tuning.
+
+## Second run: with the timeline line in the startup
+
+The owner approved the fix: one line in the startup context's operating section,
+"When, or what changed: `activity(action: "timeline", since)`".
+
+To stay within the section's budget, the pull rule was shortened. It now reads "pull only what the task needs and the packet lacks; never to double-check", dropping "the map lists".
+
+The run used a fresh set of twenty questions, labelled before any run (`scripts/world_eval_questions_2.json`, `--set 2`). They run on the first seed plus four new facts:
+- a superseded proposal rule;
+- a launch checklist;
+- guest booking;
+- five more dated decisions.
+
+| | Correct | Relation | Time | Orientation | First packet | Startup file | Pulls per answer | Cost |
+|---|---|---|---|---|---|---|---|---|
+| With the world view and the line | 16 / 20 | 6 / 8 | 6 / 8 | 4 / 4 | 402 | 420 | 1.85 | $0.108 |
+| Without (before section 13) | 9 / 20 | 4 / 8 | 1 / 8 | 4 / 4 | 381 | 410 | 1.65 | $0.102 |
+
+The run cost $0.21, under the $0.50-a-side cap. Haiku called `activity(action: "timeline")` in 7 of the 20 answers, against 0 in the first run, and `notes(action: "related")` in 3.
+
+**It earns its place now:**
+- Correct answers rise by 7.
+- Time questions go from 1 of 8 to 6 of 8.
+- The packet grows by about 21 tokens, and the startup file by 10.
+
+**Still wrong with the world view:**
+- s1 and s15: what the proposal rule replaced. The archived old rule was not opened.
+- s4: the project's member notes. It named one of the two.
+- s10: the proposal limit before Oct 20. This needs the archived text.
+
+The operating eval (#84) was rerun on the same startup to check that the shorter pull rule costs nothing elsewhere. Haiku again passed 10 of 10, for $0.051. The startup file is 420 tokens and the first packets are 346 to 548, as before. One case changed its calls: ask-before-send also called the timeline. None regressed.
