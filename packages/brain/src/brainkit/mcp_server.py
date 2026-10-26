@@ -93,6 +93,16 @@ AGENT_TOOLS = [
              "True to have a note this conversation already holds sent again, only if it "
              "was lost (after a compaction, pass fresh=true to gnomon_get_context instead)."}},
                      "required": ["id"]}},
+    {"name": "notes_related",
+     "description": "The entries around one entry, by how they relate: supersedes, belongs "
+                    "to, pinned in, cites, mentions, explains, depends on, example of, instead "
+                    "of. In pointer form; open one with notes_get. Sealed entries are left out.",
+     "inputSchema": {"type": "object", "properties": {
+         "id": _STR, "session_id": _STR,
+         "types": {"type": "array", "items": _STR,
+                   "description": "Only these relation types (all when left out)."},
+         "depth": {"type": "integer", "description": "1 (the default) or 2."}},
+                     "required": ["id"]}},
     {"name": "notes_search",
      "description": "Find notes the packet did not bring. Use it when the work needs something "
                     "the packet lacks: describe what you need in your own words, and if nothing "
@@ -562,6 +572,9 @@ HANDLERS = {
                                                 evidence=a.get("evidence") or "",
                                                 session_id=a.get("session_id")),
     "todos_update": _hand_off,
+    "notes_related": lambda b, a: b.related(a.get("id"), types=a.get("types") or None,
+                                            depth=a.get("depth") or 1,
+                                            session_id=a.get("session_id")),
     "notes_search": lambda b, a: b.search(a.get("query"), limit=a.get("limit") or 8,
                                           include_archived=bool(a.get("include_archived")),
                                           session_id=a.get("session_id")),
