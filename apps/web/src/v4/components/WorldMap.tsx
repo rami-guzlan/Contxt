@@ -3,9 +3,9 @@
 // what moved since, the lessons shelf, and the apps at the edge of the world. Selecting a dot
 // opens the entry; selecting a line says why the two are connected.
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { get } from "../../api/client";
+import { get, post } from "../../api/client";
 import { css } from "../css";
 import { Failure, S } from "../ui";
 
@@ -43,6 +43,7 @@ interface World {
   lore: { id: string; title: string; region: string }[];
   apps: { name: string; seen: string; conversations: number }[];
   edge_types: string[];
+  last_visit: string | null;
 }
 
 const RADIUS: Record<string, number> = { canon: 7, confirmed: 6, kept: 5, tentative: 4, exhaust: 3 };
@@ -60,11 +61,23 @@ export function WorldMap() {
   const [days, setDays] = useState(30);
   const [type, setType] = useState("");
   const [picked, setPicked] = useState<{ kind: "entry"; entry: Entry } | { kind: "edge"; edge: Edge } | null>(null);
+  // "Since my last visit": the visit before this one, kept as the page opened; this visit is
+  // recorded once, so the next one counts from now.
+  const [lastSeen, setLastSeen] = useState<string | null | undefined>(undefined);
+  const [sinceVisit, setSinceVisit] = useState(false);
+  const recorded = useRef(false);
+  const from = sinceVisit && lastSeen ? lastSeen : since(days);
   const world = useQuery({
-    queryKey: ["brain", "world", days],
-    queryFn: () => get<World>(`/api/brain/world?since=${since(days)}`),
+    queryKey: ["brain", "world", from],
+    queryFn: () => get<World>(`/api/brain/world?since=${encodeURIComponent(from)}`),
   });
   const w = world.data;
+  useEffect(() => {
+    if (!w || recorded.current) return;
+    recorded.current = true;
+    setLastSeen(w.last_visit);
+    void post("/api/brain/world/visit").catch(() => undefined);
+  }, [w]);
   const layout = useMemo(() => {
     const at: Record<string, { x: number; y: number }> = {};
     const boxes = (w?.regions ?? []).map((r, i) => ({ r, x: (i % COLS) * (W + 16), y: Math.floor(i / COLS) * (H + 16) }));
@@ -106,9 +119,27 @@ export function WorldMap() {
           </label>
           <label style={css("display:flex;gap:6px;align-items:center")}>
             Moved in the last
-            <input aria-label="Days back" type="range" min={1} max={90} value={days} onChange={(e) => setDays(Number(e.target.value))} />
-            {days} days ({moved.size} entries)
+            <input
+              aria-label="Days back"
+              type="range"
+              min={1}
+              max={90}
+              value={days}
+              onChange={(e) => {
+                setSinceVisit(false);
+                setDays(Number(e.target.value));
+              }}
+            />
+            {sinceVisit && lastSeen ? `since your last visit (${lastSeen.slice(0, 10)})` : `${days} days`} ({moved.size} entries)
           </label>
+          <button
+            type="button"
+            onClick={() => setSinceVisit(true)}
+            disabled={!lastSeen || sinceVisit}
+            style={css("border:1px solid var(--line2);border-radius:10px;padding:6px 10px;background:var(--bg);color:var(--ink);font:400 13px Geist;cursor:pointer")}
+          >
+            {lastSeen ? "Since my last visit" : "First visit"}
+          </button>
         </div>
         <div style={css("overflow-x:auto")}>
           <svg role="img" aria-label="The Brain's regions, entries and relationships" viewBox={`0 0 ${COLS * (W + 16)} ${layout.height}`} style={css("width:100%;min-width:640px;height:auto")}>
@@ -151,7 +182,10 @@ export function WorldMap() {
                   cx={p.x}
                   cy={p.y}
                   r={RADIUS[e.level] ?? 4}
-                  fill={moved.has(e.id) ? "var(--focus)" : "currentColor"}
+                  // A lesson is a ring, on the region it was learned in.
+                  fill={e.kind === "lesson" ? "none" : moved.has(e.id) ? "var(--focus)" : "currentColor"}
+                  stroke={e.kind === "lesson" ? (moved.has(e.id) ? "var(--focus)" : "currentColor") : "none"}
+                  strokeWidth={e.kind === "lesson" ? 2 : 0}
                   fillOpacity={moved.has(e.id) ? 1 : 0.55}
                   onClick={() => setPicked({ kind: "entry", entry: e })}
                   style={{ cursor: "pointer" }}
@@ -162,7 +196,7 @@ export function WorldMap() {
             })}
           </svg>
         </div>
-        <span style={css(S.small)}>Dots are entries, larger the surer they are (canon, confirmed, kept, tentative, exhaust); filled ones moved in the window.</span>
+        <span style={css(S.small)}>Dots are entries, larger the surer they are (canon, confirmed, kept, tentative, exhaust); rings are lessons, where they were learned; coloured ones moved in the window.</span>
         {picked?.kind === "entry" ? (
           <span style={css("font:400 13.5px Geist")}>
             <Link to={`/brain/notes/${encodeURIComponent(picked.entry.id)}`}>{picked.entry.title}</Link> · {picked.entry.level}

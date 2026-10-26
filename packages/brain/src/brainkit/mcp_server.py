@@ -389,6 +389,8 @@ AGENT_TOOLS = [
          "words": {"type": "array", "items": {"type": "string"}},
          "evidence": {"type": "string", "description": "What happened: the corrections or "
                                                        "undos, quoting the user."},
+         "area": {"type": "string", "description": "The area it was learned in."},
+         "project": {"type": "string", "description": "The project it was learned in."},
          "idempotency_key": _STR, "session_id": _STR},
          "required": ["title", "story", "pattern", "words"]}},
     {"name": "activity_timeline",
@@ -577,6 +579,7 @@ HANDLERS = {
     "lore_propose": lambda b, a: b.propose_lesson(
         title=a.get("title"), story=a.get("story"), pattern=a.get("pattern"),
         words=a.get("words") or [], evidence=a.get("evidence") or "",
+        area=a.get("area") or None, project=a.get("project") or None,
         session_id=a.get("session_id"), op_id=a.get("idempotency_key")),
     "activity_timeline": lambda b, a: b.timeline(
         since=a.get("since") or None, until=a.get("until") or None,

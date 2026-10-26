@@ -36,3 +36,9 @@ def test_the_world_page_reads_the_brain_as_a_world(owner):
     found = owner.ok(owner.get("/api/brain/world"))
     assert {"overview", "regions", "entries", "edges", "timeline", "lore", "apps"} <= set(found)
     assert any(r["kind"] == "project" for r in found["regions"])
+
+
+def test_the_world_page_remembers_the_owners_last_visit(owner):
+    assert owner.ok(owner.get("/api/brain/world"))["last_visit"] is None
+    visited = owner.ok(owner.post("/api/brain/world/visit"))["visited"]
+    assert owner.ok(owner.get("/api/brain/world"))["last_visit"] == visited

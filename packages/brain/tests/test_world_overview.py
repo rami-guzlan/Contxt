@@ -91,5 +91,36 @@ class WorldPageDataTest(unittest.TestCase):
         self.assertEqual(found["overview"]["state"], "none")
 
 
+    def lesson(self, name, **meta):
+        relates = meta.pop("relates", None)
+        head = [f"id: {name}", "layer: rules", "topic: lore", "scope: company",
+                "status: approved", "load: manual", "kind: lesson", "summary: A lesson."]
+        head += [f"{k}: {v}" for k, v in meta.items()]
+        if relates:
+            head += ["relates:", f'  - "{relates}"']
+        body = ["## Story", "It happened.", "", "## Pattern", "The pattern.", "",
+                "## Words", "launch"]
+        folder = os.path.join(self.vault, "knowledge", "rules", "lore")
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, f"{name}.md"), "w", encoding="utf-8") as handle:
+            handle.write("\n".join(["---", *head, "---", "", *body, ""]))
+
+    def test_a_lesson_sits_where_it_was_learned(self):
+        self.lesson("lore_launch_day", project="Website Redesign")
+        self.lesson("lore_jargon", relates="example of: facts-services-002")
+        self.lesson("lore_plain")
+        self.brain.close()
+        self.brain = Brain(self.vault, embeddings=False)
+        lore = {x["id"]: x["region"] for x in self.brain.world_view().data["lore"]}
+        self.assertEqual(lore["lore_launch_day"], "state-focus-website-redesign")
+        self.assertEqual(lore["lore_jargon"], "area:facts")
+        self.assertEqual(lore["lore_plain"], "area:rules")
+
+    def test_since_my_last_visit(self):
+        self.assertIsNone(self.brain.world_view().data["last_visit"])
+        visited = self.brain.mark_world_visit()["visited"]
+        self.assertEqual(self.brain.world_view().data["last_visit"], visited)
+
+
 if __name__ == "__main__":
     unittest.main()

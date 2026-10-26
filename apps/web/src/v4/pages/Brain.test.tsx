@@ -391,6 +391,23 @@ describe("Brain: World", () => {
     await user.selectOptions(screen.getByLabelText("Relationship type"), "supersedes");
     expect(container.querySelector("line")).toBeNull();
   });
+
+  it("records the visit and shows what moved since the one before", async () => {
+    const world = {
+      overview: { text: "", state: "none" }, regions: [], entries: [], edges: [], lore: [], apps: [], edge_types: [],
+      timeline: [], last_visit: "2026-10-20T09:00:00Z",
+    };
+    const calls = knows({ "GET /api/brain/world": world, "POST /api/brain/world/visit": { visited: "2026-10-26T10:00:00Z" } });
+    const user = userEvent.setup();
+    renderAt(<BrainPage />, { path: "/brain", route: "/brain?tab=world" });
+    const button = await screen.findByRole("button", { name: "Since my last visit" });
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/brain/world/visit")).toBe(true));
+    await user.click(button);
+    expect(await screen.findByText(/since your last visit \(2026-10-20\)/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === "GET" && c.path.startsWith("/api/brain/world?") && c.path.includes("2026-10-20"))).toBe(true),
+    );
+  });
 });
 
 describe("Brain: Files", () => {

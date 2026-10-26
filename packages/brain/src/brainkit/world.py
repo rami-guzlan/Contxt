@@ -19,6 +19,7 @@ TITLE = "World overview"
 WORDS = 300
 DRAFT = "draft, not kept"
 SEEN = "world_regions"
+VISIT = "world_last_visit"  # when the owner last opened the World page
 
 PROMPT = """Write the overview of one person's world, for the AI apps that work with them, in
 at most {words} words of plain text (no headings, no lists of more than five items):
@@ -125,6 +126,12 @@ def data(brain, st, chain, partitions, *, since=None) -> dict:
         if note.id in projects:
             return note.id
         named = names.get(str(note.meta.get("project") or "").lower())
+        if not named and note.kind == "lesson":
+            # A lesson sits where it was learned: its project, else the entry it relates to.
+            for _kind, to in relations._explicit(note.meta.get("relates")):
+                target = seen.get(to.split("#", 1)[0])
+                if target is not None and target.kind != "lesson":
+                    return region(target)
         return named or "area:" + (note.route_key.split("/", 1)[0] or "other")
 
     regions = [{"id": f.id, "label": f.title, "kind": "project",
@@ -148,5 +155,14 @@ def data(brain, st, chain, partitions, *, since=None) -> dict:
     elif draft is not None:
         text, state = str(draft.body or "").strip(), "draft"
     return {"overview": {"text": text, "state": state}, "regions": regions,
+            "since": since, "last_visit": sheetstore.meta(brain, VISIT),
             "entries": entries, "edges": edges, "timeline": moved[:200], "lore": lore,
             "apps": brain.ledger.apps(), "edge_types": list(relations.TYPES)}
+
+
+def mark_visit(brain) -> str:
+    """The owner opened the World page now: what "since my last visit" counts from next."""
+    from . import util
+    now = util.now_iso()
+    sheetstore.set_meta(brain, VISIT, now)
+    return now
