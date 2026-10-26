@@ -33,7 +33,8 @@ import {
   useUpdateProject,
   useWorkAgents,
 } from "../hooks/projects";
-import { Btn, Chip, Empty, Failure, Later, Loading, Modal, S, Status, when } from "../ui";
+import { Btn, Chip, Empty, Failure, Loading, Modal, S, Status, when } from "../ui";
+import { useOrchestrators } from "../hooks/orchestrators";
 import { ProjectStatus } from "./Projects";
 import { AutoArea } from "../components/AutoArea";
 
@@ -806,20 +807,32 @@ function TasksView({ p, onGo }: { p: BrainProjectDetail; onGo: (to: Go, orchestr
   );
 }
 
+// Where each CLI sends the prompt and the project's context.
+const PROVIDER: Record<string, string> = { claude: "Anthropic", codex: "OpenAI", gemini: "Google" };
+
 function WorkWithAI({ p }: { p: BrainProjectDetail }) {
   const skills = useSkills();
   const agents = useWorkAgents();
   const ask = useWorkAsk();
+  const overview = useOrchestrators(p.id);
   const [prompt, setPrompt] = useState("");
   const [skill, setSkill] = useState<string | null>(null);
   const [agent, setAgent] = useState<string | null>(null);
+  const [runner, setRunner] = useState("claude");
+  const [model, setModel] = useState<string | null>(null);
   const runnable = (skills.data?.skills ?? []).filter((s) => s.use === "run");
   const profiles = agents.data ?? [];
+  const clis = overview.data?.clis ?? [];
+  const cli = clis.find((c) => c.id === runner);
+  const label = cli?.label ?? "Claude Code";
 
   function send() {
     const words = prompt.trim();
     if (!words || ask.isPending) return;
-    ask.mutate({ project: p.id, prompt: words, skill: skill ?? undefined, agent: agent ?? undefined }, { onSuccess: () => setPrompt("") });
+    ask.mutate(
+      { project: p.id, prompt: words, skill: skill ?? undefined, agent: agent ?? undefined, runner, model: model ?? undefined },
+      { onSuccess: () => setPrompt("") },
+    );
   }
 
   return (
@@ -829,7 +842,7 @@ function WorkWithAI({ p }: { p: BrainProjectDetail }) {
           <span style={css("width:2px;height:12px;background:var(--bg);border-radius:2px;transform:rotate(30deg)")} />
         </span>
         <span style={css("font:500 14px Geist")}>Work with AI</span>
-        <span style={css("font:400 13px Geist;color:var(--muted)")}>Runs in Claude Code on your computer, with this project's packet. Results land in Outputs as drafts.</span>
+        <span style={css("font:400 13px Geist;color:var(--muted)")}>Runs on your computer, with this project's packet. Results land in Outputs as drafts.</span>
       </div>
       <textarea
         aria-label="What should the AI do"
@@ -839,7 +852,7 @@ function WorkWithAI({ p }: { p: BrainProjectDetail }) {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
         }}
         rows={2}
-        placeholder="Ask Claude Code to do something here."
+        placeholder={`Ask ${label} to do something here.`}
         style={css("border:0;outline:none;resize:none;background:transparent;color:var(--ink);font:400 16px/1.5 Geist;padding:2px")}
       />
       <div style={css("display:flex;align-items:center;gap:6px;flex-wrap:wrap")}>
@@ -864,16 +877,38 @@ function WorkWithAI({ p }: { p: BrainProjectDetail }) {
       </div>
       <div style={css("display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:10px")}>
         <span style={css("font:400 12px Geist;color:var(--muted);margin-right:2px")}>Runs in</span>
-        <Chip on>Claude Code</Chip>
-        <span style={css(S.small)}>
-          Other CLIs
-          <Later />
-        </span>
+        {(clis.length ? clis : [{ id: "claude", label: "Claude Code", models: [], one_click: true }]).map((c) => (
+          <Chip
+            key={c.id}
+            on={runner === c.id}
+            onClick={() => {
+              setRunner(c.id);
+              setModel(null);
+            }}
+          >
+            {c.label}
+          </Chip>
+        ))}
+        {cli?.models.length ? (
+          <select
+            aria-label="Model"
+            value={model ?? ""}
+            onChange={(e) => setModel(e.target.value || null)}
+            style={css("border:1px solid var(--line2);border-radius:99px;background:transparent;color:var(--ink);font:400 12.5px Geist;padding:4px 10px")}
+          >
+            <option value="">Its usual model</option>
+            {cli.models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <div style={css("margin-left:auto;display:flex;align-items:center;gap:6px")}>
           <button
             type="button"
             title="Send"
-            aria-label="Send to Claude Code"
+            aria-label={`Send to ${label}`}
             onClick={send}
             disabled={!prompt.trim() || ask.isPending}
             style={css("width:34px;height:34px;border-radius:50%;background:var(--ink);color:var(--bg);border:0;font:500 15px Geist")}
@@ -885,7 +920,10 @@ function WorkWithAI({ p }: { p: BrainProjectDetail }) {
       {ask.isPending ? <span role="status" style={css(S.small)}>Starting the job…</span> : null}
       {ask.isSuccess ? <span role="status" style={css(S.small)}>Started. It shows in the timeline below.</span> : null}
       <Problem error={ask.error} />
-      <span style={css(S.small)}>One prompt is one job. Multi-step workflows are a later phase.</span>
+      <span style={css(S.small)}>
+        {label} sends this prompt and the project's context to {PROVIDER[runner] ?? "its provider"}.
+        {cli && !cli.one_click ? " It has no tools here: it answers once, and the answer is saved to Outputs." : ""}
+      </span>
     </div>
   );
 }

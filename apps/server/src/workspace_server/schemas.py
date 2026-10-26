@@ -402,6 +402,7 @@ class WorkAskIn(Body):
     skill: str | None = Field(default=None, max_length=120)
     agent: str | None = Field(default=None, max_length=120)
     runner: str = Field(default="claude", max_length=20)
+    model: str | None = Field(default=None, max_length=60)
 
 
 class OrchestratorAgentIn(Body):
