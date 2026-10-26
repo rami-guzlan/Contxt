@@ -189,6 +189,7 @@ GEMINI_NOISE = ("Loaded cached credentials.",)
 # app starts: `--restricted` where it has it; before that, loading project settings only, which
 # the run's own folder does not have. Read from the CLI's help, once per command.
 ACCOUNT_TRIES = 4  # starts of Claude Code to wait out the account's connectors loading
+MCP_OUTPUT_TOKENS = 8000  # at most, per tool answer in a connector read
 ACCOUNT_LINE = re.compile(r"^(claude\.ai [^:\n]+):", re.M)  # in `claude mcp list`
 FENCES = (
     ("--restricted", ("--restricted",)),
@@ -1978,6 +1979,9 @@ def _account_env() -> dict[str, str]:
     them out unless asked, and lists them only once they have connected (not in the background)."""
     env = dict(os.environ, MCP_TIMEOUT="60000", ENABLE_CLAUDEAI_MCP_SERVERS="true")
     env.pop("MCP_CONNECTION_NONBLOCKING", None)
+    # One tool's answer (a whole Drive file, a long thread) is cut to this many tokens, so a
+    # read cannot outgrow the model's context ("Prompt is too long").
+    env.setdefault("MAX_MCP_OUTPUT_TOKENS", str(MCP_OUTPUT_TOKENS))
     return env
 
 
