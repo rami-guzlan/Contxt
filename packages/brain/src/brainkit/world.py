@@ -103,3 +103,50 @@ def propose(brain, text: str, regions_now: dict, *, by=None) -> dict:
         return {"status": "refused", "reason": found.text}
     sheetstore.set_meta(brain, SEEN, json.dumps(regions_now, sort_keys=True))
     return {"status": "proposed", "proposal": found.data.get("proposal_id") or found.data.get("id")}
+
+
+def data(brain, st, chain, partitions, *, since=None) -> dict:
+    """The Brain as a world, for the owner's World page (13.5): the overview, the regions
+    (areas and projects), the entries in them by level, how they relate, what moved since
+    `since`, the lessons where they were learned, and the apps that read the Brain. Only what
+    the caller may see; sealed entries are left out with no count."""
+    from . import levels, relations, timeline
+    from .scopes import Scopes
+    index = st.index
+    seen = {n.id: n for n in index.notes.values()
+            if Scopes.admits(n.scope, n.partition, chain, partitions)}
+    projects = {f.id: f for f in index.focuses.values() if f.id in seen}
+    names = {}
+    for focus in projects.values():
+        for name in [focus.id, focus.title, focus.slug, *focus.aliases]:
+            names[str(name).lower()] = focus.id
+
+    def region(note) -> str:
+        if note.id in projects:
+            return note.id
+        named = names.get(str(note.meta.get("project") or "").lower())
+        return named or "area:" + (note.route_key.split("/", 1)[0] or "other")
+
+    regions = [{"id": f.id, "label": f.title, "kind": "project",
+                "status": "active" if f.active else "closed"} for f in projects.values()]
+    areas = sorted({region(n) for n in seen.values() if region(n).startswith("area:")})
+    regions += [{"id": a, "label": a[5:].capitalize(), "kind": "area", "status": ""}
+                for a in areas]
+    entries = [{"id": n.id, "title": n.title, "region": region(n), "level": levels.of(n),
+                "kind": n.kind} for n in seen.values() if n.id != ID]
+    edges = [{"from": src, "to": dst.split("#", 1)[0], "type": kind, "source": source}
+             for src, kind, dst, source in relations.derive(index)
+             if src in seen and dst.split("#", 1)[0] in seen]
+    moved = timeline.entries(brain, st, chain, partitions, since=since)
+    lore = [{"id": n.id, "title": n.title, "region": region(n)}
+            for n in seen.values() if n.kind == "lesson"]
+    overview = index.notes.get(ID)
+    draft = pending(st)
+    text, state = "", "none"
+    if overview is not None and overview.id in seen:
+        text, state = overview.body.strip(), "kept"
+    elif draft is not None:
+        text, state = str(draft.body or "").strip(), "draft"
+    return {"overview": {"text": text, "state": state}, "regions": regions,
+            "entries": entries, "edges": edges, "timeline": moved[:200], "lore": lore,
+            "apps": brain.ledger.apps(), "edge_types": list(relations.TYPES)}

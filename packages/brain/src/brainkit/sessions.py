@@ -1204,6 +1204,15 @@ class Ledger:
                          "DO UPDATE SET value = excluded.value", (str(key), str(value)))
 
     # ------------------------------------------------------------------ housekeeping
+    def apps(self) -> list[dict]:
+        """Each app that reads the Brain (its label), when it last did and in how many
+        conversations."""
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT label AS name, MAX(seen) AS seen, COUNT(*) AS conversations "
+                "FROM sessions WHERE COALESCE(label, '') != '' GROUP BY label "
+                "ORDER BY MAX(seen) DESC LIMIT 20")]
+
     def recent_sessions(self, limit: int = 20) -> list[dict]:
         with self._connect() as conn:
             return [dict(r) for r in conn.execute(
