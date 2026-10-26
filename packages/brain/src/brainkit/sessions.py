@@ -526,6 +526,15 @@ class Ledger:
                                (str(fingerprint or ""),)).fetchone()
         return row["text"] if row is not None else None
 
+    def last_app_packet(self, label: str | None, session_id: str | None) -> str | None:
+        """When this app (its label) last got a packet in another conversation."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(p.at) FROM packets p JOIN sessions s ON s.id = p.session_id "
+                "WHERE COALESCE(s.label, '') = ? AND s.id != ?",
+                (str(label or ""), str(session_id or ""))).fetchone()
+        return row[0] if row and row[0] else None
+
     def last_packet(self, session_id: str) -> dict | None:
         """The most recent packet in this session, for follow-up continuity: its data, plus
         the request it answered (`request`)."""

@@ -469,6 +469,14 @@ class Brain:
                 else:
                     shown = brainmap.render(map_found, str(request))
                     map_text, map_state, map_cut = shown["text"], "full", shown["cut"]
+            if not continuing:
+                # A new conversation: one line of what moved since this app's last one.
+                from . import timeline
+                since = self.ledger.last_app_packet(self.client, session)
+                moved = (timeline.changed_line(self, st, chain, partitions, since)
+                         if since else "")
+                if moved:
+                    map_text = (map_text.rstrip() + "\n\n" + moved) if map_text else moved
             if map_text and startup_at is not None:
                 # Inside the startup context, right after how to work with the Brain.
                 parts[startup_at] = _after_operating(parts[startup_at], map_text)
@@ -1093,6 +1101,31 @@ class Brain:
                        "summary": note.summary, "kind": note.kind, "added": note.added,
                        "verified": note.verified, "confidence": note.confidence,
                        "stale": stale})
+
+    def timeline(self, *, principal=None, partition=None, since=None, until=None,
+                 project=None, area=None, limit=50, page=1) -> Result:
+        """What was kept, changed, superseded or disputed in a window (timeline.py), newest
+        first, each with when it was recorded and from when it was true; paged."""
+        from . import timeline
+        st = self.state()
+        caller = self.caller(principal, None, partition, st=st)
+        if isinstance(caller, Result):
+            return caller
+        chain, partitions = caller
+        rows = timeline.entries(self, st, chain, partitions, since=since, until=until,
+                                project=project, area=area)
+        size = max(1, min(int(limit or timeline.LIMIT), 200))
+        start = (max(1, int(page or 1)) - 1) * size
+        shown, more = rows[start:start + size], len(rows) > start + size
+        window = " to ".join(x for x in (str(since or "the start"), str(until or "now")))
+        lines = [f"What moved, {window} ({len(rows)}): {timeline.counts(rows)}."
+                 if rows else f"Nothing moved, {window}."]
+        lines += [f"- {r['recorded'][:10]} {r['what']}: `{r['id']}` {r['title']}"
+                  + (f" (true from {r['true_from'][:10]})" if r["true_from"] else "")
+                  for r in shown]
+        if more:
+            lines.append(f"More: page {int(page or 1) + 1}.")
+        return Result("\n".join(lines), {"entries": shown, "total": len(rows), "more": more})
 
     def related(self, note_id, *, principal=None, partition=None, types=None, depth=1,
                 session_id=None) -> Result:

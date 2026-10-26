@@ -10,7 +10,7 @@ Two MCP servers, for two jobs:
   `propose_change`), `files` (`open`, `upload`), `projects` (`create`, `propose_progress`),
   `sheets` (`get`, `propose_update`), `todos` (`update`), `outputs` (`save`: what a file it
   saved for you was made from, for the app's Outputs page), `gnomon` (`map`, `open`,
-  `health`), `lore` (`list`, `get`, `propose`), `activity` (`sessions_search`), `taste`,
+  `health`), `lore` (`list`, `get`, `propose`), `activity` (`timeline`: what was kept, changed, superseded or disputed in a window; `sessions_search`), `taste`,
   `receipts`, `gaps` and `agents`. Each packet opens with the Brain map
   (`gnomon(action: "map", tier)` returns one tier whole); `gnomon(action: "open", address)`
   opens one part (`note-id#heading`, `file#section`, `lore_id#story`) within the pull budget
