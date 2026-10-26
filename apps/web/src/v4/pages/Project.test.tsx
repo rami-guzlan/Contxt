@@ -234,7 +234,28 @@ describe("Project · Tasks", () => {
     await userEvent.click(screen.getByRole("button", { name: "Send to Claude Code" }));
     expect(await screen.findByText(/Started\. It shows in the timeline below\./)).toBeInTheDocument();
     const ask = calls.find((c) => c.method === "POST" && c.path === "/api/work/projects/foc_spring/ask");
-    expect(ask?.body).toEqual({ prompt: "Draft the follow-up email", skill: "launch-email", agent: "editor" });
+    expect(ask?.body).toEqual({ prompt: "Draft the follow-up email", skill: "launch-email", agent: "editor", runner: "claude", model: null });
+  });
+
+  it("runs a job on another CLI and model, and says where the prompt and context go", async () => {
+    const clis = [
+      { id: "claude", label: "Claude Code", models: [{ id: "haiku", label: "Haiku · cheaper" }], one_click: true },
+      { id: "codex", label: "Codex CLI", models: [{ id: "gpt-5-mini", label: "GPT-5 mini · cheaper" }], one_click: false },
+    ];
+    const calls = mockApi({
+      ...tasksApi,
+      "GET /api/projects/foc_spring/orchestrators": { orchestrators: [], agent_tasks: [], clis, works_by: [] },
+      "POST /api/work/projects/foc_spring/ask": { status: 201, body: { task: { id: "task_33" }, run: { id: "run_3" } } },
+    });
+    renderAt(<ProjectPage />, at("tasks"));
+    await userEvent.click(await screen.findByRole("button", { name: "Codex CLI" }));
+    expect(screen.getByText(/Codex CLI sends this prompt and the project's context to OpenAI\. It has no tools here/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Model"), "gpt-5-mini");
+    await userEvent.type(screen.getByLabelText("What should the AI do"), "Rewrite the launch copy");
+    await userEvent.click(screen.getByRole("button", { name: "Send to Codex CLI" }));
+    await screen.findByText(/Started\./);
+    const ask = calls.find((c) => c.method === "POST" && c.path === "/api/work/projects/foc_spring/ask");
+    expect(ask?.body).toMatchObject({ prompt: "Rewrite the launch copy", runner: "codex", model: "gpt-5-mini" });
   });
 
   it("adds a task to the project's Tasks sheet", async () => {

@@ -53,7 +53,7 @@ from workspace_core.clock import iso
 from workspace_core.domain.policy import Principal
 from workspace_core.domain.records import Actor, Task
 from workspace_core.domain.schedule import zone
-from workspace_core.errors import Conflict, NotFound
+from workspace_core.errors import Conflict, NotFound, WorkspaceError
 from workspace_core.ids import new_id
 from workspace_core.services.workflows import TOOL
 from workspace_core.workspace import Workspace
@@ -126,6 +126,12 @@ SKIPPED = shutil.ignore_patterns("__pycache__", "*.pyc", ".git", ".DS_Store")
 # Added to Claude Code's own instructions when it answers with no tools at all: those describe
 # tools, and without this line it writes out calls it cannot make instead of the answer.
 NO_TOOLS = "You have no tools in this conversation. Reply once, with the finished answer only."
+# After an answer run's packet: its brief names the app's tools, which this run does not have.
+ANSWER_ONLY = (
+    "This run has no tools: leave aside any call named above. Reply once with the whole result "
+    "as Markdown and nothing else. It is saved to the project's Outputs and the run is closed "
+    "for you."
+)
 # In a run's folder while it runs: its task and what was copied in, so a folder a stopped server
 # left behind can still be tidied (the copies removed, what it made listed with its task).
 MARKER = ".run.json"
@@ -1649,6 +1655,105 @@ class Runners:
         ]
         models.sort(key=lambda a: (a.last_seen_at or "", a.created_at), reverse=True)
         return models[0] if models else None
+
+    def answer(
+        self,
+        who: Principal,
+        runner_id: str,
+        task_id: str,
+        *,
+        model: str | None = None,
+        timeout: float = 900.0,
+    ) -> LocalRun:
+        """Run one task on a CLI that answers once with no tools (Codex, Gemini CLI). As that
+        CLI's model, the run claims the task, sends its packet, saves the answer to Outputs and
+        closes, as a CLI does through the app's tools. It runs in the background."""
+        who.require("workspace.admin")
+        spec = self._spec(runner_id)
+        actor, task = self._assignee(who, spec, self.ws.tasks.get(who, task_id))
+        if task.status != "ready":
+            raise Conflict(
+                f"The task is {task.status.replace('_', ' ')}: only a ready task can run."
+            )
+        run = LocalRun(
+            id=new_id("lrun", self.ws.rt.clock.now()),
+            runner=spec.id,
+            task_id=task.id,
+            task_title=task.title,
+            actor_id=actor.id,
+            started_by=who.actor_id,
+            started_at=iso(self.ws.rt.clock.now()),
+        )
+        with self._lock:
+            self.runs[run.id] = run
+            self._trim()
+        self._keep(run)
+        self._add(run, "status", text=f"Asking {spec.label}: it answers once, with no tools.")
+        threading.Thread(
+            target=self._answer,
+            args=(who, spec, run, model, timeout),
+            daemon=True,
+            name="answer-run",
+        ).start()
+        return run
+
+    def _answer(
+        self, who: Principal, spec: RunnerSpec, run: LocalRun, model: str | None, timeout: float
+    ) -> None:
+        from .mcp import render
+        from .mcp.tools import redacting
+
+        run.status = "running"
+        connection = claimed = None
+        try:
+            # A model acts only through a credential: this run's own, revoked when it ends.
+            task = self.ws.tasks.get(who, run.task_id)
+            connection = self.ws.actors.issue_token(
+                who,
+                run.actor_id,
+                label=f"{RUN_LABEL} ({run.id})",
+                projects=[task.project_id] if task.project_id else None,
+            )
+            agent = self.ws.actors.authenticate(connection.token)
+            claimed = self.ws.bus.claim(agent, run.task_id)
+            brief = render.packet(claimed.packet, redacting=redacting(self.ws, agent))
+            found = self.ask_measured(
+                who,
+                f"{brief}\n\n{ANSWER_ONLY}",
+                timeout=timeout,
+                job="work",
+                runner=spec.id,
+                model=model,
+            )
+            text = str(found.get("answer") or "").strip()
+            if not text:
+                raise Conflict(f"{spec.label} gave no answer.")
+            saved = self.ws.skills.save_result(
+                agent, run_id=claimed.run.id, title=run.task_title, text=text
+            )
+            summary = f"Saved \u201c{saved['title']}\u201d to Outputs."
+            self.ws.bus.complete(agent, claimed.run.id, summary=summary)
+            usage = {
+                k: found.get(k)
+                for k in ("model", "tokens_in", "tokens_out", "cost", "ms", "measured")
+            }
+            self._add(run, "result", text=summary, usage=usage)
+            run.status, run.summary = "succeeded", summary
+        except Exception as exc:  # the CLI, its sign-in, the save: the run fails and says why
+            log.warning("answer run %s failed", run.id, exc_info=True)
+            why = str(getattr(exc, "message", "") or exc) or f"{spec.label} stopped."
+            if claimed is not None:
+                try:
+                    self.ws.bus.complete(agent, claimed.run.id, summary=why, outcome="failed")
+                except WorkspaceError:  # the run may have ended already
+                    log.warning("answer run %s could not be closed", run.id, exc_info=True)
+            self._add(run, "status", text=why)
+            run.status, run.summary = "failed", why
+        finally:
+            if connection is not None:
+                self.ws.actors.revoke(who, connection.credential.id)
+        run.finished_at = iso(self.ws.rt.clock.now())
+        self._keep(run)
 
     def _assignee(self, who: Principal, spec: RunnerSpec, task: Task) -> tuple[Actor, Task]:
         """The model the run acts as. An unassigned task (a request waiting for a model) goes
