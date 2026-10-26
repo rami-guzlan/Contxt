@@ -1094,6 +1094,34 @@ class Brain:
                        "verified": note.verified, "confidence": note.confidence,
                        "stale": stale})
 
+    def related(self, note_id, *, principal=None, partition=None, types=None, depth=1,
+                session_id=None) -> Result:
+        """The entries around one entry, by how they relate (relations.py), in pointer form:
+        only those the caller may see, a sealed one left out with no count."""
+        from . import relations
+        st = self.state()
+        caller = self.caller(principal, None, partition, st=st)
+        if isinstance(caller, Result):
+            return caller
+        chain, partitions = caller
+        found = str(note_id or "").strip()
+        if not found:
+            return Result("Name the entry: its id.", {"status": "invalid"}, is_error=True)
+        entry = st.index.notes.get(found) or st.index.archived.get(found)
+        if entry is None or not Scopes.admits(entry.scope, entry.partition, chain, partitions):
+            return Result(f"No entry {found} that you can see.", {"status": "missing"},
+                          is_error=True)
+        edges = relations.neighbours(self, st, found, chain, partitions, types=types,
+                                     depth=depth)
+        lines = [f"Related to `{found}`:" if edges else f"Nothing related to `{found}` yet."]
+        for e in edges:
+            arrow = e["type"] if e["direction"] == "out" else f"{e['type']} (from)"
+            far = "" if e["depth"] == 1 else f", via `{e['from']}`"
+            lines.append(f"- {arrow}: `{e['id']}` {e['title']} ({e['source']}{far})")
+        if edges:
+            lines += ["", "Open one with notes_get(id=\"...\")."]
+        return Result("\n".join(lines), {"id": found, "edges": edges})
+
     def search(self, query, *, principal=None, partition=None, limit=12,
                include_archived=False, session_id=None) -> Result:
         """Notes matching a query in the searcher's own words, best first.

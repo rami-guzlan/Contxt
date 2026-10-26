@@ -27,7 +27,7 @@ class GroupedToolsTest(unittest.TestCase):
         self.assertNotIn("notes_search", self.listed)
         notes = self.listed["notes"]
         actions = notes["inputSchema"]["properties"]["action"]["enum"]
-        self.assertEqual(sorted(actions), ["challenge", "get", "propose", "search"])
+        self.assertEqual(sorted(actions), ["challenge", "get", "propose", "related", "search"])
         self.assertEqual(notes["inputSchema"]["required"], ["action"])
         self.assertIn("query", notes["inputSchema"]["properties"])
         for action in actions:
