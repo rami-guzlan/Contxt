@@ -14,10 +14,10 @@ from fastapi.testclient import TestClient
 from workspace_core.db import schema
 from workspace_core.ports import BrainProposal
 from workspace_server.app import create_app
-from workspace_server.heartbeat import service as heartbeat_service
 from workspace_server.heartbeat import connectors as conn
 from workspace_server.heartbeat import memory as hb_memory
 from workspace_server.heartbeat import service as hb_service
+from workspace_server.heartbeat import service as heartbeat_service
 from workspace_server.runners import Runners, RunnerStatus
 
 from .conftest import Api
