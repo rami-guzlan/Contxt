@@ -420,6 +420,7 @@ workflows = sa.Table(
     sa.Column("steps", sa.JSON, nullable=False),
     sa.Column("runner", sa.String(40), nullable=False, server_default="claude"),
     sa.Column("output", sa.JSON, nullable=False),
+    sa.Column("budget", sa.JSON, nullable=False, server_default="{}"),  # {tokens?, cost?}
     sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.true()),
     sa.Column("timezone", sa.String(64), nullable=False, server_default="UTC"),
     sa.Column("next_due_at", TS, index=True),
