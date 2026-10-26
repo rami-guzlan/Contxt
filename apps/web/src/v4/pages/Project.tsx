@@ -35,6 +35,8 @@ import {
 } from "../hooks/projects";
 import { Btn, Chip, Empty, Failure, Loading, Modal, S, Status, when } from "../ui";
 import { useOrchestrators } from "../hooks/orchestrators";
+import type { WorkflowStep } from "../hooks/workflows";
+import { ProjectWorkflows } from "../components/ProjectWorkflows";
 import { ProjectStatus } from "./Projects";
 import { AutoArea } from "../components/AutoArea";
 
@@ -791,10 +793,13 @@ const JOB_WORDS: Record<string, [string, string]> = {
 };
 
 function TasksView({ p, onGo }: { p: BrainProjectDetail; onGo: (to: Go, orchestrator?: string) => void }) {
+  const overview = useOrchestrators(p.id);
+  const [draft, setDraft] = useState<WorkflowStep | null>(null);
   return (
     <div style={css(SECTION + ";gap:28px")}>
-      <WorkWithAI p={p} />
+      <WorkWithAI p={p} onSaveAsWorkflow={setDraft} />
       <Timeline p={p} />
+      <ProjectWorkflows project={p.id} clis={overview.data?.clis ?? []} draft={draft} onDraftUsed={() => setDraft(null)} />
       <OrchestratorsPanel projectId={p.id} onGo={onGo} />
       <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:24px;align-items:start")}>
         <div style={css("display:flex;flex-direction:column;gap:22px")}>
@@ -810,7 +815,7 @@ function TasksView({ p, onGo }: { p: BrainProjectDetail; onGo: (to: Go, orchestr
 // Where each CLI sends the prompt and the project's context.
 const PROVIDER: Record<string, string> = { claude: "Anthropic", codex: "OpenAI", gemini: "Google" };
 
-function WorkWithAI({ p }: { p: BrainProjectDetail }) {
+function WorkWithAI({ p, onSaveAsWorkflow }: { p: BrainProjectDetail; onSaveAsWorkflow: (step: WorkflowStep) => void }) {
   const skills = useSkills();
   const agents = useWorkAgents();
   const ask = useWorkAsk();
@@ -833,6 +838,16 @@ function WorkWithAI({ p }: { p: BrainProjectDetail }) {
       { project: p.id, prompt: words, skill: skill ?? undefined, agent: agent ?? undefined, runner, model: model ?? undefined },
       { onSuccess: () => setPrompt("") },
     );
+  }
+
+  // This prompt, with its skill or agent, CLI and model, as step 1 of a new workflow.
+  function saveAsWorkflow() {
+    const words = prompt.trim();
+    if (!words) return;
+    const how = { runner: runner as WorkflowStep["runner"], model, gate: false, budget: {} };
+    if (skill) onSaveAsWorkflow({ kind: "skill", skill, ask: words, ...how });
+    else if (agent) onSaveAsWorkflow({ kind: "agent", agent, ask: words, ...how });
+    else onSaveAsWorkflow({ kind: "prompt", text: words, ...how });
   }
 
   return (
@@ -905,6 +920,9 @@ function WorkWithAI({ p }: { p: BrainProjectDetail }) {
           </select>
         ) : null}
         <div style={css("margin-left:auto;display:flex;align-items:center;gap:6px")}>
+          <Btn disabled={!prompt.trim()} onClick={saveAsWorkflow}>
+            Save as workflow
+          </Btn>
           <button
             type="button"
             title="Send"
