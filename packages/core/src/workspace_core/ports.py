@@ -570,6 +570,14 @@ class BrainPort(Protocol):
         """Commit the context sheets' database and snapshots (once per beat or day)."""
         ...
 
+    def world_draft(self) -> dict[str, Any]:
+        """{due, prompt, regions}: whether the world overview needs a draft, and the prompt."""
+        ...
+
+    def propose_world(self, text: str, regions: dict[str, Any]) -> dict[str, Any]:
+        """A drafted world overview as a proposal that waits for the owner."""
+        ...
+
     def bench_write(self, rel: str, text: str | None, *, message: str) -> dict[str, Any]:
         """Write one bench file (or remove it, with `text` None) and commit it."""
         ...
@@ -1209,6 +1217,12 @@ class NoBrain:
 
     def commit_sheets(self, message: str) -> dict[str, Any]:
         return {"committed": False, "reason": "no Brain"}
+
+    def world_draft(self) -> dict[str, Any]:
+        return {"due": False, "prompt": "", "regions": {}}
+
+    def propose_world(self, text: str, regions: dict[str, Any]) -> dict[str, Any]:
+        raise Conflict("This workspace has no Brain.")
 
     def bench_write(self, rel: str, text: str | None, *, message: str) -> dict[str, Any]:
         raise Conflict("This workspace has no Brain.")

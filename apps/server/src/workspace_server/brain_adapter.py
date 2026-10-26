@@ -1316,6 +1316,13 @@ class BrainKitAdapter:
         with self._lock:
             return dict(self.brain.commit_sheets(message))
 
+    def world_draft(self) -> dict[str, Any]:
+        return dict(self.brain.world_draft())
+
+    def propose_world(self, text: str, regions: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            return dict(self.brain.propose_world(text, regions))
+
     def bench_write(self, rel: str, text: str | None, *, message: str) -> dict[str, Any]:
         try:
             with self._lock:
