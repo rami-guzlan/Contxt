@@ -251,6 +251,12 @@ class FakeBrain:
     def bench_files(self):
         return dict(getattr(self, "bench", {}))
 
+    def world_draft(self):
+        return {"due": False, "prompt": "", "regions": {}}
+
+    def propose_world(self, text, regions):
+        return {"status": "proposed"}
+
     def commit_sheets(self, message):
         self.sheet_commits = getattr(self, "sheet_commits", 0) + 1
         return {"committed": True}

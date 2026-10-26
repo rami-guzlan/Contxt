@@ -884,6 +884,7 @@ class Heartbeat:
         learned = self._learn(owner, beat_id, rows)
         version, saved = self._tag_version(beat_id, learned)
         checked = self._after_distill(owner, saved)
+        checked += self._world_overview(owner)
         routed = [o["route"] for o in learned["outcomes"].values()]
         details = [
             f"Distilled {len(rows)} changes into {learned['items']} items: "
@@ -941,6 +942,28 @@ class Heartbeat:
         except Exception as exc:  # the bench or its grader: the distill stands
             log.warning("after-distill tests on %s stopped", version, exc_info=True)
             return [f"The Test Bench did not run: {_flat(str(exc), 160)}"]
+
+    def _world_overview(self, owner: Principal) -> list[str]:
+        """When the map changed enough (a new region, or a project closed), the ingest model
+        drafts the world overview; the draft waits for the owner (13.4). Never fails the
+        distill."""
+        try:
+            wanted = self.ws.rt.brain.world_draft()
+            if not wanted.get("due"):
+                return []
+            model = self.ws.distill.settings(owner).get("model")
+            found = self.runners.ask_measured(
+                owner, str(wanted["prompt"]), job="world-draft", model=model
+            )
+            made = self.ws.rt.brain.propose_world(
+                str(found.get("answer") or ""), wanted.get("regions") or {}
+            )
+        except Exception as exc:  # the model or the Brain: the distill stands
+            log.warning("world overview draft stopped", exc_info=True)
+            return [f"The world overview was not drafted: {_flat(str(exc), 160)}"]
+        if made.get("status") != "proposed":
+            return [f"The world overview draft was not kept: {made.get('reason') or 'empty'}"]
+        return ["Drafted a new world overview: it waits for you in Review."]
 
     def _learn(
         self,
