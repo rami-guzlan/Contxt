@@ -529,6 +529,10 @@ class BrainPort(Protocol):
         """The map card: every tier, the short map as sent, what it cut, sealed projects."""
         ...
 
+    def world_view(self, *, since: str | None = None) -> dict[str, Any]:
+        """The Brain as a world: overview, regions, entries, edges, timeline, lore, apps."""
+        ...
+
     def sections(self, item_id: str) -> dict[str, Any]:
         """Every section address in one note, lesson or file."""
         ...
@@ -1168,6 +1172,18 @@ class NoBrain:
 
     def relevance(self, goal: str, texts: list[str]) -> list[float | None] | None:
         return None
+
+    def world_view(self, *, since: str | None = None) -> dict[str, Any]:
+        return {
+            "overview": {"text": "", "state": "none"},
+            "regions": [],
+            "entries": [],
+            "edges": [],
+            "timeline": [],
+            "lore": [],
+            "apps": [],
+            "edge_types": [],
+        }
 
     def map_view(self) -> dict[str, Any]:
         return {

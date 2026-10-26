@@ -54,6 +54,7 @@ import { Btn, Empty, Failure, Later, Loaded, Loading, Modal, plural, S, Status, 
 import { LevelChip, LoreShelf, MapCard, SectionAddresses } from "../components/BrainV4";
 import { CatchUpPanel } from "./CatchUp";
 import { BenchPanels } from "../components/BenchPanels";
+import { WorldMap } from "../components/WorldMap";
 import { BenchSuites } from "../components/BenchSuites";
 import { AutoArea } from "../components/AutoArea";
 
@@ -112,8 +113,8 @@ function Mistake({ error }: { error: unknown }) {
 
 // ------------------------------------------------------------------ the Brain screen
 
-type TabId = "knows" | "catchup" | "try" | "notes" | "sheets" | "files" | "questions";
-const TAB_IDS: TabId[] = ["knows", "catchup", "try", "notes", "sheets", "files", "questions"];
+type TabId = "knows" | "world" | "catchup" | "try" | "notes" | "sheets" | "files" | "questions";
+const TAB_IDS: TabId[] = ["knows", "world", "catchup", "try", "notes", "sheets", "files", "questions"];
 
 export function BrainPage() {
   const [params, setParams] = useSearchParams();
@@ -129,6 +130,7 @@ export function BrainPage() {
 
   const tabs: [TabId, string][] = [
     ["knows", "What it knows"],
+    ["world", "World"],
     ["catchup", waiting ? `Catch up · ${waiting}` : "Catch up"],
     ["try", "Test bench"],
     ["notes", "Notes"],
@@ -178,6 +180,7 @@ export function BrainPage() {
       ) : null}
       <div role="tabpanel" aria-label={tabs.find(([id]) => id === tab)?.[1]} style={css("display:flex;flex-direction:column;gap:32px")}>
         {tab === "knows" ? <KnowsTab go={go} /> : null}
+        {tab === "world" ? <WorldMap /> : null}
         {tab === "catchup" ? <CatchUpPanel /> : null}
         {tab === "try" ? <TryTab /> : null}
         {tab === "notes" ? <NotesTab /> : null}

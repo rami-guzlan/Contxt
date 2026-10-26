@@ -358,6 +358,41 @@ describe("Brain: Test bench", () => {
   });
 });
 
+describe("Brain: World", () => {
+  it("draws regions, entries and relationships, and says why two are connected", async () => {
+    knows({
+      "GET /api/brain/world": {
+        overview: { text: "Northwind is a small design studio.", state: "draft" },
+        regions: [
+          { id: "proj-site", label: "Website Redesign", kind: "project", status: "active" },
+          { id: "area:rules", label: "Rules", kind: "area", status: "" },
+        ],
+        entries: [
+          { id: "rules-style-002", title: "Headlines", region: "area:rules", level: "kept", kind: "rule" },
+          { id: "rules-why", title: "Why sentence case", region: "area:rules", level: "confirmed", kind: "rule" },
+        ],
+        edges: [{ from: "rules-why", to: "rules-style-002", type: "explains", source: "relates" }],
+        timeline: [{ what: "kept", id: "rules-why", title: "Why sentence case", recorded: "2026-10-25T10:00:00Z" }],
+        lore: [],
+        apps: [{ name: "Claude Code", seen: "2026-10-26T09:00:00Z", conversations: 3 }],
+        edge_types: ["supersedes", "explains"],
+      },
+    });
+    const user = userEvent.setup();
+    const { container } = renderAt(<BrainPage />, { path: "/brain", route: "/brain?tab=world" });
+    expect(await screen.findByText(/draft, not kept/)).toBeInTheDocument();
+    expect(screen.getByText("Northwind is a small design studio.")).toBeInTheDocument();
+    expect(screen.getByText(/Claude Code: 3 conversations/)).toBeInTheDocument();
+    expect(screen.getByText(/kept: Why sentence case/)).toBeInTheDocument();
+    const line = container.querySelector("line");
+    expect(line).not.toBeNull();
+    await user.click(line as Element);
+    expect(await screen.findByText(/rules-why explains rules-style-002, from its relates/)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Relationship type"), "supersedes");
+    expect(container.querySelector("line")).toBeNull();
+  });
+});
+
 describe("Brain: Files", () => {
   it("lists documents and assets, each downloadable", async () => {
     knows({

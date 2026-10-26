@@ -63,5 +63,33 @@ class WorldOverviewTest(unittest.TestCase):
         self.assertEqual(len(draft.body.split()), world.WORDS)
 
 
+
+class WorldPageDataTest(unittest.TestCase):
+    """The World page's data (13.5): regions, entries by level, edges, timeline, lore and the
+    apps that read the Brain; only what the caller may see."""
+
+    def setUp(self):
+        self.vault = fixture.build()
+        self.brain = Brain(self.vault, embeddings=False)
+
+    def tearDown(self):
+        self.brain.close()
+        fixture.remove(self.vault)
+
+    def test_regions_entries_and_apps(self):
+        self.brain.client = "Claude Code 2.0"
+        self.brain.context("How long do web projects take?")
+        found = self.brain.world_view().data
+        kinds = {r["kind"] for r in found["regions"]}
+        self.assertEqual(kinds, {"project", "area"})
+        ids = {e["id"] for e in found["entries"]}
+        self.assertIn("facts-services-002", ids)
+        self.assertNotIn("facts-clients-acme-001", ids)  # sealed: left out with no count
+        self.assertTrue(all(e["level"] for e in found["entries"]))
+        self.assertTrue(all(e["from"] in ids and e["to"] in ids for e in found["edges"]))
+        self.assertEqual([a["name"] for a in found["apps"]], ["Claude Code 2.0"])
+        self.assertEqual(found["overview"]["state"], "none")
+
+
 if __name__ == "__main__":
     unittest.main()

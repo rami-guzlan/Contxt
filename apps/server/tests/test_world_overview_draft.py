@@ -30,3 +30,9 @@ def test_a_failing_model_never_fails_the_distill(owner, runtime, monkeypatch):
     _fake(runtime, monkeypatch, fail=True)
     lines = runtime.heartbeat._world_overview(runtime.ws.owner())
     assert lines and lines[0].startswith("The world overview was not drafted")
+
+
+def test_the_world_page_reads_the_brain_as_a_world(owner):
+    found = owner.ok(owner.get("/api/brain/world"))
+    assert {"overview", "regions", "entries", "edges", "timeline", "lore", "apps"} <= set(found)
+    assert any(r["kind"] == "project" for r in found["regions"])

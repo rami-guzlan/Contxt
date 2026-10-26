@@ -2293,6 +2293,18 @@ class Brain:
         from . import world
         return world.draft_prompt(self)
 
+    def world_view(self, *, principal=None, partition=None, since=None) -> Result:
+        """The Brain as a world, for the owner's World page (world.py, 13.5)."""
+        from . import world
+        st = self.state()
+        caller = self.caller(principal, None, partition, st=st)
+        if isinstance(caller, Result):
+            return caller
+        chain, partitions = caller
+        found = world.data(self, st, chain, partitions, since=since)
+        return Result(f"{len(found['entries'])} entries in {len(found['regions'])} regions.",
+                      found)
+
     def propose_world(self, text, regions) -> dict:
         """A drafted world overview, as a proposal that waits for the owner (world.py)."""
         from . import world

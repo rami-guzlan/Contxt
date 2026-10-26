@@ -85,6 +85,15 @@ def brain_map_view(who: Who, ws: WS) -> dict[str, Any]:
     return ws.rt.brain.map_view()
 
 
+@router.get("/brain/world")
+def brain_world(who: Who, ws: WS, since: str | None = None) -> dict[str, Any]:
+    """The Brain as a world, for the World page (v4 backend plan, 13.5): the overview, the
+    regions, the entries by level, how they relate, what moved since `since`, the lessons
+    and the apps that read the Brain."""
+    who.require("brain.read")
+    return ws.rt.brain.world_view(since=since or None)
+
+
 @router.get("/brain/sections/{item_id:path}")
 def sections(item_id: str, who: Who, ws: WS) -> dict[str, Any]:
     """Every section address in one note, lesson or file, to copy."""
