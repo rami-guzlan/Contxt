@@ -58,7 +58,16 @@ Globex fact. The Brain rightly withholds it from a session that does not name th
 so the case was wrong: it now passes when the model does not state the withheld fact, and was
 rerun.
 
-## Claude Sonnet (`claude-sonnet-5-5`)
+## Not run yet
 
-Not run yet: it waits for the owner's yes at the measured size (about 1.1 million input
-tokens, mostly cache reads, for the ten cases).
+Claude Sonnet, Codex and Gemini have not run this eval. The owner judged Haiku enough for
+now; any of them can run later with `scripts/operating_eval.py --model <id>` (Codex and Gemini
+need a runner of their own in `operating_eval.py`).
+
+## For future estimates
+
+Each headless Claude Code run rereads about 68,000 tokens of its own system prompt and tool
+definitions from cache, before the Brain sends anything. Start an estimate from that: about
+68,000 input tokens for a one-call case, and that again for every further model turn (a case
+with three to five calls came to 126,000 to 172,000). The Brain's own share, the startup file
+and the first packet, was about 800 tokens of each run.
