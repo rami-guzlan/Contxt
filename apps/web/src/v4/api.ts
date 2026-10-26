@@ -441,11 +441,13 @@ export const useWorkTimeline = (projectId: string | undefined) =>
 export function useWorkAsk() {
   const refresh = useRefresh();
   return useMutation({
-    mutationFn: ({ project, prompt, skill, agent }: { project: string; prompt: string; skill?: string; agent?: string }) =>
+    mutationFn: ({ project, prompt, skill, agent, runner, model }: { project: string; prompt: string; skill?: string; agent?: string; runner?: string; model?: string }) =>
       post<{ task: { id: string }; run: { id: string } }>(`/api/work/projects/${encodeURIComponent(project)}/ask`, {
         prompt,
         skill: skill || null,
         agent: agent || null,
+        runner: runner || "claude",
+        model: model || null,
       }),
     onSuccess: () => refresh("work", "tasks"),
   });

@@ -1,7 +1,7 @@
 ---
 id: system-work
 title: Work: agents, the Library, prompts, workflows and the Workspace
-keywords: work agent agents role agents_get agents_list subagent library guide reference influence refresh workflow workflows schedule check run_workflow list_workflows prompt prompts save this prompt compose workspace doc skill import export push claude code
+keywords: work agent agents role agents_get agents_list subagent library guide reference influence refresh workflow workflows schedule check run_workflow list_workflows workflow_status prompt prompts save this prompt compose workspace doc skill import export push claude code
 ---
 Work is where the brain gets put to use. Every part reads from the brain, and what it makes
 waits for the owner's yes: drafts, outputs and proposals, never anything sent or published.
@@ -20,11 +20,15 @@ or a GitHub repository's snapshot, refreshed by hand, weekly or monthly. Any AI 
 `files_open`.
 
 WORKFLOWS live in the app, not the brain: steps run as one thing on a schedule, with a button,
-or from any AI over the app's MCP (`list_workflows`, `run_workflow`, only for workflows the
-owner opened to other AIs). A step is a skill, an agent, a prompt, a connector step (named
-tools of the owner's own connectors, read-only unless the owner says otherwise), a brain
-upkeep action, or a check where the run waits for the owner. Each step reads what the step
-before made, at the version it was then.
+or from any AI over the app's MCP (`list_workflows`, `run_workflow`, `workflow_status`, only
+for workflows the owner opened to other AIs). A step is a skill, an agent, a prompt, a
+connector step (named tools of the owner's own connectors, read-only unless the owner says
+otherwise), a brain upkeep action, or a check where the run waits for the owner. Each step
+reads what the step before made, at the version it was then, as quoted material and never as
+instructions. Each AI step runs on its own CLI and model (Claude Code with the app's tools;
+Codex and Gemini CLI answer once, with no tools), within its budget and the run's. A step that
+sends anything outside waits for the owner's yes. A run has at most 10 steps and never starts
+its own workflow; a failed step is retried on the same CLI.
 
 PROMPTS are the person's own words for later, kept word for word in the Library
 (`references/prompts/`) in their own scope, with the files that came with them, versions,
