@@ -56,6 +56,7 @@ log = logging.getLogger(__name__)
 CLI_CADENCE = 60  # minutes between reads of a new connector that reads through a CLI
 FIRST_LOOK = "the last 7 days"  # how far back a connector's first read looks
 ACCOUNT_TTL = 1800.0  # seconds a listing of the Claude account's connectors is kept
+ACCOUNT_RECHECKS = 2  # fresh listings for an account connector still connecting
 ACCOUNT_PLACE = "Your Claude account"
 
 CADENCES = (5, 15, 30, 60)
@@ -198,6 +199,27 @@ class Heartbeat:
             return self._accounts[1] if self._accounts else None
         self._accounts = (now, listed)
         return listed
+
+    def _checked(
+        self, who: Principal, row: dict[str, Any]
+    ) -> tuple[conn.Found | None, tuple[str, str, list[str], list[str]]]:
+        """A connector as a read finds it, and its check. An account connector still
+        connecting (they load in the background, so a listing a moment old can miss it) is
+        listed again, fresh, up to ACCOUNT_RECHECKS times before the beat leaves it."""
+        found = self._find(who, row)
+        if found is None:
+            return None, ("off", "", [], [])
+        checked = self._check(found)
+        tries = 0
+        while checked[0] == "error" and found.spec.get("account") and tries < ACCOUNT_RECHECKS:
+            tries += 1
+            again = next(
+                (f for f in self._account(who, fresh=True) or [] if f.id == row["id"]), None
+            )
+            if again is None:
+                break
+            found, checked = again, self._check(again)
+        return found, checked
 
     def _find(self, who: Principal, row: dict[str, Any]) -> conn.Found | None:
         if row.get("found_in") == ACCOUNT_PLACE:
@@ -1818,13 +1840,12 @@ class Heartbeat:
         out: dict[str, Any] = {}
         groups: dict[str, list[tuple[dict[str, Any], conn.Found, list[str], list[str]]]] = {}
         for row in rows:
-            found = self._find(owner, row)
+            found, (status, line, allowed, refused) = self._checked(owner, row)
             if found is None:
                 out[row["id"]] = ConnectorProblem(
                     "off", "No longer in the CLI's settings.", present=False
                 )
                 continue
-            status, line, allowed, refused = self._check(found)
             if status != "ok":
                 out[row["id"]] = ConnectorProblem(status, line, tools=allowed)
                 continue

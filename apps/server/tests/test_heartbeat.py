@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from workspace_core.db import schema
 from workspace_core.ports import BrainProposal
 from workspace_server.app import create_app
+from workspace_server.heartbeat import service as heartbeat_service
 from workspace_server.heartbeat import connectors as conn
 from workspace_server.heartbeat import memory as hb_memory
 from workspace_server.heartbeat import service as hb_service
@@ -1885,3 +1886,35 @@ def test_a_distill_that_saved_a_version_runs_the_after_distill_tests_on_it(
     assert f"Test Bench on {version}: 1 ran, 0 unchanged." in done["details"]
     distill(owner)  # nothing changed: no version, no tests
     assert ran == [version]
+
+
+def test_an_account_connector_that_connects_late_is_not_skipped(runtime, monkeypatch):
+    # Claude Code loads the account's connectors in the background: a listing a moment old
+    # can show one still connecting, though the next start has it.
+    hb = runtime.heartbeat
+    late = {"name": "claude.ai Drive", "status": "pending", "tools": []}
+    ready = {
+        "name": "claude.ai Drive",
+        "status": "connected",
+        "tools": ["search_files", "read_file"],
+    }
+    listings = [[late], [late], [ready]]
+    monkeypatch.setattr(hb.runners, "account_servers", lambda who: listings.pop(0))
+    hb._accounts = None
+    owner = runtime.ws.owner()
+    row = {"id": "claude:claude_ai_Drive", "found_in": heartbeat_service.ACCOUNT_PLACE}
+    found, (status, _line, allowed, _refused) = hb._checked(owner, row)
+    assert status == "ok" and found.spec["status"] == "connected"
+    assert set(allowed) == {"search_files", "read_file"}
+
+
+def test_an_account_connector_that_never_connects_is_skipped_after_a_bound(runtime, monkeypatch):
+    hb = runtime.heartbeat
+    late = {"name": "claude.ai Drive", "status": "pending", "tools": []}
+    starts = []
+    monkeypatch.setattr(hb.runners, "account_servers", lambda who: starts.append(1) or [late])
+    hb._accounts = None
+    row = {"id": "claude:claude_ai_Drive", "found_in": heartbeat_service.ACCOUNT_PLACE}
+    _found, (status, _line, _a, _r) = hb._checked(runtime.ws.owner(), row)
+    assert status == "error"
+    assert len(starts) == 1 + heartbeat_service.ACCOUNT_RECHECKS
