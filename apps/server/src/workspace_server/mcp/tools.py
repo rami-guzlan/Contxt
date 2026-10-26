@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from workspace_core.domain.policy import Principal
-from workspace_core.errors import ValidationFailed
+from workspace_core.errors import NotFound, ValidationFailed
 from workspace_core.services import prepass
 from workspace_core.workspace import Workspace
 
@@ -418,12 +418,37 @@ def run_workflow(ws: Workspace, who: Principal, args: dict[str, Any]) -> tuple[s
         trigger="ai",
         request=str(args.get("request") or ""),
         asked_by=who.name,
+        caller=who,
     )
     text = (
         f"Started “{found.name}” (run {run.id}): {len(run.steps)} steps. Its results wait in the "
         "owner's Work; nothing is published or sent."
     )
     return text, {"run": run.to_dict()}
+
+
+def workflow_status(
+    ws: Workspace, who: Principal, args: dict[str, Any]
+) -> tuple[str, dict[str, Any]]:
+    """Where a run of a workflow open to other AIs is: each step, its CLI and what it made."""
+    owner = ws.owner()
+    run = ws.workflows.run_of(owner, str(_str(args, "run_id", True)))
+    if not ws.workflows.get(owner, run.workflow_id).ai:
+        raise NotFound(f"No run {run.id} of a workflow open to other AIs.")
+    lines = [f"“{run.workflow}” is {run.status}, at step {run.step + 1} of {len(run.steps)}."]
+    for step in run.steps:
+        made = (step.get("result") or {}).get("title")
+        lines.append(
+            f"{step['index'] + 1}. {step.get('title') or step['kind']}"
+            + (f" on {step['runner']}" if step.get("runner") else "")
+            + f": {step['status']}"
+            + (f", made “{made}”" if made else "")
+        )
+    if run.waiting:
+        lines.append(f"Waiting for the owner: {run.waiting['ask']}")
+    if run.note:
+        lines.append(run.note)
+    return "\n".join(lines), {"run": run.to_dict()}
 
 
 # ---------------------------------------------------------------------- the heartbeat
@@ -1365,6 +1390,14 @@ TOOLS: dict[str, Tool] = {
                 ["name"],
             ),
             run_workflow,
+            "tasks.claim",
+        ),
+        Tool(
+            "workflow_status",
+            "Where a run you started with run_workflow is: each step, the CLI it runs on, what "
+            "it made, and what waits for the owner.",
+            _obj({"run_id": {"type": "string", "description": "The run's id."}}, ["run_id"]),
+            workflow_status,
             "tasks.claim",
         ),
         Tool(

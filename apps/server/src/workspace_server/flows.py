@@ -84,9 +84,11 @@ class WorkflowWorker:
         self._thread: threading.Thread | None = None
 
     def tick(self) -> dict[str, Any]:
-        """One pass: start what is due, move runs along, start one step here, run upkeep."""
+        """One pass: start what is due, record what finished steps used, move runs along,
+        start one step here, run upkeep."""
         owner = self.ws.owner()
         started = self.ws.workflows.start_due(owner)
+        self._meter(owner)
         todo = self.ws.workflows.advance(owner)
         for item in todo["watch"]:
             self._look_in(owner, item)
@@ -155,23 +157,51 @@ class WorkflowWorker:
                 owner, item["run_id"], item["index"], ok=False, summary=job.error or "It stopped."
             )
 
+    def _meter(self, owner: Any) -> None:
+        """What each finished step's run used, from its CLI's report, onto the workflow run,
+        so its budgets are checked before the next step starts."""
+        steps = self.ws.workflows.unmetered(owner)
+        if not steps:
+            return
+        reports: dict[str, dict[str, Any]] = {}
+        for run in list(self.runners.runs.values()):
+            if run.status in ACTIVE:
+                continue
+            result = next((e for e in reversed(run.events) if e.get("kind") == "result"), None)
+            if result and result.get("usage"):
+                reports[run.task_id] = result["usage"]
+        for step in steps:
+            usage = reports.get(step["task_id"])
+            if usage is None:
+                continue
+            try:
+                self.ws.workflows.step_used(owner, step["run_id"], step["index"], usage)
+            except WorkspaceError:  # the run moved on: the next tick looks again
+                continue
+
     def _start_one(self, owner: Any, waiting: list[dict[str, Any]]) -> int:
-        """Start one step's task with Claude Code here, unless a run is going already."""
+        """Start one step's task here on its CLI and model, unless a run is going already.
+        Claude Code runs it with the app's tools; Codex and Gemini CLI answer it once."""
         if not waiting or any(run.status in ACTIVE for run in list(self.runners.runs.values())):
             return 0
+        item = waiting[0]
+        wanted = item.get("runner") or "claude"
         runner = next(
             (
                 status
                 for status in self.runners.statuses(owner)
-                if status.id == "claude" and status.installed and status.signed_in is not False
+                if status.id == wanted and status.installed and status.signed_in is not False
             ),
             None,
         )
         if runner is None:
             return 0  # the step waits in the queue, like any AI work without a model
-        item = waiting[0]
+        model = item.get("model")
         try:
-            self.runners.start(owner, runner.id, item["task_id"])
+            if RUNNERS[wanted].one_click:
+                self.runners.start(owner, runner.id, item["task_id"], model=model)
+            else:
+                self.runners.answer(owner, runner.id, item["task_id"], model=model)
         except WorkspaceError as exc:
             log.warning("could not start step %s of %s: %s", item["index"], item["run_id"], exc)
             return 0
