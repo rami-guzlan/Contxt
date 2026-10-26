@@ -198,7 +198,13 @@ def _kernel_now(brain, st, row, fingerprint: str) -> str | None:
         return None
     chain, partitions = caller
     text, now = kernel_mod.render(st.config, st.index, st.scopes, chain, partitions)
-    return f"# Startup context (kernel {now})\n\n{text}" if now == fingerprint else None
+    if now != fingerprint:
+        return None
+    from . import brainmap
+    from .api import _after_operating
+    shown = brainmap.render(brain._brain_map(st, chain, partitions), str(row.get("request") or ""))
+    # The Brain map went inside the startup context, after how to work with the Brain.
+    return _after_operating(f"# Startup context (kernel {now})\n\n{text}", shown["text"])
 
 
 def normal_path(path: str) -> str:
