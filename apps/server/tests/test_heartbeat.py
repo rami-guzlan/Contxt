@@ -471,6 +471,17 @@ def test_a_beat_with_nothing_new_writes_only_its_record(owner, runtime, fake_cli
     assert fake_cli.judges() == []
 
 
+def test_each_beat_commits_the_context_sheets(owner, runtime, fake_cli, monkeypatch):
+    found(owner)
+    fake_cli.items = []
+    committed = []
+    monkeypatch.setattr(
+        runtime.ws.rt.brain, "commit_sheets", lambda message: committed.append(message) or {}
+    )
+    beat(owner)
+    assert len(committed) == 1 and committed[0].startswith("Sheets after beat")
+
+
 def test_one_beat_at_a_time_and_a_stale_lock_expires(owner, runtime, clock):
     found(owner)
     with runtime.ws.rt.write() as tx:

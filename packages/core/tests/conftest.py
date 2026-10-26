@@ -251,6 +251,10 @@ class FakeBrain:
     def bench_files(self):
         return dict(getattr(self, "bench", {}))
 
+    def commit_sheets(self, message):
+        self.sheet_commits = getattr(self, "sheet_commits", 0) + 1
+        return {"committed": True}
+
     def bench_write(self, rel, text, *, message):
         self.bench = {k: v for k, v in getattr(self, "bench", {}).items() if k != rel}
         if text is not None:
