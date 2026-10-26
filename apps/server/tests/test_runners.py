@@ -613,3 +613,13 @@ def test_work_with_ai_takes_the_brains_project_id(owner, runtime, model):
 def test_work_that_is_not_ingestion_runs_on_the_clis_own_model(owner, ready_task):
     run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
     assert "--model" not in report(finish(owner, run["id"]))["argv"]
+
+
+def test_an_account_read_caps_each_tools_answer(monkeypatch):
+    # A whole Drive file in one tool answer made a real read outgrow the model's context.
+    from workspace_server import runners as runners_mod
+
+    monkeypatch.delenv("MAX_MCP_OUTPUT_TOKENS", raising=False)
+    env = runners_mod._account_env()
+    assert env["MAX_MCP_OUTPUT_TOKENS"] == str(runners_mod.MCP_OUTPUT_TOKENS)
+    assert env["ENABLE_CLAUDEAI_MCP_SERVERS"] == "true"
