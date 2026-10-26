@@ -6,7 +6,7 @@ Two MCP servers, for two jobs:
   engine; `uv run contxt connect` prints the setup for each AI app): what your AI apps use in
   every chat. It hands each request its context (`gnomon_get_context`, its own tool, called
   first every time). Everything else is one tool per area with an `action`, as Webflow's
-  tools are: `notes` (`search`, `get`, `related`, `propose`, `challenge`), `skills` (`get`,
+  tools are: `notes` (`search`, `get`, `related`, `propose` (with `relates` to say how it relates to other entries), `challenge`), `skills` (`get`,
   `propose_change`), `files` (`open`, `upload`), `projects` (`create`, `propose_progress`),
   `sheets` (`get`, `propose_update`), `todos` (`update`), `outputs` (`save`: what a file it
   saved for you was made from, for the app's Outputs page), `gnomon` (`map`, `open`,

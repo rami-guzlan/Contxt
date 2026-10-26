@@ -174,6 +174,10 @@ AGENT_TOOLS = [
          "valid_until": {"type": "string", "description": "The last day it holds, "
                          "YYYY-MM-DD; after it, the note is flagged for a check."},
          "evidence": _STR,
+         "relates": {"type": "array", "items": _STR, "description":
+             "How it relates to other entries, when the person makes that clear: "
+             "\"explains: <id>\", \"depends on: <id>\", \"example of: <id>\" or "
+             "\"instead of: <id>\" (an id may end in #heading). The owner keeps or skips it."},
          "source": {"type": "string", "description": "Where it came from. When that is a "
                     "file an AI made (one recorded with outputs_save), name it as "
                     "output:<its full path>: what only repeats the brief that file was made "
@@ -521,7 +525,8 @@ HANDLERS = {
         as_of=a.get("as_of") or None, valid_until=a.get("valid_until") or None,
         source_id=a.get("source_id"), source_version=a.get("source_version"),
         source_locator=a.get("source_locator"), source_speaker=a.get("source_speaker"),
-        source_excerpt=a.get("source_excerpt"), op_id=a.get("idempotency_key")),
+        source_excerpt=a.get("source_excerpt"), op_id=a.get("idempotency_key"),
+        relates=a.get("relates") or None),
     "skills_propose_change": lambda b, a: b.propose_skill(
         name=a.get("name"), category=a.get("category"), description=a.get("description"),
         when_to_use=a.get("when_to_use"), triggers=a.get("triggers"), loads=a.get("loads"),

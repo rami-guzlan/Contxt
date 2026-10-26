@@ -135,7 +135,7 @@ def data(brain, st, chain, partitions, *, since=None) -> dict:
     entries = [{"id": n.id, "title": n.title, "region": region(n), "level": levels.of(n),
                 "kind": n.kind} for n in seen.values() if n.id != ID]
     edges = [{"from": src, "to": dst.split("#", 1)[0], "type": kind, "source": source}
-             for src, kind, dst, source in relations.derive(index)
+             for src, kind, dst, source in relations.derive(index, st.snapshot.proposals.values())
              if src in seen and dst.split("#", 1)[0] in seen]
     moved = timeline.entries(brain, st, chain, partitions, since=since)
     lore = [{"id": n.id, "title": n.title, "region": region(n)}
