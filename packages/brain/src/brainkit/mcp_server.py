@@ -17,6 +17,7 @@ brain's owner). A caller cannot choose who it is.
 from __future__ import annotations
 
 import json
+import re
 import os
 import sys
 
@@ -575,13 +576,66 @@ HANDLERS = {
 }
 
 
+# Grouped tools (the owner's list, item 5), Webflow's convention: one tool per area with an
+# `action` parameter, built from the one-per-action definitions above (`notes_search` is the
+# `notes` tool's `search`). `gnomon_get_context` stays its own tool, called first every time.
+# The one-per-action names still answer; every text sent out names the grouped form.
+FIRST = "gnomon_get_context"
+
+
+def _area(name: str) -> tuple[str, str]:
+    area, _, action = name.partition("_")
+    return area, action
+
+
+def _grouped(tools: list[dict]) -> list[dict]:
+    areas: dict[str, list[dict]] = {}
+    for tool in tools:
+        if tool["name"] != FIRST:
+            areas.setdefault(_area(tool["name"])[0], []).append(tool)
+    out = [t for t in tools if t["name"] == FIRST]
+    for area, members in areas.items():
+        properties: dict = {"action": {"type": "string",
+                                       "enum": [_area(m["name"])[1] for m in members]}}
+        for member in members:
+            for key, spec in (member.get("inputSchema") or {}).get("properties", {}).items():
+                properties.setdefault(key, spec)
+        lines = [f"{area.capitalize()}: one tool, the action says what to do."]
+        lines += [f"- {_area(m['name'])[1]}: {m.get('description', '')}" for m in members]
+        out.append({"name": area, "description": "\n".join(lines),
+                    "inputSchema": {"type": "object", "properties": properties,
+                                    "required": ["action"]}})
+    return out
+
+
+GROUPED = _grouped(AGENT_TOOLS)
+GROUPS = {t["name"]: t["inputSchema"]["properties"]["action"]["enum"]
+          for t in GROUPED if t["name"] != FIRST}
+_FLAT = sorted((t["name"] for t in AGENT_TOOLS if t["name"] != FIRST), key=len, reverse=True)
+_FLAT_NAME = re.compile(r"\b(" + "|".join(map(re.escape, _FLAT)) + r")\b(?:\(([^()]*)\))?")
+
+
+def grouped_text(text: str) -> str:
+    """`notes_search` written as `notes(action: "search")`, and `notes_get(id="...")` as
+    `notes(action: "get", id="...")`: the tools a client is shown."""
+    def named(found):
+        area, action = _area(found.group(1))
+        rest = (found.group(2) or "").strip()
+        return f'{area}(action: "{action}"' + (f", {rest})" if rest else ")")
+    return _FLAT_NAME.sub(named, str(text or ""))
+
+
+INSTRUCTIONS = grouped_text(INSTRUCTIONS)
+
+
 class Server:
     def __init__(self, brain: Brain | None = None, profile: str | None = None, out=None):
         self.brain = brain or Brain()
         profile = (profile or os.environ.get("BRAIN_MCP_PROFILE") or "agent").strip().lower()
         self.profile = profile if profile in ("agent", "full") else "agent"
-        self.tools = FULL_TOOLS if self.profile == "full" else AGENT_TOOLS
-        self.available = {t["name"] for t in self.tools}
+        flat = FULL_TOOLS if self.profile == "full" else AGENT_TOOLS
+        self.tools = GROUPED + [t for t in flat if t not in AGENT_TOOLS]
+        self.available = {t["name"] for t in flat}
         self.out = out or sys.stdout
 
     def reply(self, msg_id, result=None, error=None):
@@ -594,7 +648,18 @@ class Server:
         self.out.flush()
 
     def call(self, name, arguments) -> Result:
+        found = self._call(name, arguments)
+        return Result(grouped_text(found.text), found.data, is_error=found.is_error)
+
+    def _call(self, name, arguments) -> Result:
         name = ALIASES.get(name, name)  # a name from before the MCP Tools.md surface
+        if name in GROUPS:
+            action = str((arguments or {}).get("action") or "").strip()
+            if action not in GROUPS[name]:
+                said = f"No action {action!r} in {name}." if action else "Say which action."
+                return Result(f"{said} {name} does: {', '.join(GROUPS[name])}.",
+                              {"status": "invalid", "actions": GROUPS[name]}, is_error=True)
+            name = f"{name}_{action}"
         if name not in self.available:
             return Result(f"Tool {name!r} is not available in the {self.profile} profile.",
                           {"status": "unavailable"}, is_error=True)

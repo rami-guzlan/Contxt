@@ -83,8 +83,10 @@ class LoreTest(unittest.TestCase):
     def test_the_lore_tools_are_on_the_brain_mcp_server(self):
         server = mcp_server.Server(self.brain)
         names = {t["name"] for t in server.tools}
-        self.assertTrue({"lore_list", "lore_get", "lore_propose", "gnomon_open",
-                         "activity_sessions_search"} <= names)
+        self.assertTrue({"lore", "gnomon", "activity"} <= names)
+        lore = next(t for t in server.tools if t["name"] == "lore")
+        self.assertEqual(lore["inputSchema"]["properties"]["action"]["enum"],
+                         ["list", "get", "propose"])
         found = server.call("lore_get", {"id": "lore_two_exports"})
         self.assertFalse(found.is_error, found.text)
 

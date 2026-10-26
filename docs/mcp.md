@@ -4,14 +4,18 @@ Two MCP servers, for two jobs:
 
 - **The Brain's own server** (`python -m brainkit --vault <vault> mcp`, the `packages/brain`
   engine; `uv run contxt connect` prints the setup for each AI app): what your AI apps use in
-  every chat. It hands each request its context (`gnomon_get_context`), opens entries,
-  files and procedures, and saves what the conversation learns (`notes_propose`, `files_upload`,
-  `projects_create`, `projects_propose_progress`); `outputs_save` says what a file it saved for you was
-  made from, so the app's Outputs page can show it. Each packet opens with the Brain map
-  (`gnomon_map(tier)` returns one tier whole); `gnomon_open(address)` opens one part
-  (`note-id#heading`, `file#section`, `lore_id#story`) within the pull budget the owner sets
-  (2 items and about 1,500 tokens by default); `lore_list`, `lore_get` and `lore_propose` read
-  and propose lessons; `activity_sessions_search` finds past conversations by their receipts.
+  every chat. It hands each request its context (`gnomon_get_context`, its own tool, called
+  first every time). Everything else is one tool per area with an `action`, as Webflow's
+  tools are: `notes` (`search`, `get`, `propose`, `challenge`), `skills` (`get`,
+  `propose_change`), `files` (`open`, `upload`), `projects` (`create`, `propose_progress`),
+  `sheets` (`get`, `propose_update`), `todos` (`update`), `outputs` (`save`: what a file it
+  saved for you was made from, for the app's Outputs page), `gnomon` (`map`, `open`,
+  `health`), `lore` (`list`, `get`, `propose`), `activity` (`sessions_search`), `taste`,
+  `receipts`, `gaps` and `agents`. Each packet opens with the Brain map
+  (`gnomon(action: "map", tier)` returns one tier whole); `gnomon(action: "open", address)`
+  opens one part (`note-id#heading`, `file#section`, `lore_id#story`) within the pull budget
+  the owner sets (2 items and about 1,500 tokens by default). The earlier one-per-action names
+  (`notes_search` and the rest) still answer, so apps set up before keep working.
   Every Claude Desktop or Claude Code window starts one; they all read and write the same Brain. See [the Brain's architecture](brain/ARCHITECTURE.md).
 - **The app's endpoint** (`POST /mcp` on the server): how a model does the AI work the app
   starts (finding what to remember in a note, reconciling a clash). This page is about it.
