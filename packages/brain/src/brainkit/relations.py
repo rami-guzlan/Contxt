@@ -163,3 +163,38 @@ def neighbours(brain, st, note_id: str, chain, partitions, *, types=None,
                         following.append(_base(other))
             frontier = following
     return out
+
+
+PACKET_EDGES = 2  # edges shown under an entry in a packet, at most
+
+
+def _cached(index) -> dict:
+    found = getattr(index, "_relations_cache", None)
+    if found is None:
+        found = {"out": {}, "in": {}}
+        for src, kind, dst, _source in derive(index):
+            found["out"].setdefault(src, []).append((kind, dst))
+            found["in"].setdefault(_base(dst), []).append((kind, src))
+        index._relations_cache = found
+    return found
+
+
+def for_packet(index, note_id: str, shown: set[str]) -> list[str]:
+    """Up to two edges for an entry in a packet, each to something the packet itself holds
+    (another entry sent with it, or the request's project): never a pointer to what the
+    caller was not given."""
+    edges = _cached(index)
+    out = [f"{kind} `{dst}`" for kind, dst in edges["out"].get(note_id, [])
+           if _base(dst) in shown and _base(dst) != note_id]
+    out += [f"{kind} (from) `{src}`" for kind, src in edges["in"].get(note_id, [])
+            if src in shown and src != note_id]
+    return out[:PACKET_EDGES]
+
+
+def counts(index, visible) -> dict[str, int]:
+    """How many edges of each type join entries the caller may see."""
+    tally: dict[str, int] = {}
+    for src, kind, dst, _source in derive(index):
+        if visible(src) and visible(dst):
+            tally[kind] = tally.get(kind, 0) + 1
+    return tally
