@@ -25,7 +25,7 @@ import re
 import secrets
 from dataclasses import dataclass, field
 
-from . import capture, dissent, levels, util
+from . import capture, dissent, levels, relations, util
 
 BODIES = {"micro": 2, "standard": 3, "deep": 5}  # notes in full before the rest come in short
 POINTER_WORDS = 40   # the closest sentence of a note sent in short, at most
@@ -536,6 +536,9 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         lines += ["### Focus baseline", "", focus.note.body.strip(), ""]
     scored_by_id = {s.item.id: s.detail for s in route.notes + route.style_notes}
 
+    # Edges under an entry point only at what this packet holds (relations.py, 13.2).
+    shown_ids = {n.id for n in chosen} | ({route.focus.id} if route.focus is not None else set())
+
     def heading(note):
         detail = scored_by_id.get(note.id) or {}
         flags = f" (as of {as_of(note.as_of)})" if note.as_of else ""
@@ -544,9 +547,11 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             flags += f" (stale: {detail['stale']}; verify before relying on it)"
         if detail.get("disputed"):
             flags += " (disputed)"
+        edges = relations.for_packet(index, note.id, shown_ids)
+        related = f"\nRelated: {'; '.join(edges)}" if edges else ""
         if note.meta.get("title"):
-            return f"### {note.title}{flags}   {levels.tag(note)}\n`{note.id}`"
-        return f"### {note.id}{flags}   {levels.tag(note)}"
+            return f"### {note.title}{flags}   {levels.tag(note)}\n`{note.id}`{related}"
+        return f"### {note.id}{flags}   {levels.tag(note)}{related}"
 
     def tagged(note) -> str:
         """A note in short, its level in braces after its name (levels.py)."""
