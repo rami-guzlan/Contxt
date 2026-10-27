@@ -639,6 +639,77 @@ class Heartbeat:
                 | ({} if here else {"status": "off", "status_line": f"{label} is not here."}),
             )
 
+    def test_read(self, who: Principal, connector_id: str) -> dict[str, Any]:
+        """The setup check for any connector (v4 backend plan, 17.2), the same for every
+        source: found, signed in, which tools only read, and one real sample read with the
+        items it found, the tokens, the time and the cost per beat and per day. Nothing is
+        kept: no cursor, no seen items, nothing staged."""
+        who.require("workspace.admin")
+        row = next((r for r in self._connectors() if r["id"] == connector_id), None)
+        steps: list[dict[str, Any]] = []
+
+        def done() -> dict[str, Any]:
+            return {"id": connector_id, "steps": steps, "passed": all(s["ok"] for s in steps)}
+
+        if row is None or not row["present"]:
+            steps.append(
+                {"step": "found", "ok": False, "line": f"No connector {connector_id} was found."}
+            )
+            return done()
+        steps.append({"step": "found", "ok": True, "line": f"Found in {row['found_in']}."})
+        if row["how"] in ("folder", "n8n", "memory"):
+            steps.append(
+                {
+                    "step": "test read",
+                    "ok": True,
+                    "line": "Read on this computer: no sign-in or model read to check.",
+                }
+            )
+            return done()
+        try:
+            _found, (status, line, allowed, refused) = self._checked(who, row)
+        except WorkspaceError as exc:
+            status, line, allowed, refused = "error", str(exc), [], []
+        signed = status != "unhealthy_sign_in"
+        steps.append({"step": "signed in", "ok": signed, "line": "Signed in." if signed else line})
+        if not signed:
+            return done()
+        steps.append(
+            {
+                "step": "read-only",
+                "ok": bool(allowed),
+                "line": f"{len(allowed)} tools only read; {len(refused)} refused."
+                if allowed
+                else line,
+            }
+        )
+        if not allowed:
+            return done()
+        started = time.monotonic()
+        got = self._read_cli(who, [{**row, "status": "ok", "tools": allowed}])[row["id"]]
+        seconds = round(time.monotonic() - started, 1)
+        if isinstance(got, BaseException):
+            steps.append({"step": "test read", "ok": False, "line": str(got), "seconds": seconds})
+            return done()
+        usage = got.get("usage") or {}
+        cost = usage.get("cost")
+        beats = 1440 / max(1, int(row["cadence_minutes"] or CLI_CADENCE))
+        steps.append(
+            {
+                "step": "test read",
+                "ok": True,
+                "items": len(got["items"]),
+                "returned": got.get("returned", len(got["items"])),
+                "tokens": tokens_of(usage),
+                "seconds": seconds,
+                "cost": cost,
+                # At most: after the first read, a beat reads only what is new.
+                "per_day": round(float(cost) * beats, 4) if isinstance(cost, int | float) else None,
+                "line": f"{len(got['items'])} items in {seconds} s.",
+            }
+        )
+        return done()
+
     def set_connector(
         self,
         who: Principal,

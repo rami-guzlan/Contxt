@@ -106,6 +106,13 @@ def rescan(request: Request, who: Who) -> dict[str, Any]:
     return _heartbeat(request).rescan(who)
 
 
+@router.post("/connectors/{connector_id:path}/test")
+def test_connector(connector_id: str, request: Request, who: Who) -> dict[str, Any]:
+    """The setup check for one connector: found, signed in, read-only and one sample read.
+    Nothing it reads is kept."""
+    return _heartbeat(request).test_read(who, connector_id)
+
+
 @router.put("/connectors/{connector_id}")
 def set_connector(
     connector_id: str, body: ConnectorIn, request: Request, who: Who

@@ -1999,3 +1999,30 @@ def test_a_rescan_that_misses_a_slow_account_connector_keeps_its_last_state():
     )
     never_read = {**row, "last_read_at": None}
     assert keep(never_read, "error", "x")[0] == "error"
+
+
+def test_a_test_read_reports_each_step_and_keeps_nothing(owner, runtime, fake_cli):
+    # The setup check for any connector (v4 backend plan, 17.2): found, signed in, read-only
+    # and one real sample read with its items, tokens, time and cost; no cursor, nothing seen.
+    fake_cli.account_init = ACCOUNT_INIT
+    fake_cli.account_list = ACCOUNT_LIST
+    found(owner)
+    done = owner.ok(owner.post(f"/api/heartbeat/connectors/claude:{NOTION}/test"))
+    steps = {s["step"]: s for s in done["steps"]}
+    assert list(steps) == ["found", "signed in", "read-only", "test read"]
+    assert all(s["ok"] for s in done["steps"]) and done["passed"]
+    read = steps["test read"]
+    assert read["items"] >= 1 and read["seconds"] >= 0
+    assert "per_day" in read and "returned" in read
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert not rows[f"claude:{NOTION}"]["last_read_at"]  # nothing kept
+
+
+def test_a_test_read_of_a_connector_that_is_not_there_fails_at_found(owner):
+    done = owner.ok(owner.post("/api/heartbeat/connectors/claude:nothing_here/test"))
+    assert not done["passed"]
+    assert done["steps"][0] == {
+        "step": "found",
+        "ok": False,
+        "line": "No connector claude:nothing_here was found.",
+    }
