@@ -153,7 +153,7 @@ class StubRunners:
 
         return [Status()]
 
-    def start(self, who, runner_id, task_id):
+    def start(self, who, runner_id, task_id, *, model=None):
         self.started.append((runner_id, task_id))
 
 

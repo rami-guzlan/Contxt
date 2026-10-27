@@ -402,6 +402,7 @@ class WorkAskIn(Body):
     skill: str | None = Field(default=None, max_length=120)
     agent: str | None = Field(default=None, max_length=120)
     runner: str = Field(default="claude", max_length=20)
+    model: str | None = Field(default=None, max_length=60)
 
 
 class OrchestratorAgentIn(Body):
@@ -761,6 +762,7 @@ class WorkflowIn(Body):
     steps: list[dict[str, Any]] = Field(min_length=1, max_length=12)
     runner: str = Field(default="claude", pattern="^(claude|any)$")
     output: dict[str, Any] = Field(default_factory=lambda: {"kind": "outputs"})
+    budget: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
     expected_version: int | None = None
 
@@ -774,6 +776,7 @@ class WorkflowIn(Body):
             "steps": self.steps,
             "runner": self.runner,
             "output": self.output,
+            "budget": self.budget,
             "enabled": self.enabled,
         }
 

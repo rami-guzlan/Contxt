@@ -116,3 +116,46 @@ class RelationsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProposedRelatesTest(unittest.TestCase):
+    """`relates` arrives only through proposals, with the four explicit types; a dispute
+    waiting in Catch up is a "conflicts with" edge between the entries it names."""
+
+    def setUp(self):
+        self.vault = fixture.build()
+        self.brain = Brain(self.vault, embeddings=False)
+        self.owner = self.brain.state().config.owner
+
+    def tearDown(self):
+        self.brain.close()
+        fixture.remove(self.vault)
+
+    def test_a_proposal_carries_relates_and_the_kept_entry_has_the_edge(self):
+        made = self.brain.propose(area="rules", topic="style", text="Sentence case reads as "
+                                  "plain speech, so headlines use it.", scope="company",
+                                  title="Why sentence case", evidence="Alex said so.",
+                                  relates=["explains: rules-style-002"], force_pending=True)
+        self.assertFalse(made.is_error, made.text)
+        proposal = made.data.get("proposal_id") or made.data.get("id")
+        kept = self.brain.approve(proposal, actor=self.owner)
+        self.assertFalse(kept.is_error, kept.text)
+        note_id = kept.data.get("note_id") or kept.data.get("id")
+        found = {(e["type"], e["id"]) for e in self.brain.related(note_id).data["edges"]}
+        self.assertIn(("explains", "rules-style-002"), found)
+
+    def test_an_unknown_relates_type_is_refused(self):
+        made = self.brain.propose(area="rules", topic="style", text="Something.",
+                                  scope="company", relates=["likes: rules-style-002"])
+        self.assertTrue(made.is_error)
+        self.assertIn("explains", made.text)
+
+    def test_a_waiting_dispute_is_a_conflicts_with_edge(self):
+        made = self.brain.propose(area="facts", topic="services", target_id="facts-services-002",
+                                  text="Web design projects run ten to twelve weeks.",
+                                  scope="company", conflicts="facts-services-001",
+                                  evidence="The new contract says so.", force_pending=True)
+        self.assertFalse(made.is_error, made.text)
+        found = {(e["type"], e["id"]) for e in
+                 self.brain.related("facts-services-002").data["edges"]}
+        self.assertIn(("conflicts with", "facts-services-001"), found)

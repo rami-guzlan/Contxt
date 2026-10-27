@@ -1,0 +1,25 @@
+{
+  "about": "World view evaluation (v4 backend plan, 13.7). Labelled on Oct 26, 2026, before any run, and never tuned on. Each question is asked of the test fixture Brain seeded by scripts/world_eval.py (relationships, a superseded day rate, a dispute and dated decisions). `expect` is any-of: an answer is correct when it contains one of the terms (case ignored); `expect_all` needs every term. Run two ways: with the world view (main), and without it (the code from just before section 13).",
+  "questions": [
+    {"id": "r1", "kind": "relation", "q": "Why do our headlines use sentence case?", "expect": ["plain speech"]},
+    {"id": "r2", "kind": "relation", "q": "What does the kickoff invoice depend on, and how big is it?", "expect": ["40%", "40 percent"]},
+    {"id": "r3", "kind": "relation", "q": "Which note explains the rule that headlines use sentence case? Give its id.", "expect": ["rules-headline-why"]},
+    {"id": "r4", "kind": "relation", "q": "Which notes belong to the Website Redesign project, beyond the project itself?", "expect": ["figma"]},
+    {"id": "r5", "kind": "relation", "q": "Which entry replaced our 2025 day rate, and what does it say?", "expect": ["1,200", "1200"]},
+    {"id": "r6", "kind": "relation", "q": "What is part of the Studio Podcast project?", "expect": ["sm7b", "microphone"]},
+    {"id": "r7", "kind": "relation", "q": "The case study rule is an example of which other rule? Give its id.", "expect": ["rules-style-001"]},
+    {"id": "r8", "kind": "relation", "q": "What relates to the rule that headlines use sentence case?", "expect": ["rules-headline-why", "plain speech"]},
+    {"id": "t1", "kind": "time", "q": "What changed in the Brain since October 10, 2026?", "expect": ["day rate", "day-rate", "1,200", "1200"]},
+    {"id": "t2", "kind": "time", "q": "What was our day rate before October 2026?", "expect": ["950"]},
+    {"id": "t3", "kind": "time", "q": "When was the Figma handoff note kept?", "expect": ["oct 18", "october 18", "2026-10-18", "10-18", "18 oct"]},
+    {"id": "t4", "kind": "time", "q": "Which entry was disputed recently?", "expect": ["podcast", "sm7b", "microphone"]},
+    {"id": "t5", "kind": "time", "q": "What did we decide between October 4 and October 9, 2026?", "expect": ["sentence case", "plain speech", "40%", "deposit"]},
+    {"id": "t6", "kind": "time", "q": "Has the headline rule changed recently? When?", "expect": ["oct 14", "october 14", "2026-10-14", "10-14", "14 oct"]},
+    {"id": "t7", "kind": "time", "q": "What was superseded in October 2026?", "expect": ["950", "day-rate-2025", "2025 day rate"]},
+    {"id": "t8", "kind": "time", "q": "What is our day rate now?", "expect": ["1,200", "1200"]},
+    {"id": "o1", "kind": "orientation", "q": "What am I working on that touches Figma?", "expect": ["website redesign"]},
+    {"id": "o2", "kind": "orientation", "q": "Which of my projects involve recording?", "expect": ["podcast"]},
+    {"id": "o3", "kind": "orientation", "q": "Give me the big picture: which areas does this Brain cover?", "expect_all": ["rules", "facts"]},
+    {"id": "o4", "kind": "orientation", "q": "Which projects are active right now?", "expect_all": ["website redesign"]}
+  ]
+}

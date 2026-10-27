@@ -643,7 +643,7 @@ class Brain:
             shown = brainmap.full(found, tier=tier)
             if shown["lines"]:
                 lines += [f"## {brainmap.LABELS[tier].capitalize()}", "", *shown["lines"], ""]
-        tally = relations.counts(index, visible)
+        tally = relations.counts(index, visible, st.snapshot.proposals.values())
         if tally:
             lines += ["## How entries relate", "",
                       ", ".join(f"{n} {kind}" for kind, n in sorted(tally.items())) + ".",
@@ -1397,7 +1397,19 @@ class Brain:
         return self._write(lambda: focus.create_focus(self, name, summary, **kwargs))
 
     def propose(self, **kwargs) -> Result:
-        from . import governance
+        """Propose a note (governance.propose_note). `relates` (["explains: id#heading"])
+        rides with it as the entry's explicit edges, of the four types only (relations.py)."""
+        from . import governance, relations
+        relates = kwargs.pop("relates", None)
+        if relates:
+            items = relates if isinstance(relates, list) else [relates]
+            kept = relations._explicit(items)
+            if len(kept) != len(items):
+                return Result("A relates item is \"<type>: <entry id>\", the type one of "
+                              + ", ".join(relations.EXPLICIT) + ".", {"status": "invalid"},
+                              is_error=True)
+            kwargs["extra"] = {**(kwargs.get("extra") or {}),
+                               "relates": [f"{kind}: {to}" for kind, to in kept]}
         return self._write(lambda: governance.propose_note(self, **kwargs))
 
     def propose_piece(self, destination, text, **kwargs) -> Result:

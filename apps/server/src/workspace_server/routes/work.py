@@ -44,7 +44,13 @@ def ask(project_id: str, body: WorkAskIn, request: Request, who: Who) -> dict[st
     """Work with AI (Release 1 plan, section 11): one prompt becomes one job in this
     project's Tasks, run now; what it makes lands in Outputs as a draft."""
     return _work(request).ask(
-        who, project_id, body.prompt, skill=body.skill, agent=body.agent, runner=body.runner
+        who,
+        project_id,
+        body.prompt,
+        skill=body.skill,
+        agent=body.agent,
+        runner=body.runner,
+        model=body.model,
     )
 
 

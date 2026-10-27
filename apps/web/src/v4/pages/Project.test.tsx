@@ -3,7 +3,7 @@
 // project's to-dos), Files with their source status, and Outputs as drafts with what they were
 // made from. All from the API; each action calls its endpoint with the right body.
 
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -185,11 +185,66 @@ const job = {
   asked_by: "Owner",
 };
 
+const CLIS = [
+  { id: "claude", label: "Claude Code", models: [{ id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku · cheaper" }], one_click: true },
+  { id: "codex", label: "Codex CLI", models: [{ id: "gpt-5-mini", label: "GPT-5 mini · cheaper" }], one_click: false },
+];
+
+const flow = () => ({
+  id: "wf_1",
+  name: "Carousel",
+  description: "",
+  project: "foc_spring",
+  schedule: { kind: "manual" },
+  when: "Run now only",
+  ai: false,
+  steps: [
+    { kind: "prompt", text: "Make the carousel", runner: "claude", model: "sonnet", gate: false, budget: {} },
+    { kind: "connector", ask: "Queue it in Buffer", tools: ["mcp__buffer__create_post"], writes: true, runner: "claude", model: "haiku", gate: true, budget: {} },
+  ],
+  runner: "claude",
+  output: { kind: "outputs" },
+  enabled: true,
+  timezone: "UTC",
+  next_due_at: null,
+  revision: 1,
+  version: 1,
+  created_at: "",
+  updated_at: "",
+  archived_at: null,
+  last_run: null,
+  running: false,
+  budget: {},
+});
+
+const run = (over: Record<string, unknown> = {}) => ({
+  id: "wfr_1",
+  workflow_id: "wf_1",
+  workflow: "Carousel",
+  status: "running",
+  trigger: "now",
+  due_at: null,
+  started_at: "2026-10-26T09:00:00Z",
+  finished_at: null,
+  step: 0,
+  steps: [
+    { index: 0, kind: "prompt", title: "", status: "done", runner: "claude", model: "sonnet", result: { title: "Carousel v1" }, used: { tokens: 4900, cost: 0.02 } },
+    { index: 1, kind: "connector", title: "", status: "waiting", runner: "claude", model: "haiku", gate: true },
+  ],
+  revision: 1,
+  request: "",
+  note: "",
+  version: 1,
+  waiting: null,
+  ...over,
+});
+
 const tasksApi = {
   ...base,
   "GET /api/skills": { skills: [{ name: "launch-email", category: "", description: "", triggers: [], artifacts: [], makes_files: false, files: 0, last_run: null, used_by: [], use: "run" }], waiting: [] },
   "GET /api/agents": [{ name: "editor" }],
   "GET /api/work/projects/foc_spring/timeline": [job],
+  "GET /api/workflows": [],
   "GET /api/work/handoffs": lanes([
     {
       id: "T-4",
@@ -234,7 +289,112 @@ describe("Project · Tasks", () => {
     await userEvent.click(screen.getByRole("button", { name: "Send to Claude Code" }));
     expect(await screen.findByText(/Started\. It shows in the timeline below\./)).toBeInTheDocument();
     const ask = calls.find((c) => c.method === "POST" && c.path === "/api/work/projects/foc_spring/ask");
-    expect(ask?.body).toEqual({ prompt: "Draft the follow-up email", skill: "launch-email", agent: "editor" });
+    expect(ask?.body).toEqual({ prompt: "Draft the follow-up email", skill: "launch-email", agent: "editor", runner: "claude", model: null });
+  });
+
+  it("runs a job on another CLI and model, and says where the prompt and context go", async () => {
+    const clis = [
+      { id: "claude", label: "Claude Code", models: [{ id: "haiku", label: "Haiku · cheaper" }], one_click: true },
+      { id: "codex", label: "Codex CLI", models: [{ id: "gpt-5-mini", label: "GPT-5 mini · cheaper" }], one_click: false },
+    ];
+    const calls = mockApi({
+      ...tasksApi,
+      "GET /api/projects/foc_spring/orchestrators": { orchestrators: [], agent_tasks: [], clis, works_by: [] },
+      "POST /api/work/projects/foc_spring/ask": { status: 201, body: { task: { id: "task_33" }, run: { id: "run_3" } } },
+    });
+    renderAt(<ProjectPage />, at("tasks"));
+    await userEvent.click(await screen.findByRole("button", { name: "Codex CLI" }));
+    expect(screen.getByText(/Codex CLI sends this prompt and the project's context to OpenAI\. It has no tools here/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Model"), "gpt-5-mini");
+    await userEvent.type(screen.getByLabelText("What should the AI do"), "Rewrite the launch copy");
+    await userEvent.click(screen.getByRole("button", { name: "Send to Codex CLI" }));
+    await screen.findByText(/Started\./);
+    const ask = calls.find((c) => c.method === "POST" && c.path === "/api/work/projects/foc_spring/ask");
+    expect(ask?.body).toMatchObject({ prompt: "Rewrite the launch copy", runner: "codex", model: "gpt-5-mini" });
+  });
+
+  it("saves a Work with AI prompt as step 1 of a workflow, adds a step on Codex, and saves it for the project", async () => {
+    const calls = mockApi({
+      ...tasksApi,
+      "GET /api/projects/foc_spring/orchestrators": { orchestrators: [], agent_tasks: [], clis: CLIS, works_by: [] },
+      "GET /api/workflows": [],
+      "POST /api/workflows": { status: 201, body: flow() },
+    });
+    renderAt(<ProjectPage />, at("tasks"));
+    await userEvent.type(await screen.findByLabelText("What should the AI do"), "Make the carousel");
+    await userEvent.click(screen.getByRole("button", { name: "Save as workflow" }));
+    expect(await screen.findByLabelText("Step 1 what it does")).toHaveValue("Make the carousel");
+    await userEvent.type(screen.getByLabelText("Workflow name"), "Carousel");
+    await userEvent.click(screen.getByRole("button", { name: "Add a step" }));
+    const second = screen.getByRole("group", { name: "Step 2" });
+    await userEvent.type(within(second).getByLabelText("Step 2 what it does"), "Rewrite the copy with my rules");
+    await userEvent.click(within(second).getByRole("button", { name: "Codex CLI" }));
+    await userEvent.selectOptions(within(second).getByLabelText("Step 2 model"), "gpt-5-mini");
+    expect(within(second).getByText(/sends them to OpenAI\. It has no tools/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save workflow" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/workflows")).toBe(true));
+    const saved = calls.find((c) => c.method === "POST" && c.path === "/api/workflows")?.body as { project: string; name: string; steps: Record<string, unknown>[] };
+    expect(saved.project).toBe("foc_spring");
+    expect(saved.name).toBe("Carousel");
+    expect(saved.steps.map((s) => [s.kind, s.text, s.runner, s.model])).toEqual([
+      ["prompt", "Make the carousel", "claude", null],
+      ["prompt", "Rewrite the copy with my rules", "codex", "gpt-5-mini"],
+    ]);
+  });
+
+  it("makes a step that sends outside wait for your yes, always", async () => {
+    mockApi({ ...tasksApi, "GET /api/projects/foc_spring/orchestrators": { orchestrators: [], agent_tasks: [], clis: CLIS, works_by: [] }, "GET /api/workflows": [] });
+    renderAt(<ProjectPage />, at("tasks"));
+    await userEvent.click(await screen.findByRole("button", { name: "New workflow" }));
+    await userEvent.selectOptions(screen.getByLabelText("Step 1 kind"), "connector");
+    await userEvent.click(screen.getByLabelText("It sends or changes something outside"));
+    const gate = screen.getByLabelText(/Wait for my yes before this step/);
+    expect(gate).toBeChecked();
+    expect(gate).toBeDisabled();
+  });
+
+  it("shows the latest run's steps with their AI and cost, says yes at a gate, and retries a failed step", async () => {
+    const waiting = run({
+      status: "waiting",
+      step: 1,
+      waiting: { step: 1, ask: "Step 2 acts outside Gnomon with mcp__buffer__create_post: what it sends cannot be undone. Say yes to let it run.", result: null, gate: true },
+    });
+    const calls = mockApi({
+      ...tasksApi,
+      "GET /api/projects/foc_spring/orchestrators": { orchestrators: [], agent_tasks: [], clis: CLIS, works_by: [] },
+      "GET /api/workflows": [flow()],
+      "GET /api/workflows/wf_1/runs": [waiting],
+      "POST /api/workflows/runs/wfr_1/decide": run({ status: "running", step: 1 }),
+    });
+    renderAt(<ProjectPage />, at("tasks"));
+    const latest = await screen.findByRole("generic", { name: "Latest run of Carousel" });
+    expect(within(latest).getByText(/Claude Code · sonnet/)).toBeInTheDocument();
+    expect(within(latest).getByText("4,900 tokens · $0.02")).toBeInTheDocument();
+    expect(within(latest).getByText(/cannot be undone/)).toBeInTheDocument();
+    await userEvent.click(within(latest).getByRole("button", { name: "Yes, go on" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/workflows/runs/wfr_1/decide")?.body).toEqual({ go: true }));
+  });
+
+  it("retries a failed step on the same AI", async () => {
+    const failed = run({
+      status: "failed",
+      step: 1,
+      note: "Step 2 failed.",
+      steps: [
+        { index: 0, kind: "prompt", title: "", status: "done", runner: "claude", model: "sonnet", result: { title: "Carousel v1" } },
+        { index: 1, kind: "connector", title: "", status: "failed", runner: "claude", model: "haiku", note: "Its task failed." },
+      ],
+    });
+    const calls = mockApi({
+      ...tasksApi,
+      "GET /api/projects/foc_spring/orchestrators": { orchestrators: [], agent_tasks: [], clis: CLIS, works_by: [] },
+      "GET /api/workflows": [flow()],
+      "GET /api/workflows/wf_1/runs": [failed],
+      "POST /api/workflows/runs/wfr_1/retry": run({ status: "running", step: 1 }),
+    });
+    renderAt(<ProjectPage />, at("tasks"));
+    await userEvent.click(await screen.findByRole("button", { name: "Retry step 2" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/workflows/runs/wfr_1/retry")).toBe(true));
   });
 
   it("adds a task to the project's Tasks sheet", async () => {

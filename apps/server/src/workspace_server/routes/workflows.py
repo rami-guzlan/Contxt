@@ -79,6 +79,12 @@ def decide(run_id: str, body: WorkflowDecideIn, who: Who, ws: WS) -> WorkflowRun
     return ws.workflows.decide(who, run_id, go=body.go, edit=body.edit, note=body.note)
 
 
+@router.post("/runs/{run_id}/retry")
+def retry(run_id: str, who: Who, ws: WS) -> WorkflowRun:
+    """Retry the step that failed, on the same CLI; the run resumes there."""
+    return ws.workflows.retry(who, run_id)
+
+
 @router.post("/runs/{run_id}/stop")
 def stop(run_id: str, who: Who, ws: WS) -> WorkflowRun:
     return ws.workflows.stop(who, run_id)
