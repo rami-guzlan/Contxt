@@ -54,11 +54,12 @@ OPERATING_HEADING = "## How to work with this Brain"
 OPERATING = "\n".join([
     OPERATING_HEADING,
     "",
-    "- Pull only what the task needs, the map lists and the packet lacks; never to "
-    "double-check. The map is partial.",
+    "- Pull only what the task needs and the packet lacks; never to double-check. The map "
+    "is partial.",
     '- Search: `notes(action: "search")`. Open one part: `gnomon(action: "open", address)`.',
+    '- When, or what changed: `activity(action: "timeline", since)`.',
     "- Must-holds win, then the closest scope. Canon and confirmed outweigh kept; call kept "
-    '"kept, not verified"; never present kept or tentative as confirmed.',
+    '"kept, not verified"; never call kept or tentative confirmed.',
     '- Suggest, never edit: lasting statements to `notes(action: "propose")` with their '
     'words as evidence, current values to `sheets(action: "propose_update")`, progress to '
     '`todos(action: "update")`.',

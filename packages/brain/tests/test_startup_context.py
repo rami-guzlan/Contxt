@@ -39,6 +39,7 @@ class StartupContextTest(unittest.TestCase):
         self.assertIn("Pull only what the task needs", section)
         self.assertIn('notes(action: "search")', section)
         self.assertIn('gnomon(action: "open"', section)
+        self.assertIn('activity(action: "timeline"', section)  # for when and since
         self.assertNotIn("notes_search", section)
         self.assertLessEqual(util.tokens(section), 190)
 
