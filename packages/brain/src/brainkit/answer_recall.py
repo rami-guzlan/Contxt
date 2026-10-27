@@ -124,6 +124,10 @@ def _measures(rows: list[dict]) -> dict:
         "wrong_must_holds": [sum(len(r["wrong_must_holds"]) for r in rows),
                              sum(r["must_hold_chances"] for r in rows)],
         "errors": sum(bool(r["error"]) for r in rows),
+        # Why the misses missed (when the eval script records it).
+        "searches_per_answer": round(sum(r.get("searches", 0) for r in rows) / n, 2),
+        "missed_shown_by_search": sum(r.get("missed_shown_by_search", 0) for r in rows),
+        "missed_pointed_in_packet": sum(r.get("missed_pointed_in_packet", 0) for r in rows),
         "cost_usd": round(sum(float(r["cost"] or 0) for r in rows), 4),
     }
 
