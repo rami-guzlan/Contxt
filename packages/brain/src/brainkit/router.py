@@ -143,15 +143,22 @@ class Policy:
     # only) 0.2 kept all 25 right must-holds whole and sent 32 of 60 wrong ones as pointers;
     # on validation 12 of 13 right whole and 10 of 31 wrong as pointers.
     must_hold_close: float = 0.2
+    # With the meaning model, a touched must-hold also counts as a close call when its domain
+    # passage is less like the request than this share of the best note the packet holds.
+    # On the tuning Brains 0.8 took wrong ones sent whole by that path from 23 to 9 and kept
+    # 24 of 28 right ones whole. Off until it passes the graded check
+    # (docs/evals/packet-fill-2026-10-27.md).
+    must_hold_close_meaning: float = 0.0
     # After routing, the request's next best notes go into a standard packet whole, up to
     # this many, within its note budget (v4 backend plan, 17.1). The model seldom opens a
     # pointer or a search hit: on the tuning Brains half the needed items an answer missed
-    # had been shown to it. 0 is off.
-    # With the meaning model, a touched must-hold also counts as a close call when its domain
-    # passage is less like the request than this share of the best note the packet holds.
-    must_hold_close_meaning: float = 0.0
+    # had been shown to it. With the meaning model, 8 took held-out answer recall from 77% to
+    # 90.2%, but graded correctness fell from 33% to 25% (docs/evals/packet-fill-2026-10-27.md),
+    # so it is off until a candidate passes both.
     fill: int = 0
     fill_whole: bool = True  # off: filled notes go in short (title, summary, closest sentence)
+    fill_apart: bool = False  # on: filled notes go in their own section, for reference only
+    must_hold_show_scope: bool = False  # on: a must-hold's line carries its kept scope
     # CALIBRATED BARS (calibration.py): the share of the Brain's unrelated requests a match
     # must beat. They stand in for lean_floor, note_abs_floor and topic_note_floor, each
     # unless routing.json `policy` sets it by hand. Set on the
@@ -833,6 +840,7 @@ class Route:
     must_overflow: list = field(default_factory=list)  # [MustHold] past the cap: listed
     must_close: list = field(default_factory=list)    # [MustHold] close calls: pointers
     filled: int = 0  # notes added after routing (Router._fill), sent whole beyond the limit
+    filled_apart: set = field(default_factory=set)  # of those, the ids shown for reference
     older: list = field(default_factory=list)         # [(older note, newer note)]: listed
     # Notes filed with another project than the one this request names: out of its scope.
     out_of_project: set = field(default_factory=set)
@@ -1384,6 +1392,8 @@ class Router:
         route.notes = route.notes + extra
         route.filled = len(extra) if self.policy.fill_whole else 0
         added = {s.item.id for s in extra}
+        if self.policy.fill_apart:
+            route.filled_apart = set(added)
         route.related = [s for s in route.related if s.item.id not in added]
         route.log("filled: " + ", ".join(sorted(added)))
 

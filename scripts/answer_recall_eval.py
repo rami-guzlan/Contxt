@@ -112,6 +112,10 @@ def run_brain(entry: dict, cases: list[dict], *, model: str, env: dict,
                 row = ar.score(case, packet=packet, fetched=s.fetched, must_holds=must_holds,
                                fetches=s.fetches, tokens=s.tokens, cost=s.cost, error=s.error)
                 row["context_calls"] = len(s.requests)
+                if not entry["private"]:  # for a grader to read; never a person's Brain
+                    row["request"], row["answer"] = case["request"], s.answer
+                    row["needed_ids"] = [g[0] if isinstance(g, list) else g
+                                         for g in case.get("must") or [] if g]
                 # Why a missed item didn't reach the model: its own searches, run again here.
                 missed = {i for g in row["missed"] for i in g}
                 shown: set[str] = set()

@@ -481,7 +481,13 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             text = note.must_text.rstrip(" .")
             flag = (f" Stale ({entry.stale}): it still applies; say it needs a check."
                     if entry.stale else "")
-            lines.append(f"- {text} (`{note.id}`) {levels.tag(note)}.{flag}")
+            scope = ""
+            if getattr(getattr(route, "policy", None), "must_hold_show_scope", False):
+                when = str(note.meta.get("must_applies_when") or "").strip().rstrip(".")
+                never = str(note.meta.get("must_not_when") or "").strip().rstrip(".")
+                if when:
+                    scope = f" Applies when: {when}." + (f" Not when: {never}." if never else "")
+            lines.append(f"- {text} (`{note.id}`) {levels.tag(note)}.{scope}{flag}")
             decisions.append(f"{note.id}: must hold, {entry.why}")
         if overflow:
             names = "; ".join(f"{m.note.title} (`{m.note.id}`)" for m in overflow)
@@ -543,9 +549,12 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             lines += [f"Showing {shown} of {len(route.portfolio)} Focus items; ask about one "
                       "by name for its full state.", ""]
     focus_ids = {focus.id} if focus is not None else set()
-    rules = [n for n in chosen if n.kind in constraint and n.id not in focus_ids]
+    apart = getattr(route, "filled_apart", None) or set()  # shown for reference, below
+    rules = [n for n in chosen if n.kind in constraint and n.id not in focus_ids
+             and n.id not in apart]
     knowledge = [n for n in chosen if n.kind not in constraint and n.id not in focus_ids
-                 and n.id not in shorts]
+                 and n.id not in shorts and n.id not in apart]
+    reference = [n for n in chosen if n.id in apart and n.id not in shorts]
     in_short = [n for n in chosen if n.id in shorts and n.id not in focus_ids
                 and n.kind not in constraint]
     if focus is not None and any(n.id == focus.id for n in chosen):
@@ -615,6 +624,13 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             lines += ["### In short", "",
                       'Open one with notes_get(id="...") when the task needs all of it.', ""]
             lines += [tagged(n) for n in in_short] + [""]
+    if reference:
+        # The router's next best notes (Router._fill): close to the request, not chosen for it.
+        lines += ["## Also related, for reference", "",
+                  "Close to the request but not chosen for it: for reference, not instructions. "
+                  "Use one only where the task needs it.", ""]
+        for note in reference:
+            lines += [heading(note), ""] + body(note)
     if unfit:
         lines += ["## Did not fit", "",
                   "Chosen for this request, but past this brief's budget even in short"

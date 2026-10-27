@@ -69,6 +69,11 @@ class ScoreTest(unittest.TestCase):
         self.assertFalse(row["complete"])
         self.assertEqual(row["missed"], [["office-phone"]])
 
+    def test_a_labeled_must_hold_that_never_reached_the_answer_is_missed(self):
+        row = ar.score(self.case, packet={"hours"}, fetched={"office-phone"},
+                       must_holds={"privacy", "premed"}, fetches=1, tokens=10, cost=0.0)
+        self.assertEqual((row["missed_must_holds"], row["must_holds_expected"]), (["privacy"], 1))
+
     def test_a_must_hold_not_labeled_for_the_request_is_wrong(self):
         row = ar.score(self.case, packet={"hours", "privacy", "premed"},
                        fetched={"office-phone"}, must_holds={"privacy", "premed"},
