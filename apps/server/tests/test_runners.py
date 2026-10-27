@@ -712,3 +712,75 @@ def test_work_with_ai_refuses_a_model_its_cli_does_not_take(owner, runtime):
         json={"prompt": "Format the post.", "runner": "codex", "model": "opus"},
     )
     assert refused.status_code == 422 and "Codex" in refused.text
+
+
+def _account_reads(runtime, monkeypatch, loads):
+    """Stand in for Claude Code's account starts: each start's init loads the servers `loads`
+    gives for that try; the calls are recorded."""
+    from workspace_server import runners as runners_mod
+
+    calls = []
+    monkeypatch.setattr(runners_mod.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        runtime.runners,
+        "_mcp_names",
+        lambda command: {"claude.ai Google Drive", "claude.ai Notion", "contxt"},
+    )
+
+    def start(
+        spec, command, prompt, timeout, extra=None, until_result=False, servers=None, need_all=True
+    ):
+        loaded = loads(len(calls))
+        calls.append({"extra": list(extra or []), "servers": servers, "need_all": need_all})
+        init = {"type": "system", "subtype": "init", "tools": [f"mcp__{s}__search" for s in loaded]}
+        ready = [s for s in (servers or []) if s in loaded]
+        if servers and (not ready if not need_all else len(ready) < len(servers)):
+            return [init]
+        return [init, {"type": "result", "result": "Nothing new.", "usage": {}}]
+
+    monkeypatch.setattr(runtime.runners, "_account_start", start)
+    return calls
+
+
+def test_an_account_read_loads_only_the_connectors_it_reads(runtime, monkeypatch):
+    # Every connector of the account loading put 490 tools' schemas in the prompt.
+    calls = _account_reads(runtime, monkeypatch, lambda n: {"claude_ai_Google_Drive"})
+    runners = runtime.runners
+    found = runners._read_account(
+        runners._spec("claude"),
+        ["claude"],
+        ["claude_ai_Google_Drive"],
+        ["--allowedTools", "x"],
+        "Read.",
+        60.0,
+    )
+    assert found["loaded"] == ["claude_ai_Google_Drive"]
+    denied = calls[0]["extra"][calls[0]["extra"].index("--disallowedTools") + 1 :]
+    assert "mcp__claude_ai_Notion" in denied and "mcp__contxt" in denied
+    assert "mcp__claude_ai_Google_Drive" not in denied
+
+
+def test_an_account_read_whose_connector_never_loads_says_so_and_answers_nothing(
+    runtime, monkeypatch
+):
+    from workspace_server import runners as runners_mod
+
+    calls = _account_reads(runtime, monkeypatch, lambda n: set())
+    runners = runtime.runners
+    with pytest.raises(Conflict, match="could not load"):
+        runners._read_account(
+            runners._spec("claude"), ["claude"], ["claude_ai_Google_Drive"], [], "Read.", 60.0
+        )
+    assert len(calls) == runners_mod.ACCOUNT_TRIES
+    assert all(c["servers"] == ["claude_ai_Google_Drive"] for c in calls)
+
+
+def test_an_account_connector_that_loads_on_a_later_start_is_read(runtime, monkeypatch):
+    calls = _account_reads(
+        runtime, monkeypatch, lambda n: {"claude_ai_Google_Drive"} if n >= 3 else set()
+    )
+    runners = runtime.runners
+    found = runners._read_account(
+        runners._spec("claude"), ["claude"], ["claude_ai_Google_Drive"], [], "Read.", 60.0
+    )
+    assert found["text"] == "Nothing new." and len(calls) == 4
