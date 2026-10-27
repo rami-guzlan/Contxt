@@ -137,6 +137,12 @@ class Policy:
     # ...and within this share of the request's best note match: a domain passage clearly
     # less like the request than its best note is another part of the same Brain's work.
     must_hold_relative: float = 0.90
+    # A must-hold in play only because the task touches its domain, which the request's words
+    # fit this little against the best note the packet holds, goes as a one-line pointer, not
+    # its text (v4 backend plan, 16.3): a close call. On the tuning Brains (zero-config, words
+    # only) 0.2 kept all 25 right must-holds whole and sent 32 of 60 wrong ones as pointers;
+    # on validation 12 of 13 right whole and 10 of 31 wrong as pointers.
+    must_hold_close: float = 0.2
     # CALIBRATED BARS (calibration.py): the share of the Brain's unrelated requests a match
     # must beat. They stand in for lean_floor, note_abs_floor and topic_note_floor, each
     # unless routing.json `policy` sets it by hand. Set on the
@@ -756,6 +762,20 @@ class Scored:
     detail: dict = field(default_factory=dict)
 
 
+def _scoped_out(note, words: set) -> bool:
+    """A must-hold whose kept scope (`must_not_when`, from a scope proposal the owner kept)
+    the request fits better than its `must_applies_when`, by two words or more. Never one the
+    owner marked for every task."""
+    if "*" in note.applies_to:
+        return False
+    against = util.stems(util.content_terms(note.meta.get("must_not_when") or ""))
+    if not against:
+        return False
+    fits = util.stems(util.content_terms(note.meta.get("must_applies_when") or ""))
+    out, inside = len(words & against), len(words & fits)
+    return out >= 2 and out > inside
+
+
 @dataclass
 class MustHold:
     """A must-hold in play for a request: the note, why its domain is in play, and why it is
@@ -802,6 +822,7 @@ class Route:
     orientation: list = field(default_factory=list)   # the area map, for orientation
     must_holds: list = field(default_factory=list)    # [MustHold] in play, shown in full
     must_overflow: list = field(default_factory=list)  # [MustHold] past the cap: listed
+    must_close: list = field(default_factory=list)    # [MustHold] close calls: pointers
     older: list = field(default_factory=list)         # [(older note, newer note)]: listed
     # Notes filed with another project than the one this request names: out of its scope.
     out_of_project: set = field(default_factory=set)
@@ -1519,12 +1540,17 @@ class Router:
             return None
 
         today = util.today_date()
-        picks = []
+        picks, close_calls = [], []
         for note in notes:
             why = why_for(note)
-            if why is not None:
-                picks.append(MustHold(note, why, note.stale_reason(
-                    today, self.config.review_days_for(note))))
+            if why is None:
+                continue
+            if _scoped_out(note, words):
+                route.log(f"must hold: {note.id} left out, its scope says not when")
+                continue
+            pick = MustHold(note, why, note.stale_reason(today, self.config.review_days_for(note)))
+            (close_calls if self._close_call(route, pick) else picks).append(pick)
+        route.must_close = close_calls
         if not picks:
             return
         # Critical ones first, then those the request or the route names outright.
@@ -1535,6 +1561,26 @@ class Router:
         route.must_overflow = picks[p.must_hold_max:]
         if previous != [m.note.id for m in picks]:
             route.log("must hold: " + "; ".join(f"{m.note.id} ({m.why})" for m in picks))
+
+    def _close_call(self, route: Route, pick: MustHold) -> bool:
+        """A must-hold in play only because the task touches its domain, which the
+        request's words fit only a little against the best note the packet holds
+        (policy.must_hold_close), or whose kept scope names work the request shares no word
+        with. Never a critical one; one for every task, one the request names by a trigger and
+        one its meaning puts in play are not close calls."""
+        if pick.note.critical or not pick.why.startswith("this task touches"):
+            return False
+        fits = util.stems(util.content_terms(pick.note.meta.get("must_applies_when") or ""))
+        if fits and not util.stems(route.signals.words) & fits:
+            return True  # its kept scope names work the request shares no word with
+        index = getattr(self, "index", None)
+        if index is None:
+            return False
+        own = [s.item.id for s in route.notes]
+        scores = index.note_bm25.scores(route.request, restrict=[pick.note.id, *own])
+        best = max((scores.get(i, 0.0) for i in own), default=0.0)
+        mine = scores.get(pick.note.id, 0.0)
+        return mine == 0.0 if best <= 0 else mine <= self.policy.must_hold_close * best
 
     def _close_topics(self, request) -> dict:
         """The request's best two topic matches, when they clear their must-hold bars:

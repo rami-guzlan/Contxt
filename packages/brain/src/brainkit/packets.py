@@ -454,8 +454,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
     # context may have lost them. A model without tools gets every one of them in full.
     must = list(getattr(route, "must_holds", None) or [])
     overflow = list(getattr(route, "must_overflow", None) or [])
+    # Close calls (router._close_call): a one-line pointer each, for the model to open.
+    close = list(getattr(route, "must_close", None) or [])
     if not tools:
-        must, overflow = must + overflow, []
+        must, overflow, close = must + overflow + close, [], []
     # The call to action, framed: the project's objective first, so the model reads what
     # output the work is chasing before the task itself (its summary until it has one); then
     # the task as asked, and that the standing rules outrank it (a request to skip a rule gets
@@ -484,6 +486,19 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             names = "; ".join(f"{m.note.title} (`{m.note.id}`)" for m in overflow)
             lines.append(f"- Also must hold here; open each with notes_get before you act: "
                          f"{names}.")
+        lines.append("")
+    if close:
+        count = f"{len(close)} rule{'s' if len(close) > 1 else ''} may apply"
+        lines += ["## May apply", "",
+                  f"{count}. Open one with notes_get before you act if the task is about it:", ""]
+        for entry in close:
+            note = entry.note
+            # Never the rule's own words: a pointer says what it is for, not what it says.
+            about = note.meta.get("must_applies_when") or ", ".join(
+                t for t in note.applies_to if t != "*")
+            lines.append(f"- {note.title} (`{note.id}`)"
+                         + (f", for {util.excerpt(str(about), 110)}" if about else ""))
+            decisions.append(f"{note.id}: may apply (a close call), {entry.why}")
         lines.append("")
     loaded = bool(chosen or held or unfit or route.portfolio or route.system_docs
                   or route.candidates or route.skill or route.references or route.standing_answer
@@ -837,6 +852,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         # Values that conflict on the same date: sent together, neither current.
         "conflict_ids": sorted(i for i in route.conflicts if i in {n.id for n in chosen}),
         "must_hold_listed": [m.note.id for m in overflow],
+        "must_hold_pointer_ids": [m.note.id for m in close],
         # Every note the brief names without sending: the ones past its budget first, then
         # the ones listed as also relevant.
         "related_ids": [n.id for n in unfit] + [r.item.id for r in related],
