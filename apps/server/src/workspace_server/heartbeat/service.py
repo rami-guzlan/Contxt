@@ -94,6 +94,7 @@ INBOX_MAX = 200  # items one post may bring
 LOCK_MINUTES = 20  # a beat that holds the lock longer than this has stopped: its lock expires
 BACKOFF_MINUTES = 30  # after a provider limit, scheduled beats wait this long
 MAX_ITEMS = 25  # items read from one connector in one beat
+READ_OPENS = 6  # items a read opens in full, newest first, after listing what changed
 FILE_WORDS = 4000  # characters of a Scout file the judge reads
 
 
@@ -500,7 +501,7 @@ class Heartbeat:
                     )
                     added.append(cid)
                 else:
-                    keep = status if status != "ok" else ("ok" if row["enabled"] else "off")
+                    keep, line = kept_state(row, status, line)
                     tx.update(
                         schema.heartbeat_connectors,
                         row,
@@ -1799,6 +1800,8 @@ class Heartbeat:
         )
         return (
             "Read, read-only, what changed in each of these connectors since the time given. "
+            "First list or search for what changed since then; then open at most "
+            f"{READ_OPENS} items a connector, the newest first, and stop. "
             "Use only the tools listed for each. Never send, post, reply, create, change, "
             "delete or pay for anything; you have no tool that can. Reply with one JSON object "
             'only: {"connectors": {"<server>": {"cursor": "<the newest time or marker you '
@@ -1810,18 +1813,53 @@ class Heartbeat:
             "empty list.\n" + listed
         )
 
+    @staticmethod
+    def _part(
+        parts: dict[str, Any], answer: dict[str, Any], server: str, name: str, single: bool
+    ) -> Any:
+        """One connector's part of a read's answer: under its server, else under its name
+        (a model often answers by the name it was shown), else the only part or the whole
+        answer when the read was of this connector alone."""
+        if parts.get(server) is not None:
+            return parts[server]
+
+        def key(text: str) -> str:
+            return re.sub(r"[^a-z0-9]+", "", str(text).lower().replace("claude.ai", ""))
+
+        wanted = {key(server.replace("claude_ai_", "")), key(name)}
+        for label, part in parts.items():
+            if key(label) in wanted:
+                return part
+        if single:
+            return next(iter(parts.values())) if len(parts) == 1 else (None if parts else answer)
+        return None
+
     def _items(
-        self, part: Any, row: dict[str, Any], *, most: int = MAX_ITEMS, chars: int = 600
+        self,
+        part: Any,
+        row: dict[str, Any],
+        *,
+        most: int = MAX_ITEMS,
+        chars: int = 600,
+        stats: dict[str, int] | None = None,
     ) -> tuple[list[dict[str, Any]], str]:
-        """(items, cursor) from one connector's part of a read's answer."""
+        """(items, cursor) from one connector's part of a read's answer. An item without an
+        id is known by its link, else its title and time. `stats` gets how many the answer
+        returned and how many were kept."""
         part = part if isinstance(part, dict) else {}
+        returned = part.get("items") if isinstance(part.get("items"), list) else []
         items = []
-        for raw in (part.get("items") or [])[:most]:
-            if not isinstance(raw, dict) or not str(raw.get("id") or "").strip():
+        for raw in returned[:most]:
+            if not isinstance(raw, dict):
+                continue
+            ident = str(raw.get("id") or raw.get("url") or "").strip() or " ".join(
+                str(raw.get(k) or "").strip() for k in ("title", "at") if raw.get(k)
+            )
+            if not ident:
                 continue
             items.append(
                 {
-                    "id": _flat(raw.get("id"), 300),
+                    "id": _flat(ident, 300),
                     "title": _flat(raw.get("title"), 200),
                     "text": _flat(raw.get("text"), chars),
                     "at": _flat(raw.get("at"), 32),
@@ -1830,6 +1868,8 @@ class Heartbeat:
                     "private": raw.get("private") is True,
                 }
             )
+        if stats is not None:
+            stats.update(returned=len(returned), kept=len(items))
         return items, _flat(part.get("cursor"), 200) or row["cursor"]
 
     def _read_cli(self, owner: Principal, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1903,9 +1943,11 @@ class Heartbeat:
                         "beat tries again.",
                     )
                     continue
-                part = parts.get(server) if parts else (answer if len(servers) == 1 else None)
-                items, cursor = self._items(part, r)
+                part = self._part(parts, answer, server, r["name"], len(servers) == 1)
+                stats: dict[str, int] = {}
+                items, cursor = self._items(part, r, stats=stats)
                 out[r["id"]] = {
+                    "returned": stats.get("returned", 0),
                     "items": items,
                     "cursor": cursor,
                     "usage": got.get("usage") if first else None,
@@ -2275,7 +2317,14 @@ class Heartbeat:
                         "feeds": list(row["feeds"] or []),
                     }
                 )
-            entry.update(read=True, status="ok", items=len(got["items"]), new=len(new))
+            # What the read's answer held against what was kept, for a read that loses items.
+            entry.update(
+                read=True,
+                status="ok",
+                returned=got.get("returned", len(got["items"])),
+                items=len(got["items"]),
+                new=len(new),
+            )
             read_log.append(entry)
             reads[row["id"]] = {"row": row, "got": got, "new": new}
             fresh.extend(new)
@@ -3096,6 +3145,22 @@ class Heartbeat:
         out = self._line_view(done, names, None)
         out["line"] = "Undone. The next beat won't write that again."
         return out
+
+
+def kept_state(row: dict[str, Any], status: str, line: str) -> tuple[str, str]:
+    """A connector's state after a rescan. An account connector that has been read before
+    and only did not load during this rescan (they load in the background) keeps its last
+    state, so it doesn't flap to an error between good reads."""
+    if (
+        status == "error"
+        and row.get("found_in") == ACCOUNT_PLACE
+        and row.get("last_read_at")
+        and row.get("status") in ("ok", "off")
+    ):
+        return str(row["status"]), str(row.get("status_line") or line)
+    if status != "ok":
+        return status, line
+    return ("ok" if row.get("enabled") else "off"), line
 
 
 class ConnectorProblem(Exception):
