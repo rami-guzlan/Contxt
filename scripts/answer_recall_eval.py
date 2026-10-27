@@ -80,7 +80,8 @@ def run_brain(entry: dict, cases: list[dict], *, model: str, env: dict,
                                         model=model, env=env)
             try:
                 s = ar.parse(lines or [])
-            except Exception as failed:  # one unreadable transcript is one failed request
+            except (ValueError, TypeError, AttributeError, KeyError) as failed:
+                # One unreadable transcript is one failed request, not a lost run.
                 s = ar.Session(error=f"could not read the transcript: {failed}")
             s.error = s.error or (error if not s.answer else "")
             budget.add(s.cost)
