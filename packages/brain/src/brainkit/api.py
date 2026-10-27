@@ -117,6 +117,9 @@ def default_vault() -> str:
     return os.path.abspath(os.environ.get("BRAIN_VAULT") or "vault")
 
 
+# Packets that end with what they don't cover (coverage.py); a lean packet already lists the
+# closest notes and an orientation is a map.
+COVERAGE_MODES = ("standard", "focus-only", "exact-skill")
 PULLS = {"items": 2, "tokens": 1500}  # v4: 2 items, about 1,500 tokens; the owner sets it
 
 
@@ -500,6 +503,23 @@ class Brain:
             lesson_text, lesson_items, lesson_data = lore_mod.block(found_lessons, delivered)
             if lesson_text:
                 packet.text = packet.text.rstrip() + "\n\n" + lesson_text + "\n"
+        if tools and route.mode in COVERAGE_MODES and "coverage" not in left_out:
+            # What the packet doesn't cover, where it likely is and the call that fetches it.
+            from . import coverage
+            got = packet.data
+            holds = set().union(*(got.get(k) or [] for k in (
+                "note_ids", "held_ids", "must_hold_ids", "must_hold_listed", "standing_ids")))
+            # As the router: never a note loaded "manual" (opened by its id only) or a lesson
+            # (lore brings those up on its own terms).
+            admitted = [n for n in st.router.admitted_notes(chain, partitions)
+                        if n.load != "manual" and n.kind != "lesson"]
+            ranked = st.router.score_notes(str(request), admitted)
+            gaps, found_gaps = coverage.block(
+                st.index, str(request), delivered=holds, admitted={n.id for n in admitted},
+                runners=[s.item.id for s in ranked if s.score > 0.05][:12])
+            packet.data["coverage"] = found_gaps
+            if gaps:
+                packet.text = packet.text.rstrip() + "\n\n" + gaps
         parts.append("# Task context\n\n" + packet.text)
         status = "continuing" if continuing else "new"
         if tools:
