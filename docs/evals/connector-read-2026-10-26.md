@@ -24,8 +24,19 @@ This was one read of the owner's own account through Claude Code, on a scratch B
 - Gmail needs signing in again in claude.ai (Settings, Connectors).
 - Nothing was sent, posted, created or changed.
 
+## After the race fix
+
+The beat now lists the account's connectors again, fresh, up to twice (`ACCOUNT_RECHECKS`), when one it is about to read is still connecting.
+
+Three more beats with only Drive on:
+- none skipped Drive at once;
+- one could not load it in its own run;
+- two reached a read (17 s and 25 s) and stopped at "Its answer could not be read".
+
+Still no item read, and still no tokens measured.
+
 ## What it takes to finish
 
-1. **The race:** before reading, the beat should wait for, or retry, an account connector the search just found connected, instead of skipping it at once.
+1. **The race:** fixed (above).
 2. **The answer Gnomon could not read:** this needs a look at what the read returned. That holds the owner's Drive content, so it waits for the owner to look, or to say that Claude may.
 3. **n8n:** not tried. It needs a Google Drive credential set up in n8n first.
