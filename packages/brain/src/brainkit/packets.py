@@ -303,7 +303,8 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
     why = {}               # note id -> why it went in, recorded with the delivery
     shorts: dict = {}      # note id -> the note in short (title, summary, closest sentence)
     constraint = config.constraint_kinds() or {"rule"}
-    limit = body_limit(config, route)
+    # Notes the router added to fill the packet go whole beyond the usual count.
+    limit = body_limit(config, route) + int(getattr(route, "filled", 0) or 0)
     bodies = 0             # notes other than rules sent whole so far
 
     def already_held(note) -> bool:

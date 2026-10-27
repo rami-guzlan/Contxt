@@ -62,12 +62,20 @@ def _config(vault: str, folder: str, meaning: bool = False) -> str:
 
 
 def run_brain(entry: dict, cases: list[dict], *, model: str, env: dict,
-              budget: Budget, scopes: dict | None = None, models: str | None = None) -> dict:
+              budget: Budget, scopes: dict | None = None, models: str | None = None,
+              policy: dict | None = None) -> dict:
     vault = se.copy_vault(entry["vault"], models)
     scratch = os.path.dirname(vault)
     try:
         if not entry["private"]:  # a person's own Brain runs as they have it set up
             evalkit.zero_config(vault)
+        if policy:  # router settings to try (routing.json `policy`)
+            path = os.path.join(vault, "routing.json")
+            with open(path, encoding="utf-8") as handle:
+                routing = json.load(handle)
+            routing["policy"] = {**(routing.get("policy") or {}), **policy}
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(routing, handle)
         for note_id, scope in (scopes or {}).items():  # drafted scopes, as if kept
             se.set_meta(vault, [note_id], must_applies_when=scope["applies_when"],
                         must_not_when=scope.get("not_when") or None)
@@ -136,6 +144,8 @@ def main() -> int:
     parser.add_argument("--max-usd", type=float, default=1.0)
     parser.add_argument("--models", help="a folder with the meaning model: match by meaning, "
                         "as a Brain with the model does")
+    parser.add_argument("--policy", action="append", default=[],
+                        help="a router setting to try: NAME=VALUE (JSON), as routing.json sets it")
     parser.add_argument("--scopes", help="drafted must-hold scopes (scope_drafts.py), as if kept")
     args = parser.parse_args()
     out = os.path.abspath(args.out)
@@ -159,6 +169,7 @@ def main() -> int:
     env = {k: v for k, v in os.environ.items() if not k.startswith(STRIP)}
     budget = Budget(args.max_usd)
     scopes = {}
+    policy = {k: json.loads(v) for k, _, v in (p.partition("=") for p in args.policy)}
     if args.scopes:
         with open(args.scopes, encoding="utf-8") as handle:
             scopes = json.load(handle)
@@ -166,10 +177,10 @@ def main() -> int:
         brains = list(pool.map(lambda p: run_brain(p[0], p[1], model=args.model, env=env,
                                                    budget=budget,
                                                    scopes=scopes.get(p[0]["name"]),
-                                                   models=args.models), plan))
+                                                   models=args.models, policy=policy), plan))
     found = ar.summary(brains)
     found |= {"model": args.model, "split": "private" if args.private else args.split,
-              "meaning": bool(args.models),
+              "meaning": bool(args.models), "policy": policy,
               "stopped_at_budget": budget.over(), "estimate_usd": round(estimate, 4)}
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, f"summary-{args.model}.json"), "w", encoding="utf-8") as handle:
