@@ -228,7 +228,21 @@ def prepare(vault: str) -> None:
 def run_claude(case: Case, *, cwd: str, mcp_config: str, model: str, env: dict,
                timeout: float = 300.0) -> Transcript:
     """One case through Claude Code, headless, with only the Brain's MCP server."""
-    command = ["claude", "-p", case.prompt, "--model", model, "--output-format",
+    lines, error = run_lines(case.prompt, cwd=cwd, mcp_config=mcp_config, model=model,
+                             env=env, timeout=timeout)
+    if lines is None:
+        return Transcript([], "", error=error)
+    found = parse(lines)
+    if not found.answer and error and not found.error:
+        found.error = error
+    return found
+
+
+def run_lines(prompt: str, *, cwd: str, mcp_config: str, model: str, env: dict,
+              timeout: float = 300.0) -> tuple[list[str] | None, str]:
+    """A prompt through Claude Code, headless, with only the Brain's MCP server: its
+    stream-json lines (None when it timed out) and why it failed, if it did."""
+    command = ["claude", "-p", prompt, "--model", model, "--output-format",
                "stream-json", "--verbose", "--mcp-config", mcp_config, "--strict-mcp-config",
                "--allowedTools", f"mcp__{SERVER}", "--disallowedTools",
                "Bash,Edit,Write,MultiEdit,Read,Glob,Grep,WebFetch,WebSearch,Task,NotebookEdit,"
@@ -237,8 +251,6 @@ def run_claude(case: Case, *, cwd: str, mcp_config: str, model: str, env: dict,
         proc = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True,
                               encoding="utf-8", timeout=timeout, shell=os.name == "nt")
     except subprocess.TimeoutExpired:
-        return Transcript([], "", error=f"timed out after {timeout:.0f} s")
-    found = parse(proc.stdout.splitlines())
-    if not found.answer and proc.returncode != 0 and not found.error:
-        found.error = (proc.stderr or "claude failed").strip()[:300]
-    return found
+        return None, f"timed out after {timeout:.0f} s"
+    failed = (proc.stderr or "claude failed").strip()[:300] if proc.returncode != 0 else ""
+    return proc.stdout.splitlines(), failed
