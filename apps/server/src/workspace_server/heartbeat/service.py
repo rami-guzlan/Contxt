@@ -353,6 +353,7 @@ class Heartbeat:
             "has_workflow": bool(row.get("workflow")),
             "fix": (row.get("workflow_fix") or {}).get("why") if row.get("workflow_fix") else None,
             "ask": row.get("ask") or "",
+            "sign_in": sign_in(row),
         }
 
     def connectors(self, who: Principal) -> list[dict[str, Any]]:
@@ -3216,6 +3217,38 @@ class Heartbeat:
         out = self._line_view(done, names, None)
         out["line"] = "Undone. The next beat won't write that again."
         return out
+
+
+def sign_in(row: dict[str, Any]) -> dict[str, Any] | None:
+    """How to sign a connector in again, by where it comes from (v4 backend plan, 17.2), or
+    None when it needs no sign-in. The same for every connector of a source: no connector is
+    named in the code."""
+    if row.get("status") != "unhealthy_sign_in":
+        return None
+    name = str(row.get("name") or "").removeprefix("claude.ai ").strip() or "it"
+    cli = row.get("cli")
+    if row.get("found_in") == ACCOUNT_PLACE:
+        return {
+            "steps": f"Open claude.ai, Settings, Connectors, and connect {name} again. Then "
+            "choose Check again here.",
+            "url": "https://claude.ai/settings/connectors",
+        }
+    if row.get("how") == "n8n" or cli == "n8n":
+        return {
+            "steps": f"Open n8n, Credentials, and reconnect the credential {name} uses. Then "
+            "choose Check again here.",
+            "url": None,
+        }
+    if cli == "codex":
+        command = f"codex mcp login {name}"
+    elif cli == "gemini":
+        command = "gemini, then /auth"
+    else:
+        command = f"claude, then /mcp, choose {name} and Authenticate"
+    return {
+        "steps": f"In a terminal, run {command}. Then choose Check again here.",
+        "url": None,
+    }
 
 
 def kept_state(row: dict[str, Any], status: str, line: str) -> tuple[str, str]:

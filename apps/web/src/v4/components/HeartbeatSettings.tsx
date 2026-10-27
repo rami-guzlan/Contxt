@@ -3,6 +3,7 @@
 // from the beats' own records.
 
 import { css } from "../css";
+import { SignIn } from "./SignIn";
 import { costLine, type HbConnector, testLine, useHeartbeat, useHeartbeatSettings, useN8nFix, useRegions, useRescan, useSetConnector, useTestRead } from "../hooks/heartbeat";
 import { Failure, Loading } from "../ui";
 import { N8nHost } from "./N8nHost";
@@ -120,6 +121,7 @@ export function HeartbeatSettings() {
                     {items}
                   </span>
                   {c.status_line ? <span style={css("font:400 12px/1.45 Geist;color:var(--ink2)")}>{c.status_line}</span> : null}
+                  <SignIn c={c} />
                   {c.present && !["folder", "memory", "n8n", "computer"].includes(c.how) ? (
                     <span style={css("display:flex;gap:8px;align-items:center;flex-wrap:wrap;font:400 12px/1.45 Geist;color:var(--ink2)")}>
                       <button

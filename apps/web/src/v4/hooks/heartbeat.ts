@@ -31,6 +31,8 @@ export interface HbConnector {
   fix?: string | null;
   /** A memory read: what the person asked it to look for, in their words. */
   ask?: string;
+  /** When its sign-in expired: the steps for its source, and a link when there is one. */
+  sign_in?: { steps: string; url: string | null } | null;
 }
 
 export interface HbBeat {

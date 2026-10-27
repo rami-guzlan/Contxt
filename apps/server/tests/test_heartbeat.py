@@ -2026,3 +2026,33 @@ def test_a_test_read_of_a_connector_that_is_not_there_fails_at_found(owner):
         "ok": False,
         "line": "No connector claude:nothing_here was found.",
     }
+
+
+def test_a_connector_that_needs_signing_in_says_how_for_its_source():
+    # v4 backend plan, 17.2: the same "Sign in" for any connector, with its source's steps.
+    sign_in = heartbeat_service.sign_in
+    base = {"status": "unhealthy_sign_in", "how": "mcp", "found_in": "~/.claude.json"}
+    account = sign_in(
+        {
+            **base,
+            "cli": "claude",
+            "name": "claude.ai Gmail",
+            "found_in": heartbeat_service.ACCOUNT_PLACE,
+        }
+    )
+    assert account["url"] == "https://claude.ai/settings/connectors"
+    assert "Gmail" in account["steps"] and "claude.ai" in account["steps"]
+    code = sign_in({**base, "cli": "claude", "name": "linear"})
+    assert "/mcp" in code["steps"] and "linear" in code["steps"] and code["url"] is None
+    assert "codex" in sign_in({**base, "cli": "codex", "name": "linear"})["steps"]
+    assert "gemini" in sign_in({**base, "cli": "gemini", "name": "x"})["steps"].lower()
+    assert "Credentials" in sign_in({**base, "cli": "n8n", "how": "n8n", "name": "Gmail"})["steps"]
+    assert sign_in({**base, "status": "ok", "cli": "claude", "name": "x"}) is None
+
+
+def test_the_connectors_say_how_to_sign_in_when_they_must(owner, fake_cli):
+    fake_cli.account_init = ACCOUNT_INIT
+    fake_cli.account_list = ACCOUNT_LIST
+    found(owner)
+    rows = owner.ok(owner.get("/api/heartbeat/status"))["connectors"]
+    assert all("sign_in" in r for r in rows)
