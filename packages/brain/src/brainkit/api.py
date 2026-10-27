@@ -1198,31 +1198,34 @@ class Brain:
         return Result("\n".join(lines), {"id": found, "edges": edges})
 
     def search(self, query, *, principal=None, partition=None, limit=12,
-               include_archived=False, session_id=None) -> Result:
+               include_archived=False, session_id=None, rephrase="") -> Result:
         """Notes matching a query in the searcher's own words, best first.
 
         For an agent whose packet lacks something: it can describe what it needs the way it
         understands it ("avoid AI-sounding writing", "UTM parameters for links") and open a
-        hit with notes_get. With a session, notes it already holds are marked."""
+        hit with notes_get. With a session, notes it already holds are marked. Routes that
+        miss differently are merged in (search_routes.py): titles and headings as written,
+        one relation hop out, and the caller's `rephrase` of what it is missing."""
         st = self.state()
         caller = self.caller(principal, None, partition, st=st)
         if isinstance(caller, Result):
             return caller
         chain, partitions = caller
+        from . import search_routes
         notes = st.router.admitted_notes(chain, partitions)
-        ranked = st.router.score_notes(str(query or ""), notes)
-        hits = [s for s in ranked if s.score > 0.05][:int(limit or 12)]
+        hits = search_routes.fused(self, st, str(query or ""), notes, chain, partitions,
+                                   rephrase=str(rephrase or ""), limit=int(limit or 12))
         held = (self.ledger.delivered(session_id)
                 if session_id and Ledger.valid(session_id) else {})
         from . import packets, statements
-        rows = [{"id": s.item.id, "score": s.score, "route_key": s.item.route_key,
-                 "scope": s.item.scope, "load": s.item.load, "summary": s.item.summary,
-                 "excerpt": packets.key_sentence(s.item, str(query or "")),
-                 "said_by": statements.said_by(s.item.meta), "as_of": s.item.as_of,
-                 "title": s.item.title, "added": s.item.added,
-                 "standing": s.item.standing, "focus": st.config.is_focus(s.item),
-                 "held": ("note", s.item.id) in held}
-                for s in hits]
+        rows = [{"id": n.id, "score": score, "route_key": n.route_key,
+                 "scope": n.scope, "load": n.load, "summary": n.summary,
+                 "excerpt": packets.key_sentence(n, str(query or "")),
+                 "said_by": statements.said_by(n.meta), "as_of": n.as_of,
+                 "title": n.title, "added": n.added,
+                 "standing": n.standing, "focus": st.config.is_focus(n),
+                 "held": ("note", n.id) in held, "found_by": routes}
+                for n, score, routes in hits]
         if include_archived:
             archived = [n for n in st.index.archived.values()
                         if Scopes.admits(n.scope, n.partition, chain, partitions)]
@@ -1237,7 +1240,9 @@ class Brain:
                                      ("a project's live state", r.get("focus")),
                                      ("archived", r.get("archived")),
                                      ("said by " + r.get("said_by", ""), r.get("said_by")),
-                                     ("as of " + r.get("as_of", ""), r.get("as_of"))) if on]
+                                     ("as of " + r.get("as_of", ""), r.get("as_of")),
+                                     ("found by " + ", ".join(r.get("found_by") or []),
+                                      (r.get("found_by") or ["words"]) != ["words"])) if on]
             lines.append(f"- {r.get('title') or r['id']} (`{r['id']}`, {r['route_key']}, "
                          f"{r['score']:.2f})" + (f" [{'; '.join(marks)}]" if marks else "")
                          + f": {r.get('excerpt') or r['summary']}")
@@ -1269,7 +1274,8 @@ class Brain:
                       + f": {f['summary']}" for f in files]
         # Close: the best note would make it into a packet for this as a request, or a file
         # part passed the search's own bar. Otherwise the nearest notes are only nearest.
-        close = bool(files) or bool(hits and hits[0].score >= st.router.policy.lean_floor)
+        close = bool(files) or any(score >= st.router.policy.lean_floor
+                                   for _n, score, _r in hits)
         parts = []
         if lines and not close:
             parts.append(f"No close match for {query!r}: the nearest notes, none of them likely "

@@ -112,6 +112,8 @@ AGENT_TOOLS = [
                     "one with notes_get to verify the complete source.",
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "What you need, in a few words."},
+         "rephrase": {"type": "string", "description": "Optional: the same need in other "
+                      "words (the Brain's terms, or plainer ones); both are searched."},
          "limit": {"type": "integer", "description": "How many hits (default 8)."},
          "session_id": _STR, "include_archived": {"type": "boolean", "description":
              "Include retired notes when the question asks about previous facts."}},
@@ -599,7 +601,8 @@ HANDLERS = {
                                             session_id=a.get("session_id")),
     "notes_search": lambda b, a: b.search(a.get("query"), limit=a.get("limit") or 8,
                                           include_archived=bool(a.get("include_archived")),
-                                          session_id=a.get("session_id")),
+                                          session_id=a.get("session_id"),
+                                          rephrase=a.get("rephrase") or ""),
     "notes_get": lambda b, a: b.note(a.get("id"), session_id=a.get("session_id"),
                                   include_archived=bool(a.get("include_archived")),
                                   full=bool(a.get("full"))),
