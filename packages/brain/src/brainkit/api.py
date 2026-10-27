@@ -1412,6 +1412,11 @@ class Brain:
                                "relates": [f"{kind}: {to}" for kind, to in kept]}
         return self._write(lambda: governance.propose_note(self, **kwargs))
 
+    def propose_must_hold_scope(self, note_id, applies_when, not_when="") -> Result:
+        """A drafted scope for a must-hold, waiting for the owner in Catch up (rule_scope.py)."""
+        from . import rule_scope
+        return self._write(lambda: rule_scope.propose(self, note_id, applies_when, not_when))
+
     def propose_piece(self, destination, text, **kwargs) -> Result:
         """A piece for its home: a sheet value, a project's progress, a task, a kept item or
         a note (destinations.py), waiting in the one inbox."""

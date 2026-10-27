@@ -61,12 +61,15 @@ def _config(vault: str, folder: str) -> str:
 
 
 def run_brain(entry: dict, cases: list[dict], *, model: str, env: dict,
-              budget: Budget) -> dict:
+              budget: Budget, scopes: dict | None = None) -> dict:
     vault = se.copy_vault(entry["vault"])
     scratch = os.path.dirname(vault)
     try:
         if not entry["private"]:  # a person's own Brain runs as they have it set up
             evalkit.zero_config(vault)
+        for note_id, scope in (scopes or {}).items():  # drafted scopes, as if kept
+            se.set_meta(vault, [note_id], must_applies_when=scope["applies_when"],
+                        must_not_when=scope.get("not_when") or None)
         brain = Brain(vault, embeddings=False)
         brain.write_kernel()
         folder = brain.repo_root
@@ -117,6 +120,7 @@ def main() -> int:
     parser.add_argument("--private", help="a vault with its own eval.json: numbers only")
     parser.add_argument("--limit", type=int, help="at most this many requests a Brain")
     parser.add_argument("--max-usd", type=float, default=1.0)
+    parser.add_argument("--scopes", help="drafted must-hold scopes (scope_drafts.py), as if kept")
     args = parser.parse_args()
     out = os.path.abspath(args.out)
     if args.private:
@@ -138,9 +142,14 @@ def main() -> int:
         return 2
     env = {k: v for k, v in os.environ.items() if not k.startswith(STRIP)}
     budget = Budget(args.max_usd)
+    scopes = {}
+    if args.scopes:
+        with open(args.scopes, encoding="utf-8") as handle:
+            scopes = json.load(handle)
     with ThreadPoolExecutor(max_workers=len(plan) or 1) as pool:
         brains = list(pool.map(lambda p: run_brain(p[0], p[1], model=args.model, env=env,
-                                                   budget=budget), plan))
+                                                   budget=budget,
+                                                   scopes=scopes.get(p[0]["name"])), plan))
     found = ar.summary(brains)
     found |= {"model": args.model, "split": "private" if args.private else args.split,
               "stopped_at_budget": budget.over(), "estimate_usd": round(estimate, 4)}
