@@ -613,3 +613,102 @@ def test_work_with_ai_takes_the_brains_project_id(owner, runtime, model):
 def test_work_that_is_not_ingestion_runs_on_the_clis_own_model(owner, ready_task):
     run = owner.ok(owner.post("/api/runners/claude/runs", json={"task_id": ready_task["id"]}), 201)
     assert "--model" not in report(finish(owner, run["id"]))["argv"]
+
+
+def test_an_account_read_caps_each_tools_answer(monkeypatch):
+    # A whole Drive file in one tool answer made a real read outgrow the model's context.
+    from workspace_server import runners as runners_mod
+
+    monkeypatch.delenv("MAX_MCP_OUTPUT_TOKENS", raising=False)
+    env = runners_mod._account_env()
+    assert env["MAX_MCP_OUTPUT_TOKENS"] == str(runners_mod.MCP_OUTPUT_TOKENS)
+    assert env["ENABLE_CLAUDEAI_MCP_SERVERS"] == "true"
+
+
+def _answers(runtime, monkeypatch, *, answer="# Launch copy\n\nShort and plain.", fail=None):
+    """Codex and Gemini answer once, with no tools: the server sends what the run was given and
+    saves what comes back. This stands in for the CLI."""
+    asked = []
+
+    def ask_measured(who, prompt, *, timeout=180.0, job="ask", runner="claude", model=None):
+        asked.append({"prompt": prompt, "runner": runner, "model": model, "job": job})
+        if fail:
+            raise Conflict(fail)
+        return {
+            "answer": answer,
+            "model": model or runner,
+            "tokens_in": 1200,
+            "tokens_out": 300,
+            "cost": 0.004,
+            "ms": 900,
+            "measured": False,
+        }
+
+    monkeypatch.setattr(runtime.runners, "ask_measured", ask_measured)
+    return asked
+
+
+def test_work_with_ai_on_codex_answers_once_and_its_answer_lands_in_outputs(
+    owner, runtime, monkeypatch
+):
+    """Section 11: a job can run on Codex or Gemini. They have no tools here, so the run sends
+    the job's packet, quoted, and the server saves the answer to Outputs and closes the run."""
+    asked = _answers(runtime, monkeypatch)
+    project = runtime.ws.projects.create(runtime.ws.owner(), title="Spring launch")
+    started = owner.ok(
+        owner.post(
+            f"/api/work/projects/{project.id}/ask",
+            json={"prompt": "Rewrite the launch copy.", "runner": "codex", "model": "gpt-5-mini"},
+        ),
+        201,
+    )
+    run = finish(owner, started["run"]["id"])
+    assert run["status"] == "succeeded", run
+    (sent,) = asked
+    assert (sent["runner"], sent["model"]) == ("codex", "gpt-5-mini")
+    assert "Rewrite the launch copy." in sent["prompt"]
+    assert "no tools" in sent["prompt"] and "save_skill_result" not in sent["prompt"]
+    (line,) = owner.ok(owner.get(f"/api/work/projects/{project.id}/timeline"))
+    assert (line["status"], line["runner"], line["model"]) == ("succeeded", "codex", "gpt-5-mini")
+    assert line["cost"] == 0.004 and line["tokens"]["tokens_in"] == 1200
+    (made,) = line["outputs"]
+    assert made["title"] == "Rewrite the launch copy."
+    task = owner.ok(owner.get(f"/api/tasks/{started['task']['id']}"))
+    assert task["status"] in ("review", "done")
+
+
+def test_an_answer_run_that_fails_says_why_on_the_timeline(owner, runtime, monkeypatch):
+    _answers(runtime, monkeypatch, fail="Gemini CLI is not signed in.")
+    project = runtime.ws.projects.create(runtime.ws.owner(), title="Spring launch")
+    started = owner.ok(
+        owner.post(
+            f"/api/work/projects/{project.id}/ask",
+            json={"prompt": "Rewrite the launch copy.", "runner": "gemini"},
+        ),
+        201,
+    )
+    assert finish(owner, started["run"]["id"])["status"] == "failed"
+    (line,) = owner.ok(owner.get(f"/api/work/projects/{project.id}/timeline"))
+    assert "not signed in" in line["why"] and line["outputs"] == []
+
+
+def test_work_with_ai_on_claude_runs_on_the_model_chosen(owner, runtime, model):
+    project = runtime.ws.projects.create(runtime.ws.owner(), title="Spring launch")
+    started = owner.ok(
+        owner.post(
+            f"/api/work/projects/{project.id}/ask",
+            json={"prompt": "Format the post.", "runner": "claude", "model": "haiku"},
+        ),
+        201,
+    )
+    argv = report(finish(owner, started["run"]["id"]))["argv"]
+    assert argv[argv.index("--model") + 1] == "haiku"
+
+
+def test_work_with_ai_refuses_a_model_its_cli_does_not_take(owner, runtime):
+    project = runtime.ws.projects.create(runtime.ws.owner(), title="Spring launch")
+    refused = owner.post(
+        f"/api/work/projects/{project.id}/ask",
+        json={"prompt": "Format the post.", "runner": "codex", "model": "opus"},
+    )
+    assert refused.status_code == 422 and "Codex" in refused.text
