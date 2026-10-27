@@ -194,9 +194,16 @@ GEMINI_NOISE = ("Loaded cached credentials.",)
 # How a Claude Code keeps the person's own settings files, and so their hooks, out of what the
 # app starts: `--restricted` where it has it; before that, loading project settings only, which
 # the run's own folder does not have. Read from the CLI's help, once per command.
-ACCOUNT_TRIES = 4  # starts of Claude Code to wait out the account's connectors loading
+# Starts of Claude Code to wait out the account's connectors loading, a pause apart. A real
+# Drive read loaded in about one start of three or four; with only the read connector loaded a
+# start is cheap.
+ACCOUNT_TRIES = 8
+ACCOUNT_PAUSE = 2.0  # seconds between starts
+# A listing loads every connector, to learn their tools: fewer starts.
+LIST_TRIES = 4
 MCP_OUTPUT_TOKENS = 8000  # at most, per tool answer in a connector read
 ACCOUNT_LINE = re.compile(r"^(claude\.ai [^:\n]+):", re.M)  # in `claude mcp list`
+SERVER_LINE = re.compile(r"^([^\s:][^:\n]*):\s", re.M)  # every server `claude mcp list` names
 FENCES = (
     ("--restricted", ("--restricted",)),
     ("--setting-sources", ("--setting-sources", "project")),
@@ -1172,13 +1179,13 @@ class Runners:
         account, not in a settings file, so they come from Claude Code itself: `claude mcp
         list` names them, and the first line Claude Code writes when it starts (its init
         message) gives their tools; the run is stopped there, before it answers. They load in
-        the background, so a start that missed some is tried again (ACCOUNT_TRIES)."""
+        the background, so a start that missed some is tried again (LIST_TRIES)."""
         who.require("workspace.admin")
         spec_of = self._spec("claude")
         command = self._ready(spec_of)
         expected = self._account_names(command)
         best: dict[str, Any] = {}
-        for _ in range(ACCOUNT_TRIES if expected else 1):
+        for _ in range(LIST_TRIES if expected else 1):
             init = self._account_start(spec_of, command, "Reply OK.", timeout)[0]
             named = {
                 str(s.get("name")) for s in init.get("mcp_servers") or [] if isinstance(s, dict)
@@ -1207,6 +1214,11 @@ class Runners:
 
     def _account_names(self, command: list[str]) -> set[str]:
         """The account's connectors by name, as `claude mcp list` prints them."""
+        return {n for n in self._mcp_names(command) if ACCOUNT_LINE.match(n + ":")}
+
+    def _mcp_names(self, command: list[str]) -> set[str]:
+        """Every MCP server Claude Code would load here, by name: the account's connectors
+        and the person's own (user and project scope), as `claude mcp list` prints them."""
         try:
             proc = self.popen(
                 [*command, "mcp", "list"],
@@ -1222,7 +1234,7 @@ class Runners:
             out, _ = proc.communicate(timeout=180)
         except (OSError, subprocess.TimeoutExpired):
             return set()
-        return {m.group(1).strip() for m in ACCOUNT_LINE.finditer(out or "")}
+        return {m.group(1).strip() for m in SERVER_LINE.finditer(out or "")}
 
     def _account_start(
         self,
@@ -1233,10 +1245,12 @@ class Runners:
         extra: list[str] | None = None,
         until_result: bool = False,
         servers: list[str] | None = None,
+        need_all: bool = True,
     ) -> list[dict[str, Any]]:
         """Start Claude Code with the account's connectors and read what it writes: its init
         message only, or (`until_result`) through to its result, unless the init shows that
-        one of `servers` has not loaded, when it is stopped there."""
+        one of `servers` (with `need_all` off: every one of them) has not loaded, when it is
+        stopped there."""
         folder = tempfile.mkdtemp(prefix="workspace-account-")
         argv = [
             *command,
@@ -1277,7 +1291,9 @@ class Runners:
                 return True
             if last.get("subtype") == "init" and servers:
                 ready = _mcp_tools(last)
-                return any(not ready.get(s) for s in servers)  # not all loaded: try again
+                missing = [s for s in servers if not ready.get(s)]
+                # Not loaded: stopped before it answers, to try again.
+                return bool(missing) if need_all else len(missing) == len(servers)
             return last.get("type") == "result"
 
         try:
@@ -1377,12 +1393,28 @@ class Runners:
         prompt: str,
         timeout: float,
     ) -> dict[str, Any]:
-        """One read of connectors of the person's Claude account. Tried again while one has
-        not loaded yet (they load in the background); the last try reads with what loaded."""
+        """One read of connectors of the person's Claude account. Every other MCP server
+        Claude Code would load is refused whole, so only these connectors' tools are in its
+        prompt (all of an account's connectors at once outgrew the model's context). Tried
+        again while one has not loaded yet (they load in the background); the last try reads
+        with those that loaded, and never answers when none of them did."""
+        others = sorted({_safe(n) for n in self._mcp_names(command)} - set(servers))
+        extra = [
+            *limits,
+            *(["--disallowedTools", *[f"mcp__{s}" for s in others]] if others else []),
+        ]
         for attempt in range(ACCOUNT_TRIES):
-            waiting = [] if attempt == ACCOUNT_TRIES - 1 else servers
+            if attempt:
+                time.sleep(ACCOUNT_PAUSE)
             messages = self._account_start(
-                spec, command, prompt, timeout, extra=limits, until_result=True, servers=waiting
+                spec,
+                command,
+                prompt,
+                timeout,
+                extra=extra,
+                until_result=True,
+                servers=servers,
+                need_all=attempt < ACCOUNT_TRIES - 1,
             )
             result = messages[-1]
             if result.get("type") == "result":
