@@ -533,6 +533,10 @@ class BrainPort(Protocol):
         """The Brain as a world: overview, regions, entries, edges, timeline, lore, apps."""
         ...
 
+    def mark_world_visit(self) -> dict[str, Any]:
+        """The owner opened the World page now: "since my last visit" counts from here."""
+        ...
+
     def sections(self, item_id: str) -> dict[str, Any]:
         """Every section address in one note, lesson or file."""
         ...
@@ -1172,6 +1176,9 @@ class NoBrain:
 
     def relevance(self, goal: str, texts: list[str]) -> list[float | None] | None:
         return None
+
+    def mark_world_visit(self) -> dict[str, Any]:
+        return {"visited": None}
 
     def world_view(self, *, since: str | None = None) -> dict[str, Any]:
         return {

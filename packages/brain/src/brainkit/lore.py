@@ -131,9 +131,10 @@ def words_of(raw) -> list[str]:
 
 
 def propose(brain, *, title, story, pattern, words, evidence="", source="", area=None,
-            scope=None, session_id=None, op_id=None, capture_origin="chat"):
+            project=None, scope=None, session_id=None, op_id=None, capture_origin="chat"):
     """A lesson, proposed like any other note: it waits in Catch up (Keep, Edit first,
-    Skip), or goes in on its own where the owner's governance lets it."""
+    Skip), or goes in on its own where the owner's governance lets it. `area` and `project`
+    say where it was learned, which is where the World page places it."""
     from . import governance
     from .api import error
     words = words_of(words)
@@ -148,4 +149,5 @@ def propose(brain, *, title, story, pattern, words, evidence="", source="", area
         title=str(title).strip(), summary=str(pattern).strip(), note_kind=KIND,
         load="manual", scope=scope, evidence=evidence, source=source,
         note_id="lore_" + util.slugify(title, 50).replace("-", "_"),
-        session_id=session_id, capture_origin=capture_origin, op_id=op_id)
+        session_id=session_id, capture_origin=capture_origin, op_id=op_id,
+        extra={"project": str(project).strip()} if project else None)

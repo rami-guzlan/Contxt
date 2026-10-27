@@ -2317,6 +2317,11 @@ class Brain:
         return Result(f"{len(found['entries'])} entries in {len(found['regions'])} regions.",
                       found)
 
+    def mark_world_visit(self) -> dict:
+        """The owner opened the World page now (world.py)."""
+        from . import world
+        return {"visited": world.mark_visit(self)}
+
     def propose_world(self, text, regions) -> dict:
         """A drafted world overview, as a proposal that waits for the owner (world.py)."""
         from . import world

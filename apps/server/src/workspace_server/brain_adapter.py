@@ -1259,6 +1259,9 @@ class BrainKitAdapter:
     def world_view(self, *, since: str | None = None) -> dict[str, Any]:
         return dict(self.brain.world_view(since=since).data)
 
+    def mark_world_visit(self) -> dict[str, Any]:
+        return dict(self.brain.mark_world_visit())
+
     def map_view(self) -> dict[str, Any]:
         """Every tier whole, the short map as a packet sends it, what it cut, and how many
         sealed projects it leaves out (for the owner's own view only)."""

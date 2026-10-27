@@ -94,6 +94,13 @@ def brain_world(who: Who, ws: WS, since: str | None = None) -> dict[str, Any]:
     return ws.rt.brain.world_view(since=since or None)
 
 
+@router.post("/brain/world/visit")
+def brain_world_visit(who: Who, ws: WS) -> dict[str, Any]:
+    """The owner opened the World page: "since my last visit" counts from now on."""
+    who.require("brain.read")
+    return ws.rt.brain.mark_world_visit()
+
+
 @router.get("/brain/sections/{item_id:path}")
 def sections(item_id: str, who: Who, ws: WS) -> dict[str, Any]:
     """Every section address in one note, lesson or file, to copy."""
