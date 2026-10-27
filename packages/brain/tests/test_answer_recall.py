@@ -46,6 +46,12 @@ class ParseTest(unittest.TestCase):
         self.assertAlmostEqual(s.cost, 0.004)
 
 
+    def test_lines_that_are_not_events_are_skipped(self):
+        lines = ['"text"', json.dumps({"type": "user", "message": "a plain string"}),
+                 json.dumps({"type": "system", "message": None}), _done()]
+        self.assertEqual(ar.parse(lines).answer, "Done.")
+
+
 class ScoreTest(unittest.TestCase):
     case = {"id": "c1", "must": [["office-phone"], ["hours", "hours-old"]],
             "must_holds": ["privacy"]}

@@ -78,7 +78,10 @@ def run_brain(entry: dict, cases: list[dict], *, model: str, env: dict,
                 break
             lines, error = oe.run_lines(case["request"], cwd=folder, mcp_config=config,
                                         model=model, env=env)
-            s = ar.parse(lines or [])
+            try:
+                s = ar.parse(lines or [])
+            except Exception as failed:  # one unreadable transcript is one failed request
+                s = ar.Session(error=f"could not read the transcript: {failed}")
             s.error = s.error or (error if not s.answer else "")
             budget.add(s.cost)
             sessions.append((case, s))

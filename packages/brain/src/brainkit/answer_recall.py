@@ -43,8 +43,11 @@ def parse(lines: list[str]) -> Session:
             event = json.loads(line)
         except ValueError:
             continue
+        if not isinstance(event, dict):
+            continue
+        message = event.get("message")
         kind = event.get("type")
-        content = (event.get("message") or {}).get("content") or []
+        content = (message.get("content") if isinstance(message, dict) else None) or []
         if kind == "assistant":
             for part in content if isinstance(content, list) else []:
                 tool = str(part.get("name") or "")
