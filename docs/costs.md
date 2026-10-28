@@ -37,17 +37,19 @@ connector with many large tools costs more even when nothing is new. Real Test r
 | A production app | 7 | 51,000 | $0.005 | 25 s |
 | Spotify | 6 | 33,000 | $0.005 | 26 s |
 | HubSpot, a year back | 17 | 142,000 | $0.0066 | 35 s |
-| HubSpot, nothing new | 0 | 136,000 | $0.0043 | 24 s |
+| HubSpot, nothing new | 0 | 91,000 | $0.0034 | 24 s |
 | Notion, a year back | 5 | 209,000 | $0.010 | 40 s |
-| Notion, nothing new | 0 | 205,000 | $0.0085 | 21 s |
+| Notion, nothing new | 0 | 191,000 | $0.0053 | 21 s |
 
 - Most of those tokens are cache reads, which is why they cost so little.
 - Reading several connectors in one run costs less than reading them one by one. A real
   beat reading Drive, Notion and HubSpot together took 277,000 tokens in 50 seconds, against
   about 400,000 for the three read apart.
 - Each read has a cap on turns and on spend ($0.05 a connector). A read that reaches either
-  fails and says so, instead of passing as nothing new. Notion's quiet read uses its turns
-  opening pages to check their dates, which is why it costs the most.
+  fails and says so, instead of passing as nothing new.
+- A read whose list shows dates, none newer than the last read, answers at once: that halved
+  HubSpot's quiet read (188,000 tokens to 91,000). Notion's search shows no dates, so its
+  quiet read still opens pages to check them, which is why it costs the most.
 
 About the side-by-side check: it runs on Sonnet 5.5. On the 80 labeled pairs of
 `scripts/safeguards_eval.py`, Sonnet named the right relation in 77, Haiku in 69 and the
