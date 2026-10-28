@@ -20,7 +20,7 @@ Measured on October 28, 2026 on the entrepreneur demo Brain, unless it says othe
 | A beat with no connector due | every beat | 0: no model call | none |
 | Reads through n8n, folders and Scout | each beat | 0 | none |
 | A connector read through Claude Code | each scheduled read | 33,000 to 209,000 | $0.004 to $0.010 |
-| The nightly distill, 50 items | once a night | 25,000 | $0.0099 |
+| The nightly distill | once a night | 5,500 for 5 items, 25,000 for 50 | $0.0099 for 50 |
 | An answer through the Brain, two turns | each time an AI app asks | 29,000 | $0.0034 |
 | A Work with AI job or Run now, a five-line note | when you start one | 52,000 | $0.0035 |
 | A Test bench run: no Brain, full Brain, custom | when you run one | 12,700 | $0.0013 |
@@ -42,8 +42,9 @@ connector with many large tools costs more even when nothing is new. Real Test r
 | Notion, nothing new | 0 | 205,000 | $0.0085 | 21 s |
 
 - Most of those tokens are cache reads, which is why they cost so little.
-- Reading several connectors in one run costs less than reading them one by one: with small
-  stand-in connectors, 3 quiet ones took 23,000 tokens together against 13,000 each apart.
+- Reading several connectors in one run costs less than reading them one by one. A real
+  beat reading Drive, Notion and HubSpot together took 277,000 tokens in 50 seconds, against
+  about 400,000 for the three read apart.
 - Each read has a cap on turns and on spend ($0.05 a connector). A read that reaches either
   fails and says so, instead of passing as nothing new. Notion's quiet read uses its turns
   opening pages to check their dates, which is why it costs the most.
@@ -80,12 +81,12 @@ when something new comes in. That comes to about 5 reads a day per connector.
 | Work with AI jobs | 0 | 2 | 10 |
 | Test runs after the distill | 0 | 10 | 20 (the daily cap) |
 | Side-by-side check calls | 3 | 10 | 30 |
-| **Tokens** | **about 0.3 million** | **about 1.8 million** | **about 5 million** |
-| **of which connector reads** | 0.24 million | 1.6 million | 4 million |
+| **Tokens** | **about 0.3 million** | **about 1.6 million** | **about 5 million** |
+| **of which connector reads** | 0.29 million | 1.4 million | 4 million |
 | **Cost on Haiku 5.5, the check on Sonnet 5.5** | **about $0.06** | **about $0.10 to $0.25** | **about $0.60** |
 
-A typical day is about 1.6 million tokens of connector reads and about 1.8 million in all,
-for $0.10 to $0.25. Notion and HubSpot are the expensive connectors: about three times
+A typical day is about 1.4 million tokens of connector reads (5 beats of the three together,
+277,000 each) and about 1.6 million in all, for $0.10 to $0.25. Notion and HubSpot are the expensive connectors: about three times
 Drive's tokens a read, for nothing new. Read hourly, the same three connectors would take
 about 3.9 million tokens a day.
 
