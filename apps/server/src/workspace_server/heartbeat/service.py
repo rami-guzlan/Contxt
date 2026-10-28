@@ -1933,6 +1933,9 @@ class Heartbeat:
             "Read, read-only, what changed in each of these connectors since the time given. "
             "First list or search for what changed since then; then open at most "
             f"{READ_OPENS} items a connector, the newest first, all in one step, and stop. "
+            "When the list or search shows each item's date and none is newer than that time, "
+            "answer at once with an empty list; when it shows no dates, open the newest to "
+            "check. "
             "Use only the tools listed for each. Never send, post, reply, create, change, "
             "delete or pay for anything; you have no tool that can. Reply with one JSON object "
             'only: {"connectors": {"<server>": {"cursor": "<the newest time or marker you '
