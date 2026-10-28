@@ -61,7 +61,7 @@ docker image inspect contxt:latest >/dev/null 2>&1 ||
     fail "no contxt:latest image; run docker compose build first."
 
 say "Host folders owned by $(id -un) ($(id -u):$(id -g))"
-mkdir "$work/exports" "$work/brain"
+mkdir "$work/exports" "$work/brain" "$work/scout"
 # The engine's sample vault, set to commit its changes as an operator's Brain does.
 PYTHONPATH="$repo/packages/brain/src:$repo/packages/brain" python3 - "$work/brain" <<'EOF'
 import json
@@ -88,6 +88,7 @@ CONTXT_GID=$(id -g)
 CONTXT_PORT=$port
 BRAIN_HOST_DIR=$work/brain
 EXPORTS_HOST_DIR=$work/exports
+SCOUT_HOST_DIR=$work/scout
 EOF
 
 say "Start the app"
