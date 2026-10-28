@@ -5,6 +5,7 @@
     uv run python scripts/safeguards_eval.py --models <dir>     # match by meaning too
     uv run python scripts/safeguards_eval.py --markdown docs/evals/report.md
     uv run python scripts/safeguards_eval.py --ask-model        # check 3 through Claude Code
+    uv run python scripts/safeguards_eval.py --ask-model --model haiku --verdicts <file>
 
 `--models` is a folder holding a downloaded embedding model, as it sits in a vault's
 `.brain/models` (for example a demo home's `brain/vault/.brain/models`). Every run works on
@@ -42,6 +43,9 @@ def detectors():
             "checks 1 and 2 (tension.tension)": lambda a, b: tension.tension(b, a)}
 
 
+MODEL: list[str] = []  # `--model`: the model check 3 asks (Claude Code's default without it)
+
+
 def ask(prompt: str, timeout: float = 240.0) -> str:
     """One answer from Claude Code, as Runners.ask gets it."""
     folder = tempfile.mkdtemp(prefix="safeguards-ask-")
@@ -51,7 +55,7 @@ def ask(prompt: str, timeout: float = 240.0) -> str:
     argv = [shutil.which("claude") or "claude", "-p", "--output-format", "json",
             "--restricted", "--tools", "", "--mcp-config", config, "--strict-mcp-config",
             "--permission-mode", "dontAsk", "--no-session-persistence",
-            "--append-system-prompt", NO_TOOLS]
+            "--append-system-prompt", NO_TOOLS, *MODEL]
     # A Claude Code session's own variables would make this a child of that session.
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("CLAUDE_CODE_") and k not in ("CLAUDECODE", "CLAUDE_PID")}
@@ -96,9 +100,12 @@ def main(argv=None) -> int:
     parser.add_argument("--ask-model", action="store_true",
                         help="ask Claude Code about every labeled pair (check 3)")
     parser.add_argument("--verdicts", default=VERDICTS, help="where check 3's verdicts are")
+    parser.add_argument("--model", help="the model check 3 asks, for example haiku")
     parser.add_argument("--json", help="write the full results here")
     parser.add_argument("--markdown", help="write a short report here")
     args = parser.parse_args(argv)
+    if args.model:
+        MODEL[:] = ["--model", args.model]
 
     must = se.run_must_holds(BRAINS, se.load_spec(os.path.join(EVALS, "must_holds.json")),
                              relevance_only=args.relevance_only, models_dir=args.models)
