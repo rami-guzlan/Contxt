@@ -1998,6 +1998,9 @@ def test_a_read_asks_to_list_first_and_open_only_the_newest(runtime):
     prompt = runtime.heartbeat._read_prompt([("s", "Notes", "2026-10-20", ["search", "fetch"])])
     assert "list or search" in prompt
     assert f"open at most {heartbeat_service.READ_OPENS}" in prompt
+    # A quiet connector answers at once: a real Notion read opened six old pages to check dates.
+    assert "none is newer than that time, answer at once" in prompt
+    assert "when it shows no dates, open the newest" in prompt  # Notion's search shows none
 
 
 def test_a_read_is_capped_in_turns(runtime, monkeypatch):
