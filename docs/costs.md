@@ -88,9 +88,9 @@ when something new comes in. That comes to about 5 reads a day per connector.
 | **Cost on Haiku 5.5, the check on Sonnet 5.5** | **about $0.06** | **about $0.10 to $0.25** | **about $0.60** |
 
 A typical day is about 1.4 million tokens of connector reads (5 beats of the three together,
-277,000 each) and about 1.6 million in all, for $0.10 to $0.25. Notion and HubSpot are the expensive connectors: about three times
-Drive's tokens a read, for nothing new. Read hourly, the same three connectors would take
-about 3.9 million tokens a day.
+277,000 each) and about 1.6 million in all, for $0.10 to $0.25. Notion is the expensive one:
+about 191,000 tokens a read even when nothing is new, three times Drive's. Read hourly, the
+same three connectors would take about 3.9 million tokens a day.
 
 ## Settings that change it
 
