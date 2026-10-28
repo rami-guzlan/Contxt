@@ -3,7 +3,7 @@
 v4 backend plan, section 17.1.
 
 The owner's gate is two-part, measured on the held-out validation Brains and confirmed on the
-IKN Brain:
+owner's private Brain:
 - answer recall of 90% or more;
 - graded correctness no worse than the baseline.
 
@@ -93,7 +93,7 @@ All runs use the meaning model and the drafted scopes.
 - Run-to-run spread on one Haiku pass is a few answers, which is the size of the
   correctness gaps above.
 
-## The owner's IKN Brain (measurement only)
+## The owner's private Brain (measurement only)
 
 Answer recall was:
 - 80.7% before section 16;
