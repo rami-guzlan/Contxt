@@ -357,7 +357,7 @@ Each step comes with its tests, local CI, and a PR merged only after a full loca
 
 - **Name and license**, before anything public.
 - **GitHub billing,** for hosted CI and macOS.
-- **The IKN enrichment yes or no.**
+- **The private Brain's enrichment yes or no.**
 
 ## 15. Addendum, Oct 25: the Test Bench
 

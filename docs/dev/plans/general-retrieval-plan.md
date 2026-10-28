@@ -1,9 +1,7 @@
 # General retrieval: plan
 
-Plan only: no code was changed. Written October 16, 2026, at Rami's question: "is this approach
-developing a generalized scalable system? ... a system that will be able to do high-quality
-retrievals and packet generations from anybody's brain context data? If not, rethink the
-context retrieval system." File paths are relative to the Contxt repository; "BL" cites
+Plan only: no code was changed. Written October 16, 2026, when the owner asked whether the approach generalizes: whether it
+retrieves well and builds good packets from anybody's Brain, and if not, to rethink it. File paths are relative to the Contxt repository; "BL" cites
 `brain-logic-plan.md` beside this file.
 
 ## 1. The answer, measured
@@ -15,17 +13,17 @@ measured, are fitted to the people who built it.
 **The relevance layer runs on hand-set numbers and hand-written hints.**
 - `router.Policy` holds 61 thresholds and weights (the 0.42 note floor, the 0.46 lean floor,
   72% of the best, 0.57 for must-holds, 0.60 and 0.90 for file parts, and so on).
-- Each was set on a handful of requests, against one real Brain (IKN) and four demo Brains
+- Each was set on a handful of requests, against one real Brain (the owner's private Brain) and four demo Brains
   written by the same person.
 - On top of them, each Brain can carry hand-written routing (`routing.json` intents, topic
   hints such as `requires_any`, house-style lists, must-hold trigger words, `topics.md`
-  lines). Rami's IKN Brain carries 4 intents, 25 topic hints, 9 house-style notes and 26
+  lines). The owner's private Brain carries 4 intents, 25 topic hints, 9 house-style notes and 26
   topic lines. A new person's Brain carries none.
 
-**Measured on the IKN Brain's own 68 labeled requests, by meaning** (October 16, private copy
+**Measured on the owner's private Brain's own 68 labeled requests, by meaning** (October 16, private copy
 on F:):
 
-| IKN Brain | Recall, tuning (46) | Recall, held out (22) | Precision, tuning / held out |
+| Owner's private Brain | Recall, tuning (46) | Recall, held out (22) | Precision, tuning / held out |
 | --- | --- | --- | --- |
 | As configured | 98% | 88% | 82% / 76% |
 | No `routing.json` | 82% | 84% | 63% / 66% |
@@ -40,7 +38,7 @@ Three things follow:
 - **The demo numbers vary by Brain** (recall 60% to 100% across the four starters, words and
   meaning). Small, single-author test sets cannot say how a fifth Brain will do.
 
-The evaluation shares the problem: 48 demo requests and 68 IKN requests, written by the people
+The evaluation shares the problem: 48 demo requests and 68 private-Brain requests, written by the people
 who tuned the router, with held-out sets that have already been inspected. One request moves a
 number by 2 to 12 points.
 
@@ -139,7 +137,7 @@ what it found by searching that no brief brought (a "searched" gap).
 ### 3.6 What happens to hand configuration
 
 `routing.json` and `topics.md` stay readable and keep working as overrides. A topic with no
-line in `topics.md` is described from its notes' enrichment. The IKN Brain is measured both
+line in `topics.md` is described from its notes' enrichment. The owner's private Brain is measured both
 ways, so the gap between configured and zero-config is visible and shrinks as stages land.
 
 ### 3.7 Language and scale
@@ -156,7 +154,7 @@ ways, so the gap between configured and zero-config is visible and shrinks as st
 
 | Kind | What | Why |
 | --- | --- | --- |
-| Real | IKN (private: on F: and in the private `ai-brain` repo, never in this one); more real Brains later, with their owners' consent | real notes, real wording |
+| Real | The owner's private Brain (private: on F: and in the private `ai-brain` repo, never in this one); more real Brains later, with their owners' consent | real notes, real wording |
 | Demo | the four starters | shipped, public |
 | Generated | Brains across about 12 personas and jobs (a dentist, a lawyer, a teacher, a founder, an engineer, a nonprofit, a household...), at 50, 500 and 5,000 notes | breadth and scale; labels known by construction |
 | Third-party | public long-term memory benchmarks (LongMemEval, LoCoMo): conversations brought in through Capture and distillation, their questions asked as requests | data nobody here wrote; tests the whole path, not only retrieval; licenses checked first |
@@ -195,7 +193,7 @@ behavior, which is what this plan changes) and stays for packet rendering.
 
 | Stage | What | Changes behavior? |
 | --- | --- | --- |
-| 0 | The harness: multi-Brain runner, zero-config mode, leave-one-out, intervals, the null bank, the Brain generator, the IKN private set, a baseline report | No |
+| 0 | The harness: multi-Brain runner, zero-config mode, leave-one-out, intervals, the null bank, the Brain generator, the owner's private set, a baseline report | No |
 | 1 | Calibrated selection against the null set (3.3), replacing the absolute floors | Yes |
 | 2 | Rank-fusion candidates and the three tiers (3.2, 3.4) | Yes |
 | 3 | Enrichment at the door, a backfill for existing notes, "Found when you ask" on the entry page (3.1) | Yes |
@@ -209,7 +207,7 @@ promises, for zero-config on Brains nobody tuned on:
 - correct nothing 95% or more on the null bank;
 - false nothing 3% or less.
 
-## 6. Decisions for Rami
+## 6. Decisions for the owner
 
 1. Zero-config numbers become the headline (recommended).
 2. Enrichment makes one model call per note, through the knowledge agent's model (the CLI here
@@ -217,6 +215,6 @@ promises, for zero-config on Brains nobody tuned on:
 3. Generated Brains and requests are written by a model (Claude Code by default), a one-time
    cost per test Brain.
 4. Third-party benchmarks (LongMemEval, LoCoMo) are downloaded once their licenses are checked.
-5. The IKN private set stays on F: and in the private `ai-brain` repo; only aggregate numbers
+5. The owner's private set stays on F: and in the private `ai-brain` repo; only aggregate numbers
    appear in this repository.
 6. Stage 0 starts now: it changes no behavior.

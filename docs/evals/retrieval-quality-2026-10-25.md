@@ -3,7 +3,7 @@
 Item 1 of the pre-testing list: zero-config retrieval toward 90% held-out reach and 80% precision, with fewer look-alike must-holds. Measured by meaning (the CPU index) at main 9ac2654, on the generated Brains:
 - **Tuned on:** the 4 tuning Brains only.
 - **Checked once:** the 3 validation Brains, once per candidate.
-- **Not used:** the IKN, demo and sealed sets were not tuned on.
+- **Not used:** the owner's private, demo and sealed sets were not tuned on.
 
 ## What ships in this PR (owner approved, Oct 25)
 

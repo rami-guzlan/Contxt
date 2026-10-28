@@ -30,7 +30,7 @@ fetched.
 |---|---|---|---|---|---|---|
 | Tuning (4) | 121/159 (76.1%) | 99/159 (62.3%) | 77/106 (72.6%) | 1.11 | 49/152 (32.2%) | $0.79 |
 | Validation (3) | 95/123 (77.2%) | 71/123 (57.7%) | 64/84 (76.2%) | 1.30 | 31/114 (27.2%) | $0.58 |
-| Owner's IKN Brain, as configured | 71/88 (80.7%) | 64/88 (72.7%) | 49/63 (77.8%) | 1.06 | not labeled | $0.38 |
+| Owner's private Brain, as configured | 71/88 (80.7%) | 64/88 (72.7%) | 49/63 (77.8%) | 1.06 | not labeled | $0.38 |
 
 Each answer reads about 93,000 to 104,000 tokens, almost all of it Claude Code's own cached
 context. That puts a request at about $0.0055 on Haiku.
@@ -45,7 +45,7 @@ context. That puts a request at about $0.0055 on Haiku.
 | foodbank | validation | 41/50 | 27/50 | 1.53 | 11/38 |
 | saas-support | validation | 27/32 | 21/32 | 1.21 | 12/38 |
 
-The IKN Brain is the final measure only. Its run stays on the owner's computer. Only these
+The owner's private Brain is the final measure only. Its run stays on the owner's computer. Only these
 counts are recorded, and it is never tuned on.
 
 ## What it shows

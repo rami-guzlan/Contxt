@@ -33,7 +33,7 @@ own computer. "Gnomon" is the working product name in the plans and some UI copy
 CLI and repository say Contxt. The name clashes with an existing company (Contxt, Inc.), so it
 changes before anything goes public.
 
-What it is for, in the owner's words: context, agent alignment, skills management, and
+What it is for: context, agent alignment, skills management, and
 automated context management that is governed and auditable. Memory across AI tools is table
 stakes; the value is governance:
 - proposals the AIs send while they work, reviewed by the owner in one calm place (Catch up);
@@ -79,10 +79,8 @@ Positioning (the owner's direction, October 2026):
 | [record/report-card-2026-10-10.md](record/report-card-2026-10-10.md) | Output of `scripts/report_card.py` | Current |
 | [record/walkthrough-script.md](record/walkthrough-script.md) | The owner's UX G walkthrough, screen by screen, with its bars | Waiting for him |
 | [record/test-the-brain-progress.md](record/test-the-brain-progress.md) | The Test the Brain branch's own record | Merged as #16; screenshots wait for a signed-in browser |
-| [prompts/lab-chat-prompt-laptop.md](prompts/lab-chat-prompt-laptop.md) | The paste-ready prompt that starts the Lab's build chat | Written for the laptop: adapt paths and ports |
-| [prompts/test-the-brain-chat-prompt-laptop.md](prompts/test-the-brain-chat-prompt-laptop.md) | The prompt that started the Test the Brain chat | Reference |
 
-Paths inside these files are the laptop's (`C:\Users\rguzian\dev\AI-Brain\...`). Map them to
+Paths inside these files are the laptop's (`C:\Users\<you>\dev\AI-Brain\...`). Map them to
 this machine's folders.
 
 ### Only on the laptop (deliberately not in this repository)
@@ -92,7 +90,7 @@ this machine's folders.
   Brain's vault, which is its own private git repository. Nothing from that Brain ever goes into
   this repository.
 - **The private outputs folder** `AI-Brain/outputs/contxt/`: the owner's prompts kept word for
-  word (`build/rami-prompts-verbatim.md`), the private cost baseline for his work Brain, the
+  word (the owner's private prompt log), the private cost baseline for his work Brain, the
   strategy and roadmap document, the research paper's notes (`research/paper-notes.md`), the
   onboarding film and its code (`build/video/`), older plans for finished work, screenshots, and
   the inbox for his memory exports (`lab-inbox/memories/`).
@@ -404,7 +402,7 @@ model's behavior is made yet.
   he asks for them.
 - **Give him the result.** Plan briefly, then execute. Return problems with options and a
   recommendation. Keep his prompts word for word in a log in his private outputs folder (the
-  laptop's log is `rami-prompts-verbatim.md`, numbered entries).
+  laptop's log is the owner's private prompt log, numbered entries).
 - **Copy and video (Gnomon):** lead with governance and "enable your AI", not "memory". Use
   concrete day-to-day moments and Apple-style one-idea frames.
 

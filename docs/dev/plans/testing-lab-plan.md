@@ -1,7 +1,7 @@
 # Gnomon Lab: the testing environment plan
 
-Plan only: nothing is built yet. Written October 10, 2026 for Sonnet 5.5 to build, from Rami's
-prompt 159 in `rami-prompts-verbatim.md` and the note he sent while it was researched: the tests
+Plan only: nothing is built yet. Written October 10, 2026 for Sonnet 5.5 to build, from the owner's
+prompt 159 in the owner's private prompt log and the note he sent while it was researched: the tests
 measure whether the Brain makes his agents' work better, more aligned and cheaper, not whether the
 code runs.
 
@@ -29,13 +29,13 @@ Gnomon is the working name; the code says Contxt.
      settings in 5.11.16), 7, 8.9, 9, 10 and 17 (the local knowledge agent);
    - GP sections 3, 5 and 11;
    - `build-progress.md`.
-2. **Wait for one message.** Before Phase 0, get Rami's answers to section 13, his memory exports
+2. **Wait for one message.** Before Phase 0, get the owner's answers to section 13, his memory exports
    and his OK for `claude update`, together (3.6). If he says "all as recommended", use the
    recommendations.
 3. **Build in order and keep a log.** Follow section 12. In the Lab repo, keep
    `docs/lab-progress.md`: a checklist per phase and a dated log, like `build-progress.md`. After
    any compaction, read it first.
-4. **Ask twice, then work alone.** Ask Rami before Phase 0 and for the sitting (3.6), and
+4. **Ask twice, then work alone.** Ask the owner before Phase 0 and for the sitting (3.6), and
    otherwise only when going on would break a rule in section 3. Never send him a label, a gate or
    a review one at a time: whatever needs him waits in the next sitting's queue. Work directly: he
    prefers few subagents, to save tokens.
@@ -71,7 +71,7 @@ It measures four pillars:
 4. **The knowledge agent**: how well it keeps the first three healthy in practice, skill by
    skill.
 
-What Rami gets:
+What the owner gets:
 
 - **A Lab Brain**: a frozen copy of the owner's live Brain to test on. The live Brain is never touched.
 - **Labeled cases**, each with a right answer he approved. They come from his real requests, his
@@ -83,7 +83,7 @@ What Rami gets:
   with the Brain and without it, so the Brain's effect is a number.
 - **The knowledge agent's report card**: each skill runs on seeded Brains with known answers,
   compared across models and versions.
-- **User-emulated sessions**: scripted weeks of work with a simulated Rami, run on his PC with the
+- **User-emulated sessions**: scripted weeks of work with a simulated owner, run on his PC with the
   local models.
 - **Test the Brain**, a page in the app's Settings (10.1). There he runs every test, watches it
   stream, opens any case, and sees a request pass through the pipeline stage by stage.
@@ -106,7 +106,7 @@ queue is ready. After that the Lab runs alone, unless it batches a short top-up 
 | Family | The question | Examples |
 |---|---|---|
 | Alignment | Do the agents follow the owner's rules, preferences and standing decisions? | Rule violations per 100 outputs, with and without the Brain; rules delivered whenever their domain is in play; content never turning into a rule |
-| Quality | Is the agents' work right and complete? | Approved key points present; statements that contradict the Brain; Rami's blind preference |
+| Quality | Is the agents' work right and complete? | Approved key points present; statements that contradict the Brain; the owner's blind preference |
 | Working context | Do the agents have what the task needs when they need it, and nothing that misleads? | Needed-note recall; noise and wrong notes; a correct "nothing"; a session resumed from a card; questions the Brain could have answered |
 | Efficiency | What did it cost? | Brief tokens and their re-read cost; time per layer; model calls; the owner's minutes on approvals, corrections and cards |
 
@@ -138,7 +138,7 @@ improves L1 but not L3 is not yet a win, and the Lab reports it that way.
 - **App polish.** A screen is measured only where it changes an outcome, such as how long a
   check-in takes.
 
-### 2.4 Rami's list, mapped
+### 2.4 The owner's list, mapped
 
 | He asked for | Where |
 |---|---|
@@ -162,10 +162,10 @@ improves L1 but not L3 is not yet a win, and the Lab reports it that way.
 ### 3.1 The live Brain is never touched
 
 The live Brain is all of these:
-- the vault `C:/Users/rguzian/dev/AI-Brain/ai-brain/vault`, whose runtime folder `.brain/` holds
+- the vault `C:/Users/<you>/dev/AI-Brain/ai-brain/vault`, whose runtime folder `.brain/` holds
   the session ledger;
-- the data folder `C:/Users/rguzian/dev/AI-Brain/workspace-data`;
-- the checkout `C:/Users/rguzian/dev/AI-Brain/Contxt` and its `.env`;
+- the data folder `C:/Users/<you>/dev/AI-Brain/workspace-data`;
+- the checkout `C:/Users/<you>/dev/AI-Brain/Contxt` and its `.env`;
 - the app on port 8787;
 - the `contxt` and `brain` connectors.
 
@@ -195,7 +195,7 @@ Proof, at the start and end of every phase, from `lab doctor`:
 - **The guard's log.** It shows no live path touched, apart from `lab snapshot`'s read-only
   opens and the doctor's own read-only canary search.
 
-Rami keeps using his live Brain during the build, so its files change on their own. The proof
+The owner keeps using his live Brain during the build, so its files change on their own. The proof
 therefore looks for the Lab's traces, not for an unchanged Brain.
 
 ### 3.2 Privacy, and where data lives
@@ -212,10 +212,10 @@ therefore looks for the Lab's traces, not for an unchanged Brain.
   them carry `sensitive: partner`.
 - **No sign-in links or tokens are ever printed**, the Lab's own included.
 
-### 3.3 Approvals are Rami's
+### 3.3 Approvals are the owner's
 
 - Claude drafts every label, standard and expected outcome, each with a one-line reason.
-- Only Rami approves, by a key press in the Lab pane.
+- Only the owner approves, by a key press in the Lab pane.
   - The pane writes each approval itself and signs it, with a key kept in the mod's own store.
     The CLI has no approve command, and no command that sets a gate.
   - The mod's guard refuses any Claude tool call that would write an approval, a gate or a
@@ -235,7 +235,7 @@ therefore looks for the Lab's traces, not for an unchanged Brain.
     `scripts/engine_compare.py`;
   - the Lab Brain's ledger, which is the audit trail.
 - It never edits Contxt. Anything it needs from the engine goes on the list in appendix B, for
-  Rami to hand to the build chat.
+  the owner to hand to the build chat.
 - Every run records:
   - the engine commit and the fingerprint of the model lock file;
   - the machine setup (BL 5.11.15), and each role's model id and quantization;
@@ -266,14 +266,14 @@ therefore looks for the Lab's traces, not for an unchanged Brain.
 
 ### 3.6 His part: one sitting, front-loaded
 
-Rami wants to do his part in one go, even a long one, with everything prepared for him, and then
+The owner wants to do his part in one go, even a long one, with everything prepared for him, and then
 leave the Lab to work alone with what he gave it. So the Lab asks for his time twice, and every
 phase is built around that.
 
 **Before Phase 0 (about 10 minutes), in one message:**
 - his answers to section 13 ("all as recommended" is enough);
 - his ChatGPT and Claude memory exports, dropped into the inbox
-  `C:/Users/rguzian/dev/AI-Brain/outputs/contxt/lab-inbox/memories/chatgpt/` and `.../claude/`,
+  `C:/Users/<you>/dev/AI-Brain/outputs/contxt/lab-inbox/memories/chatgpt/` and `.../claude/`,
   outside every repo, because the Lab repo does not exist until Phase 0 (5.7);
 - an OK to run `claude update` (9.1).
 
@@ -368,7 +368,7 @@ numbers are marked.
 ### 4.2 The repo
 
 A new private repo, `rami-guzlan/contxt-lab` (decision 1), cloned beside the others at
-`C:/Users/rguzian/dev/AI-Brain/contxt-lab`. The code is generic: it names no organization and no
+`C:/Users/<you>/dev/AI-Brain/contxt-lab`. The code is generic: it names no organization and no
 person. Everything specific to the live Brain lives in `data/` and the machine config.
 
 ```text
@@ -417,7 +417,7 @@ contxt-lab/
 
 ### 4.3 Engine checkouts
 
-- **Laptop.** A separate clone from GitHub at `C:/Users/rguzian/dev/AI-Brain/Contxt-lab-engine`.
+- **Laptop.** A separate clone from GitHub at `C:/Users/<you>/dev/AI-Brain/Contxt-lab-engine`.
   Never the live checkout, and never the build chat's worktrees (`Contxt-safeguards`,
   `Contxt-ux`, `Contxt-dev`).
 - **Switching refs.** `lab engine use <ref>` fetches, checks out a branch, tag, commit or pull
@@ -434,12 +434,12 @@ contxt-lab/
 machine: laptop                # laptop | pc
 machine_setup: auto            # auto | laptop | workstation | large (BL 5.11.15); not setups A to E; forcing one needs appendix B item 7
 engine:
-  repo: C:/Users/rguzian/dev/AI-Brain/Contxt-lab-engine
+  repo: C:/Users/<you>/dev/AI-Brain/Contxt-lab-engine
   ref: origin/main
 live:                          # never touched; the guard refuses every path and port here
-  vault: C:/Users/rguzian/dev/AI-Brain/ai-brain/vault
-  data_dir: C:/Users/rguzian/dev/AI-Brain/workspace-data
-  checkout: C:/Users/rguzian/dev/AI-Brain/Contxt
+  vault: C:/Users/<you>/dev/AI-Brain/ai-brain/vault
+  data_dir: C:/Users/<you>/dev/AI-Brain/workspace-data
+  checkout: C:/Users/<you>/dev/AI-Brain/Contxt
   port: 8787
   connectors: [contxt, brain]
 ports: {lab_app: 8795, worlds: [8796, 8799]}
@@ -498,7 +498,7 @@ The ports in use:
 | real | The live Brain's ledger, copied in the snapshot: requests he actually made, with the briefs they got | Retrieval, brief and outcome cases | Claude drafts, he approves | As the main numbers |
 | old | The 68 cases in the vault's `eval.json` (22 held out) | A head start for retrieval | Sent back to review, because the Brain has changed since | With real |
 | nothing | Requests that should get nothing: building Contxt itself (many are already in the ledger), general questions, other people's work | Tests the gate: does nothing fitting get nothing? | He confirms "nothing" | With real |
-| memory | His ChatGPT and Claude memory exports (5.7) | Ingestion, distillation, cross-check and staleness cases; the memory-list baseline; the simulated Rami's style | Item by item, from drafts | Apart |
+| memory | His ChatGPT and Claude memory exports (5.7) | Ingestion, distillation, cross-check and staleness cases; the memory-list baseline; the simulated the owner's style | Item by item, from drafts | Apart |
 | generated | Cases Claude writes for gaps (5.6): paraphrases, decoys, rare edge cases | Coverage | Like real cases, plus a "generated" mark | Always apart, and never in the real held-out set |
 | seeded | Copies of the Lab Brain with planted problems and a truth file (5.8) | Knowledge agent and updating checks | The truth file, which he spot-checks | Per world |
 | demo | Contxt's invented demo Brains and their eval sets | Public-safe runs, and a check that the Lab is not tuned to one Brain | Already labeled | Apart |
@@ -536,7 +536,7 @@ Then the Lab Brain is built and run from the snapshot:
 - `lab brain mcp-config` prints the `contxt-lab` stdio entry. It has the same shape as the app's
   `contxt` entry, pointed at the Lab Brain.
 
-**Refreshing.** A new snapshot is taken when Rami asks, or monthly. Cases name notes by id. After
+**Refreshing.** A new snapshot is taken when the owner asks, or monthly. Cases name notes by id. After
 a refresh:
 - cases whose notes changed (compared by hash) go back to review;
 - `aliases.json` carries renamed notes.
@@ -660,7 +660,7 @@ Four controls keep the labels honest:
   - Each is written from the Lab Brain's real notes, so the right answers exist.
   - Each carries `origin: generated`, the generator, and a hash of the prompt that made it.
 - **Paraphrases and decoys come first.** Claude generates them from approved real cases. This
-  follows Rami's standing preference: settle meaning against words with labeled paraphrase and
+  follows the owner's standing preference: settle meaning against words with labeled paraphrase and
   decoy cases.
 - **Same review, reported apart.** Generated cases go through the same review as real ones, and
   are always reported separately. Synthetic test sets can make a system look better than real
@@ -701,7 +701,7 @@ The memories are used four ways:
   - The same outcome tasks run with his memories pasted in as context instead of the Brain.
   - If the Brain cannot beat a pasted memory list on alignment and tokens, the product story is
     wrong, and the Lab must say so plainly.
-- **The simulated Rami (6.11).** His approved preferences shape the simulator's style.
+- **The simulated the owner (6.11).** His approved preferences shape the simulator's style.
 
 Names stay in the private repo. The dashboard shows counts only.
 
@@ -732,7 +732,7 @@ controls: {clean_pairs: 10}    # real note pairs known to differ; any finding on
 - **Time.** Until the engine has a clock override (appendix B), age is simulated by moving dates
   back in the copy. That covers dates in note headers, review dates, "as of" values and ledger
   timestamps.
-- **Spot checks.** Rami spot-checks each truth file in the pane: five plants per world.
+- **Spot checks.** the owner spot-checks each truth file in the pane: five plants per world.
 
 ### 5.9 Standards: what a good context packet is
 
@@ -817,7 +817,7 @@ held-out splits.
   - how often the candidate ceiling is hit.
 - **R8 Explanations**:
   - every decision's scores are in the ledger (from step 3b);
-  - for a sample of 10 cases, Rami reads "why this note" and "why not that one" in the pane and
+  - for a sample of 10 cases, the owner reads "why this note" and "why not that one" in the pane and
     marks each clear or unclear: in the sitting if step 3b's "why" view exists by then, otherwise
     in the first top-up (3.6).
 
@@ -829,7 +829,7 @@ held-out splits.
   - The winner is the fastest setup that clears every gate. A tie goes to the setup with fewer
     models (BL 5.11.11).
   - Fitting the cuts (BL 5.11.10) writes only the Lab Brain's `brain.json`. Carrying the cuts to
-    the live Brain is a governed change that Rami approves.
+    the live Brain is a governed change that the owner approves.
 - **Per machine setup (BL 5.11.11, 5.11.15).** Quality does not depend on the machine when the
   weights and quantization are the same, but speed and memory do. So:
   - **Quality on the PC.** It runs each setup's exact models (laptop, workstation, large
@@ -978,7 +978,7 @@ claude plugin eval .lab/plugins/brain-under-test-a --json <path> --runs 3 --mode
   that improved, stayed flat or got worse.
 - **O2 Rule violations** per 100 outputs, with and without.
 - **O3 Key-point coverage**, and statements that contradict the Brain.
-- **O4 Rami's preference**: 10% of the smoke run's with-and-without pairs go to the Compare queue
+- **O4 the owner's preference**: 10% of the smoke run's with-and-without pairs go to the Compare queue
   in the sitting, in random order with the arms hidden. He picks the better one or a tie. Those
   pairs calibrate the pairwise judge, which estimates O4 on later runs, labeled as an estimate.
 - **O5 The cost of the effect**: tokens and estimated dollars per point gained.
@@ -1282,7 +1282,7 @@ grading by the final state.
 - **The agent under test** is Claude Code driven through the Agent SDK, over many turns, with the
   Lab plugin loaded. It meets the kernel, briefs, hooks and tools just as it would in real use. A
   second client without hooks stands in for a chat app.
-- **The simulated Rami** is a model given the persona, the scenario's truth sheet (current
+- **The simulated the owner** is a model given the persona, the scenario's truth sheet (current
   values and rules) and his approved preferences. It:
   - asks as he would;
   - corrects only when an output contradicts the truth sheet;
@@ -1350,7 +1350,7 @@ machines (6.1). It needs no new labels: every row reuses labels the sitting alre
 
 **The output** is one table per setup: each step on, or falling back, with its evidence, in
 `results/qualification/<setup>.json` and on the dashboard. Sonnet summarizes it in
-`docs/lab-progress.md` for Rami to forward to the build chat, since the app's defaults and its
+`docs/lab-progress.md` for the owner to forward to the build chat, since the app's defaults and its
 Settings page (BL 5.11.16) must match it.
 
 **When it runs.** On the PC after step 3b, and again whenever a pin changes. Speed rows run on each
@@ -1466,7 +1466,7 @@ itself.
 | Kernel per principal | at most 500 tokens | hard | BL 5.10 |
 | Brain effect (O1) | above zero, with confidence | watch first | new |
 | Deterministic rule violations, with the Brain | none, and fewer than without | hard | BL 9, 10.2 |
-| Rami prefers the with-Brain output, or ties | at least 70% | watch | new |
+| The owner prefers the with-Brain output, or ties | at least 70% | watch | new |
 | Distillation precision, recall, tier routing | at least 85%, 80%, 90% | hard | BL 7.4 |
 | Seeded contradictions left out | none | hard | BL 7.4 |
 | Circular promotions | none | hard | BL 7.4 |
@@ -1508,7 +1508,7 @@ itself.
   desktop app's Code tab.
   - The desktop app on this laptop appears to bundle 2.1.293: its bundled skills folder carries
     that number. Confirm with `/status` in the Code tab.
-  - The terminal CLI here is 2.1.272. Run `claude update` with Rami's OK.
+  - The terminal CLI here is 2.1.272. Run `claude update` with the owner's OK.
 - **`claude plugin eval`** needs 2.1.269 or later.
 - **Mods can be blocked** by an organization's managed settings. Phase 0 checks that `/plugin`
   shows "1 mod active". If mods cannot load, use the fallback in 9.6.
@@ -1616,7 +1616,7 @@ stubbed. They must show that:
 | Skill | What Claude does |
 |---|---|
 | draft-cases | Drafts labels for a suite from the Lab Brain and the pooled candidates, with a reason per label. Never approves. |
-| new-case | Turns Rami's plain words into a full case with its expected outcome. Asks only what it must, with AskUserQuestion. |
+| new-case | Turns the owner's plain words into a full case with its expected outcome. Asks only what it must, with AskUserQuestion. |
 | import-memories | Parses the exports, scans for secrets, and drafts each item's class |
 | fill-coverage | Reads the coverage map, generates cases for empty cells, and marks them generated |
 | run-and-summarize | Runs suites within the caps, and explains the results against the gates in plain words |
@@ -1632,7 +1632,7 @@ stubbed. They must show that:
   - the ground rules of section 3, in ten lines;
   - where progress is kept;
   - that the live connectors are off limits in the Lab.
-- **The `contxt` connector.** Rami can also switch it off for Lab sessions in the app. The guard
+- **The `contxt` connector.** the owner can also switch it off for Lab sessions in the app. The guard
   covers it either way.
 
 ### 9.6 If mods or plugin eval are unavailable
@@ -1823,7 +1823,7 @@ name clients, or confidential partner material.
   - Snapshots are taken on the laptop, pushed, and pulled on the PC.
   - Moving the live Brain itself is a separate decision, because there should only ever be one
     live copy.
-- **Contxt development on the PC.** The build chat opens a pull request per step, and Rami merges
+- **Contxt development on the PC.** The build chat opens a pull request per step, and the owner merges
   each by hand after CI (prompt 157), so `main` carries every finished step and the PC can clone
   it and carry on. Never put two chats on one branch.
 
@@ -1901,7 +1901,7 @@ phase.
   - the secret-scan pre-commit hook;
   - a `.gitignore` covering `.lab/`, `lab.config.yaml` and large results.
 - The engine clone, at the newest pushed ref that includes step 2's eval tools. If none is
-  pushed yet, use `main`, mark the parts that need those tools as waiting, and tell Rami.
+  pushed yet, use `main`, mark the parts that need those tools as waiting, and tell the owner.
 - The Claude Code checks (9.1). Both plugin skeletons validate, and a hello-world pane opens.
 - Done when `lab doctor` passes:
   - live paths are guarded and hashed;
@@ -2001,7 +2001,7 @@ phase.
 
 **The sitting (after Phase 6).**
 - `lab sitting ready` passes: every queue full, checked and in order (3.6).
-- Sonnet tells Rami once, with the list and the minutes. Meanwhile it may build Phase 7, which
+- Sonnet tells the owner once, with the list and the minutes. Meanwhile it may build Phase 7, which
   needs no labels.
 - Then the gated runs of Phases 3, 5 and 6 on the approved labels, and a dashboard publish.
 - Done when rows 1 to 3 are done, and every other row is done or marked "waits for labels".
@@ -2019,10 +2019,10 @@ phase.
   "speed only, on a laptop or a Mac", "waits for labels" or "waits for build step N".
 - Dry-run a fresh clone on the laptop, skipping the GPU steps.
 - The final push, and one pull request.
-- Done when a fresh clone reaches "all suites ready" by following the docs. Rami merges by hand.
+- Done when a fresh clone reaches "all suites ready" by following the docs. The owner merges by hand.
 
 **From Phase 3 on.** When a build step's pull request opens, run `lab compare refs` against `main`
-and put the summary in `docs/lab-progress.md`, for Rami to attach to it (4.3). After it merges, run
+and put the summary in `docs/lab-progress.md`, for the owner to attach to it (4.3). After it merges, run
 the fast suites on the new `main`. Step 3b lights up setups B to E and 6.12; step 7 lights up the
 local agent in 6.10.
 
@@ -2030,7 +2030,7 @@ local agent in 6.10.
 decisions, whose first 2 hours are the core (3.6), then only the top-ups the Lab asks for. The
 pane shows the real figure.
 
-## 13. Decisions for Rami
+## 13. Decisions for the owner
 
 1. **Where the Lab lives.** Recommended: a new private repo, `rami-guzlan/contxt-lab`, holding the
    Lab's code, its Claude Code plugin, the data and the results.
@@ -2122,7 +2122,7 @@ pane shows the real figure.
 |---|---|
 | Label fatigue turns review into rubber stamping | One sitting in value order, breaks every 45 minutes and after a missed check case, check cases, blind items, repeats, and minutes shown (3.6) |
 | Few cases give wide intervals | Intervals and paired tests on every number; the real set keeps growing; the held-out set is scored rarely |
-| A judge disagrees with Rami | Calibration before gating; code checks first; his blind comparisons |
+| A judge disagrees with the owner | Calibration before gating; code checks first; his blind comparisons |
 | The engine changes under the Lab | An adapter per surface, readiness checks, pinned refs, and `compare refs` |
 | Mods or plugin eval are unavailable on his account | The fallbacks in 9.6 and 6.3 |
 | Something touches the live Brain | Three locks, plus the canary check at the start and end of every phase |
@@ -2217,7 +2217,7 @@ Each row names the expected behavior and where it is tested. "Sc" means a scenar
 | IN07 | An empty, garbage or huge file | Refused, or summarized within budget, with a reason | 6.4 |
 | IN08 | A spreadsheet of values | State cells, not notes (step 6) | 6.4, 6.9 |
 | IN09 | An AI output fed back as evidence for its own sources | Blocked, as circular | 6.5 |
-| IN10 | A quote attributed to Rami that he never said | Marked inferred; it waits | 6.5 |
+| IN10 | A quote attributed to the owner that he never said | Marked inferred; it waits | 6.5 |
 | IN11 | Two colleagues disagree in a meeting | Both kept, with who said each | 6.5 |
 | IN12 | A 2023 document with old figures | Dated; never overrides newer figures | 6.5 |
 | IN13 | A memory item that duplicates a note | Collapses into the note | 5.7, Sc5 |
@@ -2302,7 +2302,7 @@ Each row names the expected behavior and where it is tested. "Sc" means a scenar
 
 ## Appendix B: What the Lab needs from the engine
 
-These are for Rami to hand to the build chat. Items 1 to 8 are small; item 9 is a page. The Lab
+These are for the owner to hand to the build chat. Items 1 to 8 are small; item 9 is a page. The Lab
 works around each one until it lands.
 
 1. **A clock override for tests.** For example, a `CONTXT_NOW` value read by `util.now()`, which
