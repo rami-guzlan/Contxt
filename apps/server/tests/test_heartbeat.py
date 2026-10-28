@@ -876,7 +876,7 @@ def test_claude_account_connectors_are_found_from_claude_codes_start_and_start_o
     assert "--strict-mcp-config" not in listing  # the account's connectors load
     (started,) = [c for c in fake_cli.started if "stream-json" in c["argv"]]
     assert started["env"]["ENABLE_CLAUDEAI_MCP_SERVERS"] == "true"
-    assert "MCP_CONNECTION_NONBLOCKING" not in started["env"]
+    assert started["env"]["MCP_CONNECTION_NONBLOCKING"] == "false"  # it waits for them
     rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
     notion = rows[f"claude:{NOTION}"]
     assert notion["name"] == "claude.ai Notion" and notion["found_in"] == "Your Claude account"
@@ -2011,6 +2011,11 @@ def test_a_read_is_capped_in_turns(runtime, monkeypatch):
     )
     limits = seen["limits"]
     assert limits[limits.index("--max-turns") + 1] == str(runners_mod.READ_TURNS)
+    # A read carries its own short system prompt, not Claude Code's, on each of its turns.
+    assert limits[limits.index("--system-prompt") + 1] == runners_mod.READ_SYSTEM
+    assert "read-only" in runners_mod.READ_SYSTEM
+    # And a dollar budget: a read that would spend more stops.
+    assert limits[limits.index("--max-budget-usd") + 1] == str(runners_mod.READ_BUDGET_USD)
 
 
 def test_a_rescan_that_misses_a_slow_account_connector_keeps_its_last_state():

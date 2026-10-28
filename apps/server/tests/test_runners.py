@@ -229,7 +229,9 @@ def test_one_answer_is_asked_for_with_no_tools_and_says_so(client, runtime):
     # calls it cannot make (a Bash call, get_skill) instead of the answer.
     seen = json.loads(runtime.runners.ask(runtime.ws.owner(), "Draft the update"))
     argv = seen["argv"]
-    assert argv[argv.index("--append-system-prompt") + 1] == runners_module.NO_TOOLS
+    # Its own system prompt, not Claude Code's: about 3,000 fewer tokens on every call.
+    assert argv[argv.index("--system-prompt") + 1] == runners_module.NO_TOOLS
+    assert "--append-system-prompt" not in argv
     assert "no tools" in runners_module.NO_TOOLS
     assert argv[argv.index("--tools") + 1] == "" and "--strict-mcp-config" in argv
     assert argv[argv.index("--output-format") + 1] == "json" and "--restricted" in argv
@@ -625,6 +627,14 @@ def test_an_account_read_caps_each_tools_answer(monkeypatch):
     assert env["ENABLE_CLAUDEAI_MCP_SERVERS"] == "true"
 
 
+def test_an_account_read_waits_for_the_accounts_connectors_to_connect(monkeypatch):
+    # Left unset, Claude Code starts without them: a real HubSpot read never saw it load.
+    from workspace_server import runners as runners_mod
+
+    monkeypatch.setenv("MCP_CONNECTION_NONBLOCKING", "true")
+    assert runners_mod._account_env()["MCP_CONNECTION_NONBLOCKING"] == "false"
+
+
 def _answers(runtime, monkeypatch, *, answer="# Launch copy\n\nShort and plain.", fail=None):
     """Codex and Gemini answer once, with no tools: the server sends what the run was given and
     saves what comes back. This stands in for the CLI."""
@@ -775,12 +785,30 @@ def test_an_account_read_whose_connector_never_loads_says_so_and_answers_nothing
     assert all(c["servers"] == ["claude_ai_Google_Drive"] for c in calls)
 
 
+def test_a_read_that_runs_out_of_turns_fails_and_says_so_not_an_empty_read(runtime, monkeypatch):
+    # A real Notion read spent 150,000 tokens, stopped at its turn cap, and passed as 0 items.
+    _account_reads(runtime, monkeypatch, lambda n: {"claude_ai_Notion"})
+    runners = runtime.runners
+    stopped = {"type": "result", "subtype": "error_max_turns", "is_error": False, "usage": {}}
+    real = runners._account_start
+    monkeypatch.setattr(runners, "_account_start", lambda *a, **k: [*real(*a, **k)[:-1], stopped])
+    with pytest.raises(Conflict, match="turn"):
+        runners._read_account(
+            runners._spec("claude"), ["claude"], ["claude_ai_Notion"], [], "Read.", 60.0
+        )
+    stopped["subtype"] = "error_max_budget_usd"
+    with pytest.raises(Conflict, match="budget"):
+        runners._read_account(
+            runners._spec("claude"), ["claude"], ["claude_ai_Notion"], [], "Read.", 60.0
+        )
+
+
 def test_an_account_connector_that_loads_on_a_later_start_is_read(runtime, monkeypatch):
     calls = _account_reads(
-        runtime, monkeypatch, lambda n: {"claude_ai_Google_Drive"} if n >= 3 else set()
+        runtime, monkeypatch, lambda n: {"claude_ai_Google_Drive"} if n >= 2 else set()
     )
     runners = runtime.runners
     found = runners._read_account(
         runners._spec("claude"), ["claude"], ["claude_ai_Google_Drive"], [], "Read.", 60.0
     )
-    assert found["text"] == "Nothing new." and len(calls) == 4
+    assert found["text"] == "Nothing new." and len(calls) == 3

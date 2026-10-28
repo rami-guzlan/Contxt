@@ -280,7 +280,7 @@ describe("Settings, Heartbeat", () => {
     await userEvent.click(screen.getByRole("button", { name: "Nights and weekends" }));
     expect(calls.filter((c) => c.path === "/api/heartbeat/settings").at(-1)?.body).toEqual({ quiet_hours: "nights_weekends" });
     expect(screen.getByText("Feeds State")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /mail: Reading. Turn off/ }));
+    await userEvent.click(screen.getByRole("button", { name: /mail: Last read ok. Turn off/ }));
     expect(calls.find((c) => c.path === "/api/heartbeat/connectors/claude%3Amail")?.body).toEqual({ enabled: false });
     expect(screen.getByRole("button", { name: /computer-use: Off/ })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Find connectors in my CLIs" }));

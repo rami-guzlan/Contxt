@@ -23,14 +23,20 @@ const chip = (on: boolean) =>
     on ? "background:var(--ink);color:var(--bg);border:1px solid var(--ink)" : "background:transparent;color:var(--ink);border:1px solid var(--line2)"
   }`;
 
+// Plain states that don't flap (v4 backend plan, 17.2): a rescan that misses a slow
+// connector keeps its last state.
 const STATUS_WORDS: Record<string, string> = {
-  ok: "Reading",
-  off: "Off",
-  unhealthy_sign_in: "Sign in again",
-  provider_limit: "Provider limit",
+  unhealthy_sign_in: "Not signed in",
+  provider_limit: "Failing: provider limit",
   cannot_confirm_read_only: "Cannot confirm read-only",
-  error: "Could not read",
+  error: "Failing",
 };
+
+function stateWord(c: HbConnector): string {
+  if (!c.enabled) return "Off";
+  if (c.status === "ok" || c.status === "off") return c.last_read_at ? "Last read ok" : "Ready";
+  return STATUS_WORDS[c.status] ?? "Ready";
+}
 
 function canTurnOn(c: HbConnector): boolean {
   return c.present && c.how !== "computer" && c.status !== "cannot_confirm_read_only";
@@ -186,12 +192,12 @@ export function HeartbeatSettings() {
                 <button
                   type="button"
                   aria-pressed={c.enabled}
-                  aria-label={`${c.name}: ${c.enabled ? STATUS_WORDS[c.status] ?? "Reading" : "Off"}. ${c.enabled ? "Turn off" : "Turn on"}`}
+                  aria-label={`${c.name}: ${stateWord(c)}. ${c.enabled ? "Turn off" : "Turn on"}`}
                   disabled={toggle.isPending || (!c.enabled && !canTurnOn(c))}
                   onClick={() => toggle.mutate({ id: c.id, enabled: !c.enabled })}
                   style={css(chip(c.enabled) + (!c.enabled && !canTurnOn(c) ? ";opacity:.55" : ""))}
                 >
-                  {c.enabled ? STATUS_WORDS[c.status] ?? "Reading" : "Off"}
+                  {stateWord(c)}
                 </button>
               </div>
             );
