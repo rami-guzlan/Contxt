@@ -27,7 +27,7 @@ Measured on October 28, 2026 on the entrepreneur demo Brain, unless it says othe
 | An answer through the Brain, two turns | each time an AI app asks | 29,000 | $0.0034 |
 | A Work with AI job or Run now, a five-line note | when you start one | 52,000 | $0.0035 |
 | A Test bench run: no Brain, full Brain, custom | when you run one | 12,700 | $0.0013 |
-| The side-by-side check of notes that may disagree | in the background, at most 60 pairs a day | 3,400 a call | $0.018 a call |
+| The side-by-side check of notes that may disagree, on Sonnet 5.5 | in the background, at most 60 pairs a day | 3,400 a call | about $0.009 a call |
 
 About the connector rows:
 - They were measured with local stand-in connectors of 12 read-only tools each (about 1,700
@@ -38,10 +38,9 @@ About the connector rows:
   connectors took 23,000 tokens together, against 13,000 each apart.
 - Each connector's Test read shows its own figure (see "Your own numbers").
 
-About the side-by-side check: it runs on Claude Code's default model, which is Opus 5.5 on a
-Claude plan that has it. On the 80 labeled pairs of `scripts/safeguards_eval.py`, Haiku named
-the right relation in 69 and Sonnet in 77, against 79 for the saved verdicts. The cheaper
-models raised false "disagrees" cards, so the check keeps the stronger model.
+About the side-by-side check: it runs on Sonnet 5.5. On the 80 labeled pairs of
+`scripts/safeguards_eval.py`, Sonnet named the right relation in 77, Haiku in 69 and the
+earlier default (Opus) in 79. Sonnet is enough, at half Opus's price ($0.018 a call).
 
 What makes up a run's tokens:
 - Claude Code's own prompt is about 3,900 tokens when Gnomon starts it: no built-in tools,
@@ -73,7 +72,7 @@ is read about 12 times a day instead of 24.
 | Side-by-side check calls | 3 | 10 | 30 |
 | **Tokens, Haiku work** | **about 200,000** | **about 600,000** | **about 2 million** |
 | **Tokens, the check** | **10,000** | **34,000** | **100,000** |
-| **Cost on Haiku 5.5, plus the check on Opus 5.5** | **about $0.07** | **about $0.25** | **about $0.75** |
+| **Cost on Haiku 5.5, plus the check on Sonnet 5.5** | **about $0.05** | **about $0.15** | **about $0.45** |
 
 The token rows use the measured figures above with stand-in connectors. Large real connectors
 add their own tools once per turn: three connectors the size of Drive would add about a
