@@ -143,6 +143,22 @@ class Policy:
     # only) 0.2 kept all 25 right must-holds whole and sent 32 of 60 wrong ones as pointers;
     # on validation 12 of 13 right whole and 10 of 31 wrong as pointers.
     must_hold_close: float = 0.2
+    # With the meaning model, a touched must-hold also counts as a close call when its domain
+    # passage is less like the request than this share of the best note the packet holds.
+    # On the tuning Brains 0.8 took wrong ones sent whole by that path from 23 to 9 and kept
+    # 24 of 28 right ones whole. Off until it passes the graded check
+    # (docs/evals/packet-fill-2026-10-27.md).
+    must_hold_close_meaning: float = 0.0
+    # After routing, the request's next best notes go into a standard packet whole, up to
+    # this many, within its note budget (v4 backend plan, 17.1). The model seldom opens a
+    # pointer or a search hit: on the tuning Brains half the needed items an answer missed
+    # had been shown to it. With the meaning model, 8 took held-out answer recall from 77% to
+    # 90.2%, but graded correctness fell from 33% to 25% (docs/evals/packet-fill-2026-10-27.md),
+    # so it is off until a candidate passes both.
+    fill: int = 0
+    fill_whole: bool = True  # off: filled notes go in short (title, summary, closest sentence)
+    fill_apart: bool = False  # on: filled notes go in their own section, for reference only
+    must_hold_show_scope: bool = False  # on: a must-hold's line carries its kept scope
     # CALIBRATED BARS (calibration.py): the share of the Brain's unrelated requests a match
     # must beat. They stand in for lean_floor, note_abs_floor and topic_note_floor, each
     # unless routing.json `policy` sets it by hand. Set on the
@@ -823,6 +839,8 @@ class Route:
     must_holds: list = field(default_factory=list)    # [MustHold] in play, shown in full
     must_overflow: list = field(default_factory=list)  # [MustHold] past the cap: listed
     must_close: list = field(default_factory=list)    # [MustHold] close calls: pointers
+    filled: int = 0  # notes added after routing (Router._fill), sent whole beyond the limit
+    filled_apart: set = field(default_factory=set)  # of those, the ids shown for reference
     older: list = field(default_factory=list)         # [(older note, newer note)]: listed
     # Notes filed with another project than the one this request names: out of its scope.
     out_of_project: set = field(default_factory=set)
@@ -1340,7 +1358,44 @@ class Router:
         self._prefer_newer(route)
         self._attach_must_holds(route)
         self._complete_related(route)
+        self._fill(route)
         return route
+
+    def _fill(self, route: Route) -> None:
+        """The request's next best notes, whole, after everything else is settled (so they
+        bring no must-hold of their own): up to policy.fill, in a standard or project packet
+        only, never a note loaded manual, a lesson or a must-hold."""
+        if not self.policy.fill or route.mode not in ("standard", "focus-only"):
+            return
+        have = {s.item.id for s in route.notes + route.style_notes + route.standing_answer}
+        have |= {m.note.id for m in route.must_holds + route.must_overflow + route.must_close}
+        notes = [n for n in self.admitted_notes(route.chain, route.partitions)
+                 if n.load != "manual" and n.kind != "lesson" and not n.must_hold
+                 and n.id not in route.out_of_project and n.id not in have]
+        ranked = [s for s in self.score_notes(route.request, notes) if s.score > 0.05]
+        sims = self.similarity(route.request)  # {} without the meaning model
+        if sims:
+            # Words and meaning miss different notes: their ranks fused (1 / (60 + rank)).
+            order = {s.item.id: 1.0 / (61 + i) for i, s in enumerate(ranked)}
+            by_id = {s.item.id: s for s in ranked}
+            meant = sorted((n for n in notes if sims.get(f"note:{n.id}") is not None),
+                           key=lambda n: -sims[f"note:{n.id}"])
+            for i, n in enumerate(meant):
+                order[n.id] = order.get(n.id, 0.0) + 1.0 / (61 + i)
+                by_id.setdefault(n.id, Scored(n, 0.0, ["close in meaning"]))
+            ranked = [by_id[i] for i in sorted(order, key=lambda i: -order[i])]
+        extra = ranked[:self.policy.fill]
+        if not extra:
+            return
+        for s in extra:
+            s.reasons = [*s.reasons, "next best for the request, filling the packet"]
+        route.notes = route.notes + extra
+        route.filled = len(extra) if self.policy.fill_whole else 0
+        added = {s.item.id for s in extra}
+        if self.policy.fill_apart:
+            route.filled_apart = set(added)
+        route.related = [s for s in route.related if s.item.id not in added]
+        route.log("filled: " + ", ".join(sorted(added)))
 
     def _complete_related(self, route: Route) -> None:
         """Use pointer slots for context the packet does not already carry.
@@ -1580,7 +1635,16 @@ class Router:
         scores = index.note_bm25.scores(route.request, restrict=[pick.note.id, *own])
         best = max((scores.get(i, 0.0) for i in own), default=0.0)
         mine = scores.get(pick.note.id, 0.0)
-        return mine == 0.0 if best <= 0 else mine <= self.policy.must_hold_close * best
+        if (mine == 0.0 if best <= 0 else mine <= self.policy.must_hold_close * best):
+            return True
+        share = self.policy.must_hold_close_meaning
+        sims = self.similarity(route.request) if share else {}
+        if sims:
+            near = max((sims.get(f"note:{i}") or 0.0 for i in own), default=0.0)
+            domain = sims.get(f"domain:{pick.note.id}")
+            if near > 0 and domain is not None and domain < share * near:
+                return True
+        return False
 
     def _close_topics(self, request) -> dict:
         """The request's best two topic matches, when they clear their must-hold bars:

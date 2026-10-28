@@ -106,6 +106,9 @@ def score(case: dict, *, packet: set[str], fetched: set[str], must_holds: set[st
             "complete": all(reached & set(g) for g in groups),
             "missed": [g for g in groups if not reached & set(g)],
             "wrong_must_holds": sorted((must_holds - expected) & reached),
+            # A labeled must-hold that never reached the answer: the costly miss.
+            "missed_must_holds": sorted((expected & must_holds) - reached),
+            "must_holds_expected": len(expected & must_holds),
             "must_hold_chances": len(must_holds - expected),
             "fetches": fetches, "tokens": tokens, "cost": cost, "error": error}
 
@@ -123,7 +126,13 @@ def _measures(rows: list[dict]) -> dict:
         "wrong_must_hold_cases": [sum(bool(r["wrong_must_holds"]) for r in rows), len(rows)],
         "wrong_must_holds": [sum(len(r["wrong_must_holds"]) for r in rows),
                              sum(r["must_hold_chances"] for r in rows)],
+        "missed_must_holds": [sum(len(r.get("missed_must_holds") or []) for r in rows),
+                              sum(r.get("must_holds_expected", 0) for r in rows)],
         "errors": sum(bool(r["error"]) for r in rows),
+        # Why the misses missed (when the eval script records it).
+        "searches_per_answer": round(sum(r.get("searches", 0) for r in rows) / n, 2),
+        "missed_shown_by_search": sum(r.get("missed_shown_by_search", 0) for r in rows),
+        "missed_pointed_in_packet": sum(r.get("missed_pointed_in_packet", 0) for r in rows),
         "cost_usd": round(sum(float(r["cost"] or 0) for r in rows), 4),
     }
 

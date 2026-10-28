@@ -6,7 +6,8 @@
 
 Each generated Brain (packages/brain/tests/evals/general) runs on a scratch copy as a new
 person's Brain starts (zero-config), with its startup files written. Every labeled request goes
-through Claude Code headless in the Brain's folder with only the Brain's MCP server, words only;
+through Claude Code headless in the Brain's folder with only the Brain's MCP server, words only
+unless --models names the meaning model;
 code scores what reached the model. One worker per Brain. A --private vault (with its own
 eval.json) runs as its owner has it set up, is reported as numbers only, and its results stay
 out of the repository.
@@ -50,31 +51,39 @@ class Budget:
             return self.spent > self.limit
 
 
-def _config(vault: str, folder: str) -> str:
+def _config(vault: str, folder: str, meaning: bool = False) -> str:
     path = os.path.join(folder, "mcp.json")
     with open(path, "w", encoding="utf-8") as handle:
         json.dump({"mcpServers": {oe.SERVER: {
             "command": sys.executable, "args": ["-m", "brainkit", "--vault", vault, "mcp"],
-            "env": {"BRAIN_EMBEDDINGS": "0", "BRAIN_MODEL_SERVICE": "off",
+            "env": {"BRAIN_EMBEDDINGS": "1" if meaning else "0", "BRAIN_MODEL_SERVICE": "off",
                     "PYTHONPATH": os.path.join(ROOT, "packages", "brain", "src")}}}}, handle)
     return path
 
 
 def run_brain(entry: dict, cases: list[dict], *, model: str, env: dict,
-              budget: Budget, scopes: dict | None = None) -> dict:
-    vault = se.copy_vault(entry["vault"])
+              budget: Budget, scopes: dict | None = None, models: str | None = None,
+              policy: dict | None = None) -> dict:
+    vault = se.copy_vault(entry["vault"], models)
     scratch = os.path.dirname(vault)
     try:
         if not entry["private"]:  # a person's own Brain runs as they have it set up
             evalkit.zero_config(vault)
+        if policy:  # router settings to try (routing.json `policy`)
+            path = os.path.join(vault, "routing.json")
+            with open(path, encoding="utf-8") as handle:
+                routing = json.load(handle)
+            routing["policy"] = {**(routing.get("policy") or {}), **policy}
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(routing, handle)
         for note_id, scope in (scopes or {}).items():  # drafted scopes, as if kept
             se.set_meta(vault, [note_id], must_applies_when=scope["applies_when"],
                         must_not_when=scope.get("not_when") or None)
-        brain = Brain(vault, embeddings=False)
+        brain = Brain(vault, embeddings=bool(models))
         brain.write_kernel()
         folder = brain.repo_root
         brain.close()
-        config = _config(vault, scratch)
+        config = _config(vault, scratch, meaning=bool(models))
         sessions = []
         for case in cases:
             if budget.over():
@@ -89,7 +98,7 @@ def run_brain(entry: dict, cases: list[dict], *, model: str, env: dict,
             s.error = s.error or (error if not s.answer else "")
             budget.add(s.cost)
             sessions.append((case, s))
-        brain = se.open_brain(vault)
+        brain = se.open_brain(vault, semantic=bool(models))
         try:
             st = brain.state()
             # Only a Brain whose requests are labeled with their must-holds counts wrong ones.
@@ -103,6 +112,23 @@ def run_brain(entry: dict, cases: list[dict], *, model: str, env: dict,
                 row = ar.score(case, packet=packet, fetched=s.fetched, must_holds=must_holds,
                                fetches=s.fetches, tokens=s.tokens, cost=s.cost, error=s.error)
                 row["context_calls"] = len(s.requests)
+                if not entry["private"]:  # for a grader to read; never a person's Brain
+                    row["request"], row["answer"] = case["request"], s.answer
+                    row["needed_ids"] = [g[0] if isinstance(g, list) else g
+                                         for g in case.get("must") or [] if g]
+                # Why a missed item didn't reach the model: its own searches, run again here.
+                missed = {i for g in row["missed"] for i in g}
+                shown: set[str] = set()
+                for query in s.searches:
+                    shown |= {h["id"] for h in brain.search(query, limit=8).data["hits"]}
+                pointed = set()
+                for request in s.requests:
+                    data = brain.context(request, record=False).data
+                    pointed |= set(data.get("related_ids") or []) | set(
+                        data.get("pointer_ids") or [])
+                row["searches"] = len(s.searches)
+                row["missed_shown_by_search"] = len(missed & shown)
+                row["missed_pointed_in_packet"] = len(missed & pointed)
                 rows.append(row)
         finally:
             brain.close()
@@ -120,6 +146,10 @@ def main() -> int:
     parser.add_argument("--private", help="a vault with its own eval.json: numbers only")
     parser.add_argument("--limit", type=int, help="at most this many requests a Brain")
     parser.add_argument("--max-usd", type=float, default=1.0)
+    parser.add_argument("--models", help="a folder with the meaning model: match by meaning, "
+                        "as a Brain with the model does")
+    parser.add_argument("--policy", action="append", default=[],
+                        help="a router setting to try: NAME=VALUE (JSON), as routing.json sets it")
     parser.add_argument("--scopes", help="drafted must-hold scopes (scope_drafts.py), as if kept")
     args = parser.parse_args()
     out = os.path.abspath(args.out)
@@ -143,15 +173,18 @@ def main() -> int:
     env = {k: v for k, v in os.environ.items() if not k.startswith(STRIP)}
     budget = Budget(args.max_usd)
     scopes = {}
+    policy = {k: json.loads(v) for k, _, v in (p.partition("=") for p in args.policy)}
     if args.scopes:
         with open(args.scopes, encoding="utf-8") as handle:
             scopes = json.load(handle)
     with ThreadPoolExecutor(max_workers=len(plan) or 1) as pool:
         brains = list(pool.map(lambda p: run_brain(p[0], p[1], model=args.model, env=env,
                                                    budget=budget,
-                                                   scopes=scopes.get(p[0]["name"])), plan))
+                                                   scopes=scopes.get(p[0]["name"]),
+                                                   models=args.models, policy=policy), plan))
     found = ar.summary(brains)
     found |= {"model": args.model, "split": "private" if args.private else args.split,
+              "meaning": bool(args.models), "policy": policy,
               "stopped_at_budget": budget.over(), "estimate_usd": round(estimate, 4)}
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, f"summary-{args.model}.json"), "w", encoding="utf-8") as handle:
