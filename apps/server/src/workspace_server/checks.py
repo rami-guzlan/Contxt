@@ -25,6 +25,9 @@ from .runners import ACTIVE, RUNNERS, Runners
 log = logging.getLogger("workspace.checks")
 
 DAILY_PAIRS = 60
+# The model that reads the pairs: on the 80 labeled pairs (scripts/safeguards_eval.py) Sonnet
+# named the relation in 77, Haiku in 69 and the default (Opus) in 79, at half Opus's price.
+MODEL = "sonnet"
 RETRY = dt.timedelta(hours=1)
 
 
@@ -68,7 +71,7 @@ class CheckWorker:
         batch = dict(batch, pairs=pairs)
         self.asked = {today: self.asked.get(today, 0) + len(pairs)}
         try:
-            answer = self.runners.ask(owner, adjudicate.prompt(batch), job="check")
+            answer = self.runners.ask(owner, adjudicate.prompt(batch), job="check", model=MODEL)
         except WorkspaceError as exc:
             log.info("could not read %s side by side: %s", batch["subject"], exc)
             self.failed[str(batch["subject"])] = now + RETRY
