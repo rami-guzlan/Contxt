@@ -288,6 +288,44 @@ describe("Settings, Heartbeat", () => {
     expect(screen.getByText(/About 2,400 tokens a beat with changes/)).toBeInTheDocument();
   });
 
+  it("test-reads a connector and says whether it is ready for heartbeats, nothing kept", async () => {
+    const calls = api({
+      "POST /api/heartbeat/connectors/claude%3Amail/test": {
+        id: "claude:mail",
+        passed: true,
+        steps: [
+          { step: "found", ok: true, line: "Found in Claude Code." },
+          { step: "signed in", ok: true, line: "Signed in." },
+          { step: "read-only", ok: true, line: "2 tools only read; 0 refused." },
+          { step: "test read", ok: true, items: 10, returned: 10, tokens: 69170, seconds: 44, cost: 0.05, per_day: 1.2 },
+        ],
+      },
+    });
+    renderAt(<HeartbeatSettings />);
+    await userEvent.click(await screen.findByRole("button", { name: "Test read" }));
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/heartbeat/connectors/claude%3Amail/test")).toBe(true);
+    const shown = await screen.findByText(/Ready for heartbeats\./);
+    expect(shown).toHaveTextContent("Ready for heartbeats.");
+    expect(shown).toHaveTextContent("test read ✓ 10 items in 44 s, $0.050 a read, at most $1.20 a day");
+  });
+
+  it("shows how to sign a connector in again, and Check again looks again", async () => {
+    const expired = connector({
+      status: "unhealthy_sign_in",
+      status_line: "Sign in again.",
+      sign_in: { steps: "Open claude.ai, Settings, Connectors, and connect mail again. Then choose Check again here.", url: "https://claude.ai/settings/connectors" },
+    });
+    const calls = api({
+      "GET /api/heartbeat/status": status({ connectors: [expired] }),
+      "POST /api/heartbeat/connectors/rescan": { found: 1, added: [], line: "Found 1 connector.", connectors: [] },
+    });
+    renderAt(<HeartbeatSettings />);
+    expect(await screen.findByText(/connect mail again/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "https://claude.ai/settings/connectors");
+    await userEvent.click(screen.getByRole("button", { name: "Check again" }));
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/heartbeat/connectors/rescan")).toBe(true);
+  });
+
   it("sets how often each connector is read, and Scout reads every beat", async () => {
     const calls = api({ "PUT /api/heartbeat/connectors/claude%3Amail": connector({ cadence_minutes: 60 }) });
     renderAt(<HeartbeatSettings />);

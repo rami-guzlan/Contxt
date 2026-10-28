@@ -7,6 +7,8 @@
     contxt demo STARTER             try a demo Brain, in demos/STARTER on a port of its own
     contxt starters                 the starter Brains: empty, and the demos
     contxt check                    is this Contxt ready? what to fix, one line each
+    contxt connectors check [--all] a test read of each connector that is on (--all: every
+                                    one found), step by step, counts and costs only
     contxt web [--download]         the web app: is it built (--download fetches this version's)
     contxt models [--download]      the local models for matching by meaning and for speech
     contxt token                    print the owner sign-in link (--new: a fresh random token)
@@ -85,6 +87,9 @@ def _parser() -> argparse.ArgumentParser:
     p = sub.add_parser("models", help="the local models (--download fetches what is missing)")
     p.add_argument("--download", action="store_true")
     sub.add_parser("check", help="is this Contxt ready? what to fix")
+    p = sub.add_parser("connectors", help="check each connector is ready for heartbeats")
+    p.add_argument("action", choices=["check"])
+    p.add_argument("--all", action="store_true", help="every connector found, not only those on")
     p = sub.add_parser("web", help="the web app (--download fetches this version's build)")
     p.add_argument("--download", action="store_true")
     p = sub.add_parser("serve")
@@ -203,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if command == "serve":
             return _serve(runtime, args)
+        if command == "connectors":
+            return _connectors_check(runtime, every=args.all)
         if command == "worker":
             from .worker import Worker
 
@@ -691,3 +698,42 @@ def _models(settings: Settings, *, download: bool) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def connector_line(name: str, found: dict[str, Any]) -> str:
+    """One connector's setup check as one line: each step passed or failed, counts and costs."""
+    parts = []
+    for step in found["steps"]:
+        detail = "" if step["ok"] else str(step.get("line") or "")
+        if step["step"] == "test read" and step["ok"]:
+            cost, per_day = step.get("cost"), step.get("per_day")
+            detail = (
+                f"{step.get('items', 0)} items, {step.get('returned', 0)} returned, "
+                f"{step.get('tokens') or 'unknown'} tokens, {step.get('seconds')} s"
+            )
+            if isinstance(cost, int | float) and per_day is not None:
+                detail += f", ${cost:.3f} a read, at most ${per_day:.2f} a day"
+        mark = "ok" if step["ok"] else "FAILED"
+        parts.append(f"{step['step']} {mark}" + (f" ({detail})" if detail else ""))
+    verdict = "ready for heartbeats" if found["passed"] else "not ready"
+    return f"{name}: {verdict}. " + "; ".join(parts)
+
+
+def _connectors_check(runtime: Any, *, every: bool = False) -> int:
+    """`contxt connectors check`: the setup check for each connector, nothing kept."""
+    owner = runtime.ws.owner()
+    hb = runtime.heartbeat
+    rows = [
+        r
+        for r in hb.rescan(owner).get("connectors") or []
+        if r.get("present") and (every or r.get("enabled"))
+    ]
+    if not rows:
+        print("No connector is on. Turn one on in the app, or pass --all to check every one found.")
+        return 1
+    failed = 0
+    for row in rows:
+        found = hb.test_read(owner, row["id"])
+        failed += not found["passed"]
+        print(connector_line(row.get("name") or row["id"], found))
+    return 1 if failed else 0

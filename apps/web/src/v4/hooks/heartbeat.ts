@@ -31,6 +31,8 @@ export interface HbConnector {
   fix?: string | null;
   /** A memory read: what the person asked it to look for, in their words. */
   ask?: string;
+  /** When its sign-in expired: the steps for its source, and a link when there is one. */
+  sign_in?: { steps: string; url: string | null } | null;
 }
 
 export interface HbBeat {
@@ -183,6 +185,43 @@ export function useSetConnector() {
       put<HbConnector>(`/api/heartbeat/connectors/${encodeURIComponent(id)}`, change),
     onSuccess: () => refresh(),
   });
+}
+
+export interface TestStep {
+  step: "found" | "signed in" | "read-only" | "test read";
+  ok: boolean;
+  line?: string;
+  items?: number;
+  returned?: number;
+  tokens?: number | null;
+  seconds?: number;
+  cost?: number | null;
+  per_day?: number | null;
+}
+
+export interface TestRead {
+  id: string;
+  steps: TestStep[];
+  passed: boolean;
+}
+
+/** The setup check for one connector: found, signed in, read-only, one sample read. Nothing kept. */
+export function useTestRead() {
+  return useMutation({
+    mutationFn: (id: string) => post<TestRead>(`/api/heartbeat/connectors/${encodeURIComponent(id)}/test`),
+  });
+}
+
+/** One line for a test read: each step, then what the sample read found and cost. */
+export function testLine(t: TestRead): string {
+  return t.steps
+    .map((s) => {
+      if (!s.ok) return `${s.step}: ${s.line ?? "failed"}`;
+      if (s.step !== "test read") return `${s.step} ✓`;
+      const cost = s.cost != null && s.per_day != null ? `, $${s.cost.toFixed(3)} a read, at most $${s.per_day.toFixed(2)} a day` : "";
+      return `test read ✓ ${s.items ?? 0} items in ${s.seconds ?? 0} s${cost}`;
+    })
+    .join(" · ");
 }
 
 export interface OnboardIn {

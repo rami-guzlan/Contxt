@@ -201,6 +201,7 @@ ACCOUNT_TRIES = 8
 ACCOUNT_PAUSE = 2.0  # seconds between starts
 # A listing loads every connector, to learn their tools: fewer starts.
 LIST_TRIES = 4
+READ_TURNS = 8  # a connector read: list what changed, open the newest, answer
 MCP_OUTPUT_TOKENS = 8000  # at most, per tool answer in a connector read
 ACCOUNT_LINE = re.compile(r"^(claude\.ai [^:\n]+):", re.M)  # in `claude mcp list`
 SERVER_LINE = re.compile(r"^([^\s:][^:\n]*):\s", re.M)  # every server `claude mcp list` names
@@ -1367,6 +1368,8 @@ class Runners:
         spec_of = self._spec("claude")
         command = self._ready(spec_of)
         limits = [
+            "--max-turns",
+            str(READ_TURNS),
             "--allowedTools",
             *[f"mcp__{s}__{tool}" for s in servers for tool in allowed[s]],
         ]

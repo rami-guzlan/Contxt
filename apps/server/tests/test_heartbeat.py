@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from workspace_core.db import schema
 from workspace_core.ports import BrainProposal
+from workspace_server import runners as runners_mod
 from workspace_server.app import create_app
 from workspace_server.heartbeat import connectors as conn
 from workspace_server.heartbeat import memory as hb_memory
@@ -910,7 +911,8 @@ def test_an_account_connector_reads_with_only_its_read_only_tools(owner, fake_cl
     allowed = argv[argv.index("--allowedTools") + 1 : argv.index("--disallowedTools")]
     assert sorted(allowed) == [f"mcp__{NOTION}__notion-fetch", f"mcp__{NOTION}__notion-search"]
     refused = argv[argv.index("--disallowedTools") + 1 : argv.index("--permission-mode")]
-    assert "--max-turns" not in argv  # a read may take the turns its tools need
+    # A read lists what changed, opens the newest and answers: a 311,000-token read took 12.
+    assert argv[argv.index("--max-turns") + 1] == str(runners_mod.READ_TURNS)
     assert f"mcp__{NOTION}__notion-create-pages" in refused
     assert argv[argv.index("--tools") + 1] == ""  # no built-in tools
     assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
@@ -1918,3 +1920,139 @@ def test_an_account_connector_that_never_connects_is_skipped_after_a_bound(runti
     _found, (status, _line, _a, _r) = hb._checked(runtime.ws.owner(), row)
     assert status == "error"
     assert len(starts) == 1 + heartbeat_service.ACCOUNT_RECHECKS
+
+
+def test_a_read_answer_keyed_by_the_connectors_name_still_gives_its_items(runtime):
+    # A real read answered under the connector's name, not its server: none of it was kept.
+    hb = runtime.heartbeat
+    part = {"items": [{"id": "p1", "title": "Launch plan"}], "cursor": "2026-10-27"}
+    parts = {"claude.ai Notion": part}
+    found = hb._part(parts, {"connectors": parts}, "claude_ai_Notion", "claude.ai Notion", True)
+    assert found is part
+    assert hb._part({"Notion": part}, {}, "claude_ai_Notion", "claude.ai Notion", True) is part
+    assert hb._part({"other": part}, {}, "claude_ai_Notion", "claude.ai Notion", False) is None
+
+
+def test_an_item_without_an_id_is_kept_by_its_link_or_title_and_counted(runtime):
+    hb = runtime.heartbeat
+    stats: dict = {}
+    items, _cursor = hb._items(
+        {
+            "items": [
+                {"title": "A", "url": "https://x/a"},
+                {"title": "B", "at": "2026-10-27"},
+                {"text": "no name"},
+                "junk",
+            ]
+        },
+        {"cursor": ""},
+        stats=stats,
+    )
+    assert [i["id"] for i in items] == ["https://x/a", "B 2026-10-27"]
+    assert stats == {"returned": 4, "kept": 2}
+
+
+def test_a_read_asks_to_list_first_and_open_only_the_newest(runtime):
+    prompt = runtime.heartbeat._read_prompt([("s", "Notes", "2026-10-20", ["search", "fetch"])])
+    assert "list or search" in prompt
+    assert f"open at most {heartbeat_service.READ_OPENS}" in prompt
+
+
+def test_a_read_is_capped_in_turns(runtime, monkeypatch):
+    seen = {}
+    runners = runtime.runners
+    monkeypatch.setattr(runners, "_ready", lambda spec: ["claude"])
+    monkeypatch.setattr(
+        runners,
+        "_read_account",
+        lambda spec, command, servers, limits, prompt, timeout: (
+            seen.setdefault("limits", limits) and {"text": "{}"}
+        ),
+    )
+    runners.read_many(
+        runtime.ws.owner(),
+        servers={"s": {"account": True}},
+        allowed={"s": ["search"]},
+        refused={},
+        prompt="Read.",
+    )
+    limits = seen["limits"]
+    assert limits[limits.index("--max-turns") + 1] == str(runners_mod.READ_TURNS)
+
+
+def test_a_rescan_that_misses_a_slow_account_connector_keeps_its_last_state():
+    row = {
+        "found_in": heartbeat_service.ACCOUNT_PLACE,
+        "status": "ok",
+        "enabled": True,
+        "status_line": "Read-only: 3 tools. 10 new last beat.",
+        "last_read_at": "2026-10-27T10:00:00Z",
+    }
+    keep = heartbeat_service.kept_state
+    assert keep(row, "error", "Claude Code could not reach it just now.") == (
+        "ok",
+        "Read-only: 3 tools. 10 new last beat.",
+    )
+    assert keep(row, "unhealthy_sign_in", "Sign in again.") == (
+        "unhealthy_sign_in",
+        "Sign in again.",
+    )
+    never_read = {**row, "last_read_at": None}
+    assert keep(never_read, "error", "x")[0] == "error"
+
+
+def test_a_test_read_reports_each_step_and_keeps_nothing(owner, runtime, fake_cli):
+    # The setup check for any connector (v4 backend plan, 17.2): found, signed in, read-only
+    # and one real sample read with its items, tokens, time and cost; no cursor, nothing seen.
+    fake_cli.account_init = ACCOUNT_INIT
+    fake_cli.account_list = ACCOUNT_LIST
+    found(owner)
+    done = owner.ok(owner.post(f"/api/heartbeat/connectors/claude:{NOTION}/test"))
+    steps = {s["step"]: s for s in done["steps"]}
+    assert list(steps) == ["found", "signed in", "read-only", "test read"]
+    assert all(s["ok"] for s in done["steps"]) and done["passed"]
+    read = steps["test read"]
+    assert read["items"] >= 1 and read["seconds"] >= 0
+    assert "per_day" in read and "returned" in read
+    rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
+    assert not rows[f"claude:{NOTION}"]["last_read_at"]  # nothing kept
+
+
+def test_a_test_read_of_a_connector_that_is_not_there_fails_at_found(owner):
+    done = owner.ok(owner.post("/api/heartbeat/connectors/claude:nothing_here/test"))
+    assert not done["passed"]
+    assert done["steps"][0] == {
+        "step": "found",
+        "ok": False,
+        "line": "No connector claude:nothing_here was found.",
+    }
+
+
+def test_a_connector_that_needs_signing_in_says_how_for_its_source():
+    # v4 backend plan, 17.2: the same "Sign in" for any connector, with its source's steps.
+    sign_in = heartbeat_service.sign_in
+    base = {"status": "unhealthy_sign_in", "how": "mcp", "found_in": "~/.claude.json"}
+    account = sign_in(
+        {
+            **base,
+            "cli": "claude",
+            "name": "claude.ai Gmail",
+            "found_in": heartbeat_service.ACCOUNT_PLACE,
+        }
+    )
+    assert account["url"] == "https://claude.ai/settings/connectors"
+    assert "Gmail" in account["steps"] and "claude.ai" in account["steps"]
+    code = sign_in({**base, "cli": "claude", "name": "linear"})
+    assert "/mcp" in code["steps"] and "linear" in code["steps"] and code["url"] is None
+    assert "codex" in sign_in({**base, "cli": "codex", "name": "linear"})["steps"]
+    assert "gemini" in sign_in({**base, "cli": "gemini", "name": "x"})["steps"].lower()
+    assert "Credentials" in sign_in({**base, "cli": "n8n", "how": "n8n", "name": "Gmail"})["steps"]
+    assert sign_in({**base, "status": "ok", "cli": "claude", "name": "x"}) is None
+
+
+def test_the_connectors_say_how_to_sign_in_when_they_must(owner, fake_cli):
+    fake_cli.account_init = ACCOUNT_INIT
+    fake_cli.account_list = ACCOUNT_LIST
+    found(owner)
+    rows = owner.ok(owner.get("/api/heartbeat/status"))["connectors"]
+    assert all("sign_in" in r for r in rows)

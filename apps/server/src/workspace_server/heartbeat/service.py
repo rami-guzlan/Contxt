@@ -94,6 +94,7 @@ INBOX_MAX = 200  # items one post may bring
 LOCK_MINUTES = 20  # a beat that holds the lock longer than this has stopped: its lock expires
 BACKOFF_MINUTES = 30  # after a provider limit, scheduled beats wait this long
 MAX_ITEMS = 25  # items read from one connector in one beat
+READ_OPENS = 6  # items a read opens in full, newest first, after listing what changed
 FILE_WORDS = 4000  # characters of a Scout file the judge reads
 
 
@@ -352,6 +353,7 @@ class Heartbeat:
             "has_workflow": bool(row.get("workflow")),
             "fix": (row.get("workflow_fix") or {}).get("why") if row.get("workflow_fix") else None,
             "ask": row.get("ask") or "",
+            "sign_in": sign_in(row),
         }
 
     def connectors(self, who: Principal) -> list[dict[str, Any]]:
@@ -500,7 +502,7 @@ class Heartbeat:
                     )
                     added.append(cid)
                 else:
-                    keep = status if status != "ok" else ("ok" if row["enabled"] else "off")
+                    keep, line = kept_state(row, status, line)
                     tx.update(
                         schema.heartbeat_connectors,
                         row,
@@ -637,6 +639,77 @@ class Heartbeat:
                 {"present": here, "found_in": memory.home(cli)}
                 | ({} if here else {"status": "off", "status_line": f"{label} is not here."}),
             )
+
+    def test_read(self, who: Principal, connector_id: str) -> dict[str, Any]:
+        """The setup check for any connector (v4 backend plan, 17.2), the same for every
+        source: found, signed in, which tools only read, and one real sample read with the
+        items it found, the tokens, the time and the cost per beat and per day. Nothing is
+        kept: no cursor, no seen items, nothing staged."""
+        who.require("workspace.admin")
+        row = next((r for r in self._connectors() if r["id"] == connector_id), None)
+        steps: list[dict[str, Any]] = []
+
+        def done() -> dict[str, Any]:
+            return {"id": connector_id, "steps": steps, "passed": all(s["ok"] for s in steps)}
+
+        if row is None or not row["present"]:
+            steps.append(
+                {"step": "found", "ok": False, "line": f"No connector {connector_id} was found."}
+            )
+            return done()
+        steps.append({"step": "found", "ok": True, "line": f"Found in {row['found_in']}."})
+        if row["how"] in ("folder", "n8n", "memory"):
+            steps.append(
+                {
+                    "step": "test read",
+                    "ok": True,
+                    "line": "Read on this computer: no sign-in or model read to check.",
+                }
+            )
+            return done()
+        try:
+            _found, (status, line, allowed, refused) = self._checked(who, row)
+        except WorkspaceError as exc:
+            status, line, allowed, refused = "error", str(exc), [], []
+        signed = status != "unhealthy_sign_in"
+        steps.append({"step": "signed in", "ok": signed, "line": "Signed in." if signed else line})
+        if not signed:
+            return done()
+        steps.append(
+            {
+                "step": "read-only",
+                "ok": bool(allowed),
+                "line": f"{len(allowed)} tools only read; {len(refused)} refused."
+                if allowed
+                else line,
+            }
+        )
+        if not allowed:
+            return done()
+        started = time.monotonic()
+        got = self._read_cli(who, [{**row, "status": "ok", "tools": allowed}])[row["id"]]
+        seconds = round(time.monotonic() - started, 1)
+        if isinstance(got, BaseException):
+            steps.append({"step": "test read", "ok": False, "line": str(got), "seconds": seconds})
+            return done()
+        usage = got.get("usage") or {}
+        cost = usage.get("cost")
+        beats = 1440 / max(1, int(row["cadence_minutes"] or CLI_CADENCE))
+        steps.append(
+            {
+                "step": "test read",
+                "ok": True,
+                "items": len(got["items"]),
+                "returned": got.get("returned", len(got["items"])),
+                "tokens": tokens_of(usage),
+                "seconds": seconds,
+                "cost": cost,
+                # At most: after the first read, a beat reads only what is new.
+                "per_day": round(float(cost) * beats, 4) if isinstance(cost, int | float) else None,
+                "line": f"{len(got['items'])} items in {seconds} s.",
+            }
+        )
+        return done()
 
     def set_connector(
         self,
@@ -1799,6 +1872,8 @@ class Heartbeat:
         )
         return (
             "Read, read-only, what changed in each of these connectors since the time given. "
+            "First list or search for what changed since then; then open at most "
+            f"{READ_OPENS} items a connector, the newest first, and stop. "
             "Use only the tools listed for each. Never send, post, reply, create, change, "
             "delete or pay for anything; you have no tool that can. Reply with one JSON object "
             'only: {"connectors": {"<server>": {"cursor": "<the newest time or marker you '
@@ -1810,18 +1885,53 @@ class Heartbeat:
             "empty list.\n" + listed
         )
 
+    @staticmethod
+    def _part(
+        parts: dict[str, Any], answer: dict[str, Any], server: str, name: str, single: bool
+    ) -> Any:
+        """One connector's part of a read's answer: under its server, else under its name
+        (a model often answers by the name it was shown), else the only part or the whole
+        answer when the read was of this connector alone."""
+        if parts.get(server) is not None:
+            return parts[server]
+
+        def key(text: str) -> str:
+            return re.sub(r"[^a-z0-9]+", "", str(text).lower().replace("claude.ai", ""))
+
+        wanted = {key(server.replace("claude_ai_", "")), key(name)}
+        for label, part in parts.items():
+            if key(label) in wanted:
+                return part
+        if single:
+            return next(iter(parts.values())) if len(parts) == 1 else (None if parts else answer)
+        return None
+
     def _items(
-        self, part: Any, row: dict[str, Any], *, most: int = MAX_ITEMS, chars: int = 600
+        self,
+        part: Any,
+        row: dict[str, Any],
+        *,
+        most: int = MAX_ITEMS,
+        chars: int = 600,
+        stats: dict[str, int] | None = None,
     ) -> tuple[list[dict[str, Any]], str]:
-        """(items, cursor) from one connector's part of a read's answer."""
+        """(items, cursor) from one connector's part of a read's answer. An item without an
+        id is known by its link, else its title and time. `stats` gets how many the answer
+        returned and how many were kept."""
         part = part if isinstance(part, dict) else {}
+        returned = part.get("items") if isinstance(part.get("items"), list) else []
         items = []
-        for raw in (part.get("items") or [])[:most]:
-            if not isinstance(raw, dict) or not str(raw.get("id") or "").strip():
+        for raw in returned[:most]:
+            if not isinstance(raw, dict):
+                continue
+            ident = str(raw.get("id") or raw.get("url") or "").strip() or " ".join(
+                str(raw.get(k) or "").strip() for k in ("title", "at") if raw.get(k)
+            )
+            if not ident:
                 continue
             items.append(
                 {
-                    "id": _flat(raw.get("id"), 300),
+                    "id": _flat(ident, 300),
                     "title": _flat(raw.get("title"), 200),
                     "text": _flat(raw.get("text"), chars),
                     "at": _flat(raw.get("at"), 32),
@@ -1830,6 +1940,8 @@ class Heartbeat:
                     "private": raw.get("private") is True,
                 }
             )
+        if stats is not None:
+            stats.update(returned=len(returned), kept=len(items))
         return items, _flat(part.get("cursor"), 200) or row["cursor"]
 
     def _read_cli(self, owner: Principal, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1903,9 +2015,11 @@ class Heartbeat:
                         "beat tries again.",
                     )
                     continue
-                part = parts.get(server) if parts else (answer if len(servers) == 1 else None)
-                items, cursor = self._items(part, r)
+                part = self._part(parts, answer, server, r["name"], len(servers) == 1)
+                stats: dict[str, int] = {}
+                items, cursor = self._items(part, r, stats=stats)
                 out[r["id"]] = {
+                    "returned": stats.get("returned", 0),
                     "items": items,
                     "cursor": cursor,
                     "usage": got.get("usage") if first else None,
@@ -2275,7 +2389,14 @@ class Heartbeat:
                         "feeds": list(row["feeds"] or []),
                     }
                 )
-            entry.update(read=True, status="ok", items=len(got["items"]), new=len(new))
+            # What the read's answer held against what was kept, for a read that loses items.
+            entry.update(
+                read=True,
+                status="ok",
+                returned=got.get("returned", len(got["items"])),
+                items=len(got["items"]),
+                new=len(new),
+            )
             read_log.append(entry)
             reads[row["id"]] = {"row": row, "got": got, "new": new}
             fresh.extend(new)
@@ -3096,6 +3217,54 @@ class Heartbeat:
         out = self._line_view(done, names, None)
         out["line"] = "Undone. The next beat won't write that again."
         return out
+
+
+def sign_in(row: dict[str, Any]) -> dict[str, Any] | None:
+    """How to sign a connector in again, by where it comes from (v4 backend plan, 17.2), or
+    None when it needs no sign-in. The same for every connector of a source: no connector is
+    named in the code."""
+    if row.get("status") != "unhealthy_sign_in":
+        return None
+    name = str(row.get("name") or "").removeprefix("claude.ai ").strip() or "it"
+    cli = row.get("cli")
+    if row.get("found_in") == ACCOUNT_PLACE:
+        return {
+            "steps": f"Open claude.ai, Settings, Connectors, and connect {name} again. Then "
+            "choose Check again here.",
+            "url": "https://claude.ai/settings/connectors",
+        }
+    if row.get("how") == "n8n" or cli == "n8n":
+        return {
+            "steps": f"Open n8n, Credentials, and reconnect the credential {name} uses. Then "
+            "choose Check again here.",
+            "url": None,
+        }
+    if cli == "codex":
+        command = f"codex mcp login {name}"
+    elif cli == "gemini":
+        command = "gemini, then /auth"
+    else:
+        command = f"claude, then /mcp, choose {name} and Authenticate"
+    return {
+        "steps": f"In a terminal, run {command}. Then choose Check again here.",
+        "url": None,
+    }
+
+
+def kept_state(row: dict[str, Any], status: str, line: str) -> tuple[str, str]:
+    """A connector's state after a rescan. An account connector that has been read before
+    and only did not load during this rescan (they load in the background) keeps its last
+    state, so it doesn't flap to an error between good reads."""
+    if (
+        status == "error"
+        and row.get("found_in") == ACCOUNT_PLACE
+        and row.get("last_read_at")
+        and row.get("status") in ("ok", "off")
+    ):
+        return str(row["status"]), str(row.get("status_line") or line)
+    if status != "ok":
+        return status, line
+    return ("ok" if row.get("enabled") else "off"), line
 
 
 class ConnectorProblem(Exception):

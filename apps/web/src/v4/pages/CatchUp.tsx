@@ -7,6 +7,7 @@
 // once; standing permissions (type x origin x area, never a blanket rule) replace the two-day
 // auto-keep.
 
+import { SignInCards } from "../components/SignIn";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
@@ -1122,6 +1123,8 @@ function NeedsYou() {
           <span style={css("font:400 13px Geist;color:var(--muted)")}>Nothing needs you now. New suggestions will show here.</span>
         </div>
       ) : null}
+
+      <SignInCards />
 
       <StandingPermissions />
 
