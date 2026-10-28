@@ -385,6 +385,14 @@ def test_a_server_whose_tools_cannot_be_listed_is_not_read(owner, hb, cli_home):
 # ---------------------------------------------------------------------- read-only
 
 
+def test_a_beat_reads_on_the_ingest_model_not_the_accounts_default(owner, fake_cli, runtime):
+    # Unnamed, Claude Code read on the account's default (Opus): about 30 times Haiku's cost.
+    found(owner)
+    beat(owner)
+    (read,) = fake_cli.reads()
+    assert read["argv"][read["argv"].index("--model") + 1] == "haiku"
+
+
 def test_a_beat_only_reads_with_a_connector_that_would_allow_a_send(owner, hb, fake_cli, cli_home):
     found(owner)
     done = beat(owner)
@@ -876,7 +884,7 @@ def test_claude_account_connectors_are_found_from_claude_codes_start_and_start_o
     assert "--strict-mcp-config" not in listing  # the account's connectors load
     (started,) = [c for c in fake_cli.started if "stream-json" in c["argv"]]
     assert started["env"]["ENABLE_CLAUDEAI_MCP_SERVERS"] == "true"
-    assert "MCP_CONNECTION_NONBLOCKING" not in started["env"]
+    assert started["env"]["MCP_CONNECTION_NONBLOCKING"] == "false"  # it waits for them
     rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
     notion = rows[f"claude:{NOTION}"]
     assert notion["name"] == "claude.ai Notion" and notion["found_in"] == "Your Claude account"
@@ -895,7 +903,8 @@ def test_a_connector_still_loading_is_tried_again_then_said_plainly(owner, fake_
     assert len(fake_cli.listings) == 4  # it loads in the background: tried again
     rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
     notion = rows[f"claude:{NOTION}"]
-    assert notion["status"] == "error" and "could not reach it just now" in notion["status_line"]
+    # Found by discovery but not connected yet: Connecting, with what to do; never an error.
+    assert notion["status"] == "connecting" and "Test read" in notion["status_line"]
 
 
 def test_an_account_connector_reads_with_only_its_read_only_tools(owner, fake_cli):
@@ -1499,10 +1508,18 @@ def test_a_later_memory_read_reads_only_what_is_new_and_nothing_new_costs_nothin
     assert "The person asked you to look for: Deadlines and launch dates" in prompt
 
 
-def test_only_a_memory_read_takes_what_to_look_for(owner, cli_home):
+def test_any_connector_read_takes_a_goal_and_what_to_leave_out(owner, cli_home):
     found(owner)
-    refused = owner.put("/api/heartbeat/connectors/claude:mail", json={"ask": "anything"})
-    assert refused.status_code == 422
+    row = owner.ok(
+        owner.put(
+            "/api/heartbeat/connectors/claude:mail",
+            json={"ask": "client decisions", "skip": "newsletter, Receipt ,, newsletter"},
+        )
+    )
+    assert row["ask"] == "client decisions"
+    assert row["skip"] == "newsletter, receipt"
+    cleared = owner.ok(owner.put("/api/heartbeat/connectors/claude:mail", json={"skip": ""}))
+    assert cleared["skip"] == ""
 
 
 def test_the_judge_runs_on_the_ingest_model(owner, fake_cli, runtime):
@@ -1949,7 +1966,32 @@ def test_an_item_without_an_id_is_kept_by_its_link_or_title_and_counted(runtime)
         stats=stats,
     )
     assert [i["id"] for i in items] == ["https://x/a", "B 2026-10-27"]
-    assert stats == {"returned": 4, "kept": 2}
+    assert stats == {"returned": 4, "kept": 2, "left_out": 0}
+
+
+def test_an_item_that_names_what_to_leave_out_is_not_kept_and_is_counted(runtime):
+    stats: dict = {}
+    items, _cursor = runtime.heartbeat._items(
+        {
+            "items": [
+                {"id": "1", "title": "Weekly Newsletter", "text": "news"},
+                {"id": "2", "title": "Client call", "text": "They chose plan B"},
+                {"id": "3", "title": "Your receipt", "text": "paid"},
+            ]
+        },
+        {"cursor": "", "skip": "newsletter, receipt"},
+        stats=stats,
+    )
+    assert [i["id"] for i in items] == ["2"]
+    assert stats == {"returned": 3, "kept": 1, "left_out": 2}
+
+
+def test_a_read_carries_each_connectors_goal_and_what_to_leave_out(runtime):
+    prompt = runtime.heartbeat._read_prompt(
+        [("s", "Mail", "2026-10-20", ["search"], "client decisions", "newsletter, receipt")]
+    )
+    assert "Look for: client decisions" in prompt
+    assert "Leave out: newsletter, receipt" in prompt
 
 
 def test_a_read_asks_to_list_first_and_open_only_the_newest(runtime):
@@ -1978,6 +2020,11 @@ def test_a_read_is_capped_in_turns(runtime, monkeypatch):
     )
     limits = seen["limits"]
     assert limits[limits.index("--max-turns") + 1] == str(runners_mod.READ_TURNS)
+    # A read carries its own short system prompt, not Claude Code's, on each of its turns.
+    assert limits[limits.index("--system-prompt") + 1] == runners_mod.READ_SYSTEM
+    assert "read-only" in runners_mod.READ_SYSTEM
+    # And a dollar budget: a read that would spend more stops.
+    assert limits[limits.index("--max-budget-usd") + 1] == str(runners_mod.READ_BUDGET_USD)
 
 
 def test_a_rescan_that_misses_a_slow_account_connector_keeps_its_last_state():
@@ -1999,6 +2046,25 @@ def test_a_rescan_that_misses_a_slow_account_connector_keeps_its_last_state():
     )
     never_read = {**row, "last_read_at": None}
     assert keep(never_read, "error", "x")[0] == "error"
+    # Not connected yet when it was looked for: Connecting, never an error from discovery alone.
+    assert keep(never_read, "connecting", "y") == ("connecting", "y")
+    assert keep(row, "connecting", "y")[0] == "ok"
+
+
+def test_an_account_connector_not_connected_at_discovery_is_connecting_not_failing(runtime):
+    from workspace_server.heartbeat import connectors as conn_mod
+
+    found = conn_mod.Found(
+        id="claude:claude.ai Drive",
+        name="claude.ai Drive",
+        cli="claude",
+        how="mcp",
+        found_in=heartbeat_service.ACCOUNT_PLACE,
+        spec={"account": True, "status": "pending", "tools": []},
+    )
+    status, line, _a, _r = runtime.heartbeat._check(found)
+    assert status == "connecting"
+    assert "Test read" in line
 
 
 def test_a_test_read_reports_each_step_and_keeps_nothing(owner, runtime, fake_cli):

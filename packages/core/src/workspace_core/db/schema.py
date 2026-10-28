@@ -550,7 +550,7 @@ heartbeat_connectors = sa.Table(
     sa.Column("cursor", sa.Text),
     sa.Column("last_read_at", TS),
     sa.Column("last_items", sa.Integer, nullable=False, server_default="0"),
-    # ok | off | unhealthy_sign_in | provider_limit | cannot_confirm_read_only | error
+    # ok | off | connecting | unhealthy_sign_in | provider_limit | cannot_confirm_read_only | error
     sa.Column("status", sa.String(32), nullable=False, server_default="off"),
     sa.Column("status_line", sa.Text, nullable=False, server_default=""),
     sa.Column("tools", sa.JSON, nullable=False),  # the read-only tools, by name
@@ -564,8 +564,10 @@ heartbeat_connectors = sa.Table(
     # A fix the knowledge agent suggested after its workflow failed: {workflow, why}, waiting
     # for the owner to keep or skip it.
     sa.Column("workflow_fix", sa.JSON),
-    # A memory read (how "memory"): what the owner asked it to look for, in their words.
+    # What the owner asked a read to look for, in their words (any read but a folder's).
     sa.Column("ask", sa.Text),
+    # What a read leaves out: words, comma separated; an item naming one is not kept.
+    sa.Column("skip", sa.Text),
     *_record(archivable=False),
 )
 

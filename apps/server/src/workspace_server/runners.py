@@ -126,6 +126,13 @@ SKIPPED = shutil.ignore_patterns("__pycache__", "*.pyc", ".git", ".DS_Store")
 # Added to Claude Code's own instructions when it answers with no tools at all: those describe
 # tools, and without this line it writes out calls it cannot make instead of the answer.
 NO_TOOLS = "You have no tools in this conversation. Reply once, with the finished answer only."
+# A connector read's whole system prompt, in place of Claude Code's own (about 3,000 tokens,
+# about coding, sent again on every turn of a read).
+READ_SYSTEM = (
+    "You read a person's connected apps for them, read-only, with only the tools you are "
+    "given: never send, post, reply, create, change, delete or pay for anything. Do what the "
+    "request says, then reply once, with the JSON it asks for and nothing else."
+)
 # After an answer run's packet: its brief names the app's tools, which this run does not have.
 ANSWER_ONLY = (
     "This run has no tools: leave aside any call named above. Reply once with the whole result "
@@ -197,7 +204,8 @@ GEMINI_NOISE = ("Loaded cached credentials.",)
 # Starts of Claude Code to wait out the account's connectors loading, a pause apart. A real
 # Drive read loaded in about one start of three or four; with only the read connector loaded a
 # start is cheap.
-ACCOUNT_TRIES = 8
+READ_BUDGET_USD = 0.05  # at most this a connector read; a typical one costs under a cent
+ACCOUNT_TRIES = 3  # each start waits for the account's connectors to connect
 ACCOUNT_PAUSE = 2.0  # seconds between starts
 # A listing loads every connector, to learn their tools: fewer starts.
 LIST_TRIES = 4
@@ -1052,7 +1060,7 @@ class Runners:
             "--permission-mode",
             "dontAsk",
             "--no-session-persistence",
-            "--append-system-prompt",
+            "--system-prompt",
             NO_TOOLS,
             *(["--model", model] if model else []),
         ]
@@ -1314,6 +1322,7 @@ class Runners:
         refused: list[str],
         prompt: str,
         timeout: float = 240.0,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """One read-only read of one connector by the CLI that has it (the heartbeat): the CLI
         gets that one MCP server and may call exactly the `allowed` tools, which Gnomon listed
@@ -1329,6 +1338,7 @@ class Runners:
                 refused={server: refused},
                 prompt=prompt,
                 timeout=timeout,
+                model=model,
             )
         who.require("workspace.admin")
         if not allowed:
@@ -1352,6 +1362,7 @@ class Runners:
         refused: dict[str, list[str]],
         prompt: str,
         timeout: float = 300.0,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """One read-only read of several connectors in one Claude Code run (the heartbeat
         reads every due connector at once, so Claude Code starts, and loads its tools, once).
@@ -1368,8 +1379,15 @@ class Runners:
         spec_of = self._spec("claude")
         command = self._ready(spec_of)
         limits = [
+            # The ingest model (Haiku unless the owner chose): unnamed, it is the account's
+            # default, often the costliest.
+            *(["--model", model] if model else []),
+            "--system-prompt",
+            READ_SYSTEM,
             "--max-turns",
             str(READ_TURNS),
+            "--max-budget-usd",
+            str(round(READ_BUDGET_USD * len(servers), 2)),  # one budget for each connector read
             "--allowedTools",
             *[f"mcp__{s}__{tool}" for s in servers for tool in allowed[s]],
         ]
@@ -1426,6 +1444,7 @@ class Runners:
             raise Conflict(f"{spec.label} could not load these connectors from your account.")
         init = next((m for m in messages if m.get("subtype") == "init"), {})
         loaded = sorted(s for s in servers if _mcp_tools(init).get(s))
+        _out_of_turns(spec, result)
         if result.get("is_error"):
             reason = str(result.get("result") or "it stopped")
             if AUTH_FAILED.search(reason):
@@ -1495,6 +1514,8 @@ class Runners:
             raise Conflict(
                 f"{spec.label} gave an answer that could not be read: {error_line(err, out)}"
             ) from exc
+        if isinstance(found, dict):
+            _out_of_turns(spec, found)
         if not isinstance(found, dict) or found.get("is_error"):
             reason = (
                 str(found.get("result") or "it stopped") if isinstance(found, dict) else "stopped"
@@ -2114,11 +2135,29 @@ class Runners:
             )
 
 
+def _out_of_turns(spec: RunnerSpec, result: dict[str, Any]) -> None:
+    """A read that reached its turn cap or its budget ends with no answer: a failure, never
+    an empty read."""
+    cap = {
+        "error_max_turns": f"its {READ_TURNS}-turn cap",
+        "error_max_budget_usd": f"its ${READ_BUDGET_USD:.2f} budget",
+    }.get(str(result.get("subtype")))
+    if cap:
+        raise Conflict(
+            f"{spec.label} reached {cap} before answering, so nothing was read. It is tried "
+            "again on the next beat."
+        )
+
+
 def _account_env() -> dict[str, str]:
     """What a headless Claude Code needs to load the Claude account's connectors: it leaves
-    them out unless asked, and lists them only once they have connected (not in the background)."""
-    env = dict(os.environ, MCP_TIMEOUT="60000", ENABLE_CLAUDEAI_MCP_SERVERS="true")
-    env.pop("MCP_CONNECTION_NONBLOCKING", None)
+    them out unless asked, and starts without them unless told to wait until they connect."""
+    env = dict(
+        os.environ,
+        MCP_TIMEOUT="60000",
+        ENABLE_CLAUDEAI_MCP_SERVERS="true",
+        MCP_CONNECTION_NONBLOCKING="false",
+    )
     # One tool's answer (a whole Drive file, a long thread) is cut to this many tokens, so a
     # read cannot outgrow the model's context ("Prompt is too long").
     env.setdefault("MAX_MCP_OUTPUT_TOKENS", str(MCP_OUTPUT_TOKENS))

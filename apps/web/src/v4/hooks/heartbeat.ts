@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
 
 import { get, post, put, query } from "../../api/client";
 
-export type ConnectorStatus = "ok" | "off" | "unhealthy_sign_in" | "provider_limit" | "cannot_confirm_read_only" | "error";
+export type ConnectorStatus = "ok" | "off" | "connecting" | "unhealthy_sign_in" | "provider_limit" | "cannot_confirm_read_only" | "error";
 
 export interface HbConnector {
   id: string;
@@ -29,8 +29,10 @@ export interface HbConnector {
   present: boolean;
   /** An n8n read: the fix the knowledge agent suggested after its workflow failed, waiting. */
   fix?: string | null;
-  /** A memory read: what the person asked it to look for, in their words. */
+  /** What the person asked its reads to look for, in their words. */
   ask?: string;
+  /** What its reads leave out: words, comma separated. */
+  skip?: string;
   /** When its sign-in expired: the steps for its source, and a link when there is one. */
   sign_in?: { steps: string; url: string | null } | null;
 }
@@ -181,7 +183,7 @@ export function useRescan() {
 export function useSetConnector() {
   const refresh = useHeartbeatRefresh();
   return useMutation({
-    mutationFn: ({ id, ...change }: { id: string; enabled?: boolean; cadence_minutes?: number; ask?: string }) =>
+    mutationFn: ({ id, ...change }: { id: string; enabled?: boolean; cadence_minutes?: number; ask?: string; skip?: string }) =>
       put<HbConnector>(`/api/heartbeat/connectors/${encodeURIComponent(id)}`, change),
     onSuccess: () => refresh(),
   });
@@ -193,6 +195,7 @@ export interface TestStep {
   line?: string;
   items?: number;
   returned?: number;
+  left_out?: number;
   tokens?: number | null;
   seconds?: number;
   cost?: number | null;
@@ -219,7 +222,8 @@ export function testLine(t: TestRead): string {
       if (!s.ok) return `${s.step}: ${s.line ?? "failed"}`;
       if (s.step !== "test read") return `${s.step} ✓`;
       const cost = s.cost != null && s.per_day != null ? `, $${s.cost.toFixed(3)} a read, at most $${s.per_day.toFixed(2)} a day` : "";
-      return `test read ✓ ${s.items ?? 0} items in ${s.seconds ?? 0} s${cost}`;
+      const out = s.left_out ? `, ${s.left_out} left out` : "";
+      return `test read ✓ ${s.items ?? 0} items in ${s.seconds ?? 0} s${out}${cost}`;
     })
     .join(" · ");
 }

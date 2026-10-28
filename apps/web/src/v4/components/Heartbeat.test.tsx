@@ -280,9 +280,12 @@ describe("Settings, Heartbeat", () => {
     await userEvent.click(screen.getByRole("button", { name: "Nights and weekends" }));
     expect(calls.filter((c) => c.path === "/api/heartbeat/settings").at(-1)?.body).toEqual({ quiet_hours: "nights_weekends" });
     expect(screen.getByText("Feeds State")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /mail: Reading. Turn off/ }));
+    await userEvent.click(screen.getByRole("button", { name: /mail: Last read ok. Turn off/ }));
     expect(calls.find((c) => c.path === "/api/heartbeat/connectors/claude%3Amail")?.body).toEqual({ enabled: false });
-    expect(screen.getByRole("button", { name: /computer-use: Off/ })).toBeDisabled();
+    // Found but off, in the compact list; computer use offers no setup yet.
+    const off = screen.getByRole("group", { name: "Found, off" });
+    expect(within(off).getByText(/Reads through computer use, not used yet/)).toBeInTheDocument();
+    expect(within(off).queryByRole("button", { name: "Set up computer-use" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Find connectors in my CLIs" }));
     expect(await screen.findByText("Found 2 connectors: 2 in Claude Code. Nothing new to add.")).toBeInTheDocument();
     expect(screen.getByText(/About 2,400 tokens a beat with changes/)).toBeInTheDocument();
@@ -324,6 +327,51 @@ describe("Settings, Heartbeat", () => {
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "https://claude.ai/settings/connectors");
     await userEvent.click(screen.getByRole("button", { name: "Check again" }));
     expect(calls.some((c) => c.method === "POST" && c.path === "/api/heartbeat/connectors/rescan")).toBe(true);
+  });
+
+  it("sets a new connector up from found to on, without a terminal", async () => {
+    const fresh = connector({ id: "claude:drive", name: "Drive", enabled: false, status: "off", status_line: "", last_read_at: null, found_in: "your Claude account" });
+    const calls = api({
+      "GET /api/heartbeat/status": status({ connectors: [fresh] }),
+      "POST /api/heartbeat/connectors/claude%3Adrive/test": {
+        id: "claude:drive",
+        passed: true,
+        steps: [
+          { step: "found", ok: true },
+          { step: "signed in", ok: true },
+          { step: "read-only", ok: true },
+          { step: "test read", ok: true, items: 6, returned: 8, left_out: 2, tokens: 30000, seconds: 20, cost: 0.02, per_day: 0.5 },
+        ],
+      },
+      "PUT /api/heartbeat/connectors/claude%3Adrive": fresh,
+    });
+    renderAt(<HeartbeatSettings />);
+    await userEvent.click(await screen.findByRole("button", { name: "Set up Drive" }));
+    const setup = await screen.findByRole("list", { name: "Set up Drive" });
+    expect(within(setup).getByText("In your Claude account.")).toBeInTheDocument();
+    await userEvent.click(within(setup).getByRole("button", { name: "Test read" }));
+    expect(await within(setup).findByText(/Ready for heartbeats\..*6 items in 20 s, 2 left out/)).toBeInTheDocument();
+    await userEvent.type(within(setup).getByLabelText("What Drive looks for"), "Client decisions");
+    await userEvent.type(within(setup).getByLabelText("What Drive leaves out"), "newsletter");
+    await userEvent.tab();
+    const puts = () => calls.filter((c) => c.method === "PUT").map((c) => c.body);
+    await waitFor(() => expect(puts()).toEqual([{ ask: "Client decisions" }, { skip: "newsletter" }]));
+    await userEvent.click(within(setup).getByRole("button", { name: "Turn on Drive" }));
+    await waitFor(() => expect(puts().at(-1)).toEqual({ enabled: true }));
+  });
+
+  it("will not turn on a connector whose check failed", async () => {
+    const fresh = connector({ id: "claude:drive", name: "Drive", enabled: false, status: "off" });
+    api({
+      "GET /api/heartbeat/status": status({ connectors: [fresh] }),
+      "POST /api/heartbeat/connectors/claude%3Adrive/test": { id: "claude:drive", passed: false, steps: [{ step: "found", ok: true }, { step: "signed in", ok: false, line: "Sign in again." }] },
+    });
+    renderAt(<HeartbeatSettings />);
+    await userEvent.click(await screen.findByRole("button", { name: "Set up Drive" }));
+    const setup = await screen.findByRole("list", { name: "Set up Drive" });
+    await userEvent.click(within(setup).getByRole("button", { name: "Test read" }));
+    expect(await within(setup).findByText(/Not ready\./)).toBeInTheDocument();
+    expect(within(setup).getByRole("button", { name: "Turn on Drive" })).toBeDisabled();
   });
 
   it("sets how often each connector is read, and Scout reads every beat", async () => {
@@ -415,6 +463,7 @@ describe("Onboarding from the AI apps", () => {
       "PUT /api/heartbeat/connectors/memory%3Aclaude": memory("claude", "Claude Code"),
     });
     renderAt(<HeartbeatSettings />);
+    await userEvent.click(await screen.findByRole("button", { name: "Set up Claude Code memory and chats" }));
     const often = await screen.findByLabelText("How often Claude Code memory and chats is read");
     expect(within(often).getByRole("option", { name: "daily" })).toBeInTheDocument();
     const look = screen.getByLabelText("What Claude Code memory and chats looks for");
