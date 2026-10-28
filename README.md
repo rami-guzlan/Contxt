@@ -178,7 +178,7 @@ through a CLI on this computer, Claude Code by default, on your own plan. See
 ### 2. Install
 
 ```bash
-git clone https://github.com/rami-guzlan/Contxt.git
+git clone https://github.com/rami-guzlan/Gnomon-Brain.git
 cd Contxt
 uv sync
 uv run contxt web --download

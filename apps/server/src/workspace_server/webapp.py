@@ -28,7 +28,7 @@ from workspace_core import __version__
 
 from .settings import setting
 
-DEFAULT_REPOSITORY = "rami-guzlan/Contxt"
+DEFAULT_REPOSITORY = "rami-guzlan/Gnomon-Brain"
 ASSET = "web-dist.zip"
 CHECKSUM = ASSET + ".sha256"
 API = "https://api.github.com"
