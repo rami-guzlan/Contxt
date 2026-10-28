@@ -224,7 +224,11 @@ class Heartbeat:
             return None, ("off", "", [], [])
         checked = self._check(found)
         tries = 0
-        while checked[0] == "error" and found.spec.get("account") and tries < ACCOUNT_RECHECKS:
+        while (
+            checked[0] in ("error", "connecting")
+            and found.spec.get("account")
+            and tries < ACCOUNT_RECHECKS
+        ):
             tries += 1
             again = next(
                 (f for f in self._account(who, fresh=True) or [] if f.id == row["id"]), None
@@ -232,6 +236,14 @@ class Heartbeat:
             if again is None:
                 break
             found, checked = again, self._check(again)
+        if checked[0] == "connecting":
+            # Still not connected when it was to be read: now that is a failure.
+            checked = (
+                "error",
+                "Claude Code could not reach it just now. The next look tries again.",
+                [],
+                [],
+            )
         return found, checked
 
     def _find(self, who: Principal, row: dict[str, Any]) -> conn.Found | None:
@@ -397,9 +409,11 @@ class Heartbeat:
                 )
             tools = [{"name": n} for n in found.spec.get("tools") or [] if isinstance(n, str)]
             if said != "connected" or not tools:
+                # Discovery alone is never a failure: it had not connected yet when looked for.
                 return (
-                    "error",
-                    "Claude Code could not reach it just now. The next look tries again.",
+                    "connecting",
+                    "Found in your Claude account; it had not connected when Contxt looked. "
+                    "Run a Test read to check it.",
                     [],
                     [],
                 )
@@ -2024,6 +2038,7 @@ class Heartbeat:
                         allowed={s: m[2] for s, m in servers.items()},
                         refused={s: m[3] for s, m in servers.items()},
                         prompt=prompt,
+                        model=self.ws.distill.settings(owner).get("model"),
                     )
                 answer = json_answer(got.get("text") or "")
             except WorkspaceError as exc:
@@ -3288,7 +3303,7 @@ def kept_state(row: dict[str, Any], status: str, line: str) -> tuple[str, str]:
     and only did not load during this rescan (they load in the background) keeps its last
     state, so it doesn't flap to an error between good reads."""
     if (
-        status == "error"
+        status in ("error", "connecting")
         and row.get("found_in") == ACCOUNT_PLACE
         and row.get("last_read_at")
         and row.get("status") in ("ok", "off")

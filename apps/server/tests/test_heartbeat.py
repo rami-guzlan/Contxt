@@ -385,6 +385,14 @@ def test_a_server_whose_tools_cannot_be_listed_is_not_read(owner, hb, cli_home):
 # ---------------------------------------------------------------------- read-only
 
 
+def test_a_beat_reads_on_the_ingest_model_not_the_accounts_default(owner, fake_cli, runtime):
+    # Unnamed, Claude Code read on the account's default (Opus): about 30 times Haiku's cost.
+    found(owner)
+    beat(owner)
+    (read,) = fake_cli.reads()
+    assert read["argv"][read["argv"].index("--model") + 1] == "haiku"
+
+
 def test_a_beat_only_reads_with_a_connector_that_would_allow_a_send(owner, hb, fake_cli, cli_home):
     found(owner)
     done = beat(owner)
@@ -895,7 +903,8 @@ def test_a_connector_still_loading_is_tried_again_then_said_plainly(owner, fake_
     assert len(fake_cli.listings) == 4  # it loads in the background: tried again
     rows = {c["id"]: c for c in owner.ok(owner.get("/api/heartbeat/status"))["connectors"]}
     notion = rows[f"claude:{NOTION}"]
-    assert notion["status"] == "error" and "could not reach it just now" in notion["status_line"]
+    # Found by discovery but not connected yet: Connecting, with what to do; never an error.
+    assert notion["status"] == "connecting" and "Test read" in notion["status_line"]
 
 
 def test_an_account_connector_reads_with_only_its_read_only_tools(owner, fake_cli):
@@ -2037,6 +2046,25 @@ def test_a_rescan_that_misses_a_slow_account_connector_keeps_its_last_state():
     )
     never_read = {**row, "last_read_at": None}
     assert keep(never_read, "error", "x")[0] == "error"
+    # Not connected yet when it was looked for: Connecting, never an error from discovery alone.
+    assert keep(never_read, "connecting", "y") == ("connecting", "y")
+    assert keep(row, "connecting", "y")[0] == "ok"
+
+
+def test_an_account_connector_not_connected_at_discovery_is_connecting_not_failing(runtime):
+    from workspace_server.heartbeat import connectors as conn_mod
+
+    found = conn_mod.Found(
+        id="claude:claude.ai Drive",
+        name="claude.ai Drive",
+        cli="claude",
+        how="mcp",
+        found_in=heartbeat_service.ACCOUNT_PLACE,
+        spec={"account": True, "status": "pending", "tools": []},
+    )
+    status, line, _a, _r = runtime.heartbeat._check(found)
+    assert status == "connecting"
+    assert "Test read" in line
 
 
 def test_a_test_read_reports_each_step_and_keeps_nothing(owner, runtime, fake_cli):

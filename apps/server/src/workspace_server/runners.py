@@ -1322,6 +1322,7 @@ class Runners:
         refused: list[str],
         prompt: str,
         timeout: float = 240.0,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """One read-only read of one connector by the CLI that has it (the heartbeat): the CLI
         gets that one MCP server and may call exactly the `allowed` tools, which Gnomon listed
@@ -1337,6 +1338,7 @@ class Runners:
                 refused={server: refused},
                 prompt=prompt,
                 timeout=timeout,
+                model=model,
             )
         who.require("workspace.admin")
         if not allowed:
@@ -1360,6 +1362,7 @@ class Runners:
         refused: dict[str, list[str]],
         prompt: str,
         timeout: float = 300.0,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """One read-only read of several connectors in one Claude Code run (the heartbeat
         reads every due connector at once, so Claude Code starts, and loads its tools, once).
@@ -1376,6 +1379,9 @@ class Runners:
         spec_of = self._spec("claude")
         command = self._ready(spec_of)
         limits = [
+            # The ingest model (Haiku unless the owner chose): unnamed, it is the account's
+            # default, often the costliest.
+            *(["--model", model] if model else []),
             "--system-prompt",
             READ_SYSTEM,
             "--max-turns",

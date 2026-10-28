@@ -2,6 +2,8 @@
 // connectors found in the person's CLIs (on or off, the regions each feeds) and what a beat costs,
 // from the beats' own records.
 
+import { useState } from "react";
+
 import { css } from "../css";
 import { SignIn } from "./SignIn";
 import { checkable, ConnectorSetup, GoalFields } from "./ConnectorSetup";
@@ -26,6 +28,7 @@ const chip = (on: boolean) =>
 // Plain states that don't flap (v4 backend plan, 17.2): a rescan that misses a slow
 // connector keeps its last state.
 const STATUS_WORDS: Record<string, string> = {
+  connecting: "Connecting",
   unhealthy_sign_in: "Not signed in",
   provider_limit: "Failing: provider limit",
   cannot_confirm_read_only: "Cannot confirm read-only",
@@ -50,6 +53,7 @@ export function HeartbeatSettings() {
   const toggle = useSetConnector();
   const test = useTestRead();
   const fixes = useN8nFix();
+  const [open, setOpen] = useState<string[]>([]);
   if (status.isLoading) return <Loading what="Reading the heartbeat" />;
   if (status.error || !status.data) return <Failure error={status.error} retry={() => void status.refetch()} />;
   const s = status.data;
@@ -114,7 +118,7 @@ export function HeartbeatSettings() {
         {fixes.suggest.error ? <Failure error={fixes.suggest.error} /> : null}
         {fixes.decide.error ? <Failure error={fixes.decide.error} /> : null}
         {s.connectors.length ? (
-          s.connectors.map((c) => {
+          s.connectors.filter((c) => c.enabled || open.includes(c.id)).map((c) => {
             const feeds = c.feeds.length ? `Feeds ${c.feeds.map((f) => names.get(f) ?? f).join(", ")}` : "Feeds any region it fits";
             const items = c.last_read_at ? ` · ${c.last_items} ${c.last_items === 1 ? "item" : "items"} last beat` : "";
             const readOnly = c.how === "folder" || c.how === "memory" || c.tools.length ? " · read-only" : "";
@@ -202,6 +206,9 @@ export function HeartbeatSettings() {
               </div>
             );
           })
+        ) : null}
+        {s.connectors.length ? (
+          <FoundOff connectors={s.connectors.filter((c) => !c.enabled && !open.includes(c.id))} onSetUp={(id) => setOpen((o) => [...o, id])} />
         ) : (
           <span style={css("font:400 13.5px Geist;color:var(--muted);padding:10px 0;border-top:1px solid var(--line)")}>
             No connectors yet. Find connectors in your CLIs to read the MCP servers Claude Code and Codex are set up with.
@@ -212,5 +219,38 @@ export function HeartbeatSettings() {
         {costLine(s)}. Gnomon never holds these logins; each CLI uses its own. Connectors that work through computer use are listed but not read yet.
       </span>
     </section>
+  );
+}
+
+function offLine(c: HbConnector): string {
+  if (!c.present) return "Not found on this computer now";
+  if (c.how === "computer") return "Reads through computer use, not used yet";
+  if (c.status === "cannot_confirm_read_only") return "Cannot confirm read-only";
+  if (c.status === "unhealthy_sign_in") return "Not signed in";
+  if (c.status === "connecting") return "Connecting";
+  return "Found";
+}
+
+/** Connectors found but off, in one compact list: each opens its setup steps. */
+function FoundOff({ connectors, onSetUp }: { connectors: HbConnector[]; onSetUp: (id: string) => void }) {
+  if (!connectors.length) return null;
+  return (
+    <div role="group" aria-label="Found, off" style={css("display:flex;flex-direction:column;border-top:1px solid var(--line);padding-top:8px")}>
+      <span style={css("font:500 12.5px Geist;color:var(--muted);padding-bottom:4px")}>Found, off · {connectors.length}</span>
+      {connectors.map((c) => (
+        <div key={c.id} style={css("display:flex;align-items:center;gap:10px;padding:5px 0;flex-wrap:wrap")}>
+          <span style={css(`font:500 13px Geist;flex:1;min-width:160px${c.present ? "" : ";color:var(--muted)"}`)}>{c.name}</span>
+          <span style={css("font:400 12px Geist;color:var(--muted)")}>
+            {c.cli_label} · {offLine(c)}
+          </span>
+          {c.sign_in ? <SignIn c={c} /> : null}
+          {canTurnOn(c) ? (
+            <button type="button" aria-label={`Set up ${c.name}`} onClick={() => onSetUp(c.id)} style={css(chip(false))}>
+              Set up
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
   );
 }

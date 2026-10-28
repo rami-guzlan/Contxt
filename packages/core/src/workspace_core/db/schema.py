@@ -550,7 +550,7 @@ heartbeat_connectors = sa.Table(
     sa.Column("cursor", sa.Text),
     sa.Column("last_read_at", TS),
     sa.Column("last_items", sa.Integer, nullable=False, server_default="0"),
-    # ok | off | unhealthy_sign_in | provider_limit | cannot_confirm_read_only | error
+    # ok | off | connecting | unhealthy_sign_in | provider_limit | cannot_confirm_read_only | error
     sa.Column("status", sa.String(32), nullable=False, server_default="off"),
     sa.Column("status_line", sa.Text, nullable=False, server_default=""),
     sa.Column("tools", sa.JSON, nullable=False),  # the read-only tools, by name

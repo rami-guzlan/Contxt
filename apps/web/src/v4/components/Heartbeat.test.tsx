@@ -282,7 +282,10 @@ describe("Settings, Heartbeat", () => {
     expect(screen.getByText("Feeds State")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /mail: Last read ok. Turn off/ }));
     expect(calls.find((c) => c.path === "/api/heartbeat/connectors/claude%3Amail")?.body).toEqual({ enabled: false });
-    expect(screen.getByRole("button", { name: /computer-use: Off/ })).toBeDisabled();
+    // Found but off, in the compact list; computer use offers no setup yet.
+    const off = screen.getByRole("group", { name: "Found, off" });
+    expect(within(off).getByText(/Reads through computer use, not used yet/)).toBeInTheDocument();
+    expect(within(off).queryByRole("button", { name: "Set up computer-use" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Find connectors in my CLIs" }));
     expect(await screen.findByText("Found 2 connectors: 2 in Claude Code. Nothing new to add.")).toBeInTheDocument();
     expect(screen.getByText(/About 2,400 tokens a beat with changes/)).toBeInTheDocument();
@@ -343,6 +346,7 @@ describe("Settings, Heartbeat", () => {
       "PUT /api/heartbeat/connectors/claude%3Adrive": fresh,
     });
     renderAt(<HeartbeatSettings />);
+    await userEvent.click(await screen.findByRole("button", { name: "Set up Drive" }));
     const setup = await screen.findByRole("list", { name: "Set up Drive" });
     expect(within(setup).getByText("In your Claude account.")).toBeInTheDocument();
     await userEvent.click(within(setup).getByRole("button", { name: "Test read" }));
@@ -363,6 +367,7 @@ describe("Settings, Heartbeat", () => {
       "POST /api/heartbeat/connectors/claude%3Adrive/test": { id: "claude:drive", passed: false, steps: [{ step: "found", ok: true }, { step: "signed in", ok: false, line: "Sign in again." }] },
     });
     renderAt(<HeartbeatSettings />);
+    await userEvent.click(await screen.findByRole("button", { name: "Set up Drive" }));
     const setup = await screen.findByRole("list", { name: "Set up Drive" });
     await userEvent.click(within(setup).getByRole("button", { name: "Test read" }));
     expect(await within(setup).findByText(/Not ready\./)).toBeInTheDocument();
@@ -458,6 +463,7 @@ describe("Onboarding from the AI apps", () => {
       "PUT /api/heartbeat/connectors/memory%3Aclaude": memory("claude", "Claude Code"),
     });
     renderAt(<HeartbeatSettings />);
+    await userEvent.click(await screen.findByRole("button", { name: "Set up Claude Code memory and chats" }));
     const often = await screen.findByLabelText("How often Claude Code memory and chats is read");
     expect(within(often).getByRole("option", { name: "daily" })).toBeInTheDocument();
     const look = screen.getByLabelText("What Claude Code memory and chats looks for");

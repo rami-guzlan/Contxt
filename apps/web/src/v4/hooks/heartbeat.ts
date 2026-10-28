@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
 
 import { get, post, put, query } from "../../api/client";
 
-export type ConnectorStatus = "ok" | "off" | "unhealthy_sign_in" | "provider_limit" | "cannot_confirm_read_only" | "error";
+export type ConnectorStatus = "ok" | "off" | "connecting" | "unhealthy_sign_in" | "provider_limit" | "cannot_confirm_read_only" | "error";
 
 export interface HbConnector {
   id: string;
