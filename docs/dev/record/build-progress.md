@@ -1,6 +1,6 @@
 # Brain logic and Knowledge Work build: progress
 
-Started October 9, 2026 at Rami's word (prompt 140: "implement the logic-plan and ux-plan in the
+Started October 9, 2026 at the owner's word (prompt 140: "implement the logic-plan and ux-plan in the
 most logical order"). The plans: `brain-logic-plan.md` (BL) and `knowledge-work-ux-plan.md` (UX),
 built in the order of the UX plan's section 6. Read this file first after any compaction, then
 `git log` on the current branch in the `Contxt-safeguards` worktree.
@@ -18,7 +18,7 @@ en dashes.
 3. BL1 retrieval, briefs, kernel + UX B prompts.
 3b. **BL 5.11, the local retrieval engine** (decision 16, approved October 10; prompt 157): built
    with stand-in models on this laptop, behind a byte-for-byte fallback to today's retrieval;
-   the comparison and the defaults wait for Rami's PC.
+   the comparison and the defaults wait for the owner's PC.
 4. BL2 one statement model, origins; then UX C skills and the streaming run review; **+ G0**
    (goals plan): the `goal` kind, the project `objective` at the top of task briefs, "run" in
    model-facing text.
@@ -38,7 +38,7 @@ Settings.tsx stays additive so the two branches merge cleanly: new tabs and sect
 their own files (`apps/web/src/pages/settings/`), with one line each in Settings.tsx (prompt 169).
 
 The goals plan is `goals-and-handoffs-plan.md` (all 16 decisions set); its section 9 places each
-phase, folded in above at Rami's word (prompt 151). Its checklists sit in each step's plan below.
+phase, folded in above at the owner's word (prompt 151). Its checklists sit in each step's plan below.
 
 ## Step 2 plan
 
@@ -61,7 +61,7 @@ BL0, measure:
       with `scripts/retrieval_eval.py`.
 - [x] `brain report`, `contxt report`, `GET /api/brain/report`, Activity > Cost and quality.
 - [ ] Baseline on the live Brain (costs from its ledger and Claude Code transcripts): after the
-      merge, on a copy of its ledger; the private set needs Rami's labels (about two hours).
+      merge, on a copy of its ledger; the private set needs the owner's labels (about two hours).
 
 Baseline (docs/evals/retrieval-baseline.md, demo Brains): by words, needed-note recall 61%
 all / 55% held out, precision 72%; by words and meaning (bge-small), 64% / 73%, precision 86%;
@@ -178,7 +178,7 @@ instruction and documents in; a score per index out.
       correct nothing and false nothing, the lock refusing an unlisted model, every decision's
       scores in the ledger.
 - Waits for the PC: real model downloads and verification, the comparison A to E, picking the
-  defaults, fitting the cuts, speed against 5.11.7. Waits for Rami: the private set's labels
+  defaults, fitting the cuts, speed against 5.11.7. Waits for the owner: the private set's labels
   (with about 20 should-get-nothing requests).
 
 Added by prompt 161 (BL 5.11.15, 5.11.16 and 17.10's Phase 1 part, decision 17):
@@ -237,7 +237,7 @@ unchanged; the demo on 8790 looked at):
   (`/v1/generate`, a JSON schema bound at serving time where the runtime can, checked again in
   code). It is the agent's default only where it is downloaded. Claude Code: an opt-in once a
   local agent model is here; until then it stays the agent unless turned off, so the agent
-  keeps working on machines without the models. For Rami to confirm (opt-in as written in
+  keeps working on machines without the models. For the owner to confirm (opt-in as written in
   5.11.16 would leave a laptop without models with no agent).
 - The model service starts with the app only when this computer's setup models are downloaded
   and verified; otherwise the app says retrieval runs on words and meaning.
@@ -285,7 +285,7 @@ and every touched file passing after, web 180 passed, tsc, build, ruff, format, 
   though the presets say preferences always wait. It is now a rule of subtype preference, and
   waits. A decision is filed as kind `decision` (still `type: decision`); a procedure as kind
   `procedure`, which the config treats as a constraint, as rules were for procedures before.
-  For Rami to confirm: preference as a rule subtype (the plan's vocabulary) over today's fact.
+  For the owner to confirm: preference as a rule subtype (the plan's vocabulary) over today's fact.
 - No note is rewritten; the 180 parity briefs are byte for byte the same; `brain check` passes
   on every demo Brain. Statement fields are read from what notes record and shown as
   `statement` in the entry API; the derived review date waits for the updating loop (step 7);
@@ -348,7 +348,7 @@ allows; triage and the gates that need labeled transcripts wait (listed at the e
       in the instructions and needs a distilling model to measure. Cost per capture: the cost
       report's jobs line counts each distillation and triage call once real runs happen.
       Precision, recall and tier routing wait for labeled transcripts and the interview sorting
-      exercise (Rami) and the models.
+      exercise (the owner) and the models.
 
 How step 5 came out (October 10; committed as 923159a, opened as rami-guzlan/Contxt#9 with
 Auto-fix on; checks: Python 959 passed, web 182 passed, tsc, build, ruff, format, mypy clean,
@@ -652,7 +652,7 @@ How step 6 came out (October 10):
   Accounts template (a sheet step gave nothing a later step could read); the sheet step now
   passes on the value it wrote, and a test holds every template to fit.
 - Waiting for the PC or real runs: agreement with Claude Code, hand-up rates and speed per
-  machine setup; growing the agent set to about 15 cases per action. Waiting for Rami: the
+  machine setup; growing the agent set to about 15 cases per action. Waiting for the owner: the
   private agent set from his own Catch up decisions.
 
 ## Step 8 plan (BL6 proof + UX G walkthrough + G4), branch `proof-and-walkthrough`
@@ -679,7 +679,7 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
       handoff card near 250 tokens, no secret in a card, a goal note or a plan file.
 - [x] The walkthrough script (`walkthrough-script.md` beside this file): every screen on the
       demo Brain with its bars, then a real day on his Brain, then G4 with the interviewees.
-- [ ] Waits for Rami: the walkthrough itself, the real day, a goal of his through the coach,
+- [ ] Waits for the owner: the walkthrough itself, the real day, a goal of his through the coach,
       the T-41 story and the two interviewees, board restraint counted, objectives judged
       blind, and his sign-off.
 
@@ -704,14 +704,14 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   alone), web 175 passed, tsc, build, ruff, mypy clean. Live Brain cost baseline (private,
   kept on the laptop only), about $1.67 a day, re-reads the biggest
   line (74 later calls per brief), the Brain about 0.85% of what its Claude Code sessions cost.
-  Not pushed (waits for Rami's word).
-- 2026-10-10 01:31 (05:31 UTC): rami-guzlan/Contxt#6 merged by Rami as 7dc4f0e, carrying
+  Not pushed (waits for the owner's word).
+- 2026-10-10 01:31 (05:31 UTC): rami-guzlan/Contxt#6 merged by the owner as 7dc4f0e, carrying
   steps 2 and 3 (measuring context; briefs that say what directs; prompts kept in the Brain word
   for word; the layered kernel, push before the model asks, and the call to action led by the
   project's objective). All eight CI checks were green: Python, Core on PostgreSQL, the model
   tests, web, install and connect on Ubuntu, Windows and macOS, and the Docker image. Main is
   merged into `retrieval-engine` (97b8c6e); main held only the merge commit, so no file changed.
-  The live app on 8787 was not touched. Still with Rami from this step: the live Brain's content
+  The live app on 8787 was not touched. Still with the owner from this step: the live Brain's content
   proposals (core facts to must-holds by domain, the identity bullets merged), approved in his
   app, never committed to the public repo.
 - 2026-10-10: rami-guzlan/Contxt#7 merged as a859309 (by hand with gh, after the app reported
@@ -722,7 +722,7 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   Local models, and the knowledge agent's local option. Main fast-forwarded into
   `statements-and-skills` (step 4), no conflicts. The live app on 8787 was not touched. Waiting
   for the PC: real model downloads, pins and verification, the comparison B to E, defaults, cut
-  fitting, speed, Kev-0.8B's qualification. Waiting for Rami: the private set's labels, and
+  fitting, speed, Kev-0.8B's qualification. Waiting for the owner: the private set's labels, and
   confirming Claude Code for the agent as an opt-in once a local agent model is here.
 - 2026-10-10: rami-guzlan/Contxt#8 merged as ccb5edd (by hand with gh, all eight checks green),
   carrying step 4: one statement model (five kind lists from one vocabulary; a preference from
@@ -731,7 +731,7 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   model-facing text with a test that holds it) and UX C (the Skills run bar, run review with
   replay and the brief it was given, Brain skills one click each, skills by purpose, recent runs,
   every run's stream on disk with credentials masked). Main fast-forwarded into
-  `ingestion-and-distillation` (step 5). Waiting for Rami from it: confirming a preference as a
+  `ingestion-and-distillation` (step 5). Waiting for the owner from it: confirming a preference as a
   rule subtype.
 - 2026-10-10: rami-guzlan/Contxt#9 merged as 565e94e (by hand with gh, all eight checks
   green), carrying step 5: who said each statement at the door, instructions inside content
@@ -740,7 +740,7 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   for cloud models under careful and regulated, triage behind a switch that stays off, and the
   left-out record searchable on Capture. Main merged into `goals-and-projects` (2a7da89, no
   conflicts), whose PR rami-guzlan/Contxt#10 carries step 5b (G1) with Auto-fix on; step 6
-  starts on `state-and-tasks`. Waiting for Rami from step 5: labeled transcripts and the
+  starts on `state-and-tasks`. Waiting for the owner from step 5: labeled transcripts and the
   interview sorting exercise for its precision, recall and tier-routing gates. Waiting for real
   runs: measuring triage, and cost per hour of meeting.
 - 2026-10-10: rami-guzlan/Contxt#10 merged as 6518e94 (by hand with gh, all eight checks
@@ -768,18 +768,18 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   library and a fit check, G3's task and hand-off steps and teammates as owners scaffolded.
   Main merged into `proof-and-walkthrough` (step 8; main held only the merge commit). Waiting
   for the PC from step 7: agreement with Claude Code, hand-up rates and speed per machine
-  setup. Waiting for Rami: the private agent set from his Catch up decisions.
+  setup. Waiting for the owner: the private agent set from his Catch up decisions.
 - 2026-10-10: step 8 committed as 7cb78ea on `proof-and-walkthrough` and opened as
   rami-guzlan/Contxt#13 with Auto-fix on. Checks: Python 1034 passed, web 200, typecheck,
   build, ruff, format, mypy clean; retrieval_eval unchanged (75% recall, 71% precision, 48
   cases); the report card (`report-card-2026-10-10.md`) ran 253 gate tests over nine plan
   sections with none failing. When it is green it merges by hand with gh; that is the last step
-  of prompt 157. Still with Rami: the walkthrough (`walkthrough-script.md`), the real day, G4
+  of prompt 157. Still with the owner: the walkthrough (`walkthrough-script.md`), the real day, G4
   with his goal and the interviewees, and his sign-off.
 - 2026-10-12: rami-guzlan/Contxt#13 merged as b7587b0 (by hand with gh, all eight checks
   green), carrying step 8: the drift eval, the four-week soak, the alignment tax, the report
   card script, the G4 evals (and the goal-text secret masking they found), and the rewritten
-  system notes. That ends prompt 157's build. Same day, at Rami's word ("push all to github so
+  system notes. That ends prompt 157's build. Same day, at the owner's word ("push all to github so
   I can take over dev from my PC"): `test-the-brain` committed as work in progress (3278e9a)
   and pushed, unmerged and 25 commits behind main; the plans and this record copied into the
   repo under `docs/dev/` with every reference to his work Brain rewritten, plus
@@ -790,7 +790,7 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   rami-guzlan/Contxt#16 before the move. Build step 9 (the local models on the PC's GTX 1060:
   pinned, one-command install, run without a 12 GB GPU, setups A to E measured) went to the
   `models-out-of-the-box` branch.
-- 2026-10-13: Rami deferred the local models (the step 9 branch is parked), asked that nothing
+- 2026-10-13: the owner deferred the local models (the step 9 branch is parked), asked that nothing
   go on the C: drive, and set the direction: the rest of the architecture first with a model
   router ready for later, Workflows replaced by a Knowledge Agent on the CLI model the person
   chooses, an updated design to come (HANDOFF 7.0). On `fix-data-leaks`: the owner's goals
@@ -798,7 +798,7 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   older value of a figure a goal sets, and through the engine's find step and link loop; and
   eval, replay and bench ledgers, the requests and briefs built from a Brain, stayed in the temp
   folder, as did hundreds of scratch Brains per test run. All fixed, with tests.
-- 2026-10-16: an interactive map of the backend for Rami's redesign with Claude Design (kept
+- 2026-10-16: an interactive map of the backend for the owner's redesign with Claude Design (kept
   private, outside the repo) turned up a silent drop: without the local engine, a selected note
   past the brief's budget, a core style rule past the style share and a file part past the file
   allowance were left out with only a log line, against the rule that nothing is silently
@@ -812,11 +812,11 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   defaults as everyone's. The code files the owner's documents at once (except from a chat,
   the CLI or a folder under regulated), treats intake as a file from a chat, and starts from
   careful. Fixed in GOVERNANCE, CAPTURE, CONFIG and SUPPLY_CHAIN. Push before the model asks
-  is not set up by any connect path, so at Rami's word ("I'll just tell users to add a global
+  is not set up by any connect path, so at the owner's word ("I'll just tell users to add a global
   instruction to their models") `contxt connect` and Settings, AI apps now give every app one
   standing instruction to paste into its own instructions, and say where it goes. Merged as
   rami-guzlan/Contxt#21.
-- 2026-10-16, `agent-any-model`: at Rami's word (the knowledge agent "should be able to connect
+- 2026-10-16, `agent-any-model`: at the owner's word (the knowledge agent "should be able to connect
   to any model the user chooses defaulting to their CLI connected ai"), the agent's router in
   `models.py` takes Codex and Gemini CLI beside Claude Code, Ollama and the pinned local
   model. Any model a CLI offers can be named (`gemini:gemini-2.5-flash`). With nothing chosen,
@@ -825,13 +825,13 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
   against 0.1.10 on the PC (it reads stdin only without `-p`); Codex is not installed here, so
   its `codex exec` flags follow its documentation. Checks, digests and See the difference still
   run on Claude Code only. Merged as rami-guzlan/Contxt#22.
-- 2026-10-16, `door-checks`: the map's two open gaps, at Rami's word ("fix the two open gaps").
+- 2026-10-16, `door-checks`: the map's two open gaps, at the owner's word ("fix the two open gaps").
   What the app's AI work proposes carries a run, not a session, so it skipped the evidence check
   and the proposal cap. Now its quotes are checked against what the run read (the inputs on
   the run), and a run may propose 40 at most. The circular-evidence rule looked outputs up by
   file path, and the workspace names them by id; now a proposal citing a file the app's AI
   work made names that run's session, and the Brain checks it against what the run was handed.
-- 2026-10-16, `hardening`: Rami asked that ingestion, distillation and retrieval be "rock solid"
+- 2026-10-16, `hardening`: the owner asked that ingestion, distillation and retrieval be made robust
   before the redesign's features are built.
   - The ingestion audit's attribution findings are fixed:
     - `brain scout`'s finds are a document's word, so their instructions are reported;
@@ -860,5 +860,5 @@ Not Test the Brain (prompt 169: another chat builds it on `test-the-brain`).
       webinar series);
     - Claude Code's MCP handshake with the app;
     - Gemini CLI taking the app's flags.
-  - Not verified for real: a model's digest and distillation. They wait for Rami to sign in to
+  - Not verified for real: a model's digest and distillation. They wait for the owner to sign in to
     Claude Code again on the PC.

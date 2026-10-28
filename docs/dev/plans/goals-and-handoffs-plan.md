@@ -1,14 +1,14 @@
 # Gnomon goals, projects and handoffs: plan
 
-Plan only: no code was changed. Written October 9, 2026 (prompt 143 in `rami-prompts-verbatim.md`)
-and revised the same day with Rami's notes (prompt 145) and his follow-up (prompt 149). Sources:
+Plan only: no code was changed. Written October 9, 2026 (prompt 143 in the owner's private prompt log)
+and revised the same day with the owner's notes (prompt 145) and his follow-up (prompt 149). Sources:
 
 - the design first drawn on the System Map (`gnomon-system-map.html`, Goals and handoffs view);
 - the two plans being built now, `brain-logic-plan.md` (BL) and `knowledge-work-ux-plan.md` (UX);
 - the current code: `brainkit/goals.py` (the eight-question goals interview, the `you-goals` note),
   `services/agents.py` (an agent's "Goals it serves"), `brainkit/focus.py` (project journals),
   `services/catchup.py`, and the Settings, Activity and project pages;
-- Rami's notes: the Projects page becomes Goals and Projects, with his own goals at the top and a
+- The owner's notes: the Projects page becomes Goals and Projects, with his own goals at the top and a
   page per goal that is more human-in-the-loop than a project page;
 - his follow-up: goals are optional, and every project has an objective that agents carry into
   their tasks;
@@ -20,7 +20,7 @@ here fits into that order, so one builder can carry all three plans. Gnomon is t
 the code says Contxt.
 
 **Decisions: all 16 are set (section 12).** 1 to 10 were approved on October 9 (prompt 144) as
-recommended, except 9, which became the `todos_update` tool. Rami's notes (prompt 145) moved his
+recommended, except 9, which became the `todos_update` tool. The owner's notes (prompt 145) moved his
 goals to their own pages, revising 8 and adding 11 to 14. His follow-up (prompt 149) made goals
 optional and gave every project an objective that agents carry into their tasks, adding 15 and
 16. Decisions 11 to 16 were approved as recommended (prompt 150). The plan is ready for the
@@ -979,7 +979,7 @@ steps as its section 9 says; tick them in `build-progress.md`."
 | G1 | Goals and Projects with the projects-only layout and the new-project form; goal notes and migration (`you-goals` as the purpose, agents' goal lines); goal pages with the check-in, updates feed, board (notes, checklists, docs, projects, links, decisions), templates, the "AIs can read" switch and plan files, suggestions and Ask AI; project links to goals; `measures.py` with today's signals; `goal_checks`; goal journals; Settings > Alignment; agent goal drawers; the goal coach and the form; Home strip and weekly review; the knowledge agent's four goals, its new gathers and "why I'm doing this" | You set a goal with the coach, see its draft page, check in, and see a suggestion turn into an accepted step, in under three minutes on the demo Brain. A check-in takes under 20 seconds. Only shared blocks ever reach a brief. A seeded agent goal slip makes exactly one card. No goal ever changes a brief's notes |
 | G2 | The sheet block and sheet-driven progress; the Tasks sheet and its validation; owners and tool queues; the `todos_update` tool (take, save, pass, finish, goal notes) with its reminders; cards with the agent's words plus what code verifies; claims, reminders and take-backs; pending handoffs in first briefs and the session-start hook; agents' runs from handoffs; "AI on this" rails; Activity > Tasks and handoffs; project pages semi-reflected; Done with evidence; journal lines; milestones | On the demo Brain, a goal of yours gets a checklist item turned into a task for the Accounts agent, whose saves appear in the goal's feed. The T-41 story runs end to end: the knowledge agent, you in the app, a Claude Code session, and the Claude app answering "what happened?" from the log. A session that saved progress is resumed by a fresh session that redoes nothing |
 | G3 | Workflow steps "Open a task" and "Hand off"; verification with sources as tasks; correction and output-check signals; teammates as owners and admins for shared goals (scaffold) | A workflow opens, works and hands off a task; the solo app shows nothing of teams |
-| G4 | Evals (section 11); the walkthrough; the goal coach and a goal page tried by the two interviewees | Rami signs off |
+| G4 | Evals (section 11); the walkthrough; the goal coach and a goal page tried by the two interviewees | The owner signs off |
 
 Every phase follows the build's rules: a branch in `Contxt-safeguards` (never the live checkout),
 full checks, a pull request, no auto-merge, and a look on the demo Brain.
@@ -1032,7 +1032,7 @@ full checks, a pull request, no auto-merge, and a look on the demo Brain.
 ## 12. Decisions
 
 Decisions 1 to 10 were set on October 9 (prompt 144): approved as recommended, except 9, which
-was amended. Rami's notes (prompt 145) revised 8 and added 11 to 14, and his follow-up (prompt 149)
+was amended. The owner's notes (prompt 145) revised 8 and added 11 to 14, and his follow-up (prompt 149)
 added 15 and 16. Decisions 11 to 16 were approved as recommended (prompt 150).
 
 1. **Where Alignment lives**: Settings > Alignment, the first tab, replacing "Your goals".

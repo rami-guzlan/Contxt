@@ -82,4 +82,4 @@ touches 8787). Through one ordinary workday:
 
 ## Sign-off
 
-- [ ] Rami signs off on the walkthrough, the real day and G4. Visual design starts after.
+- [ ] the owner signs off on the walkthrough, the real day and G4. Visual design starts after.

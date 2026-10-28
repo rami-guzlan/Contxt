@@ -1,7 +1,7 @@
 # Test the Brain: progress
 
-Worktree: `C:\Users\rguzian\dev\AI-Brain\Contxt-test-the-brain`, branch `test-the-brain`, from origin/main dc4b3c0, merged with origin/main 7dc4f0e (PR #6) on 2026-10-10.
-Spec: `testing-lab-plan.md` 10.1 and C.5; the build prompt is entry 170 in `rami-prompts-verbatim.md` (entry 177 is a stray "wwigg").
+Worktree: `C:\Users\<you>\dev\AI-Brain\Contxt-test-the-brain`, branch `test-the-brain`, from origin/main dc4b3c0, merged with origin/main 7dc4f0e (PR #6) on 2026-10-10.
+Spec: `testing-lab-plan.md` 10.1 and C.5; the build prompt is entry 170 in the owner's private prompt log (entry 177 is a stray "wwigg").
 After any compaction: read this file, then the prompt (entry 170), then `git log` on the branch.
 
 ## Decisions made on the way

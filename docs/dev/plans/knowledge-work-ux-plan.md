@@ -1,6 +1,6 @@
 # Gnomon Knowledge Work and Brain UX: plan
 
-Plan only: no code was changed. Written October 9, 2026 from Rami's review of the built Work tab
+Plan only: no code was changed. Written October 9, 2026 from the owner's review of the built Work tab
 (branch `work-tab` in the `Contxt-safeguards` worktree, eight commits from 751d4e2 to 34f2fee,
 checks green, not pushed) and the build summary that came with it. The backend logic this plan
 relies on is in `brain-logic-plan.md` beside this file; its section numbers are cited as "BL".
@@ -68,7 +68,7 @@ only the label changes. `/work/compose` redirects to `/work/prompts`.
 
 ### 4.1 Name, framing and the overview (feedback 1)
 
-- **Name.** "Knowledge Work" (Rami's words) with the line "Shape what your Brain knows and keep it
+- **Name.** "Knowledge Work" (the owner's choice) with the line "Shape what your Brain knows and keep it
   current." Alternatives in decision 1.
 - **Overview, re-ordered around governance**:
   1. What changed since you last looked: notes added or changed, State rows updated, Library items
@@ -260,7 +260,7 @@ person's does. Decision 7.
 | D. Workspace live context | Your docs and live context; grid, board and calendar editors; templates | The State tier (BL phase 4) | Section 4.3 passes |
 | E. Outputs | Grouping by project and entity, makers, filters | Outputs linked to context (BL 16.5) | Section 4.6 passes |
 | F. Workflows | The canvas, the node library, templates, verification and State steps | Step types, verification (BL phase 5) | Section 4.7 passes |
-| G. Walkthrough | A scripted walk through every screen on the demo Brain, then a real day on the owner's live Brain | Everything above | Rami signs off; visual design starts |
+| G. Walkthrough | A scripted walk through every screen on the demo Brain, then a real day on the owner's live Brain | Everything above | The owner signs off; visual design starts |
 
 Every phase: a branch from `main` in the `Contxt-safeguards` worktree (never in the live
 checkout), full checks, a pull request, no auto-merge, a look on the demo Brain.
@@ -280,7 +280,7 @@ checkout), full checks, a pull request, no auto-merge, a look on the demo Brain.
 8. BL phase 6 (proof) and UX phase G (walkthrough).
 9. Visual design.
 
-## 7. Decisions for Rami
+## 7. Decisions for the owner
 
 All eight are approved (October 9, 2026): 1 to 4 and 6 to 8 as written, 5 as amended below.
 
@@ -295,7 +295,7 @@ All eight are approved (October 9, 2026): 1 to 4 and 6 to 8 as written, 5 as ame
 5. **Editors** (amended): a typed grid (Glide Data Grid or AG Grid Community), a dnd-kit board and
    FullCalendar's standard edition, with simple formulas where they genuinely help: one formula
    per column plus a summary row, computed by the engine (4.3; BL 8.2). No cell-by-cell
-   formulas. Rami's rule: formulas stay only if they are simple, intuitive and actually helpful,
+   formulas. The owner's rule: formulas stay only if they are simple, intuitive and actually helpful,
    which the interview sketches and the eval in BL 8.9 decide.
 6. **The workflow canvas on React Flow** (recommended).
 7. **Agents' pages lead with their kernel and pointers** (recommended; not in your review).

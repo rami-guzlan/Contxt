@@ -3,7 +3,7 @@
 Plan only: no code was changed. Written October 9, 2026 from a read of Contxt `main` at 61a5ab3
 (after PR #4) and the research collected in `outputs/contxt/research/paper-notes.md`. Work starts
 after the Work tab (branch `work-tab`, built October 9 and not yet merged) merges. Updated the
-same day after Rami's review of the built Work tab: section 16 lists what that review changes in
+same day after the owner's review of the built Work tab: section 16 lists what that review changes in
 the backend logic, and the screens are planned in `knowledge-work-ux-plan.md` beside this file
 (the order of both plans together is in its section 6). The Work section is being renamed (see
 that plan); this plan still says Work. File paths are relative to the Contxt repository. Gnomon
@@ -29,7 +29,7 @@ confidence. Two outcomes:
 
 1. Briefs that are accurate, relevant and make AI output better, shown on held-out tests and in
    blind with-and-without comparisons.
-2. Context cost held at or below today's while quality rises. Rami's estimate today: about
+2. Context cost held at or below today's while quality rises. The owner's estimate today: about
    10,000 context tokens per 3 to 4 hours, 80,000 to 100,000 a working day, about $1 a day at
    Claude Fable 5.1 prices.
 
@@ -661,7 +661,7 @@ The pipeline is built with stand-in models in tests, on any machine:
 - the "why" view;
 - the labeling additions.
 
-The comparison and the choice of defaults run on Rami's PC, a Mac and a 16 GB laptop, after the
+The comparison and the choice of defaults run on the owner's PC, a Mac and a 16 GB laptop, after the
 private set is labeled. This belongs to Phase 1, in step 3 of the build or as a step 3b right
 after it, together with the machine setups (5.11.15) and the model settings (5.11.16).
 
@@ -851,7 +851,7 @@ Brain tab as State logs: every change, with who, when and why.
 
 ### 8.3 Working contexts
 
-A working context is what Rami called a state: a project, an account, an on-call week, Q4
+A working context is what the owner called a state: a project, an account, an on-call week, Q4
 planning, or "general". It holds the active rows, the partition, its projects, and a resumption
 card (where you left off, the next step, open loops). Switching is explicit (the app's picker,
 the `context` argument, or a request that names it), with suggestions when a request names an
@@ -977,7 +977,7 @@ Phase 0 builds this; every phase is gated by it.
 - **Public** (invented demo Brains, in the repo): today's `eval.json` cases and safeguards sets,
   extended with state, push and budget cases.
 - **Private** (the owner's live Brain; never in this repo): 60 to 100 real requests sampled from the
-  live Brain's ledger, labeled by Rami as needed, useful or noise, split 70% tuning and 30% held out.
+  live Brain's ledger, labeled by the owner as needed, useful or noise, split 70% tuning and 30% held out.
   About 20 requests that should get nothing join it (5.11.11).
 - **From the interviews** (a software engineer and an enterprise architect): retrieval cases
   (exercise 17), distillation gold (exercise 12), approval calibration (exercise 20), turned into
@@ -991,7 +991,7 @@ Phase 0 builds this; every phase is gated by it.
 | Tokens | Brief tokens by request type; fixed overhead per client; estimated re-reads; daily cost by line |
 | Distillation | Precision, recall, contradictions kept, tier routing |
 | Updating | Seeded beliefs found, stale cells flagged, correction suspects, time to caught up |
-| Outputs | With versus without the brain on a fixed task set, judged blind by a model with Rami's spot checks; must-hold violations (target none) |
+| Outputs | With versus without the brain on a fixed task set, judged blind by a model with the owner's spot checks; must-hold violations (target none) |
 
 ### 10.3 The replay harness
 
@@ -1009,7 +1009,7 @@ this page in step 8.
 ### 10.5 The merge rule
 
 No phase merges if held-out recall drops, noise rises, or cost rises, unless a measured quality
-gain justifies the cost and Rami agrees.
+gain justifies the cost and the owner agrees.
 
 ### 10.6 Drift, time and the cost of alignment
 
@@ -1034,7 +1034,7 @@ gain justifies the cost and Rami agrees.
 | 3. Ingestion and distillation | Pre-pass, triage, privacy labels, distill changes, reconcile rules, evidence quote checks, background model routing | L | Section 7.4 gates pass |
 | 4. State tier | Sheets, cell logs, column types, views (grid, board, calendar), working contexts, `sheets_propose_update`, brief block, staleness, promotion and demotion, outputs linked to rows (16.5); built together with Workspace's editors (UX plan, phase D) | L | Section 8.9 gates pass |
 | 5. Updating loop | Correction suspects, blast radius, exceptions ledger, approval health, alignment review, salience from consequences, output checks, blind judging, single-source flags, independent evidence, run transcripts, verification with sources, one stream per run, admin roles scaffolded; the local knowledge agent (17): core prompt and skills, code-run loop, tools, change digest, impact check, suggestion memory | L | Section 9 and 17.9 gates pass |
-| 6. Proof | Drift eval, four-week soak and the alignment tax report (10.6); final report card; measured results for the paper; system notes rewritten (`brainkit/system/*.md`) | M | Rami signs off; UI and UX work starts on a proven base |
+| 6. Proof | Drift eval, four-week soak and the alignment tax report (10.6); final report card; measured results for the paper; system notes rewritten (`brainkit/system/*.md`) | M | The owner signs off; UI and UX work starts on a proven base |
 
 Every phase: a branch from `main` in the `Contxt-safeguards` worktree (never in the live
 checkout), full checks, a PR, no auto-merge.
@@ -1053,7 +1053,7 @@ checkout), full checks, a PR, no auto-merge.
 - Engine code names no organization or person, and real content from the owner's work Brain never enters the public
   repo.
 
-## 13. Decisions for Rami
+## 13. Decisions for the owner
 
 All seventeen decisions are approved: 1 to 13 as recommended, with 7, 9, 12 and 13 as written;
 14 and 15 when they were added (October 9, 2026); 16 and 17 on October 10, 2026. Nothing is built yet: planning continues while
@@ -1145,7 +1145,7 @@ the Work tab is finished in another chat.
 
 ## 15. Traceability: every gap the research names, and where this plan answers it
 
-Sources: Rami's brain dump ("Context & Alignment Brainstorm Brain Dump") and the AI draft built
+Sources: the owner's brain dump ("Context & Alignment Brainstorm Brain Dump") and the AI draft built
 from it ("Context Management & Alignment: Examining Overlaps Between Human Psychology and AI
 Governance..."), both October 2026. Status words: **Answered** (built, or planned above),
 **Added** (added in this revision, October 9), **Partly** (what is missing is named),
@@ -1254,7 +1254,7 @@ methods for closed models.
 
 ## 16. What the UX review changes in the backend (October 9, 2026)
 
-Rami reviewed the built Work tab (branch `work-tab`) and set the direction: Gnomon is about
+The owner reviewed the built Work tab (branch `work-tab`) and set the direction: Gnomon is about
 context and alignment, not another place to run AI tools. The screens are planned in
 `knowledge-work-ux-plan.md`; these are the backend consequences. None of them changes the tier
 model, the token targets or the gates. State gains column types and views, the Library gains
@@ -1478,7 +1478,7 @@ The run's review shows it as one stream (section 9), with secrets masked.
 - **Phase 5 (step 7)**, beside the updating loop: the core prompt and rewritten skills, the
   code-run loop, the tools, the change digest, the impact check (with the replay harness and the
   blast radius) and the suggestion memory.
-- Built and tested with stand-in models on any machine. The comparison runs on Rami's PC, a Mac
+- Built and tested with stand-in models on any machine. The comparison runs on the owner's PC, a Mac
   and a 16 GB laptop.
 
 ## Appendix: research anchors

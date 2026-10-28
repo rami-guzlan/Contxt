@@ -62,7 +62,7 @@ Lost with re-anchoring: long-5, a distractor closer to the end than the cadence 
 
 24 cases: valid answers 100%, no direct writes 100%, impact lines matching 100%, hand-ups 0. The oracle checks the harness; agreement with Claude Code waits for the PC.
 
-## Waiting for Rami
+## Waiting for the owner
 
 - Labels for the private eval set, including about 20 requests that should get nothing.
 - Confirming Claude Code for the knowledge agent as an opt-in once a local agent model is here.

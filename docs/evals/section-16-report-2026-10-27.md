@@ -7,7 +7,7 @@ v4 backend plan, section 16. Every number comes from the answer-recall eval
 - Tuning was general only. Settings were chosen on the tuning Brains, each candidate was
   validated once on the held-out validation Brains, and no setting names a Brain, business
   or domain.
-- The owner's IKN Brain was measured before and after, never tuned on. Only counts are
+- The owner's private Brain was measured before and after, never tuned on. Only counts are
   recorded.
 
 ## What shipped and what didn't
@@ -33,7 +33,7 @@ v4 backend plan, section 16. Every number comes from the answer-recall eval
 - **D.** Haiku drafts scopes for $0.05 for all 14 rules. They wait in Catch up until the
   owner keeps them.
 
-## The owner's IKN Brain, before and after
+## The owner's private Brain, before and after
 
 As configured, words only, 68 requests (63 with a needed item, none labeled for must-holds).
 
@@ -46,7 +46,7 @@ As configured, words only, 68 requests (63 with a needed item, none labeled for 
 | Tokens per answer | about 104,000 | about 117,000 |
 | Cost of the run | $0.38 | $0.41 |
 
-No scope was drafted or kept on the IKN Brain, so only the close-call pointers changed there.
+No scope was drafted or kept on the owner's private Brain, so only the close-call pointers changed there.
 The rise in answer recall came with more fetches. One run each way on Haiku can move by a few
 items, so it is a direction, not a settled gain.
 
@@ -54,7 +54,7 @@ items, so it is a direction, not a settled gain.
 
 | Goal | Where it stands |
 |---|---|
-| Answer recall 95% or more | not met: 76% to 77% on generated Brains, 87.5% on the IKN Brain |
+| Answer recall 95% or more | not met: 76% to 77% on generated Brains, 87.5% on the owner's private Brain |
 | 1.0 fetch or fewer per answer | not met: 1.1 to 1.3 |
 | Wrong must-holds under 15% of answers | not met: 17.5% held out, down from 27.2% |
 | No drop on the operating eval | not rerun after D: a step for the next run |
@@ -77,4 +77,4 @@ items, so it is a direction, not a settled gain.
 ## Cost
 
 About $6.50 of Haiku across every run in section 16, no single run past $1. That includes
-one IKN run lost to a transcript parsing bug, now fixed.
+one private-Brain run lost to a transcript parsing bug, now fixed.
