@@ -53,7 +53,7 @@ from . import learning, memory, n8n
 from . import n8n_templates as templates
 
 log = logging.getLogger(__name__)
-CLI_CADENCE = 60  # minutes between reads of a new connector that reads through a CLI
+CLI_CADENCE = 240  # minutes between reads of a new connector that reads through a CLI
 FIRST_LOOK = "the last 7 days"  # how far back a connector's first read looks
 ACCOUNT_TTL = 1800.0  # seconds a listing of the Claude account's connectors is kept
 ACCOUNT_RECHECKS = 2  # fresh listings for an account connector still connecting
@@ -61,6 +61,7 @@ ACCOUNT_PLACE = "Your Claude account"
 
 CADENCES = (5, 15, 30, 60)
 OWN_CADENCES = (*CADENCES, 240, 1440)  # a connector may read less often: every 4 hours, daily
+QUIET_GAP = 720  # minutes: a connector with nothing new for long is still read this often
 MEMORY_CADENCE = 1440  # minutes between memory reads after onboarding: daily
 MEMORY_ITEMS = 40  # context packets one memory read may bring
 ASK_CHARS = 1000  # characters of what the owner asks a read to look for
@@ -514,8 +515,9 @@ class Heartbeat:
                             "id": cid,
                             "workspace_id": tx.workspace_id,
                             **values,
-                            # A read through a CLI costs tokens: hourly unless the
-                            # owner says otherwise. Scout (no tokens) reads every beat.
+                            # A read through a CLI costs tokens (33k to 206k measured):
+                            # every 4 hours unless the owner says otherwise. Scout (no
+                            # tokens) reads every beat.
                             "cadence_minutes": CLI_CADENCE,
                             "feeds": [],
                             "enabled": on,
@@ -1888,12 +1890,31 @@ class Heartbeat:
                 continue
             own = int(row["cadence_minutes"] or 0)
             needed = max(own, cadence) if trigger == "schedule" else own
+            if trigger == "schedule" and row["how"] == "mcp" and not row["last_items"]:
+                needed = max(needed, self._quiet_gap(row, now))
             if row["last_read_at"] and needed:
                 elapsed = (now - parse_iso(row["last_read_at"])).total_seconds() / 60
                 if elapsed < needed - 0.5:
                     continue
             out.append(row)
         return out
+
+    def _quiet_gap(self, row: dict[str, Any], now: Any) -> int:
+        """Minutes between scheduled reads of a connector whose last read found nothing new:
+        half the time it has been quiet, at most QUIET_GAP (12 hours). A read through a CLI
+        costs tokens even when nothing is new; anything new brings its own cadence back."""
+        seen = schema.heartbeat_seen
+        with self.ws.rt.read() as tx:
+            last = tx.conn.execute(
+                sa.select(sa.func.max(seen.c.seen_at)).where(
+                    seen.c.workspace_id == tx.workspace_id, seen.c.connector_id == row["id"]
+                )
+            ).scalar()
+        since = last or row["created_at"]
+        if not since:
+            return 0
+        quiet = (now - (parse_iso(since) if isinstance(since, str) else since)).total_seconds()
+        return min(QUIET_GAP, int(quiet / 120))
 
     def _read_prompt(self, parts: list[tuple[Any, ...]]) -> str:
         """What a read asks for: per connector (server, name, since, its tools, and the
