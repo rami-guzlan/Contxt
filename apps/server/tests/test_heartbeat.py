@@ -1499,10 +1499,18 @@ def test_a_later_memory_read_reads_only_what_is_new_and_nothing_new_costs_nothin
     assert "The person asked you to look for: Deadlines and launch dates" in prompt
 
 
-def test_only_a_memory_read_takes_what_to_look_for(owner, cli_home):
+def test_any_connector_read_takes_a_goal_and_what_to_leave_out(owner, cli_home):
     found(owner)
-    refused = owner.put("/api/heartbeat/connectors/claude:mail", json={"ask": "anything"})
-    assert refused.status_code == 422
+    row = owner.ok(
+        owner.put(
+            "/api/heartbeat/connectors/claude:mail",
+            json={"ask": "client decisions", "skip": "newsletter, Receipt ,, newsletter"},
+        )
+    )
+    assert row["ask"] == "client decisions"
+    assert row["skip"] == "newsletter, receipt"
+    cleared = owner.ok(owner.put("/api/heartbeat/connectors/claude:mail", json={"skip": ""}))
+    assert cleared["skip"] == ""
 
 
 def test_the_judge_runs_on_the_ingest_model(owner, fake_cli, runtime):
@@ -1949,7 +1957,32 @@ def test_an_item_without_an_id_is_kept_by_its_link_or_title_and_counted(runtime)
         stats=stats,
     )
     assert [i["id"] for i in items] == ["https://x/a", "B 2026-10-27"]
-    assert stats == {"returned": 4, "kept": 2}
+    assert stats == {"returned": 4, "kept": 2, "left_out": 0}
+
+
+def test_an_item_that_names_what_to_leave_out_is_not_kept_and_is_counted(runtime):
+    stats: dict = {}
+    items, _cursor = runtime.heartbeat._items(
+        {
+            "items": [
+                {"id": "1", "title": "Weekly Newsletter", "text": "news"},
+                {"id": "2", "title": "Client call", "text": "They chose plan B"},
+                {"id": "3", "title": "Your receipt", "text": "paid"},
+            ]
+        },
+        {"cursor": "", "skip": "newsletter, receipt"},
+        stats=stats,
+    )
+    assert [i["id"] for i in items] == ["2"]
+    assert stats == {"returned": 3, "kept": 1, "left_out": 2}
+
+
+def test_a_read_carries_each_connectors_goal_and_what_to_leave_out(runtime):
+    prompt = runtime.heartbeat._read_prompt(
+        [("s", "Mail", "2026-10-20", ["search"], "client decisions", "newsletter, receipt")]
+    )
+    assert "Look for: client decisions" in prompt
+    assert "Leave out: newsletter, receipt" in prompt
 
 
 def test_a_read_asks_to_list_first_and_open_only_the_newest(runtime):

@@ -63,7 +63,8 @@ CADENCES = (5, 15, 30, 60)
 OWN_CADENCES = (*CADENCES, 240, 1440)  # a connector may read less often: every 4 hours, daily
 MEMORY_CADENCE = 1440  # minutes between memory reads after onboarding: daily
 MEMORY_ITEMS = 40  # context packets one memory read may bring
-ASK_CHARS = 1000  # characters of what the owner asks a memory read to look for
+ASK_CHARS = 1000  # characters of what the owner asks a read to look for
+SKIP_WORDS = 20  # what a read leaves out: at most this many words or phrases
 QUIET = {"off": "Off", "night": "7pm to 7am", "nights_weekends": "Nights and weekends"}
 DEFAULTS: dict[str, Any] = {
     "cadence": 15,
@@ -155,6 +156,17 @@ def tokens_of(usage: dict[str, Any] | None) -> int | None:
     return sum(
         int(usage.get(k) or 0) for k in ("tokens_in", "tokens_out", "cache_read", "cache_write")
     )
+
+
+def skip_words(text: Any) -> list[str]:
+    """What a read leaves out, from the owner's words: comma or line separated, lowercased,
+    each once, in their order."""
+    out: list[str] = []
+    for word in re.split(r"[,\n]", str(text or "")):
+        word = " ".join(word.split()).lower()[:80]
+        if word and word not in out:
+            out.append(word)
+    return out[:SKIP_WORDS]
 
 
 def classify(message: str) -> str:
@@ -353,6 +365,7 @@ class Heartbeat:
             "has_workflow": bool(row.get("workflow")),
             "fix": (row.get("workflow_fix") or {}).get("why") if row.get("workflow_fix") else None,
             "ask": row.get("ask") or "",
+            "skip": row.get("skip") or "",
             "sign_in": sign_in(row),
         }
 
@@ -701,6 +714,7 @@ class Heartbeat:
                 "ok": True,
                 "items": len(got["items"]),
                 "returned": got.get("returned", len(got["items"])),
+                "left_out": got.get("left_out", 0),
                 "tokens": tokens_of(usage),
                 "seconds": seconds,
                 "cost": cost,
@@ -720,6 +734,7 @@ class Heartbeat:
         feeds: list[str] | None = None,
         cadence_minutes: int | None = None,
         ask: str | None = None,
+        skip: str | None = None,
     ) -> dict[str, Any]:
         who.require("workspace.admin")
         with self.ws.rt.write() as tx:
@@ -761,12 +776,14 @@ class Heartbeat:
                         field="cadence_minutes",
                     )
                 values["cadence_minutes"] = own or None
+            if (ask is not None or skip is not None) and row["how"] == "folder":
+                raise ValidationFailed(
+                    "A folder is read whole: it takes no goal or filters.", field="ask"
+                )
             if ask is not None:
-                if row["how"] != "memory":
-                    raise ValidationFailed(
-                        "Only a memory read takes what to look for.", field="ask"
-                    )
                 values["ask"] = str(ask).strip()[:ASK_CHARS] or None
+            if skip is not None:
+                values["skip"] = ", ".join(skip_words(skip)) or None
             if row["how"] == "n8n" and enabled is not None:
                 values.update(self._to_n8n(row, bool(enabled)))
             if values:
@@ -1864,12 +1881,19 @@ class Heartbeat:
             out.append(row)
         return out
 
-    def _read_prompt(self, parts: list[tuple[str, str, str, list[str]]]) -> str:
-        """What a read asks for: per connector (server, name, since, its tools), what changed."""
-        listed = "\n".join(
-            f"- {name} (server {server}), since {since}. Its tools: {', '.join(tools)}."
-            for server, name, since, tools in parts
-        )
+    def _read_prompt(self, parts: list[tuple[Any, ...]]) -> str:
+        """What a read asks for: per connector (server, name, since, its tools, and the
+        owner's goal and what to leave out, when set), what changed."""
+
+        def line(server: str, name: str, since: str, tools: list[str], *rest: Any) -> str:
+            ask, skip = (list(rest) + ["", ""])[:2]
+            return (
+                f"- {name} (server {server}), since {since}. Its tools: {', '.join(tools)}."
+                + (f" Look for: {ask}." if ask else "")
+                + (f" Leave out: {skip}." if skip else "")
+            )
+
+        listed = "\n".join(line(*part) for part in parts)
         return (
             "Read, read-only, what changed in each of these connectors since the time given. "
             "First list or search for what changed since then; then open at most "
@@ -1917,12 +1941,18 @@ class Heartbeat:
     ) -> tuple[list[dict[str, Any]], str]:
         """(items, cursor) from one connector's part of a read's answer. An item without an
         id is known by its link, else its title and time. `stats` gets how many the answer
-        returned and how many were kept."""
+        returned, how many were kept and how many named what the owner leaves out."""
         part = part if isinstance(part, dict) else {}
         returned = part.get("items") if isinstance(part.get("items"), list) else []
+        leave_out = skip_words(row.get("skip"))
         items = []
+        left_out = 0
         for raw in returned[:most]:
             if not isinstance(raw, dict):
+                continue
+            said = f"{raw.get('title') or ''} {raw.get('text') or ''}".lower()
+            if any(word in said for word in leave_out):
+                left_out += 1
                 continue
             ident = str(raw.get("id") or raw.get("url") or "").strip() or " ".join(
                 str(raw.get(k) or "").strip() for k in ("title", "at") if raw.get(k)
@@ -1941,7 +1971,7 @@ class Heartbeat:
                 }
             )
         if stats is not None:
-            stats.update(returned=len(returned), kept=len(items))
+            stats.update(returned=len(returned), kept=len(items), left_out=left_out)
         return items, _flat(part.get("cursor"), 200) or row["cursor"]
 
     def _read_cli(self, owner: Principal, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1971,7 +2001,7 @@ class Heartbeat:
             servers = {conn.safe_server(f.name): (r, f, a, x) for r, f, a, x in members}
             prompt = self._read_prompt(
                 [
-                    (server, f.name, r["cursor"] or FIRST_LOOK, a)
+                    (server, f.name, r["cursor"] or FIRST_LOOK, a, r.get("ask"), r.get("skip"))
                     for server, (r, f, a, _x) in servers.items()
                 ]
             )
@@ -2020,6 +2050,7 @@ class Heartbeat:
                 items, cursor = self._items(part, r, stats=stats)
                 out[r["id"]] = {
                     "returned": stats.get("returned", 0),
+                    "left_out": stats.get("left_out", 0),
                     "items": items,
                     "cursor": cursor,
                     "usage": got.get("usage") if first else None,
@@ -2394,6 +2425,7 @@ class Heartbeat:
                 read=True,
                 status="ok",
                 returned=got.get("returned", len(got["items"])),
+                left_out=got.get("left_out", 0),
                 items=len(got["items"]),
                 new=len(new),
             )

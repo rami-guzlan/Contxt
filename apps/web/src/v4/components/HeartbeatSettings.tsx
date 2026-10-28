@@ -4,6 +4,7 @@
 
 import { css } from "../css";
 import { SignIn } from "./SignIn";
+import { checkable, ConnectorSetup, GoalFields } from "./ConnectorSetup";
 import { costLine, type HbConnector, testLine, useHeartbeat, useHeartbeatSettings, useN8nFix, useRegions, useRescan, useSetConnector, useTestRead } from "../hooks/heartbeat";
 import { Failure, Loading } from "../ui";
 import { N8nHost } from "./N8nHost";
@@ -122,7 +123,8 @@ export function HeartbeatSettings() {
                   </span>
                   {c.status_line ? <span style={css("font:400 12px/1.45 Geist;color:var(--ink2)")}>{c.status_line}</span> : null}
                   <SignIn c={c} />
-                  {c.present && !["folder", "memory", "n8n", "computer"].includes(c.how) ? (
+                  {!c.enabled && c.present && !["folder", "computer"].includes(c.how) ? <ConnectorSetup c={c} canTurnOn={canTurnOn(c)} /> : null}
+                  {c.enabled && checkable(c) ? (
                     <span style={css("display:flex;gap:8px;align-items:center;flex-wrap:wrap;font:400 12px/1.45 Geist;color:var(--ink2)")}>
                       <button
                         type="button"
@@ -155,18 +157,7 @@ export function HeartbeatSettings() {
                       {fixes.suggest.isPending ? "Asking…" : "Suggest a fix"}
                     </button>
                   ) : null}
-                  {c.how === "memory" ? (
-                    <input
-                      key={`${c.id}:${c.ask ?? ""}`}
-                      aria-label={`What ${c.name} looks for`}
-                      placeholder="What to look for, in your words (optional)"
-                      defaultValue={c.ask ?? ""}
-                      onBlur={(e) => {
-                        if (e.target.value.trim() !== (c.ask ?? "")) toggle.mutate({ id: c.id, ask: e.target.value.trim() });
-                      }}
-                      style={css("font:400 12.5px Geist;padding:5px 8px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);max-width:420px")}
-                    />
-                  ) : null}
+                  {c.enabled && c.how !== "folder" ? <GoalFields c={c} /> : null}
                 </div>
                 <span style={css("font:400 12.5px Geist;color:var(--ink2);min-width:160px")}>{feeds}</span>
                 {c.how === "folder" ? (

@@ -564,8 +564,10 @@ heartbeat_connectors = sa.Table(
     # A fix the knowledge agent suggested after its workflow failed: {workflow, why}, waiting
     # for the owner to keep or skip it.
     sa.Column("workflow_fix", sa.JSON),
-    # A memory read (how "memory"): what the owner asked it to look for, in their words.
+    # What the owner asked a read to look for, in their words (any read but a folder's).
     sa.Column("ask", sa.Text),
+    # What a read leaves out: words, comma separated; an item naming one is not kept.
+    sa.Column("skip", sa.Text),
     *_record(archivable=False),
 )
 

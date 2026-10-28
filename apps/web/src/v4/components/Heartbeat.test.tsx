@@ -326,6 +326,49 @@ describe("Settings, Heartbeat", () => {
     expect(calls.some((c) => c.method === "POST" && c.path === "/api/heartbeat/connectors/rescan")).toBe(true);
   });
 
+  it("sets a new connector up from found to on, without a terminal", async () => {
+    const fresh = connector({ id: "claude:drive", name: "Drive", enabled: false, status: "off", status_line: "", last_read_at: null, found_in: "your Claude account" });
+    const calls = api({
+      "GET /api/heartbeat/status": status({ connectors: [fresh] }),
+      "POST /api/heartbeat/connectors/claude%3Adrive/test": {
+        id: "claude:drive",
+        passed: true,
+        steps: [
+          { step: "found", ok: true },
+          { step: "signed in", ok: true },
+          { step: "read-only", ok: true },
+          { step: "test read", ok: true, items: 6, returned: 8, left_out: 2, tokens: 30000, seconds: 20, cost: 0.02, per_day: 0.5 },
+        ],
+      },
+      "PUT /api/heartbeat/connectors/claude%3Adrive": fresh,
+    });
+    renderAt(<HeartbeatSettings />);
+    const setup = await screen.findByRole("list", { name: "Set up Drive" });
+    expect(within(setup).getByText("In your Claude account.")).toBeInTheDocument();
+    await userEvent.click(within(setup).getByRole("button", { name: "Test read" }));
+    expect(await within(setup).findByText(/Ready for heartbeats\..*6 items in 20 s, 2 left out/)).toBeInTheDocument();
+    await userEvent.type(within(setup).getByLabelText("What Drive looks for"), "Client decisions");
+    await userEvent.type(within(setup).getByLabelText("What Drive leaves out"), "newsletter");
+    await userEvent.tab();
+    const puts = () => calls.filter((c) => c.method === "PUT").map((c) => c.body);
+    await waitFor(() => expect(puts()).toEqual([{ ask: "Client decisions" }, { skip: "newsletter" }]));
+    await userEvent.click(within(setup).getByRole("button", { name: "Turn on Drive" }));
+    await waitFor(() => expect(puts().at(-1)).toEqual({ enabled: true }));
+  });
+
+  it("will not turn on a connector whose check failed", async () => {
+    const fresh = connector({ id: "claude:drive", name: "Drive", enabled: false, status: "off" });
+    api({
+      "GET /api/heartbeat/status": status({ connectors: [fresh] }),
+      "POST /api/heartbeat/connectors/claude%3Adrive/test": { id: "claude:drive", passed: false, steps: [{ step: "found", ok: true }, { step: "signed in", ok: false, line: "Sign in again." }] },
+    });
+    renderAt(<HeartbeatSettings />);
+    const setup = await screen.findByRole("list", { name: "Set up Drive" });
+    await userEvent.click(within(setup).getByRole("button", { name: "Test read" }));
+    expect(await within(setup).findByText(/Not ready\./)).toBeInTheDocument();
+    expect(within(setup).getByRole("button", { name: "Turn on Drive" })).toBeDisabled();
+  });
+
   it("sets how often each connector is read, and Scout reads every beat", async () => {
     const calls = api({ "PUT /api/heartbeat/connectors/claude%3Amail": connector({ cadence_minutes: 60 }) });
     renderAt(<HeartbeatSettings />);

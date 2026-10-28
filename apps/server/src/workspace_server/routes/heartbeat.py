@@ -38,6 +38,7 @@ class ConnectorIn(Body):
     feeds: list[str] | None = None
     cadence_minutes: int | None = None
     ask: str | None = Field(default=None, max_length=1000)
+    skip: str | None = Field(default=None, max_length=1000)
 
 
 class OnboardIn(Body):
@@ -124,6 +125,7 @@ def set_connector(
         feeds=body.feeds,
         cadence_minutes=body.cadence_minutes,
         ask=body.ask,
+        skip=body.skip,
     )
 
 
