@@ -19,24 +19,31 @@ Measured on October 28, 2026 on the entrepreneur demo Brain, unless it says othe
 | Claude Code itself, as Gnomon starts it | in every run below | 3,900 | $0.0007 |
 | A beat with no connector due | every beat | 0: no model call | none |
 | Reads through n8n, folders and Scout | each beat | 0 | none |
-| A beat reading 1 connector, something new | each scheduled read | 20,000 | $0.0018 |
-| A beat reading 1 connector, nothing new | each scheduled read | 13,000 | $0.0004 |
-| A beat reading 3 connectors at once, something new | each scheduled read | 37,000 | $0.0036 |
-| A beat reading 3 connectors at once, nothing new | each scheduled read | 23,000 | $0.0007 |
+| A connector read through Claude Code | each scheduled read | 33,000 to 206,000 | $0.004 to $0.011 |
 | The nightly distill, 50 items | once a night | 25,000 | $0.0099 |
 | An answer through the Brain, two turns | each time an AI app asks | 29,000 | $0.0034 |
 | A Work with AI job or Run now, a five-line note | when you start one | 52,000 | $0.0035 |
 | A Test bench run: no Brain, full Brain, custom | when you run one | 12,700 | $0.0013 |
 | The side-by-side check of notes that may disagree, on Sonnet 5.5 | in the background, at most 60 pairs a day | 3,400 a call | about $0.009 a call |
 
-About the connector rows:
-- They were measured with local stand-in connectors of 12 read-only tools each (about 1,700
-  tokens of tool definitions). A real connector's tools are their own size, and a read takes
-  two or three turns that each read them again from cache. Google Drive's tools were about
-  20,000 tokens, and its first real read was 69,000 tokens for 10 items (October 27).
-- Reading several connectors in one run is cheaper than reading them one by one: 3 quiet
-  connectors took 23,000 tokens together, against 13,000 each apart.
-- Each connector's Test read shows its own figure (see "Your own numbers").
+About connector reads. A read lists what changed, opens the newest items and answers; each
+turn reads Claude Code's prompt and the connector's own tools again, from cache, so a
+connector with many large tools costs more even when nothing is new. Real Test reads, October
+28, on Haiku 5.5 or just before reads were moved to it:
+
+| Connector | Items | Tokens | Cost | Time |
+|---|---|---|---|---|
+| Google Drive | 5 | 48,000 | $0.005 | 26 s |
+| A production app | 7 | 51,000 | $0.005 | 25 s |
+| Spotify | 6 | 33,000 | $0.005 | 26 s |
+| Notion, nothing new in 7 days | 0 | 140,000 to 206,000 | $0.008 to $0.011 | 21 s |
+| HubSpot, nothing new | 0 | 135,000 | $0.004 | 24 s |
+
+- Most of those tokens are cache reads, which is why they cost so little.
+- Reading several connectors in one run costs less than reading them one by one: with small
+  stand-in connectors, 3 quiet ones took 23,000 tokens together against 13,000 each apart.
+- Each read has a cap on turns and on spend ($0.05 a connector). A read that reaches either
+  fails and says so, instead of passing as nothing new.
 
 About the side-by-side check: it runs on Sonnet 5.5. On the 80 labeled pairs of
 `scripts/safeguards_eval.py`, Sonnet named the right relation in 77, Haiku in 69 and the
@@ -58,32 +65,35 @@ tools and your own settings, the same two-turn answer came to 105,000 tokens, no
 
 ## A day
 
-How often connectors are read is most of it. A connector whose reads find nothing new is read
-less often on its own: half the time it has been quiet, at most every 4 hours, and back to its
-own cadence when something new comes in. A connector read hourly that stays quiet overnight
-is read about 12 times a day instead of 24.
+How often connectors are read is most of it. A connector read through Claude Code is read
+every 4 hours unless you set it otherwise, and one whose reads find nothing new spaces out on
+its own: half the time it has been quiet, at most every 12 hours, and back to its own cadence
+when something new comes in. That comes to about 5 reads a day per connector.
 
 | | Light | Typical | Heavy |
 |---|---|---|---|
-| Connectors read through Claude Code | 1 | 3 | 6 |
-| Beats that read them | 10 | 12 | 16 |
+| Connectors read through Claude Code | 1 (Drive) | 3 (Drive, Notion, HubSpot) | 6 |
+| Reads a day of each | about 5 | about 5 | about 6 |
 | Work with AI jobs | 0 | 2 | 10 |
 | Test runs after the distill | 0 | 10 | 20 (the daily cap) |
 | Side-by-side check calls | 3 | 10 | 30 |
-| **Tokens, Haiku work** | **about 200,000** | **about 600,000** | **about 2 million** |
-| **Tokens, the check** | **10,000** | **34,000** | **100,000** |
-| **Cost on Haiku 5.5, plus the check on Sonnet 5.5** | **about $0.05** | **about $0.15** | **about $0.45** |
+| **Tokens** | **about 0.3 million** | **about 1.8 million** | **about 5 million** |
+| **of which connector reads** | 0.24 million | 1.6 million | 4 million |
+| **Cost on Haiku 5.5, the check on Sonnet 5.5** | **about $0.06** | **about $0.10 to $0.25** | **about $0.60** |
 
-The token rows use the measured figures above with stand-in connectors. Large real connectors
-add their own tools once per turn: three connectors the size of Drive would add about a
-million tokens a day to the typical day.
+A typical day is about 1.6 million tokens of connector reads and about 1.8 million in all,
+for $0.10 to $0.25. Notion and HubSpot are the expensive connectors: about three times
+Drive's tokens a read, for nothing new. Read hourly, the same three connectors would take
+about 3.9 million tokens a day.
 
 ## Settings that change it
 
 - **Read through n8n.** A connector read by an n8n workflow on your computer costs no tokens.
   The Heartbeat card offers it for every app it can draft a workflow for.
-- **A connector's own cadence.** Set it to every 4 hours or daily in the Heartbeat card, or
-  turn off a connector you don't need. A quiet connector already spaces out its reads.
+- **A connector's own cadence.** In the Heartbeat card, each connector has its own: every 5,
+  15, 30 or 60 minutes for fresher news and more tokens, every 4 hours (the default) or daily
+  for fewer. Daily, the typical day's three connectors take about 0.35 million tokens. Turn
+  off a connector you don't need. A quiet connector already spaces out its reads.
 - **The ingest model.** The distill, the judge and the world drafts run on it: Haiku by
   default, which passed every gate of the recorded day.
 - **Side-by-side checks.** The Brain's policy `model_checks` (on by default) turns the
