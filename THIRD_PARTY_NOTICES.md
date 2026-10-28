@@ -64,13 +64,20 @@ Licenses that ask for more than a notice, or packages that state none:
 | uvicorn | 0.54.0 | BSD-3-Clause |
 | win32-setctime | 1.2.0 | MIT License |
 
-## Web app packages (66)
+## Web app packages (103)
 
 | Package | Version | License |
 | --- | --- | --- |
+| @dnd-kit/accessibility | 3.1.1 | MIT |
+| @dnd-kit/core | 6.3.1 | MIT |
+| @dnd-kit/utilities | 3.2.2 | MIT |
 | @floating-ui/core | 1.8.0 | MIT |
 | @floating-ui/dom | 1.8.0 | MIT |
 | @floating-ui/utils | 0.2.12 | MIT |
+| @fullcalendar/core | 6.1.19 | MIT |
+| @fullcalendar/daygrid | 6.1.19 | MIT |
+| @fullcalendar/interaction | 6.1.19 | MIT |
+| @fullcalendar/react | 6.1.19 | MIT |
 | @remix-run/route-pattern | 0.22.1 | MIT |
 | @tanstack/query-core | 5.104.0 | MIT |
 | @tanstack/react-query | 5.104.0 | MIT |
@@ -104,16 +111,43 @@ Licenses that ask for more than a notice, or packages that state none:
 | @tiptap/pm | 3.31.4 | MIT |
 | @tiptap/react | 3.31.4 | MIT |
 | @tiptap/starter-kit | 3.31.4 | MIT |
+| @types/d3-color | 3.1.3 | MIT |
+| @types/d3-drag | 3.0.7 | MIT |
+| @types/d3-interpolate | 3.0.4 | MIT |
+| @types/d3-selection | 3.0.12 | MIT |
+| @types/d3-transition | 3.0.9 | MIT |
+| @types/d3-zoom | 3.0.9 | MIT |
 | @types/react | 19.3.0 | MIT |
 | @types/react-dom | 19.3.0 | MIT |
 | @types/use-sync-external-store | 0.0.6 | MIT |
+| @xyflow/react | 12.11.6 | MIT |
+| @xyflow/system | 0.0.82 | MIT |
+| ag-charts-types | 14.2.0 | MIT |
+| ag-grid-community | 36.2.0 | MIT |
+| ag-grid-react | 36.2.0 | MIT |
+| ag-stack | 36.2.0 | MIT |
+| classcat | 5.0.5 | MIT |
 | cookie-es | 3.1.1 | MIT |
 | csstype | 3.2.3 | MIT |
+| d3-color | 3.1.0 | ISC |
+| d3-dispatch | 3.0.1 | ISC |
+| d3-drag | 3.0.0 | ISC |
+| d3-ease | 3.0.1 | BSD-3-Clause |
+| d3-interpolate | 3.0.1 | ISC |
+| d3-selection | 3.0.0 | ISC |
+| d3-timer | 3.0.1 | ISC |
+| d3-transition | 3.0.1 | ISC |
+| d3-zoom | 3.0.0 | ISC |
 | fast-equals | 5.4.3 | MIT |
+| js-tokens | 4.0.0 | MIT |
 | linkifyjs | 4.3.3 | MIT |
+| loose-envify | 1.4.0 | MIT |
 | lucide-react | 1.52.0 | ISC |
 | marked | 17.0.6 | MIT |
+| object-assign | 4.1.1 | MIT |
 | orderedmap | 2.1.1 | MIT |
+| preact | 10.12.1 | MIT |
+| prop-types | 15.8.1 | MIT |
 | prosemirror-changeset | 2.4.4 | MIT |
 | prosemirror-commands | 1.7.2 | MIT |
 | prosemirror-dropcursor | 1.8.4 | MIT |
@@ -129,8 +163,11 @@ Licenses that ask for more than a notice, or packages that state none:
 | prosemirror-view | 1.42.6 | MIT |
 | react | 19.3.0 | MIT |
 | react-dom | 19.3.0 | MIT |
+| react-is | 16.13.1 | MIT |
 | react-router | 8.4.0 | MIT |
 | rope-sequence | 1.3.4 | MIT |
 | scheduler | 0.28.0 | MIT |
+| tslib | 2.8.1 | 0BSD |
 | use-sync-external-store | 1.7.0 | MIT |
 | w3c-keyname | 2.2.8 | MIT |
+| zustand | 4.5.7 | MIT |
