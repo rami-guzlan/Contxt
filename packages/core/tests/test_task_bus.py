@@ -1,5 +1,6 @@
 """The pull-based task bus: models fetch, claim and complete only their own due work."""
 
+import dataclasses
 from datetime import timedelta
 
 import pytest
@@ -318,3 +319,31 @@ def test_every_consequential_write_names_its_actor(ws, owner, connect, make_task
     ws.bus.due(claude)
     assert all(not e.noise for e in ws.events.activity(owner))
     assert any(e.type == "bus.polled" for e in ws.events.activity(owner, include_noise=True))
+
+
+def test_a_task_asks_the_brain_with_its_projects_name(ws, owner, connect, make_task, brain):
+    # A prompt like "a status note for this project" names no project: the Brain is asked with
+    # the project's title too, so the brief holds the project instead of a run fetching it.
+    claude = connect()
+    task = make_task(claude)
+    ws.bus.claim(claude, task.id)
+    assert "Content creation" in brain.briefed[-1]
+
+
+def test_the_project_the_brain_follows_comes_with_the_packet(ws, owner, connect, brain):
+    claude = connect()
+    brain.create_project(
+        name="Seed round", summary="Raise the seed.", aliases=[], proposer="person:owner"
+    )
+    brain.started[-1] = dataclasses.replace(brain.started[-1], current="1.1M of 3M committed")
+    followed = ws.projects.create(owner, title="Seed round", brain_ref="seed-round")
+    task = ws.tasks.create(
+        owner,
+        project_id=followed.id,
+        title="A five-line status note",
+        instructions="Where it stands, the next step, one risk.",
+        assignee_id=claude.actor_id,
+    )
+    ws.tasks.mark_ready(owner, task.id)
+    inputs = {i["ref"]: i for i in ws.bus.claim(claude, task.id).packet["inputs"]}
+    assert "1.1M of 3M committed" in inputs["brain_project:seed-round"]["text"]
