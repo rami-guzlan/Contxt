@@ -211,7 +211,7 @@ minutes; the image carries Node.js 22, npm and Claude Code):
 
 ```bash
 gcloud compute ssh "$VM" --zone "$ZONE" --tunnel-through-iap
-git clone https://github.com/rami-guzlan/Contxt.git /srv/contxt/app
+git clone https://github.com/rami-guzlan/Gnomon-Brain.git /srv/contxt/app
 cd /srv/contxt/app
 docker compose build app
 ```

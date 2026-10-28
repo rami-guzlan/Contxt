@@ -111,7 +111,7 @@ GitHub account. For the local-model work: an NVIDIA GPU with a CUDA build of PyT
 Apple Silicon Mac), and plenty of disk for model downloads.
 
 ```bash
-git clone https://github.com/rami-guzlan/Contxt.git
+git clone https://github.com/rami-guzlan/Gnomon-Brain.git
 ```
 
 ```bash
@@ -367,7 +367,7 @@ model's behavior is made yet.
   - a branch per step;
   - full checks;
   - push and one PR into `main`, with the desktop app's Auto-fix turned on;
-  - merging by hand with `gh pr merge <n> --repo rami-guzlan/Contxt --merge` once CI is green.
+  - merging by hand with `gh pr merge <n> --repo rami-guzlan/Gnomon-Brain --merge` once CI is green.
   Never merge red, never turn on auto-merge, never poll CI or schedule checks. Ask whether the
   same authority holds for new work.
 - **Never develop in, or update, the checkout that runs his live app** unless he asks. Use
@@ -503,7 +503,7 @@ uv run python scripts/retrieval_eval.py
 ```
 
 ```bash
-gh pr list --repo rami-guzlan/Contxt
+gh pr list --repo rami-guzlan/Gnomon-Brain
 ```
 
 ```bash

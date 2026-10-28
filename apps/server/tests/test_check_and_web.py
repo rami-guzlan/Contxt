@@ -130,6 +130,21 @@ def test_the_download_is_checked_against_its_checksum(tmp_path, monkeypatch):
     assert (target / "index.html").read_text(encoding="utf-8") == "built"
 
 
+def test_the_web_app_comes_from_the_project_s_current_repository(tmp_path, monkeypatch):
+    monkeypatch.delenv("CONTXT_RELEASE_REPOSITORY", raising=False)
+    monkeypatch.delenv("WORKSPACE_RELEASE_REPOSITORY", raising=False)
+    asked = []
+
+    def assets(repo, tag, token):
+        asked.append(repo)
+        return {}
+
+    monkeypatch.setattr(webapp, "release_assets", assets)
+    with pytest.raises(webapp.WebAppError):
+        webapp.download(str(tmp_path / "dist"), version="9.9.9", token="")
+    assert asked == ["rami-guzlan/Gnomon-Brain"]
+
+
 def test_a_token_is_never_sent_on_to_where_github_redirects(monkeypatch):
     seen = []
 

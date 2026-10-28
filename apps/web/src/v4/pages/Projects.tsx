@@ -252,7 +252,7 @@ export function NewProject({ onClose, onMade }: { onClose: () => void; onMade: (
           <Later />
         </span>
         <span style={css("font:400 12px/1.45 Geist;color:var(--muted)")}>
-          Templates come with the board, a later phase. Every project starts with Context, Tasks, Files and Outputs.
+          Templates are a later phase. Every project starts with Context, Tasks, Files and Outputs.
         </span>
       </div>
       <textarea
