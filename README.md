@@ -137,6 +137,7 @@ A beat never sends, posts, replies or spends. On the demo Brain, a beat that cha
 used about 4,000 tokens on the Claude Code plan. Reads through **n8n** cost no tokens: a
 workflow on your computer reads an app with the sign-ins you gave n8n and posts what changed to
 Gnomon. Code checks that every step of such a workflow only reads.
+What each kind of work costs, and a typical day: [docs/costs.md](docs/costs.md).
 
 ### One Brain, every AI
 
