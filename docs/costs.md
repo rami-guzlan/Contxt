@@ -19,7 +19,7 @@ Measured on October 28, 2026 on the entrepreneur demo Brain, unless it says othe
 | Claude Code itself, as Gnomon starts it | in every run below | 3,900 | $0.0007 |
 | A beat with no connector due | every beat | 0: no model call | none |
 | Reads through n8n, folders and Scout | each beat | 0 | none |
-| A connector read through Claude Code | each scheduled read | 33,000 to 206,000 | $0.004 to $0.011 |
+| A connector read through Claude Code | each scheduled read | 33,000 to 209,000 | $0.004 to $0.010 |
 | The nightly distill, 50 items | once a night | 25,000 | $0.0099 |
 | An answer through the Brain, two turns | each time an AI app asks | 29,000 | $0.0034 |
 | A Work with AI job or Run now, a five-line note | when you start one | 52,000 | $0.0035 |
@@ -29,21 +29,24 @@ Measured on October 28, 2026 on the entrepreneur demo Brain, unless it says othe
 About connector reads. A read lists what changed, opens the newest items and answers; each
 turn reads Claude Code's prompt and the connector's own tools again, from cache, so a
 connector with many large tools costs more even when nothing is new. Real Test reads, October
-28, on Haiku 5.5 or just before reads were moved to it:
+28, on Haiku 5.5:
 
 | Connector | Items | Tokens | Cost | Time |
 |---|---|---|---|---|
-| Google Drive | 5 | 48,000 | $0.005 | 26 s |
+| Google Drive, average of 10 reads | 5 | 57,700 (48,000 to 84,000) | $0.0046 | 34 s |
 | A production app | 7 | 51,000 | $0.005 | 25 s |
 | Spotify | 6 | 33,000 | $0.005 | 26 s |
-| Notion, nothing new in 7 days | 0 | 140,000 to 206,000 | $0.008 to $0.011 | 21 s |
-| HubSpot, nothing new | 0 | 135,000 | $0.004 | 24 s |
+| HubSpot, a year back | 17 | 142,000 | $0.0066 | 35 s |
+| HubSpot, nothing new | 0 | 136,000 | $0.0043 | 24 s |
+| Notion, a year back | 5 | 209,000 | $0.010 | 40 s |
+| Notion, nothing new | 0 | 205,000 | $0.0085 | 21 s |
 
 - Most of those tokens are cache reads, which is why they cost so little.
 - Reading several connectors in one run costs less than reading them one by one: with small
   stand-in connectors, 3 quiet ones took 23,000 tokens together against 13,000 each apart.
 - Each read has a cap on turns and on spend ($0.05 a connector). A read that reaches either
-  fails and says so, instead of passing as nothing new.
+  fails and says so, instead of passing as nothing new. Notion's quiet read uses its turns
+  opening pages to check their dates, which is why it costs the most.
 
 About the side-by-side check: it runs on Sonnet 5.5. On the 80 labeled pairs of
 `scripts/safeguards_eval.py`, Sonnet named the right relation in 77, Haiku in 69 and the
