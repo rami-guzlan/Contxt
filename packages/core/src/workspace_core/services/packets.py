@@ -211,6 +211,18 @@ def resolve_inputs(tx: Tx, rt: Runtime, task_id: str) -> list[dict[str, Any]]:
     return inputs
 
 
+def _with_project(
+    rt: Runtime, inputs: list[dict[str, Any]], project: dict[str, Any] | None
+) -> list[dict[str, Any]]:
+    """The inputs, plus where the task's project stands when the Brain follows it (unless a
+    pin already brings it): the run starts from the project instead of searching for it."""
+    ref_id = (project or {}).get("brain_ref")
+    if not ref_id or any(i["ref"] == f"brain_project:{ref_id}" for i in inputs):
+        return inputs
+    found = _project_input(rt, {"ref_id": ref_id, "note": "The task's project."})
+    return inputs if found.get("missing") else [*inputs, found]
+
+
 def review_notes(tx: Tx, task_id: str) -> list[dict[str, Any]]:
     """What the reviewer said about the previous run's output, for the next attempt."""
     runs = schema.task_runs
@@ -245,8 +257,17 @@ def resolve(
     project = tx.get(schema.projects, task["project_id"]) if task["project_id"] else None
     assignee = tx.get(schema.actors, task["assignee_id"]) if task["assignee_id"] else None
     schedule = Schedule.from_dict(task["schedule"])
+    # The project's title goes in too: a prompt like "a status note for this project" names
+    # none, and a brief without the project sends the run to fetch it, a turn per note.
     request = task["brain_request"] or "\n".join(
-        part for part in (task["title"], task["purpose"], task["instructions"]) if part
+        part
+        for part in (
+            task["title"],
+            task["purpose"],
+            project["title"] if project else "",
+            task["instructions"],
+        )
+        if part
     )
     if task["template"] == "challenge":
         # Blind: the beliefs under test are in the instructions, only as claims; a brief would
@@ -284,7 +305,7 @@ def resolve(
             "describe": schedule.describe(task["timezone"]),
             "due_at": task["next_due_at"],
         },
-        "inputs": resolve_inputs(tx, rt, task["id"]),
+        "inputs": _with_project(rt, resolve_inputs(tx, rt, task["id"]), project),
         "brain": {
             "available": brain.available,
             "text": brain.text,
