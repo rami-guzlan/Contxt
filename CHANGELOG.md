@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-28)
 
 The first release of Contxt: one Brain for every AI you use, on your own computer.
 
@@ -221,4 +221,63 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
 - Moving in takes files of any kind, zips included: documents, instruction files, any text,
   and ChatGPT's and Claude's data exports (their conversations as your own words); what cannot
   be read is named with why.
+- The redesigned app, Gnomon: Home with the heartbeat bar, the Brain as regions of a real
+  brain, Catch up, Capture, Projects, Agents, Activity and Settings. It is the same product and
+  the same `contxt` command.
+- Auto by default: your AI keeps the Brain itself. Every change is an undo point with its
+  reason, and it pauses itself at 50 changes a day. Must-holds, private notes, sealed projects,
+  proposed lessons, and anything customer-facing or that spends still wait for you.
+- The heartbeat: on a schedule, Claude Code reads the connectors already set up in your CLIs.
+  It is read-only and never sends, posts or spends. It updates the live status of each region
+  and project. n8n on this computer can read your apps with no tokens. Onboarding reads what
+  Claude Code, Codex and Gemini already keep on you.
+- Learning: beats only stage what they find. A nightly distill nets the day's changes, checks
+  them against your goal and filters, and files each one into short-term sheets or long-term
+  notes, or sends it to Catch up, with a reason. Live sheets can apply during the day.
+- Connectors, the same for every source:
+  - one setup from found to on in the app: signed in, read-only check, a test read showing
+    items, tokens and cost, then your goal, filters and how often;
+  - `contxt connectors check` runs the same check from the terminal;
+  - a Sign in button with the right steps for each source, and "Check again";
+  - a sign-in that expires during a beat becomes a Catch up card;
+  - a read loads only that connector's tools, waits for slow account connectors, is capped in
+    turns and cost, and fails rather than coming back quietly empty;
+  - connectors that are off fold into a short "Found, off" list.
+- Context sheets live in SQLite, with their history as monthly text files in the Brain's git.
+- Grouped MCP tools: one tool per area with an `action` (for example
+  `notes(action: "search" | "get" | "related" | ...)`). The old names still work.
+- The startup context: a short map of the Brain and operating rules any model can follow,
+  sent once per session, with diffs after that.
+- The Brain as a world:
+  - relationships between notes (supersedes, belongs to, cites, mentions, conflicts with, and
+    links you keep through proposals);
+  - a timeline with "what changed since";
+  - a short world overview kept after each distill;
+  - the World page, with lessons placed where they were learned and "since my last visit".
+- The Test bench (Brain › Test bench):
+  - Brain versions as git tags, with diff and restore;
+  - the packet by section with why each item was chosen, with include and exclude;
+  - no brain, full brain and custom side by side on the same model;
+  - saved tests and suites in the Brain folder, scored by you or a Haiku grader;
+  - suites rerun after each distill, with a "Quality dropped" card and roll back.
+- Retrieval:
+  - the top note goes whole and runners-up go as pointers;
+  - must-holds measured against the best match;
+  - must-hold scopes ("applies when / not when") kept through Catch up;
+  - close calls sent as one-line pointers;
+  - an answer-recall eval that counts what reached the AI by the end of its answer.
+  Fuller packets are in the code and off by default: they raised recall but not correct
+  answers (`docs/evals/packet-fill-2026-10-27.md`).
+- Tasks is where AI work happens in a project:
+  - Work with AI on Claude Code, Codex CLI or Gemini CLI with the model you choose;
+  - workflows of up to 10 steps, each on its own AI, handing work on through Outputs;
+  - a yes gate before anything is sent outside, plus budgets and retry;
+  - orchestrators, and a timeline of what each step did and cost.
+  The project Board is gone.
+- What it costs (`docs/costs.md`), on Haiku:
+  - a typical day with three connectors is about 1.8M tokens, $0.10 to $0.25;
+  - a light day is about $0.06, and a heavy one about $0.60;
+  - connectors are read every 4 hours by default, backing off to 12 hours when nothing is new;
+  - a beat with nothing due costs nothing.
+- `contxt web --download` fetches the built web app from this repository's release.
 - Source-available under the PolyForm Shield License 1.0.0.
