@@ -275,9 +275,9 @@ The first release of Contxt: one Brain for every AI you use, on your own compute
   - orchestrators, and a timeline of what each step did and cost.
   The project Board is gone.
 - What it costs (`docs/costs.md`), on Haiku:
-  - a typical day with three connectors is about 1.8M tokens, $0.10 to $0.25;
+  - a typical day with three connectors is about 1.6M tokens, $0.10 to $0.25;
   - a light day is about $0.06, and a heavy one about $0.60;
   - connectors are read every 4 hours by default, backing off to 12 hours when nothing is new;
-  - a beat with nothing due costs nothing.
+  - a beat with nothing due costs nothing, and a read with nothing new stops early.
 - `contxt web --download` fetches the built web app from this repository's release.
 - Source-available under the PolyForm Shield License 1.0.0.
