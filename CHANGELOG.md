@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- The Brain's MCP server lists three tools instead of 15: `context`, `brain(action)` and
+  `propose(kind)`. Every connected app now loads about 780 tokens for them, down from about
+  6,600. `brain(action: "help")` has the details, and every earlier tool name still answers.
+- The startup context is sent once: not at all when the app loaded the startup file that
+  carries it.
+- Packets are shorter. A later message in a conversation no longer repeats how to continue.
+  An edit gets no list of other notes. The other notes listed carry shorter summaries.
+  `briefs.pointers` in brain.json caps how many are listed (no cap by default).
+- In Claude Code, the prompt hook files a rule, preference or decision you state as a
+  proposal for review, with no model call. It no longer reminds the model to call the Brain
+  on every message.
+
 ## 0.1.0 (2026-10-28)
 
 The first release of Contxt: one Brain for every AI you use, on your own computer.

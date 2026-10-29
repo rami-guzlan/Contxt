@@ -31,9 +31,9 @@ def reminder(brain, session: str) -> str | None:
     saved = str((task.get("card") or {}).get("at") or "")
     if saved and saved >= str(last.get("at") or ""):
         return None
-    return (f"Before you stop: save where you are on {task['id']} with todos_update (done so "
-            "far, next step), pass it on, or finish it, so the next session starts from the "
-            "card.")
+    return (f"Before you stop: save where you are on {task['id']} with "
+            'propose(kind: "todo") (done so far, next step), pass it on, or finish it, so the '
+            "next session starts from the card.")
 
 
 def main() -> int:

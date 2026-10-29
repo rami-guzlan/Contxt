@@ -56,7 +56,7 @@ class PullBudgetTest(unittest.TestCase):
 
     def test_the_packet_says_what_may_still_be_opened(self):
         found = self.brain.context("Anything else?", session_id=self.session)
-        self.assertIn("open up to 2 more items (about 1,500 tokens)", found.text)
+        self.assertIn("Pull budget: 2 more items (about 1,500 tokens)", found.text)
 
 
 if __name__ == "__main__":

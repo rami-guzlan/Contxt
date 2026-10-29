@@ -30,7 +30,7 @@ def test_an_ai_app_connects_by_url_with_its_token_and_gets_the_brains_tools(owne
     )
     tools = post(owner.client, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, token)
     names = {t["name"] for t in tools.json()["result"]["tools"]}
-    assert {"gnomon_get_context", "notes", "projects"} <= names  # one tool per area
+    assert names == {"context", "brain", "propose"}  # the earlier names still answer
     packet = post(
         owner.client,
         {

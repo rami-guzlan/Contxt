@@ -96,7 +96,7 @@ class SectionAddressTest(unittest.TestCase):
 
     def test_the_default_pull_budget_is_two_items_and_about_1500_tokens(self):
         found = self.brain.context("Anything else?", session_id=self.session)
-        self.assertIn("open up to 2 more items (about 1,500 tokens)", found.text)
+        self.assertIn("Pull budget: 2 more items (about 1,500 tokens)", found.text)
         self.assertEqual(governance.policies(self.brain)["pull_items"], 2)
         self.assertEqual(governance.policies(self.brain)["pull_tokens"], 1500)
 
@@ -104,7 +104,7 @@ class SectionAddressTest(unittest.TestCase):
         done = governance.set_policies(self.brain, {"pull_items": 3, "pull_tokens": 3000})
         self.assertFalse(done.is_error, done.text)
         found = self.brain.context("Anything else?", session_id=self.session)
-        self.assertIn("open up to 3 more items (about 3,000 tokens)", found.text)
+        self.assertIn("Pull budget: 3 more items (about 3,000 tokens)", found.text)
 
     def test_something_gone_since_the_map_was_built_is_not_found_with_when(self):
         st = self.brain.state()

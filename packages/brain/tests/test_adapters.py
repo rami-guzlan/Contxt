@@ -54,12 +54,10 @@ class MCPServerTests(unittest.TestCase):
     def test_handshake_tools_and_a_full_task(self):
         init = self.rpc("initialize", {"protocolVersion": "2025-06-18"})
         self.assertEqual(init["result"]["protocolVersion"], "2025-06-18")
-        self.assertIn("gnomon_get_context", init["result"]["instructions"])
+        self.assertIn("Call context first", init["result"]["instructions"])
         names = {t["name"] for t in self.rpc("tools/list")["result"]["tools"]}
-        # One tool per area, and gnomon_get_context on its own (grouped tools, item 5).
-        self.assertEqual(names, {"gnomon_get_context", "gnomon", "skills", "files", "notes",
-                                 "projects", "outputs", "agents", "sheets", "todos",
-                                 "receipts", "taste", "gaps", "lore", "activity"})
+        # Three tools (section 17.4); every earlier name still answers.
+        self.assertEqual(names, {"context", "brain", "propose"})
         first = self.call("gnomon_get_context", {"request": "How long do web design projects run?"})
         self.assertFalse(first["isError"], first)
         text = first["content"][0]["text"]
@@ -102,7 +100,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertFalse(found["isError"], found)
         text = found["content"][0]["text"]
         self.assertIn("facts-services-002", text)
-        self.assertIn('notes(action: "get"', text)
+        self.assertIn('brain(action: "get"', text)
         opened = self.call("notes_get", {"id": "facts-services-002", "session_id": session})
         self.assertFalse(opened["isError"], opened)
         again = self.call("notes_search", {"query": "how long web design projects take",

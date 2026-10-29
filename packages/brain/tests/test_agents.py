@@ -124,7 +124,7 @@ class AgentTests(unittest.TestCase):
         taken = server.call("agents_get", {"name": "case-writer", "session_id": "s-1"})
         self.assertFalse(taken.is_error, taken.text)
         self.assertIn("# You are working as case-writer", taken.text)
-        self.assertIn("call gnomon_get_context with the request and session_id s-1", taken.text)
+        self.assertIn("call context with the request and session_id s-1", taken.text)
         self.assertTrue(server.call("agents_get", {"name": "nobody"}).is_error)
 
     def test_work_procedures_ship_with_the_engine(self):

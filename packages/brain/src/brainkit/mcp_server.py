@@ -26,25 +26,22 @@ if __package__ in (None, ""):
 
 from brainkit import runtime, statements
 from brainkit.api import Brain, Result
-from brainkit.evidence import READING_GUIDANCE
+from brainkit.evidence import READING_GUIDANCE, READING_SHORT
 
 PROTOCOL_DEFAULT = "2024-11-05"
-INSTRUCTIONS = ("Call gnomon_get_context first for every request, and again for every later "
-                "message in the conversation that asks for something new: it sends only what the "
-                "conversation does not already hold, and one line for a pure edit. Pass the "
-                "user's message as they wrote it, and the session_id it returns (or the one your "
-                "session start named) on every later call. If the packet lacks something the "
-                "work needs, notes_search in your own words and open a hit with notes_get. Open "
-                "procedures and documents only when the packet points at them. Capture as you "
-                "go, without being asked: a durable rule, correction, preference, decision or "
-                "changed fact the person states goes to notes_propose (quote them in evidence); "
-                "a procedure you work out together to skills_propose_change; a document they share or "
-                "work on (a proposal, a brief, a deck) to files_upload, with its project. Keep "
-                "fast-changing values (an account's health, a repo's owner) with sheets_propose_update, "
-                "and a task's progress with todos_update: when you take it, after real work, when "
-                "blocked, before you stop, and when done.")
+# What a client loads before its first message (section 17.4: about 1k tokens with the three
+# tools): when to ask, how to pull more, and how to suggest. The details of every action and
+# kind come back from brain(action: "help"), not from the schemas.
+INSTRUCTIONS = ("Call gnomon_get_context first, with the person's request: it "
+                "returns what the Brain holds for it and a session_id. Pass the session_id on "
+                "every later call; call gnomon_get_context again when the work turns to "
+                "something new (it sends only what this conversation lacks), and with "
+                "fresh=true after a compaction. When the packet lacks something, notes_search "
+                "in your own words, then notes_get or gnomon_open. Suggestions go through "
+                "propose: they wait for the owner or apply as the owner's policy says. "
+                "brain_help documents every action and kind.")
 
-INSTRUCTIONS += " " + READING_GUIDANCE
+INSTRUCTIONS += " " + READING_SHORT
 
 _STR = {"type": "string"}
 AGENT_TOOLS = [
@@ -611,10 +608,10 @@ HANDLERS = {
 }
 
 
-# Grouped tools (the owner's list, item 5), Webflow's convention: one tool per area with an
-# `action` parameter, built from the one-per-action definitions above (`notes_search` is the
-# `notes` tool's `search`). `gnomon_get_context` stays its own tool, called first every time.
-# The one-per-action names still answer; every text sent out names the grouped form.
+# Grouped tools (the owner's list, item 5): one tool per area with an `action` parameter,
+# built from the one-per-action definitions above (`notes_search` is the `notes` tool's
+# `search`). Since section 17.4 they are no longer listed, but every grouped name still
+# answers, like every one-per-action name and every name in ALIASES.
 FIRST = "gnomon_get_context"
 
 
@@ -646,21 +643,176 @@ def _grouped(tools: list[dict]) -> list[dict]:
 GROUPED = _grouped(AGENT_TOOLS)
 GROUPS = {t["name"]: t["inputSchema"]["properties"]["action"]["enum"]
           for t in GROUPED if t["name"] != FIRST}
-_FLAT = sorted((t["name"] for t in AGENT_TOOLS if t["name"] != FIRST), key=len, reverse=True)
-_FLAT_NAME = re.compile(r"\b(" + "|".join(map(re.escape, _FLAT)) + r")\b(?:\(([^()]*)\))?")
+
+# The three tools every app is shown (section 17.4 of the v4 plan): `context` first, `brain`
+# for every read and `propose` for every suggestion. Each action or kind is one of the
+# definitions above, so behavior, governance and the old names stay exactly as they were.
+BRAIN_ACTIONS = {
+    "search": "notes_search", "get": "notes_get", "open": "gnomon_open",
+    "related": "notes_related", "timeline": "activity_timeline", "map": "gnomon_map",
+    "skill": "skills_get", "file": "files_open", "sheet": "sheets_get", "taste": "taste_get",
+    "lore": "lore_list", "lesson": "lore_get", "receipt": "receipts_get",
+    "agents": "agents_list", "agent": "agents_get", "sessions": "activity_sessions_search",
+    "health": "gnomon_health",
+}
+PROPOSE_KINDS = {
+    "note": "notes_propose", "challenge": "notes_challenge", "skill": "skills_propose_change",
+    "file": "files_upload", "project": "projects_create",
+    "progress": "projects_propose_progress", "todo": "todos_update",
+    "sheet": "sheets_propose_update", "taste": "taste_propose", "lesson": "lore_propose",
+    "output": "outputs_save", "gap": "gaps_flag",
+}
+# Under `propose`, `kind` picks the kind, so a definition's own `kind` takes another name.
+KIND_PARAM = {"note": "note_kind", "file": "library"}
+HELP = "brain_help"
+TOOLS = [
+    {"name": "context",
+     "description": "Call first with the person's request, and again with the "
+                    "session_id when the work turns to something new. Returns the context "
+                    "packet: only what this conversation does not hold yet.",
+     "inputSchema": {"type": "object", "properties": {
+         "request": {"type": "string", "description": "The person's message as written."},
+         "session_id": _STR,
+         "fresh": {"type": "boolean", "description": "True after a compaction."},
+         "startup_fingerprint": {"type": "string",
+                                 "description": "The kernel fingerprint your startup file "
+                                                "names, if any."},
+         "context": {"type": "string", "description": "A task (T-41), goal, project or "
+                                                      "sheet/row this work is for."}},
+         "required": ["request"]}},
+    {"name": "brain",
+     "description": "Read from the Brain when the packet lacks something: search (query), get "
+                    "(a note or lesson by id), open (an address the packet or map names), "
+                    "related, timeline (since), map, skill, file, sheet, taste, lore, receipt, "
+                    "agents, agent, sessions, health. help (about) gives each action's fields.",
+     "inputSchema": {"type": "object", "properties": {
+         "action": {"type": "string", "enum": [*BRAIN_ACTIONS, "help"]},
+         "query": _STR, "id": _STR, "address": _STR, "name": _STR, "path": _STR,
+         "since": _STR, "about": _STR, "session_id": _STR},
+         "required": ["action"]}},
+    {"name": "propose",
+     "description": "Suggest a change, quoting the person's words in evidence: note (a lasting "
+                    "rule, preference, decision or changed fact), challenge (a note is wrong), "
+                    "todo, sheet, project, progress, skill, file, taste, lesson, output, gap. It "
+                    "waits for the owner or applies as their policy says. brain(action: "
+                    "\"help\", about: \"<kind>\") gives each kind's fields.",
+     "inputSchema": {"type": "object", "properties": {
+         "kind": {"type": "string", "enum": list(PROPOSE_KINDS)},
+         "text": _STR, "title": _STR, "evidence": _STR, "session_id": _STR},
+         "required": ["kind"]}},
+]
+
+# How each definition is written in text sent out: `notes_search` as
+# `brain(action: "search")`, `notes_propose(text=...)` as `propose(kind: "note", text=...)`.
+_FORM = {FIRST: ("context", None, None), HELP: ("brain", "action", "help")}
+_FORM.update({flat: ("brain", "action", action) for action, flat in BRAIN_ACTIONS.items()})
+_FORM.update({flat: ("propose", "kind", kind) for kind, flat in PROPOSE_KINDS.items()})
+_NAMES = sorted(_FORM, key=len, reverse=True)
+_FLAT_NAME = re.compile(r"\b(" + "|".join(map(re.escape, _NAMES)) + r")\b(?:\(([^()]*)\))?")
+_GROUPED_NAME = re.compile(r"\b(" + "|".join(map(re.escape, GROUPS)) + r')\(action: "(\w+)"')
 
 
-def grouped_text(text: str) -> str:
-    """`notes_search` written as `notes(action: "search")`, and `notes_get(id="...")` as
-    `notes(action: "get", id="...")`: the tools a client is shown."""
+def public_text(text: str) -> str:
+    """Text as the three tools a client is shown name things: `notes_search` and
+    `notes(action: "search")` become `brain(action: "search")`, `gnomon_get_context`
+    becomes `context`, `notes_propose` becomes `propose(kind: "note")`."""
+    def grouped(found):
+        form = _FORM.get(f"{found.group(1)}_{found.group(2)}")
+        return f'{form[0]}({form[1]}: "{form[2]}"' if form and form[1] else found.group(0)
+
     def named(found):
-        area, action = _area(found.group(1))
+        tool, key, value = _FORM[found.group(1)]
         rest = (found.group(2) or "").strip()
-        return f'{area}(action: "{action}"' + (f", {rest})" if rest else ")")
-    return _FLAT_NAME.sub(named, str(text or ""))
+        if key is None:
+            return f"{tool}({rest})" if found.group(2) is not None else tool
+        return f'{tool}({key}: "{value}"' + (f", {rest})" if rest else ")")
+    return _FLAT_NAME.sub(named, _GROUPED_NAME.sub(grouped, str(text or "")))
 
 
-INSTRUCTIONS = grouped_text(INSTRUCTIONS)
+grouped_text = public_text  # its name before section 17.4
+
+
+def _definition(flat: str) -> dict:
+    return next(t for t in FULL_TOOLS if t["name"] == flat)
+
+
+def _fields(flat: str, rename: dict | None = None) -> list[tuple[str, str]]:
+    out = []
+    for key, spec in (_definition(flat).get("inputSchema") or {}).get("properties",
+                                                                        {}).items():
+        if key == "session_id":
+            continue
+        about = spec.get("description") or ""
+        if spec.get("enum"):
+            about = (about + " " if about else "") + "One of: " + ", ".join(spec["enum"]) + "."
+        out.append(((rename or {}).get(key, key), about))
+    return out
+
+
+def _doc(label: str, flat: str, rename: dict | None = None, full: bool = False) -> str:
+    fields = _fields(flat, rename)
+    description = _definition(flat).get("description") or ""
+    if not full:
+        first = re.split(r"(?<=[.!?])\s", description, maxsplit=1)[0]
+        return f"- {label}({', '.join(name for name, _ in fields)}): {first}"
+    lines = [f"### {label}", "", description, ""]
+    lines += [f"- `{name}`: {about}" if about else f"- `{name}`" for name, about in fields]
+    return "\n".join(lines)
+
+
+def _rename(kind: str) -> dict | None:
+    return {"kind": KIND_PARAM[kind]} if kind in KIND_PARAM else None
+
+
+def help_text(about: str = "") -> Result:
+    """The documentation the schemas leave out: every action and kind with its fields."""
+    about = str(about or "").strip().lower()
+    if about == "reading":
+        return Result(READING_GUIDANCE, {"status": "ok"})
+    if about in ("context", FIRST):
+        return Result(_doc("context", FIRST, full=True), {"status": "ok"})
+    if about == "propose":
+        return Result("\n\n".join(_doc(f'propose(kind: "{k}")', flat, _rename(k), full=True)
+                                  for k, flat in PROPOSE_KINDS.items()), {"status": "ok"})
+    if about in BRAIN_ACTIONS:
+        return Result(_doc(f'brain(action: "{about}")', BRAIN_ACTIONS[about], full=True),
+                      {"status": "ok"})
+    if about in PROPOSE_KINDS:
+        return Result(_doc(f'propose(kind: "{about}")', PROPOSE_KINDS[about], _rename(about),
+                           full=True), {"status": "ok"})
+    lines = ["# The Brain's tools", "",
+             "context(request, session_id, fresh, startup_fingerprint, context, focus, "
+             "task_type, partition): the packet for a request.", "",
+             "## brain(action, ...): reads", ""]
+    lines += [_doc(a, flat) for a, flat in BRAIN_ACTIONS.items()]
+    lines += ["", "## propose(kind, ...): suggestions, quoting the person in evidence", ""]
+    lines += [_doc(k, flat, _rename(k)) for k, flat in PROPOSE_KINDS.items()]
+    lines += ["", 'Details of one: brain(action: "help", about: "<action or kind>"); '
+              '"propose" for every kind, "reading" for how to read evidence. Every name these '
+              "tools had before still answers."]
+    return Result("\n".join(lines), {"status": "ok", "actions": list(BRAIN_ACTIONS),
+                                     "kinds": list(PROPOSE_KINDS)})
+
+
+def startup_fingerprint(start: str) -> str | None:
+    """The kernel fingerprint of the startup file a client launched here loads: CLAUDE.md or
+    AGENTS.md in this folder or the nearest one above it that has one."""
+    from brainkit import kernel
+    folder = os.path.abspath(start or os.getcwd())
+    while True:
+        for name in ("CLAUDE.md", "AGENTS.md"):
+            found = kernel.file_fingerprint(folder, name)
+            if found:
+                return found
+        parent = os.path.dirname(folder)
+        if parent == folder:
+            return None
+        folder = parent
+
+
+# Clients that load the startup file of the folder they run in, so a kernel fingerprint found
+# there is one their model already holds.
+READS_STARTUP_FILE = ("claude-code", "codex")
 
 
 class Server:
@@ -669,9 +821,10 @@ class Server:
         profile = (profile or os.environ.get("BRAIN_MCP_PROFILE") or "agent").strip().lower()
         self.profile = profile if profile in ("agent", "full") else "agent"
         flat = FULL_TOOLS if self.profile == "full" else AGENT_TOOLS
-        self.tools = GROUPED + [t for t in flat if t not in AGENT_TOOLS]
+        self.tools = TOOLS + [t for t in flat if t not in AGENT_TOOLS]
         self.available = {t["name"] for t in flat}
         self.out = out or sys.stdout
+        self.startup_fingerprint: str | None = None
 
     def reply(self, msg_id, result=None, error=None):
         message = {"jsonrpc": "2.0", "id": msg_id}
@@ -684,12 +837,39 @@ class Server:
 
     def call(self, name, arguments) -> Result:
         found = self._call(name, arguments)
-        return Result(grouped_text(found.text), found.data, is_error=found.is_error)
+        return Result(public_text(found.text), found.data, is_error=found.is_error)
 
     def _call(self, name, arguments) -> Result:
         name = ALIASES.get(name, name)  # a name from before the MCP Tools.md surface
-        if name in GROUPS:
-            action = str((arguments or {}).get("action") or "").strip()
+        arguments = dict(arguments or {})
+        if name == "context":
+            name = FIRST
+        elif name == "brain":
+            action = str(arguments.pop("action", "") or "").strip()
+            if action == "help":
+                return help_text(arguments.get("about") or arguments.get("name") or "")
+            if action == "get" and str(arguments.get("id") or "").startswith("lore_"):
+                action = "lesson"
+            if action not in BRAIN_ACTIONS:
+                said = f"No action {action!r} in brain." if action else "Say which action."
+                return Result(f"{said} brain does: {', '.join(BRAIN_ACTIONS)}, help.",
+                              {"status": "invalid", "actions": list(BRAIN_ACTIONS)},
+                              is_error=True)
+            name = BRAIN_ACTIONS[action]
+        elif name == "propose":
+            kind = str(arguments.pop("kind", "") or "").strip()
+            if kind not in PROPOSE_KINDS:
+                said = f"No kind {kind!r} in propose." if kind else "Say which kind."
+                return Result(f"{said} propose takes: {', '.join(PROPOSE_KINDS)}.",
+                              {"status": "invalid", "kinds": list(PROPOSE_KINDS)},
+                              is_error=True)
+            if kind in KIND_PARAM:
+                arguments["kind"] = arguments.pop(KIND_PARAM[kind], None)
+            name = PROPOSE_KINDS[kind]
+        elif name == HELP:
+            return help_text(arguments.get("about") or "")
+        elif name in GROUPS:
+            action = str(arguments.get("action") or "").strip()
             if action not in GROUPS[name]:
                 said = f"No action {action!r} in {name}." if action else "Say which action."
                 return Result(f"{said} {name} does: {', '.join(GROUPS[name])}.",
@@ -698,11 +878,16 @@ class Server:
         if name not in self.available:
             return Result(f"Tool {name!r} is not available in the {self.profile} profile.",
                           {"status": "unavailable"}, is_error=True)
+        if name == FIRST and self.startup_fingerprint and not arguments.get(
+                "startup_fingerprint"):
+            # The kernel is paid once: a client that loaded the startup file carrying it is
+            # not sent it again in its first packet.
+            arguments["startup_fingerprint"] = self.startup_fingerprint
         stale, why = runtime.stale()
         if stale:
             return Result(why, {"status": "stale"}, is_error=True)
         try:
-            return HANDLERS[name](self.brain, arguments or {})
+            return HANDLERS[name](self.brain, arguments)
         except Exception as exc:
             return Result(f"Tool error in {name}: {exc}", {"status": "error"}, is_error=True)
 
@@ -715,10 +900,13 @@ class Server:
                 # Which app this is, for the record of what each AI asked.
                 self.brain.client = " ".join(
                     str(client.get(k) or "") for k in ("name", "version")).strip()[:80]
+                if any(n in str(client.get("name") or "").lower()
+                       for n in READS_STARTUP_FILE):
+                    self.startup_fingerprint = startup_fingerprint(os.getcwd())
             self.reply(msg_id, {
                 "protocolVersion": params.get("protocolVersion", PROTOCOL_DEFAULT),
                 "capabilities": {"tools": {}},
-                "instructions": INSTRUCTIONS,
+                "instructions": public_text(INSTRUCTIONS),
                 "serverInfo": {"name": "brain", "version": runtime.VERSION,
                                "engine": runtime.STARTED_WITH, "profile": self.profile}})
         elif method in ("notifications/initialized", "initialized"):

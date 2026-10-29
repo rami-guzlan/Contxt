@@ -242,7 +242,7 @@ def test_every_app_gets_the_instruction_that_makes_it_ask_first():
     instructions = {s["instruction"] for s in setups.values()}
     assert len(instructions) == 1  # one text, wherever it goes
     (text,) = instructions
-    assert "gnomon_get_context" in text and "session_id" in text and "notes_propose" in text
+    assert "call context" in text and "session_id" in text and 'propose(kind: "note")' in text
     assert setups["claude-code"]["instruction_where"].startswith("~/.claude/CLAUDE.md")
     assert setups["codex"]["instruction_where"].startswith("~/.codex/AGENTS.md")
     assert "User Rules" in setups["cursor"]["instruction_where"]
@@ -255,7 +255,7 @@ def test_connect_prints_the_instruction_to_add(tmp_path, capsys, fetched):
     code, out = run(capsys, "--home", str(tmp_path), "connect", "codex")
     assert code == 0
     assert "Then add this to ~/.codex/AGENTS.md" in out.out
-    assert "call gnomon_get_context with my message as I wrote it" in out.out
+    assert "call context with my message as I wrote it" in out.out
 
 
 def test_the_app_shows_the_same_connection(owner, brain_vault):
@@ -265,7 +265,7 @@ def test_the_app_shows_the_same_connection(owner, brain_vault):
     clients = {c["client"]: c for c in body["clients"]}
     assert set(clients) == set(BRAIN_CLIENTS)
     assert "-m brainkit --vault" in clients["claude-code"]["command"]
-    assert "gnomon_get_context" in clients["cursor"]["instruction"]
+    assert "call context" in clients["cursor"]["instruction"]
 
 
 def test_a_new_brain_starts_auto_governed_with_no_notice(tmp_path):

@@ -183,7 +183,7 @@ class HookTests(unittest.TestCase):
     def test_the_prompt_hook_pushes_a_brief_only_when_something_is_new(self):
         self.run_hook(session_start, {"session_id": SESSION, "source": "startup"})
         pushed = self.prompt("How should headlines be written for the studio?")
-        self.assertIn(f"sent before you start under session_id cc:{SESSION}", pushed)
+        self.assertIn(f"The brief for this message, under session_id cc:{SESSION}", pushed)
         self.assertIn("# Task context", pushed)
         self.assertIn("sentence case", pushed)
         logged = self.brain.ledger.requests(limit=1)[0]
@@ -197,7 +197,7 @@ class HookTests(unittest.TestCase):
         # The same ask again holds nothing new: no push, the reminder instead.
         again = self.prompt("How should headlines be written for the studio?")
         self.assertNotIn("# Task context", again)
-        self.assertIn("call gnomon_get_context", again)
+        self.assertIn("call context with it first", again)
 
     def test_push_can_be_turned_off(self):
         with mock.patch.dict(os.environ, {"BRAIN_HOOK_PUSH": "0"}):

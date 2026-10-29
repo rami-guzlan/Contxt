@@ -79,6 +79,20 @@ def note_budget(config, route) -> int:
     return max(300, budget)
 
 
+POINTER_CHARS = 80    # of each listed note's summary
+
+
+def pointer_limit(config) -> int | None:
+    """How many notes a brief lists as also relevant (brain.json `briefs.pointers`): all the
+    route chose unless the owner sets fewer. A cap of six cost the general eval about four
+    points of reachability, so there is none by default."""
+    wanted = (config.data.get("briefs") or {}).get("pointers")
+    try:
+        return None if wanted is None else max(0, int(wanted))
+    except (TypeError, ValueError):
+        return None
+
+
 def body_limit(config, route) -> int:
     """How many notes a brief carries in full before the rest come in short."""
     wanted = (config.data.get("briefs") or {}).get("bodies") or {}
@@ -732,8 +746,10 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         lines.append("")
     chosen_ids = {n.id for n in chosen + held + unfit}
     related = [r for r in route.related if r.item.id not in chosen_ids]
-    # Notes it would open by name: listed only for a model that can open them.
-    listed = related if tools else []
+    # Notes it would open by name: listed only for a model that can open them (at most
+    # `briefs.pointers` when the owner sets it), and none for an edit, which works on what the
+    # conversation already holds (section 17.4).
+    listed = related[:pointer_limit(config)] if tools and not route.signals.edit else []
     if listed and route.mode == "lean":
         lines += ["## Closest notes (not included)", "",
                   "Nothing in the brain is specific enough to include for this request. These "
@@ -752,26 +768,25 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
             named = (f", named by `{scored.detail['linked_from']}`"
                      if scored.detail.get("linked_from") else "")
             if note.meta.get("title"):
-                gist = f": {util.excerpt(note.summary, 110)}" if note.summary else ""
-                lines.append(f"- {note.title} (`{note.id}`, {note.route_key}{named}){gist}")
+                gist = f": {util.excerpt(note.summary, POINTER_CHARS)}" if note.summary else ""
+                lines.append(f"- {note.title} (`{note.id}`{named}){gist}")
             else:
-                lines.append(f"- `{note.id}` ({note.route_key}): "
-                             f"{util.excerpt(note.index_line, 110)}")
-        lines += ["", 'Open one with notes_get(id="...") if the task needs it; for anything '
-                  "else missing, notes_search in your own words.", ""]
+                lines.append(f"- `{note.id}`: {util.excerpt(note.index_line, POINTER_CHARS)}")
+        lines += ["", 'Open one with notes_get(id) if the task needs it; else notes_search.',
+                  ""]
     if held or held_sections:
         names = [n.id + ("" if already_held(n) else " (excerpt only)") for n in held]
         names += [f"{index.file_title(s.path)}: {s.label}" + (
             "" if _holds(delivered.get(("section", s.id)), "section:" + s.body_hash)
             else " (excerpt only)") for s in held_sections]
         lines += ["## Already in this conversation", "",
-                  "Delivered earlier in this session and unchanged: "
-                  + ", ".join(names)
+                  "Sent earlier, unchanged: " + ", ".join(names)
                   + ". Pass fresh=true if you no longer have them.", ""]
+    # What the request states as lasting is kept in the packet's data only (section 17.4): the
+    # prompt hook files it with no model call, and a client without hooks has
+    # propose(kind: "note") in its tools, so the text carries no capture nudge.
     candidates = ([] if not tools or route.mode in ("exact-note", "exact-skill", "focus-update")
                   else capture.detect(route.request))
-    if candidates:
-        lines += ["## Capture", "", capture.nudge(candidates), ""]
     next_line = None
     if not tools:
         if route.mode == "lean":
@@ -872,7 +887,7 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         "must_hold_pointer_ids": [m.note.id for m in close],
         # Every note the brief names without sending: the ones past its budget first, then
         # the ones listed as also relevant.
-        "related_ids": [n.id for n in unfit] + [r.item.id for r in related],
+        "related_ids": [n.id for n in unfit] + [r.item.id for r in listed],
         # Selected for this request but past the budget even in short: named under "Did not
         # fit", never dropped.
         "unfit_ids": [n.id for n in unfit],

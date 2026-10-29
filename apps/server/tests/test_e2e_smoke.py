@@ -148,10 +148,10 @@ def test_two_brain_processes_share_one_conversation(home, apps):
     first, second = apps
     vault = home["vault"]
     info = first.init()
-    assert info["serverInfo"]["name"] == "brain" and "gnomon_get_context" in info["instructions"]
+    assert info["serverInfo"]["name"] == "brain" and "Call context" in info["instructions"]
     second.init()
     names = {t["name"] for t in first.request("tools/list")["result"]["tools"]}
-    assert {"gnomon_get_context", "notes", "projects", "outputs"} <= names  # one per area
+    assert names == {"context", "brain", "propose"}  # the earlier names still answer
 
     opened, error = first.call(
         "gnomon_get_context", request="Write a LinkedIn post announcing the Q4 webinar series"
@@ -165,7 +165,7 @@ def test_two_brain_processes_share_one_conversation(home, apps):
         "gnomon_get_context", request="Make the opening line punchier", session_id=session
     )
     assert f"session_id: {session} (continuing)" in edit
-    assert "# Startup context" not in edit and f"kernel: {kernel} (current)" in edit
+    assert "# Startup context" not in edit and "kernel:" not in edit  # held: not said again
     assert last_packet(vault, session)["followup"] == "edit"
     side, _ = second.call(
         "gnomon_get_context", request="Who approves posts before they go out?", session_id=session
