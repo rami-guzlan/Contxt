@@ -12,7 +12,7 @@ from brainkit import gitops
 from brainkit.api import Brain
 from brainkit.index import Embedder
 from workspace_connectors.providers import BRAIN_CLIENTS, brain_setup
-from workspace_server import cli, homes
+from workspace_server import cli, homes, webapp
 from workspace_server.settings import Settings
 
 DEMOS = {"knowledge-company", "programmer", "entrepreneur", "personal"}
@@ -42,6 +42,20 @@ def fetched(monkeypatch):
         return {"available": True, "model": self.model_name, "reason": None, "loaded": False}
 
     monkeypatch.setattr(Embedder, "download", download)
+    return calls
+
+
+@pytest.fixture(autouse=True)
+def web_app(monkeypatch):
+    """The web app's download, stood in: setup fetches it when it is not built yet."""
+    calls: list[str] = []
+
+    def download(where, **_options):
+        calls.append(where)
+        return {"tag": "v0.1.0", "target": where, "bytes": 4096}
+
+    monkeypatch.setattr(webapp, "built", lambda where: bool(calls))
+    monkeypatch.setattr(webapp, "download", download)
     return calls
 
 
@@ -192,6 +206,20 @@ def test_setup_fetches_the_meaning_model_unless_offline(tmp_path, capsys, fetche
     code, out = run(capsys, "--home", str(tmp_path / "offline"), "setup", "--offline")
     assert code == 0 and len(fetched) == 1  # nothing more was fetched
     assert "models --download   match by meaning" in out.out
+
+
+def test_setup_gets_the_web_app_and_leaves_only_connect(tmp_path, capsys, fetched, web_app):
+    """Two commands to a working Brain: setup makes it (and fetches what it runs on), connect
+    joins an AI app. Everything else is optional, and switched on from the app later."""
+    code, out = run(capsys, "--home", str(tmp_path), "setup")
+    assert code == 0 and len(web_app) == 1 and "Put the web app of v0.1.0" in out.out
+    required, optional = out.out.split("Next, ")[1].split("When you want them:")
+    assert " connect claude-code" in required
+    assert "serve" not in required and "check" not in required
+    assert "web --download" not in out.out
+    assert " serve " in optional and "models --download" in optional
+    code, out = run(capsys, "--home", str(tmp_path / "offline"), "setup", "--offline")
+    assert code == 0 and len(web_app) == 1  # offline downloads nothing
 
 
 def test_setup_without_a_network_still_makes_the_brain(tmp_path, capsys, monkeypatch):

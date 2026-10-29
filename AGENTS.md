@@ -13,27 +13,26 @@ person's own computer.
 
 Do it step by step, and show the person each result.
 
-1. Check the prerequisites: `git`, `uv` and Node.js 20.19 or newer (22.12 or newer to run
-   the web tests).
-2. `uv sync`. On Windows, "Failed to update Windows PE resources" is antivirus scanning a
-   launcher uv wrote: run it again (each try gets further), or set `TMP` and `TEMP` to a
-   folder inside the repository first.
-3. `uv run contxt web --download` for the built web app (or, with Node.js 20.19+:
-   `npm install`, then `npm run build`).
-4. Ask which starter they want (`uv run contxt starters`; `empty` for their own Brain), then
-   `uv run contxt setup --brain <starter>`. Setup refuses to overwrite an existing `brain/`;
-   never delete or move one to get past that. Ask the person. Setup fetches the small model
-   that matches requests by meaning (about 70 MB, once); tell them, and use `--offline` if
-   they want nothing downloaded.
-5. `uv run contxt connect <app>` prints how to connect their AI app, and one instruction to
+Only steps 2 and 3 are required for a working Brain; the rest is optional.
+
+1. Check the prerequisites: `git` and `uv` (Node.js 20.19 or newer only to build the web app
+   yourself; 22.12 or newer to run the web tests). On Windows, "Failed to update Windows PE
+   resources" from uv is antivirus scanning a launcher uv wrote: run it again (each try gets
+   further), or set `TMP` and `TEMP` to a folder inside the repository first.
+2. Ask which starter they want (`uv run contxt starters`; `empty`, the default, for their own
+   Brain), then `uv run contxt setup --brain <starter>`. Setup refuses to overwrite an existing
+   `brain/`; never delete or move one to get past that. Ask the person. Setup fetches the web
+   app and the small model that matches requests by meaning (about 70 MB, once); tell them,
+   and use `--offline` if they want nothing downloaded.
+3. `uv run contxt connect <app>` prints how to connect their AI app, and one instruction to
    add to that app's own instructions so its model asks the Brain first. Show both to them.
    Adding either changes their configuration: ask before you run it or edit any settings or
    instructions file for them.
-6. `uv run contxt serve` starts the app and prints a sign-in link. That link is the owner's
-   key: tell them where to find it, but never paste it into a chat, a log or a file.
-7. `uv run contxt check` confirms it all works and names the fix for anything missing. Show
-   the person its output.
-8. Optional: `uv run contxt models --download` (about 480 MB, the local speech model; it also
+4. Optional: `uv run contxt serve` starts the app and prints a sign-in link. That link is the
+   owner's key: tell them where to find it, but never paste it into a chat, a log or a file.
+5. Optional: `uv run contxt check` confirms it all works and names the fix for anything
+   missing. Show the person its output.
+6. Optional: `uv run contxt models --download` (about 480 MB, the local speech model; it also
    fetches the meaning model if setup could not). Ask first.
 
 ## Layout

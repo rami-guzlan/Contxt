@@ -1,7 +1,8 @@
 # Setup
 
-The first success: your AI answers a question about your own work from your Brain. This guide
-gets you there in about ten minutes.
+The first success: your AI answers a question about your own work from your Brain. Two
+commands get you there, `contxt setup` and `contxt connect`; everything else is optional and
+switched on from the app later.
 
 ## 1. Install
 
@@ -12,16 +13,12 @@ You need [git](https://git-scm.com/) and [uv](https://docs.astral.sh/uv/), which
 - Windows (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
 ```bash
-git clone https://github.com/rami-guzlan/Contxt.git
-cd Contxt
-uv sync
-uv run contxt web --download
+git clone https://github.com/rami-guzlan/Gnomon-Brain.git
+cd Gnomon-Brain
 ```
 
-`web --download` fetches this version's built web app from its GitHub release and checks it
-against its checksum. To build it yourself instead, you need [Node.js](https://nodejs.org/)
-20.19+: `npm install`, then `npm run build`. On Windows, run the commands in PowerShell, one per
-line.
+The first `uv run` installs what Contxt needs. On Windows, run the commands in PowerShell, one
+per line.
 
 ## 2. Make your Brain
 
@@ -40,11 +37,14 @@ This makes three folders inside `Contxt/` and a settings file:
 
 Git ignores all four in the Contxt repository: your Brain and your data never end up in it.
 
-Setup also fetches, once, the small model that matches requests by meaning (BAAI/bge-small-en-v1.5,
+Setup also fetches this version's built web app from its GitHub release, checked against its
+checksum (to build it yourself instead, with [Node.js](https://nodejs.org/) 20.19+: `npm
+install`, then `npm run build`), and, once, the small model that matches requests by meaning (BAAI/bge-small-en-v1.5,
 about 70 MB, into `brain/vault/.brain/models`): matched by words alone, a Brain finds fewer of
 the notes a request needs (on the demo Brains, 77% of them against 88%). Without a network,
 setup makes the Brain anyway and says how to fetch the model later; `--offline` downloads
-nothing.
+nothing: the Brain then matches by words, and `uv run contxt web --download` fetches the app
+later.
 
 `setup` starts from the empty Brain. To start from a demo instead, name it:
 `uv run contxt setup --brain programmer`. `uv run contxt starters` lists them all, and
@@ -54,31 +54,12 @@ that is already there.
 To keep a Brain somewhere else (a synced folder, say), give setup another home:
 `uv run contxt --home D:\MyContxt setup`, then pass the same `--home` to the other commands.
 
-Then see that everything works:
+Whenever you want to see that everything works, `uv run contxt check` checks git, your Brain's
+health, that an AI app can connect to it (it starts the Brain's MCP server and asks for its
+tools, as Claude would), the web app, the local models and the port, and gives the one command
+that fixes anything missing.
 
-```bash
-uv run contxt check
-```
-
-It checks git, your Brain's health, that an AI app can connect to it (it starts the Brain's
-MCP server and asks for its tools, as Claude would), the web app, the local models and the
-port, and gives the one command that fixes anything missing.
-
-## 3. Start the app
-
-```bash
-uv run contxt serve
-```
-
-It prints the address (`http://127.0.0.1:8787`) and your sign-in link. Open the link: it
-signs this browser in with a cookie that stays on this computer. The link is your key, so
-keep it to yourself. `uv run contxt token` prints it again.
-
-Home offers the **first-time setup**: your name and timezone, your AI apps, what the Brain
-should know about you, a first project and its files. It ends at the **guided tour**, which
-the **?** at the top right replays at any time.
-
-## 4. Connect your AI apps
+## 3. Connect your AI apps
 
 ```bash
 uv run contxt connect
@@ -107,6 +88,20 @@ From then on, every chat starts by asking the Brain for the context its request 
 progress on your projects, files you share. Projects and files go in at once with an undo
 point; what else your AI picks up waits for you in **Catch up** (Settings, Approval, says what
 waits).
+
+## 4. Open the app (optional)
+
+```bash
+uv run contxt serve
+```
+
+starts the app, to see, review and steer your Brain. It prints the address (`http://127.0.0.1:8787`) and your sign-in link. Open the link: it
+signs this browser in with a cookie that stays on this computer. The link is your key, so
+keep it to yourself. `uv run contxt token` prints it again.
+
+Home offers the **first-time setup**: your name and timezone, your AI apps, what the Brain
+should know about you, a first project and its files. It ends at the **guided tour**, which
+the **?** at the top right replays at any time.
 
 ## 5. Talk (optional)
 

@@ -176,30 +176,58 @@ through a CLI on this computer, Claude Code by default, on your own plan. See
 - [Node.js](https://nodejs.org/) only to build the web app yourself (20.19 or newer) or to host
   n8n here (20.19 to 24).
 
-### 2. Install
+### 2. Make your Brain and connect your AI
+
+Two commands. The first makes your Brain in this folder, with the web app and the small
+model that matches requests by meaning (about 70 MB, once):
 
 ```bash
 git clone https://github.com/rami-guzlan/Gnomon-Brain.git
-cd Contxt
-uv sync
-uv run contxt web --download
+cd Gnomon-Brain
+uv run contxt setup
+uv run contxt connect claude-code
 ```
 
-`web --download` fetches this version's built web app and checks it. To build it yourself
-instead: `npm install`, then `npm run build`.
+`connect` prints one command: run it once, and every Claude Code session has your Brain. It
+also prints one instruction for that app's own instructions (for Claude Code,
+`~/.claude/CLAUDE.md`), so the model asks the Brain before every answer; a model reads your
+Brain only when it asks, and forgets most often on a follow-up. The same works for
+`claude-desktop`, `codex`, `cursor` and `other`.
 
-On Windows, if `uv sync` stops with "Failed to update Windows PE resources", antivirus is
+That is all a working Brain needs. Setup never overwrites a Brain that is already there.
+`--offline` downloads nothing: the Brain then matches by words, and the app can be fetched
+later with `uv run contxt web --download` (or built with Node.js: `npm install`, then
+`npm run build`).
+
+On Windows, if setup stops with "Failed to update Windows PE resources", antivirus is
 scanning a launcher uv just wrote. Run it again: each try gets further.
 
-### 3. Choose a starter
+### 3. Open the app when you want it
 
 ```bash
-uv run contxt starters
-uv run contxt setup --brain empty
+uv run contxt serve
 ```
 
-`empty` starts your own Brain. The four demos are made-up people and companies, good for
-looking around first:
+starts the app on `http://127.0.0.1:8787` and prints your sign-in link. That link is your
+key: keep it to yourself. `uv run contxt token` prints it again. Everything else is switched
+on from the app: capture, connectors, the heartbeat, the speech model. `uv run contxt check`
+names the fix for anything missing.
+
+Home opens on a short quick start: connect your AI, capture one source, review what it found,
+ask a question, and inspect the evidence.
+
+![The quick start on Home](docs/images/onboarding.png)
+
+**Settings, Your AI apps** shows the same connection as `contxt connect`, with your paths
+filled in, and **Agents, Knowledge agent, Ask the Brain first** adds the instruction for you,
+with one switch per app.
+
+![Settings, Your AI apps](docs/images/connect.png)
+
+**Try a demo first.** `setup` starts your own, empty Brain. Four made-up demos are good for
+looking around: `uv run contxt demo knowledge-company` runs one from its own folder on its own
+port, without touching your Brain (`uv run contxt starters` lists them; see
+[brains/README.md](brains/README.md)):
 
 | Demo | Who it is for |
 | --- | --- |
@@ -208,47 +236,7 @@ looking around first:
 | `entrepreneur` | Riley, a made-up founder: a seed-stage startup and its numbers, a seed round, a past company's lessons, angel checks |
 | `personal` | Taylor, a made-up parent: family schedules and an allergy, the house, the budget, training, a trip to Japan |
 
-To try one without touching your own Brain: `uv run contxt demo knowledge-company`. It runs
-from its own folder on its own port. See [brains/README.md](brains/README.md).
-
-Setup never overwrites a Brain that is already there. It fetches, once, a small model that
-matches requests by meaning (about 70 MB). `--offline` downloads nothing, and the Brain then
-matches by words. Then see that everything works, and start the app:
-
-```bash
-uv run contxt check
-uv run contxt serve
-```
-
-`check` names the fix for anything missing. `serve` starts the app on `http://127.0.0.1:8787`
-and prints your sign-in link. That link is your key: keep it to yourself.
-`uv run contxt token` prints it again.
-
-Home opens on a short quick start: connect your AI, capture one source, review what it found,
-ask a question, and inspect the evidence.
-
-![The quick start on Home](docs/images/onboarding.png)
-
-### 4. Connect an AI app
-
-```bash
-uv run contxt connect claude-code
-```
-
-prints one command. Run it once, and every Claude Code session has your Brain. The same works
-for `claude-desktop`, `codex`, `cursor` and `other`. **Settings, Your AI apps** shows the same,
-with your paths filled in.
-
-![Settings, Your AI apps](docs/images/connect.png)
-
-### 5. Ask the Brain first
-
-A model reads your Brain only when it asks, and it forgets most often on a follow-up.
-`contxt connect` also prints one instruction for that app's own instructions (for Claude Code,
-`~/.claude/CLAUDE.md`). With it, the model asks the Brain before every answer. In the app,
-**Agents, Knowledge agent, Ask the Brain first** adds it for you, with one switch per app.
-
-### 6. Your first capture
+### 4. Your first capture
 
 Open **Capture** and paste a few lines: notes from a call, an email, a decision. Or upload a
 file, record a meeting, or use **Tell it** on Home. Open what you saved and choose **Distill
@@ -258,13 +246,13 @@ Brain** shows where each would land.
 Talk and recordings turn into text on this computer with the speech model (about 480 MB, once):
 `uv run contxt models --download`.
 
-### 7. Catch up
+### 5. Catch up
 
 **Brain, Catch up** lists what waits for you: safe pieces you can keep together, and the few
 that need a real decision. **What changed** lists what went in on its own, each with Undo. In
 Auto, most days take a minute.
 
-### 8. Turn the heartbeat on
+### 6. Turn the heartbeat on
 
 1. In **Capture, Scout your folders**, choose a folder and the project it feeds.
 2. In **Settings, Approval and auto-governance, Heartbeat**, choose how often it beats and your
@@ -277,7 +265,7 @@ Auto, most days take a minute.
    the ones you want.
 5. Press **Beat now** on Home to see the next beat.
 
-### 9. Host n8n (optional)
+### 7. Host n8n (optional)
 
 In the same Heartbeat card, **Host n8n here** installs n8n on this computer, inside Contxt's
 data folder, listening on `127.0.0.1` only. **Open n8n** and sign in to your apps there:
@@ -285,7 +273,7 @@ Gnomon never sees those sign-ins. **Suggest workflows** offers a read-only workf
 app it found. Turn each one on in the Heartbeat card. From then on, reading those apps costs no
 tokens.
 
-### 10. Where to go next
+### 8. Where to go next
 
 - **Projects**: open one, see what your AI gets for it, and give an orchestrator a goal in
   **Tasks**. What it makes lands in **Outputs**.
