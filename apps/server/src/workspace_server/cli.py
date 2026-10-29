@@ -502,17 +502,21 @@ def _setup(args: argparse.Namespace) -> int:
         meaning = True
     else:
         meaning = _meaning(settings)
+    if not args.offline and not webapp.built(webapp.location(settings.web_dist)):
+        _web(settings, download=True)  # the app; without it, the Brain still works
     command = "uv run contxt" + (f' --home "{home}"' if args.home else "")
-    print("Next:")
+    print("\nNext, connect your AI app, the one step left:")
+    print(f"  {command} connect claude-code   (or claude-desktop, codex, cursor, other)\n")
+    print("When you want them:")
+    print(f"  {command} serve      open the app to see, review and steer your Brain; switch on")
+    print("               capture, connectors and the heartbeat from there")
     if not webapp.built(webapp.location(settings.web_dist)):
         print(f"  {command} web --download   get the web app (or: npm install, npm run build)")
-    print(f"  {command} serve      start the app (it prints your sign-in link)")
-    print(f"  {command} connect    connect Claude Code, Claude Desktop, Codex or another AI app")
     if not meaning:
         print(f"  {command} models --download   match by meaning and transcribe speech, offline")
     elif not args.models:
         print(f"  {command} models --download   also turn talk into text, offline (about 480 MB)")
-    print(f"  {command} check      see that everything works")
+    print(f"  {command} check      see that everything works, and what to fix")
     return 0
 
 
