@@ -79,17 +79,18 @@ def note_budget(config, route) -> int:
     return max(300, budget)
 
 
-POINTERS = 6          # notes listed as also relevant, closest first (brain.json briefs.pointers)
-POINTER_CHARS = 80    # of each one's summary
+POINTER_CHARS = 80    # of each listed note's summary
 
 
-def pointer_limit(config) -> int:
-    """How many notes a brief lists as also relevant: each one is read again on every later
-    call of the conversation, so only the closest few."""
+def pointer_limit(config) -> int | None:
+    """How many notes a brief lists as also relevant (brain.json `briefs.pointers`): all the
+    route chose unless the owner sets fewer. A cap of six cost the general eval about four
+    points of reachability, so there is none by default."""
+    wanted = (config.data.get("briefs") or {}).get("pointers")
     try:
-        return max(0, int((config.data.get("briefs") or {}).get("pointers", POINTERS)))
+        return None if wanted is None else max(0, int(wanted))
     except (TypeError, ValueError):
-        return POINTERS
+        return None
 
 
 def body_limit(config, route) -> int:
@@ -745,9 +746,9 @@ def build(route, *, config, index, delivered: dict, fresh: bool, session_id: str
         lines.append("")
     chosen_ids = {n.id for n in chosen + held + unfit}
     related = [r for r in route.related if r.item.id not in chosen_ids]
-    # Notes it would open by name: listed only for a model that can open them, the closest
-    # few (`briefs.pointers`), and none for an edit, which works on what the conversation
-    # already holds (section 17.4).
+    # Notes it would open by name: listed only for a model that can open them (at most
+    # `briefs.pointers` when the owner sets it), and none for an edit, which works on what the
+    # conversation already holds (section 17.4).
     listed = related[:pointer_limit(config)] if tools and not route.signals.edit else []
     if listed and route.mode == "lean":
         lines += ["## Closest notes (not included)", "",
