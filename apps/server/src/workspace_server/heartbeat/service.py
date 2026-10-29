@@ -60,7 +60,11 @@ ACCOUNT_RECHECKS = 2  # fresh listings for an account connector still connecting
 ACCOUNT_PLACE = "Your Claude account"
 
 CADENCES = (5, 15, 30, 60)
-OWN_CADENCES = (*CADENCES, 240, 1440)  # a connector may read less often: every 4 hours, daily (the default)
+OWN_CADENCES = (
+    *CADENCES,
+    240,
+    1440,
+)  # a connector may read less often: 4 hours, daily (default)
 QUIET_GAP = 2880  # minutes: a connector with nothing new for long is still read this often
 MEMORY_CADENCE = 1440  # minutes between memory reads after onboarding: daily
 MEMORY_ITEMS = 40  # context packets one memory read may bring
@@ -1704,8 +1708,7 @@ class Heartbeat:
         elif not any(c["enabled"] for c in listed):
             state = "no_connectors"
             line = (
-                "Off until a connector is on. Find connectors in your CLIs in Settings, "
-                "Approval."
+                "Off until a connector is on. Find connectors in your CLIs in Settings, Approval."
                 if listed
                 else "Off until you set up a connector. Find connectors in your CLIs in "
                 "Settings, Approval."
@@ -1889,9 +1892,7 @@ class Heartbeat:
         out = []
         rows = self._connectors()
         # An app n8n reads (no tokens) is not also read through a CLI (section 17.4).
-        by_n8n = {
-            r["id"].partition(":")[2] for r in rows if r["how"] == "n8n" and r["enabled"]
-        }
+        by_n8n = {r["id"].partition(":")[2] for r in rows if r["how"] == "n8n" and r["enabled"]}
         for row in rows:
             if not row["enabled"] or not row["present"] or row["how"] == "computer":
                 continue

@@ -1011,8 +1011,12 @@ def test_an_app_n8n_reads_is_not_also_read_through_a_cli(owner, hb, fake_cli, mo
         hb_service.templates, "app_of", lambda name: "gmail" if "mail" in name else None
     )
     hb.add_n8n(
-        hb.ws.owner(), name="Gmail through n8n", workflow=n8n_workflow(), feeds=[],
-        connector_id="n8n:gmail", line="test",
+        hb.ws.owner(),
+        name="Gmail through n8n",
+        workflow=n8n_workflow(),
+        feeds=[],
+        connector_id="n8n:gmail",
+        line="test",
     )
     owner.ok(owner.put("/api/heartbeat/connectors/n8n:gmail", json={"enabled": True}))
     beat(owner)
