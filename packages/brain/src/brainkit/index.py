@@ -20,6 +20,11 @@ import struct
 import threading
 from collections import Counter
 
+try:  # present wherever the meaning model runs (onnxruntime needs it)
+    import numpy as _np
+except ImportError:  # pragma: no cover
+    _np = None
+
 from . import enrich
 from . import sections as sections_mod
 from . import util
@@ -533,6 +538,7 @@ class Index:
                                  unseen_idf=1.0)
         self._vectors: dict[str, list] | None = None
         self._vector_norms: dict[str, float] | None = None
+        self._matrix = None  # (keys, unit vectors, fold targets): one product per request
         self._vector_lock = threading.RLock()
         self._centrality: dict[str, float] | None = None
         self._labels: dict[str, str] = {}
@@ -745,6 +751,10 @@ class Index:
         """Cosine of one query vector to every item. A note scores by the closest of its
         own text and the lines it is asked by (`ask:` keys, folded into `note:`)."""
         vectors = self._item_vectors() or {}
+        if _np is not None and vectors and qv:
+            found = self._similarity_matrix(vectors, qv)
+            if found is not None:
+                return found
         # Item vectors belong to this immutable snapshot. Their magnitudes do not
         # change between requests; the query's magnitude is shared by every pair.
         if self._vector_norms is None:
@@ -769,4 +779,47 @@ class Index:
         for note_key, value in asks.items():
             if note_key in out and value > out[note_key]:
                 out[note_key] = value
+        return out
+
+    def _similarity_matrix(self, vectors: dict, qv) -> dict | None:
+        """similarity_vector as one matrix product: the same values (to the last bit or so),
+        a whole Brain at once. None when the vectors and the query are not all one width."""
+        if self._matrix is None:
+            with self._vector_lock:
+                if self._matrix is None:
+                    keys = [k for k, v in vectors.items() if v]
+                    widths = {len(vectors[k]) for k in keys}
+                    if len(widths) != 1:
+                        self._matrix = False
+                        return None
+                    width = widths.pop()
+                    rows = _np.array([vectors[k] for k in keys], dtype=_np.float64)
+                    norms = _np.linalg.norm(rows, axis=1)
+                    rows = rows / _np.where(norms == 0, 1.0, norms)[:, None]
+                    plain = [k for k in keys if not k.startswith("ask:")]
+                    slot = {k: i for i, k in enumerate(plain)}
+                    folds = [(i, slot.get("note:" + k[4:].rsplit(":", 1)[0]))
+                             for i, k in enumerate(keys) if k.startswith("ask:")]
+                    folds = [(i, j) for i, j in folds if j is not None]
+                    own = _np.array([i for i, k in enumerate(keys) if not k.startswith("ask:")],
+                                    dtype=_np.int64)
+                    self._matrix = (plain, rows, own,
+                                    _np.array([i for i, _j in folds], dtype=_np.int64),
+                                    _np.array([j for _i, j in folds], dtype=_np.int64),
+                                    width)
+        if self._matrix is False or len(qv) != self._matrix[5]:
+            return None
+        plain, rows, own, ask_rows, ask_slots, _width = self._matrix
+        out = dict.fromkeys(vectors, 0.0)
+        for key in [k for k in vectors if k.startswith("ask:")]:
+            del out[key]
+        query = _np.asarray(qv, dtype=_np.float64)
+        norm = float(_np.linalg.norm(query))
+        if not norm:
+            return out
+        values = rows @ (query / norm)
+        best = values[own].copy()
+        if len(ask_rows):
+            _np.maximum.at(best, ask_slots, values[ask_rows])
+        out.update(zip(plain, best.tolist(), strict=True))
         return out

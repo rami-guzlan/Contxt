@@ -44,6 +44,12 @@ except ImportError:  # pragma: no cover
     _np = None
 
 
+# How many of a request's best-scoring notes go on past scoring (with every note a declared
+# topic, the house style or an intent needs). Selection takes from the top of the ranking, so
+# on a large Brain the rest only cost time: at 5,000 notes, most of a brief's.
+RANK_LIMIT = 400
+
+
 @dataclass(frozen=True)
 class Policy:
     """Every threshold the router uses, in one place. Overridable in routing.json `policy`."""
@@ -887,6 +893,8 @@ class Router:
         self._hybrids: dict = {}
         self._admitted: dict = {}
         self._facts_day = None
+        self._shares: dict[str, float] = {}  # the bars: fixed while this router lives
+        self._dated: set[str] | None = None  # the notes that give a dated figure
 
     # ------------------------------------------------------------------ calibration
     def calibrated(self, floor: str) -> bool:
@@ -910,13 +918,18 @@ class Router:
         """The bar (nothing, note, related) for this Brain's kind of evidence, moved by the
         Brain's named retrieval policy (brain.json `retrieval_policy`: relaxed, standard or
         careful; design contract 15). Standard is the calibrated bar as measured."""
+        shares = self.__dict__.setdefault("_shares", {})
+        found = shares.get(bar)
+        if found is not None:
+            return found
         words = self.calibration.cos is None
         base = getattr(self.policy, f"{'words_' if words else ''}{bar}_share")
         data = getattr(getattr(self, "config", None), "data", None) or {}
         named = str((data.get("governance") or {}).get("retrieval_policy")
                     or data.get("retrieval_policy") or "standard").strip().lower()
         step = NAMED_POLICIES.get(named, 0.0)
-        return min(0.995, max(0.5, base + step))
+        shares[bar] = min(0.995, max(0.5, base + step))
+        return shares[bar]
 
     def evidence(self, scored) -> float:
         """The share of the Brain's unrelated requests this note's match beats (worked out
@@ -1443,10 +1456,12 @@ class Router:
         if route.mode in self.NO_DATED:
             return
         # Never a note loaded "manual" (the owner's goals): a target is not a newer value.
+        if getattr(self, "_dated", None) is None:  # fixed for this index: worked out once, not per request
+            self._dated = {n.id for n in self.index.notes.values()
+                           if (n.as_of or n.kind == "state") and not self.config.is_focus(n)
+                           and n.load != "manual" and tension.measures(n.body)}
         pool = [n for n in self.admitted_notes(route.chain, route.partitions)
-                if (n.as_of or n.kind == "state") and not self.config.is_focus(n)
-                and n.load != "manual" and n.id not in route.out_of_project
-                and tension.measures(n.body)]
+                if n.id in self._dated and n.id not in route.out_of_project]
         if not pool:
             return
         if route.mode == "focus-only":
@@ -1650,10 +1665,16 @@ class Router:
         """The request's best two topic matches, when they clear their must-hold bars:
         {route key: score}."""
         p = self.policy
-        scores = self.topic_relevance(request, list(self.index.topic_texts))
-        best = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:2]
-        bars = (p.must_hold_topic_bar, p.must_hold_second_bar)
-        return {key: value for (key, value), bar in zip(best, bars) if value >= bar}
+        memo = self.__dict__.setdefault("_close", {})
+        if request not in memo:  # asked again each time a request's must-holds are settled
+            if len(memo) > 32:
+                memo.clear()
+            scores = self.topic_relevance(request, list(self.index.topic_texts))
+            best = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:2]
+            bars = (p.must_hold_topic_bar, p.must_hold_second_bar)
+            memo[request] = {key: value for (key, value), bar in zip(best, bars)
+                             if value >= bar}
+        return dict(memo[request])
 
     def _route(self, request, chain, partitions=(), *, focus_override=None,
                task_type_override=None, previous=None) -> Route:
@@ -1911,8 +1932,12 @@ class Router:
         # LinkedIn post inviting supervisors to our next webinar" needs the webinar series);
         # the project a request names comes as the Focus instead.
         named = route.focus.id if route.focus is not None else None
+        focus = self.__dict__.get("_focus_ids")
+        if focus is None:  # fixed for this index
+            focus = self._focus_ids = {n.id for n in self.index.notes.values()
+                                       if self.config.is_focus(n)}
         on_demand = [n for n in notes if not n.standing
-                     and (not self.config.is_focus(n) or (p.projects_compete and n.id != named))]
+                     and (n.id not in focus or (p.projects_compete and n.id != named))]
         standing = [n for n in notes if n.standing]
 
         # Skills first: the procedure that fits the task declares what knowledge it needs.
@@ -1994,6 +2019,9 @@ class Router:
         ranked_on_demand = self._rerank(route, sig.request,
                                         self.score_notes(sig.request, candidates, context))
         route.ranked = ranked_on_demand
+        everything = ranked_on_demand
+        if len(ranked_on_demand) > RANK_LIMIT:
+            ranked_on_demand = self._best_candidates(route, ranked_on_demand, domains)
         ranked_standing = self.score_notes(sig.request, standing)
         forced = domains
 
@@ -2138,7 +2166,7 @@ class Router:
                     chosen.add(caveat)
                     route.log(f"{caveat}: caveat for {scored.item.route_key}")
         related = [s for s in related if s.item.id not in chosen]
-        selected, related = self._linked(route, selected, related, chosen, ranked_on_demand)
+        selected, related = self._linked(route, selected, related, chosen, everything)
         taken = {s.item.id for s in selected} | {s.item.id for s in style}
         related = self._point_to_files(route, [s for s in related if s.item.id not in taken],
                                        ranked_on_demand, p.related_count, taken)
@@ -2152,6 +2180,22 @@ class Router:
                 route.references + [r for r in route.skill.load_references
                                     if r in self.index.references]))
         self._settle_sections(route)
+
+    def _best_candidates(self, route, ranked, domains) -> list:
+        """The best RANK_LIMIT of `ranked`, and every later one a declared topic, the house
+        style, the owner's taste or an intent needs, in their order."""
+        routing = self.config.routing
+        topics = set(domains) | set(self.house_style)
+        ids = set(routing.house_style_notes) | set(route.signals.include_notes)
+        for hint in routing.hints.values():
+            ids |= set((hint or {}).get("with_notes") or [])
+        kept = ranked[:RANK_LIMIT] + [
+            s for s in ranked[RANK_LIMIT:]
+            if s.item.route_key in topics or s.item.id in ids
+            or str(s.item.meta.get("taste_lens") or "") in TASTE_LENSES]
+        route.log(f"ranked the best {RANK_LIMIT} of {len(ranked)} notes, and "
+                  f"{len(kept) - RANK_LIMIT} more a topic, the style or an intent needs")
+        return kept
 
     def _point_to_files(self, route, related, ranked, limit, taken=()):
         """`related` with the cards of the files whose parts matched but were not quoted
