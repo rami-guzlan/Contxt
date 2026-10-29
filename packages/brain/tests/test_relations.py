@@ -111,7 +111,7 @@ class RelationsTest(unittest.TestCase):
         found = server.call("notes", {"action": "related", "id": "facts-pricing-2026"})
         self.assertFalse(found.is_error, found.text)
         self.assertIn("supersedes: `facts-services-001`", found.text)
-        self.assertIn('notes(action: "get"', found.text)
+        self.assertIn('brain(action: "get"', found.text)
 
 
 if __name__ == "__main__":

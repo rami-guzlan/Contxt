@@ -210,7 +210,7 @@ class PointerTest(unittest.TestCase):
             pointers = res.text.split("## Also relevant (not included)", 1)
             self.assertEqual(len(pointers), 2)
             first = pointers[1].strip().splitlines()[0]
-            self.assertRegex(first, r"^- .+ \(`[^`]+`, [^)]+\): .{10,}")
+            self.assertRegex(first, r"^- .+ \(`[^`]+`\): .{10,}")
         finally:
             shutil.rmtree(os.path.dirname(vault), ignore_errors=True)
 

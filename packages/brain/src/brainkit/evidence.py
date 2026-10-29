@@ -13,3 +13,12 @@ READING_GUIDANCE = (
     "If the evidence or time anchor is missing or contradictory, say what remains unknown. "
     "Search and read within the caller's existing limits; never invent missing operands."
 )
+
+# The same contract in brief, for the instructions every connected app loads (section 17.4);
+# the whole of it comes back from brain(action: "help", about: "reading").
+READING_SHORT = (
+    "Excerpts are pointers: open the source before claiming what they do not establish. For "
+    "a total, find every component and show the operands; for a past state, use the state at "
+    "that time. Keep who said each claim. If evidence is missing or contradictory, say what "
+    "is unknown."
+)

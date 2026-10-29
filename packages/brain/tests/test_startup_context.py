@@ -29,7 +29,7 @@ class StartupContextTest(unittest.TestCase):
         self.assertFalse(found.is_error, found.text)
         return found
 
-    def test_the_operating_section_follows_the_contract_and_names_the_grouped_tools(self):
+    def test_the_operating_section_follows_the_contract_and_names_the_three_tools(self):
         text = self.kernel.shared
         start, operating = text.index("## Start"), text.index(kernel.OPERATING_HEADING)
         policy = text.index("## Action policy")
@@ -37,9 +37,9 @@ class StartupContextTest(unittest.TestCase):
         self.assertLess(operating, policy)
         section = text[operating:policy]
         self.assertIn("Pull only what the task needs", section)
-        self.assertIn('notes(action: "search")', section)
-        self.assertIn('gnomon(action: "open"', section)
-        self.assertIn('activity(action: "timeline"', section)  # for when and since
+        self.assertIn('brain(action: "search")', section)
+        self.assertIn('brain(action: "open"', section)
+        self.assertIn('brain(action: "timeline"', section)  # for when and since
         self.assertNotIn("notes_search", section)
         self.assertLessEqual(util.tokens(section), 190)
 

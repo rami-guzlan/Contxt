@@ -92,7 +92,7 @@ class WorldTest(unittest.TestCase):
         found = server.call("gnomon", {"action": "map", "view": "world"})
         self.assertFalse(found.is_error, found.text)
         self.assertIn("World view", found.text)
-        self.assertIn('notes(action: "related"', found.text)
+        self.assertIn('brain(action: "related"', found.text)
 
 
 if __name__ == "__main__":

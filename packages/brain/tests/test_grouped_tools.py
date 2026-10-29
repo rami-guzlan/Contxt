@@ -1,7 +1,7 @@
-"""Grouped tools (the owner's list, item 5), Webflow's convention: the Brain's MCP server lists
-one tool per area (notes, skills, files, sheets, ...) with an `action` parameter, instead of a
-tool per action. `gnomon_get_context` stays its own tool: every request calls it first. The
-earlier one-per-action names still answer, so apps set up before keep working."""
+"""Grouped tools (the owner's list, item 5): one tool per area (notes, skills, files, sheets,
+...) with an `action` parameter. Since section 17.4 the server lists three tools (context,
+brain, propose), but every grouped name and every earlier one-per-action name still answers,
+so apps set up before keep working."""
 from __future__ import annotations
 
 import unittest
@@ -22,21 +22,15 @@ class GroupedToolsTest(unittest.TestCase):
         self.brain.close()
         fixture.remove(self.vault)
 
-    def test_one_tool_per_area_with_an_action(self):
-        self.assertIn("gnomon_get_context", self.listed)
-        self.assertNotIn("notes_search", self.listed)
-        notes = self.listed["notes"]
-        actions = notes["inputSchema"]["properties"]["action"]["enum"]
-        self.assertEqual(sorted(actions), ["challenge", "get", "propose", "related", "search"])
-        self.assertEqual(notes["inputSchema"]["required"], ["action"])
-        self.assertIn("query", notes["inputSchema"]["properties"])
-        for action in actions:
-            self.assertIn(f"{action}:", notes["description"])
-        self.assertLessEqual(len(self.listed), 16)
+    def test_every_grouped_action_still_answers_though_only_three_tools_are_listed(self):
+        self.assertEqual([t["name"] for t in self.server.tools], ["context", "brain", "propose"])
         flat = {t["name"] for t in mcp_server.AGENT_TOOLS}
-        covered = {f"{t['name']}_{a}" for t in self.server.tools if t["name"] != "gnomon_get_context"
-                   for a in t["inputSchema"]["properties"]["action"]["enum"]}
+        covered = {f"{area}_{action}" for area, actions in mcp_server.GROUPS.items()
+                   for action in actions}
         self.assertEqual(flat - covered, {"gnomon_get_context"})
+        for area, actions in mcp_server.GROUPS.items():
+            found = self.server.call(area, {"action": actions[0]})
+            self.assertNotIn("is not available", found.text, area)
 
     def test_an_action_answers_as_its_one_tool_did(self):
         grouped = self.server.call("notes", {"action": "search", "query": "website redesign"})
@@ -58,9 +52,11 @@ class GroupedToolsTest(unittest.TestCase):
         self.assertTrue(missing.is_error)
         self.assertIn("action", missing.text)
 
-    def test_the_instructions_name_the_grouped_tools(self):
-        self.assertIn('notes(action: "search")', mcp_server.INSTRUCTIONS)
-        self.assertNotIn("notes_search", mcp_server.INSTRUCTIONS)
+    def test_the_instructions_name_the_three_tools(self):
+        said = mcp_server.public_text(mcp_server.INSTRUCTIONS)
+        self.assertIn('brain(action: "search")', said)
+        self.assertNotIn("notes_search", said)
+        self.assertNotIn('notes(action: "search")', said)
 
 
 if __name__ == "__main__":

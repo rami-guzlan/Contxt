@@ -505,13 +505,17 @@ class Brain:
         if tools:
             parts.append(
                 "## Continuity\n\n"
-                f"session_id: {session} ({status}). When a later message asks for something "
-                "new, call gnomon_get_context again with this session_id; it sends only what is "
-                "new. Pass it on every other call too, and fresh=true after a compaction.\n"
-                f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'})\n"
-                "Pull budget for this request: open up to {} more items (about {:,} tokens) "
-                "beyond this packet, each with gnomon_open(address) or notes_get; past it, "
-                "only names come back.\n".format(*pull_budget(st.config)))
+                f"session_id: {session} ({status}). "
+                # How to continue is said once, in a conversation's first packet (17.4).
+                + ("Pass it on every later call; for a new ask call gnomon_get_context again "
+                   "(it sends only what is new), with fresh=true after a compaction.\n"
+                   if not continuing else "")
+                # The kernel line only when it says something new: a first packet, or a
+                # kernel sent again because the client's was stale.
+                + (f"kernel: {kernel_fp} ({'current' if kernel_held else 'included above'}). "
+                   if not continuing or not kernel_held else "")
+                + "Pull budget: {} more items (about {:,} tokens) with gnomon_open or "
+                "notes_get; past it, names only.\n".format(*pull_budget(st.config)))
         data = dict(packet.data)
         data.update({"kernel_fingerprint": kernel_fp, "kernel_included": not kernel_held,
                      "person_fingerprint": kernel.person_fingerprint or None,

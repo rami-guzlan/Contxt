@@ -34,16 +34,21 @@ It leaves alone questions, idioms ("never mind") and instructions tied to the dr
 it favours precision: on 111 ordinary task requests from this brain's measurement files it
 flagged one, a genuine project progress statement.
 
-The nudge reaches the agent twice:
+Since section 17.4 of the v4 plan, no nudge reaches the model, so capture costs no model
+call:
 
-- **In the packet.** `gnomon_get_context` adds a `## Capture` section quoting the flagged
-  sentences and naming the tool for each (not for exact note or skill lookups, or Focus
-  updates, which are captures already).
-- **On the raw message.** In Claude Code, the `UserPromptSubmit` hook
-  (`hooks/capture_prompt.py`) adds the same nudge as context before the model sees the
-  message. It is silent when nothing is flagged and never fails the prompt. The same hook
-  pushes the brain's brief for a message that asks for something, when the brain holds
-  something the conversation was not given (ROUTING.md, "Push").
+- **In Claude Code, the hook files it.** The `UserPromptSubmit` hook
+  (`hooks/capture_prompt.py`) files each flagged rule, correction, preference, decision,
+  "remember that" and changed fact as a proposal that waits for the owner. The proposal
+  quotes the message. One line tells the model it was filed, so it does not propose it again.
+  A changed fact cued only by "our new" is skipped: it is usually a request. Procedures and
+  documents still need the model (`propose(kind: "skill" | "file")`). The hook is silent when
+  nothing is flagged, never fails the prompt, and `BRAIN_HOOK_CAPTURE=0` turns it off. The
+  same hook pushes the Brain's brief for a message that asks for something, when the Brain
+  holds something the conversation was not given (ROUTING.md, "Push").
+- **In the packet, data only.** The packet's `capture` data still lists the flagged sentences,
+  for reports. Its text carries no `## Capture` section. An app without hooks has
+  `propose(kind: "note")` among its three tools.
 
 The MCP server's instructions carry the standing instruction: capture as you go, without
 being asked; one-off instructions need no capture.

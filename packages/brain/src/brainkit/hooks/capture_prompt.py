@@ -17,9 +17,12 @@ Nothing new: nothing pushed, and the reminder to ask instead. brain.json `hooks.
 turns it off too. Every pushed brief is logged with `delivery: push`, so the report can weigh
 push against pull.
 
-CAPTURE. If the message states a rule, correction, preference, decision, changed fact,
-procedure or lasting document, a short note says what looks durable and which brain tool keeps
-it.
+CAPTURE, with no model call (section 17.4): a sentence that states a rule, correction,
+preference, decision, something to remember or a changed fact is filed by the hook itself as a
+proposal that waits for the owner, quoting the message, and one short line says so, so the
+model does not propose it again. Procedures and documents still need the model
+(propose(kind: "skill" | "file")). Nothing reminds the model to ask on every message: the push
+brings what is new, and `BRAIN_HOOK_ASK=1` turns the old reminder back on.
 
 It never blocks a message and never fails a session: any problem means no push.
 """
@@ -28,12 +31,18 @@ import os
 import re
 import sys
 
-ASK = ("If this message asks for something new, call gnomon_get_context with it first (pass "
-       "your session_id): the brain sends only what this conversation does not hold yet.")
+ASK = ("If this message asks for something new, call context with it first (pass your "
+       "session_id): the brain sends only what this conversation does not hold yet.")
 SMALL_TALK = re.compile(r"^\s*(?:thanks|thank you|ok(?:ay)?|great|cool|perfect|got it|"
                         r"sounds good|yes|no|sure|nice)\b[\s.!]*$", re.IGNORECASE)
-PUSHED = ("[brain] The brain's brief for this message, sent before you start under session_id "
-          "{session}. Pass that session_id to gnomon_get_context: it sends only what is not here.")
+PUSHED = ("[brain] The brief for this message, under session_id {session}; pass it to "
+          "context, which then sends only what is not here.")
+# What the hook files itself: the kinds a sentence states plainly, as the note kind they
+# become. A changed fact cued only by "our new" is too often a request ("announce our new
+# program") to file unasked.
+KEEP = {"rule": "rule", "correction": "fact", "preference": "rule", "decision": "decision",
+        "memory": "fact", "fact": "fact"}
+KEPT = "[brain] Filed for the owner's review, no need to propose it again: {quotes}."
 # What a brief may hold that this conversation was not given: any of it makes it worth pushing.
 NEW = ("note_ids", "section_ids", "system_ids", "skill_included", "kernel_included",
        "person_included")
@@ -104,9 +113,38 @@ def push(prompt: str, payload) -> str:
         sent = brain.context(prompt, **ask)
         if sent.is_error:
             return ""
-        return PUSHED.format(session=session) + "\n\n" + sent.text
+        from brainkit.mcp_server import public_text
+        return PUSHED.format(session=session) + "\n\n" + public_text(sent.text)
     finally:
         brain.close()
+
+
+def keep(prompt: str, payload) -> str:
+    """File what the message states as lasting, as proposals that wait for the owner: the
+    line saying so, or "" when nothing was filed."""
+    if os.environ.get("BRAIN_HOOK_CAPTURE", "1") == "0":
+        return ""
+    from brainkit import capture, util
+    found = [c for c in capture.detect(prompt) if c.kind in KEEP
+             and not (c.kind == "fact" and c.cue.lower() == "our new")]
+    session = claude_session(payload)
+    if not found or not session:
+        return ""
+    from brainkit.api import Brain
+    brain = Brain(embeddings=False)
+    kept = []
+    try:
+        brain.client = "Claude Code (prompt hook)"
+        for candidate in found:
+            done = brain.propose(
+                text=candidate.sentence, evidence=f'"{candidate.sentence}"',
+                note_kind=KEEP[candidate.kind], session_id=session, capture_origin="chat",
+                force_pending=True, op_id="hook-" + util.short_hash(session + candidate.sentence, 16))
+            if not done.is_error:
+                kept.append(f'"{candidate.sentence}"')
+    finally:
+        brain.close()
+    return KEPT.format(quotes="; ".join(kept)) if kept else ""
 
 
 def main():
@@ -118,10 +156,9 @@ def main():
     if not prompt.strip():
         return 0
     try:
-        from brainkit import capture
-        text = capture.nudge(capture.detect(prompt))
+        text = keep(prompt, payload)
     except Exception:
-        return 0
+        text = ""
     asks = _asks_for_something(prompt)
     brief = ""
     if asks:
@@ -133,9 +170,9 @@ def main():
     # from memory; the brain's rules for the new part ("add a call to action", "can I add a
     # script?") never arrive. The reminder rides on every message that asks for something,
     # unless the brief came with it.
-    if asks and not brief and os.environ.get("BRAIN_HOOK_ASK", "1") != "0":
-        text = f"{text} {ASK}".strip() if text else ASK
-    context = "\n\n".join(part for part in (f"[brain] {text}" if text else "", brief) if part)
+    if asks and not brief and os.environ.get("BRAIN_HOOK_ASK", "0") == "1":
+        text = f"{text} [brain] {ASK}".strip()
+    context = "\n\n".join(part for part in (text, brief) if part)
     if context:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
                                                  "additionalContext": context}}))

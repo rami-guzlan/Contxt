@@ -4,18 +4,25 @@ Two MCP servers, for two jobs:
 
 - **The Brain's own server** (`python -m brainkit --vault <vault> mcp`, the `packages/brain`
   engine; `uv run contxt connect` prints the setup for each AI app): what your AI apps use in
-  every chat. It hands each request its context (`gnomon_get_context`, its own tool, called
-  first every time). Everything else is one tool per area with an `action`, as Webflow's
-  tools are: `notes` (`search`, `get`, `related`, `propose` (with `relates` to say how it relates to other entries), `challenge`), `skills` (`get`,
-  `propose_change`), `files` (`open`, `upload`), `projects` (`create`, `propose_progress`),
-  `sheets` (`get`, `propose_update`), `todos` (`update`), `outputs` (`save`: what a file it
-  saved for you was made from, for the app's Outputs page), `gnomon` (`map`, `open`,
-  `health`), `lore` (`list`, `get`, `propose`), `activity` (`timeline`: what was kept, changed, superseded or disputed in a window; `sessions_search`), `taste`,
-  `receipts`, `gaps` and `agents`. Each packet opens with the Brain map
-  (`gnomon(action: "map", tier)` returns one tier whole); `gnomon(action: "open", address)`
-  opens one part (`note-id#heading`, `file#section`, `lore_id#story`) within the pull budget
-  the owner sets (2 items and about 1,500 tokens by default). The earlier one-per-action names
-  (`notes_search` and the rest) still answer, so apps set up before keep working.
+  every chat. It lists three tools, about 1,000 tokens with its instructions:
+  - `context(request, session_id)`, called first for a task and again when the work turns
+    to something new. It sends only what the conversation does not hold yet. The startup
+    context goes once: not at all when the app loaded a startup file (CLAUDE.md, AGENTS.md)
+    carrying its fingerprint.
+  - `brain(action)` for every read: `search`, `get`, `open` (an address such as
+    `note-id#heading`, `file#section` or `lore_id#story`, within the pull budget the owner
+    sets: 2 items and about 1,500 tokens by default), `related`, `timeline`, `map`, `skill`,
+    `file`, `sheet`, `taste`, `lore`, `lesson`, `receipt`, `agents`, `agent`, `sessions`
+    and `health`.
+  - `propose(kind)` for every suggestion: `note`, `challenge`, `todo`, `sheet`, `project`,
+    `progress`, `skill`, `file`, `taste`, `lesson`, `output` and `gap`. Each waits for the
+    owner or applies, as the owner's policy says.
+
+  `brain(action: "help", about)` returns each action's and kind's fields, so the schemas
+  stay small. Every earlier name still answers, so apps set up before keep working: the
+  grouped tools (`notes(action: "search")`) and the one-per-action names (`notes_search`).
+  In Claude Code, the prompt hook files a lasting rule, preference or decision the person
+  states as a proposal for review, with no model call.
   Every Claude Desktop or Claude Code window starts one; they all read and write the same Brain. See [the Brain's architecture](brain/ARCHITECTURE.md).
 - **The app's endpoint** (`POST /mcp` on the server): how a model does the AI work the app
   starts (finding what to remember in a note, reconciling a clash). This page is about it.

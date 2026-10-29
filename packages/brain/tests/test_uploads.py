@@ -367,12 +367,11 @@ class FileUploadTests(Base):
 
 
 class CaptureInPacketTests(Base):
-    def test_packet_carries_a_capture_nudge(self):
+    def test_the_packet_keeps_what_a_message_states_in_its_data_and_sends_no_nudge(self):
         res = self.brain.context("From now on, always add the allergen list to menu posts. "
                                  "Write a post about our sourdough loaves.",
                                  principal="person:ana", record=False)
-        self.assertIn("## Capture", res.text)
-        self.assertIn("allergen list", res.text)
+        self.assertNotIn("## Capture", res.text)
         self.assertEqual(res.data["capture"][0]["kind"], "rule")
 
     def test_ordinary_request_has_no_capture_section(self):
@@ -388,23 +387,13 @@ class HookTests(unittest.TestCase):
                               input=stdin, capture_output=True, text=True, encoding="utf-8",
                               timeout=30)
 
-    def test_durable_message_gets_context_for_the_agent(self):
-        done = self.run_hook(json.dumps({"hook_event_name": "UserPromptSubmit",
-                                         "prompt": "I prefer bullet summaries from now on."}))
-        self.assertEqual(done.returncode, 0, done.stderr)
-        payload = json.loads(done.stdout)
-        context = payload["hookSpecificOutput"]["additionalContext"]
-        self.assertEqual(payload["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit")
-        self.assertIn("notes_propose", context)
-        self.assertIn("bullet summaries", context)
-
-    def test_an_ordinary_request_gets_only_the_reminder_to_ask_the_brain(self):
-        done = self.run_hook(json.dumps({"prompt": "Write a post about sourdough."}))
-        context = json.loads(done.stdout)["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("gnomon_get_context", context)
-        self.assertNotIn("notes_propose", context)
-        quiet = self.run_hook(json.dumps({"prompt": "thanks!"}))
-        self.assertEqual((quiet.returncode, quiet.stdout.strip()), (0, ""))
+    def test_without_a_brain_session_the_hook_adds_nothing(self):
+        # Filing a capture needs the conversation it came from (test_three_tools.py).
+        for prompt in ("I prefer bullet summaries from now on.", "Write a post about sourdough.",
+                       "thanks!"):
+            done = self.run_hook(json.dumps({"hook_event_name": "UserPromptSubmit",
+                                             "prompt": prompt}))
+            self.assertEqual((done.returncode, done.stdout.strip()), (0, ""), prompt)
 
     def test_garbage_never_breaks_the_session(self):
         done = self.run_hook("this is not json")

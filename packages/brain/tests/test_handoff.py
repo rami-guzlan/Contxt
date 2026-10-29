@@ -183,7 +183,7 @@ class StopHookTest(unittest.TestCase):
         session = "cc:abc123"
         self.brain.context("pick up T-1", context="T-1", session_id=session)
         line = task_stop.reminder(self.brain, session)
-        self.assertIn("save where you are on T-1 with todos_update", line)
+        self.assertIn('save where you are on T-1 with propose(kind: "todo")', line)
         self.brain.hand_off(task="T-1", next_step="Check the source", session_id=session)
         self.assertIsNone(task_stop.reminder(self.brain, session))
         self.assertIsNone(task_stop.reminder(self.brain, "cc:none"))

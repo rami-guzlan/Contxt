@@ -153,11 +153,11 @@ flowchart LR
     OT["Any MCP client"] --> MCP
     MCP["The Brain's MCP server, on your computer"] --> B[("Your Brain: Markdown in git")]
     APP["The Gnomon app, on 127.0.0.1"] --> B
-    MCP -->|"gnomon_get_context"| PK["A packet for this request"]
+    MCP -->|"context"| PK["A packet for this request"]
     MCP -->|"notes_propose, files_upload, projects_propose_progress"| GV["Governance, then the Brain"]
 ```
 
-Each chat starts by asking the Brain for the context its request needs (`gnomon_get_context`).
+Each chat starts by asking the Brain for the context its request needs (`context`).
 When you state a lasting rule, a preference, a decision or a change in a project, the AI
 proposes it back. The app's own AI work (distilling, Ask, the heartbeat, orchestrators) runs
 through a CLI on this computer, Claude Code by default, on your own plan. See
