@@ -204,12 +204,12 @@ GEMINI_NOISE = ("Loaded cached credentials.",)
 # Starts of Claude Code to wait out the account's connectors loading, a pause apart. A real
 # Drive read loaded in about one start of three or four; with only the read connector loaded a
 # start is cheap.
-READ_BUDGET_USD = 0.05  # at most this a connector read; a typical one costs under a cent
+READ_BUDGET_USD = 0.02  # at most this a connector read; a typical one costs under a cent
 ACCOUNT_TRIES = 3  # each start waits for the account's connectors to connect
 ACCOUNT_PAUSE = 2.0  # seconds between starts
 # A listing loads every connector, to learn their tools: fewer starts.
 LIST_TRIES = 4
-READ_TURNS = 8  # a connector read: list what changed, open the newest, answer
+READ_TURNS = 4  # a connector read: one listing, one step of opens, the answer, one spare
 MCP_OUTPUT_TOKENS = 8000  # at most, per tool answer in a connector read
 ACCOUNT_LINE = re.compile(r"^(claude\.ai [^:\n]+):", re.M)  # in `claude mcp list`
 SERVER_LINE = re.compile(r"^([^\s:][^:\n]*):\s", re.M)  # every server `claude mcp list` names

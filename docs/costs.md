@@ -48,7 +48,7 @@ connector with many large tools costs more even when nothing is new. Real Test r
 - Since October 29 a read makes one list or search call, then opens at most the 3 newest
   items in one step (it opened 6 before) and answers: no tool loop. The table above was
   measured with 6 opens, so reads now cost at most that.
-- Each read has a cap on turns and on spend ($0.05 a connector). A read that reaches either
+- Each read has a cap of 4 turns and of $0.02 a connector. A read that reaches either
   fails and says so, instead of passing as nothing new.
 - A read whose list shows dates, none newer than the last read, answers at once: that halved
   HubSpot's quiet read (188,000 tokens to 91,000). Notion's search shows no dates, so its
